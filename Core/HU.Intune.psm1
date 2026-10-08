@@ -716,16 +716,19 @@ try { New-Item -ItemType Directory -Path (Split-Path `$log) -Force | Out-Null } 
 function W([string]`$t) { try { Add-Content -LiteralPath `$log -Value ("{0:yyyy-MM-dd HH:mm:ss} {1}" -f (Get-Date), `$t) -Encoding UTF8 } catch { } }
 `$dirs = @("`$env:PUBLIC\Desktop", [Environment]::GetFolderPath('Desktop'), "`$env:SystemDrive\Users\Default\Desktop") | Where-Object { `$_ } | Select-Object -Unique
 `$before = @(Get-ChildItem -Path `$dirs -Filter *.lnk -Force -ErrorAction SilentlyContinue | ForEach-Object { `$_.FullName })
+`$gone = `$false
 W ('Start: ' + '$c')
 `$p = Start-Process -FilePath "`$env:ComSpec" -ArgumentList '/c', ('"' + '$c' + '"') -WorkingDirectory `$PSScriptRoot -WindowStyle Hidden -Wait -PassThru
 W "Setup beendet, Exitcode `$(`$p.ExitCode)"
 # manche Setups legen Verknuepfungen erst kurz nach dem Ende an -> 30 s lang nachsehen
 for (`$i = 0; `$i -lt 15; `$i++) {
     foreach (`$l in @(Get-ChildItem -Path `$dirs -Filter *.lnk -Force -ErrorAction SilentlyContinue | Where-Object { `$before -notcontains `$_.FullName })) {
-        try { Remove-Item -LiteralPath `$l.FullName -Force -ErrorAction Stop; W "Desktop-Verknuepfung entfernt: `$(`$l.FullName)" } catch { W "Nicht entfernt: `$(`$l.FullName) - `$(`$_.Exception.Message)" }
+        try { Remove-Item -LiteralPath `$l.FullName -Force -ErrorAction Stop; W "Desktop-Verknuepfung entfernt: `$(`$l.FullName)"; `$gone = `$true } catch { W "Nicht entfernt: `$(`$l.FullName) - `$(`$_.Exception.Message)" }
     }
     Start-Sleep -Seconds 2
 }
+# Desktop neu zeichnen lassen (sonst bleibt ein leeres Symbol stehen, bis jemand F5 drueckt)
+if (`$gone) { try { Add-Type -Namespace HU -Name Shell -MemberDefinition '[System.Runtime.InteropServices.DllImport("shell32.dll")] public static extern void SHChangeNotify(int e, uint f, System.IntPtr a, System.IntPtr b);'; [HU.Shell]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero) } catch { } }
 exit `$p.ExitCode
 "@
 }
@@ -1388,7 +1391,7 @@ try {
     Start-Sleep -Seconds 5
     $result.DesktopLinks = @(Get-ChildItem -Path $lnkDirs -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $lnkBefore -notcontains $_.FullName } | ForEach-Object { $_.Name })
     $wl = Join-Path $env:ProgramData 'HU-MultiTenant\Logs\HU-Install.log'
-    if (Test-Path $wl) { $result.WrapperLog = @(Get-Content $wl -ErrorAction SilentlyContinue | Select-Object -Last 20) }
+    if (Test-Path $wl) { $result.WrapperLog = @(Get-Content $wl -ErrorAction SilentlyContinue | Select-Object -Last 20 | ForEach-Object { "$_" }) }
     Write-Host "Exitcode $($result.ExitCode) nach $($result.Seconds) s, neue Programme: $(@($result.NewEntries).Count)$(if (@($result.DesktopLinks).Count) { ', Desktop-Verknuepfungen: ' + (@($result.DesktopLinks) -join ', ') })" -ForegroundColor Green
     if ($cfg.TestUninstall -and "$($cfg.Uninstall)".Trim()) {
         Write-Host "Deinstalliere: $($cfg.Uninstall)" -ForegroundColor Yellow
