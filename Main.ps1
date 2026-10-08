@@ -65,7 +65,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 foreach ($f in @('Core-Async', 'Core-Update', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-                 'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint')) {
+                 'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-Support')) {
     $fp = Join-Path $script:AppRoot "Functions\$f.ps1"
     if (-not (Test-Path -LiteralPath $fp)) { Show-HUFatal "Datei fehlt: $fp`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     . $fp
@@ -130,6 +130,7 @@ Register-HUAppHandlers
 Register-HUIntAppHandlers
 Register-HURemHandlers
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
+$script:Controls['btnSupport'].Add_Click({ Show-HUSupport })
 # Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
 $script:Controls['tabMain'].Add_SelectionChanged({ param($s, $e) if ($e.OriginalSource -eq $script:Controls['tabMain']) { Update-HULeftPanel } })
 # Rechtsklick in den Ausgaben: Kopieren / Alles kopieren / Ausgabe leeren
@@ -257,6 +258,10 @@ $script:Window.Add_ContentRendered({
                 $steps += 'Liste links'
                 $steps += 'Rechtsklick'
                 if ('HUTaskbar' -as [type]) { $steps += 'Taskleiste' }
+                $zip = New-HUSupportZip -Description 'Smoke' -Include @{ Logs = $true; Sandbox = $true; Settings = $true; Library = $true; Maint = $true }
+                if (-not (Test-Path -LiteralPath $zip)) { throw 'Support-ZIP fehlt' }
+                Remove-Item -LiteralPath $zip -Force
+                Show-HUSupport; $steps += 'Support'
                 Update-HUSecretDisplay; $steps += 'Secret-Anzeige'
                 Save-HUWindowState; $steps += 'Fensterzustand'
                 # Lauf auf zwei Tenants (ohne Secret -> je Tenant "Kein Token", Lauf muss sauber zu Ende gehen)

@@ -25,6 +25,7 @@
   - Verteilen mit Zeitplan (taeglich, stuendlich, einmal), optional Pilotgruppe; **Ergebnisse** je Geraet; **Jetzt auf Geraet ausfuehren**
   - 5 Beispiele (Speicherplatz, Zeitdienst, Windows Update, Neustart ueberfaellig, BitLocker)
 - **Gruppen suchen** (Lupe neben Ziel- und Pilotgruppe): liest die Gruppen der angehakten Tenants, Filter, zeigt in welchen Tenants eine Gruppe fehlt
+- **Support** (Knopf oben): packt Protokolle, Testinstallationen, Einstellungen und App-Bibliothek anonymisiert (Tenants, Domaenen, Benutzer, IDs, IP-Adressen, Windows-Benutzer) in ein ZIP auf dem Desktop; E-Mail (klassisches Outlook mit Anhang, sonst Standard-Mailprogramm) oder GitHub-Issue im Browser (ohne Protokolle); Inhalt vorher ansehbar
 - In den Reitern Apps und Wartung ist die Extension-Liste links ausgeblendet (mehr Platz); Start-Reiter auch Apps oder Wartung
 - Neue Berechtigungen (nur fuer die neuen Reiter): DeviceManagementApps.ReadWrite.All, DeviceManagementScripts.ReadWrite.All, Group.Read.All, fuer "Jetzt ausfuehren" DeviceManagementManagedDevices.PrivilegedOperations.All
 

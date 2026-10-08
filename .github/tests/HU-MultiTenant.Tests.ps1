@@ -504,3 +504,14 @@ Describe 'Intune: Seitenweises Lesen und App-Liste' {
         ($l | Where-Object Name -eq 'Teams').Kind | Should -Be 'winget'
     }
 }
+
+Describe 'Support: Anonymisieren' {
+    BeforeAll { . (Join-Path $script:AppRoot 'Functions\UI-Support.ps1') }
+    It 'ersetzt Namen, Mails, IDs, IPs und Tokens' {
+        $map = @(@{ From = 'Gym Leoben'; To = 'Tenant-1' }, @{ From = 'gym-leoben.net'; To = 'Tenant-1' })
+        $t = ConvertTo-HURedacted 'Gym Leoben: max.muster@gym-leoben.net an 10.1.1.2 id 1d747393-f249-44ac-9754-59ee4a56b429 Bearer eyJhbGciOiJSUzI1NiIs.eyJhdWQiOiJodHRwczov.abc sig=XYZ' $map
+        $t | Should -Not -Match 'Leoben|max\.muster|10\.1\.1\.2|f249-44ac|XYZ'
+        $t | Should -Match 'Tenant-1'
+        $t | Should -Match '1d747393-\*\*\*\*'
+    }
+}

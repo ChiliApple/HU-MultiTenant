@@ -39,6 +39,8 @@
                             ToolTip="Benoetigte Graph-Berechtigungen der gewaehlten Extension pruefen und einrichten"/>
                     <Button x:Name="btnSettings" Content="&#x2699; Einstellungen" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
                             ToolTip="Tenants, Secrets, Verknuepfungen, Darstellung, Update"/>
+                    <Button x:Name="btnSupport" Content="&#x1F6DF; Support" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
+                            ToolTip="Protokolle anonymisiert als ZIP packen und per E-Mail oder GitHub-Issue Hilfe anfragen"/>
                     <Button x:Name="btnHelp" Content="?" Style="{StaticResource ToolButton}" Width="32" Margin="0,0,6,0"
                             ToolTip="Anleitung (F1)"/>
                     <Button x:Name="btnUpdate" Content="Update" Style="{StaticResource ToolButton}"
