@@ -235,18 +235,18 @@ function Start-HUIntDetail {
     $script:IntDetailPending = $false
     $per = @{}; foreach ($k in $it.Per.Keys) { $per[$k] = $it.Per[$k].Id }
     $script:IntDetailKey = $it.Key
-    [void](Start-HUJob -Name 'IntDetail' -Output $null -Vars @{ Per = $per; Win32 = ($it.Kind -eq 'win32') } -Code {
+    [void](Start-HUJob -Name 'IntDetail' -Quiet -Output $script:Controls['rtbApps'] -Vars @{ Per = $per; Win32 = ($it.Kind -eq 'win32') } -Code {
             $first = @($Per.Keys)[0]
             $icon = $null
-            try { $icon = Get-HUAppIconBytes -TenantKey $first -Settings $Settings -AppId $Per[$first] } catch { }
+            try { $icon = Get-HUAppIconBytes -TenantKey $first -Settings $Settings -AppId $Per[$first] } catch { Write-HULog -Message "Symbol: $($_.Exception.Message)" -Level 'WARN' -Tenant $first }
             $rel = @()
             if ($Win32) {
                 $rel = @(foreach ($k in $Per.Keys) {
-                        try { foreach ($r in @(Get-HUAppRelationRows -TenantKey $k -Settings $Settings -AppId $Per[$k])) { $r | Add-Member -NotePropertyName Tenant -NotePropertyValue $k -PassThru } } catch { }
+                        try { foreach ($r in @(Get-HUAppRelationRows -TenantKey $k -Settings $Settings -AppId $Per[$k])) { $r | Add-Member -NotePropertyName Tenant -NotePropertyValue $k -PassThru } } catch { Write-HULog -Message "Abhaengigkeiten: $($_.Exception.Message)" -Level 'WARN' -Tenant $k }
                     })
             }
             $asg = @{}
-            foreach ($k in $Per.Keys) { try { $asg[$k] = @(Get-HUAppAssignmentRows -TenantKey $k -Settings $Settings -AppId $Per[$k]) } catch { } }
+            foreach ($k in $Per.Keys) { try { $asg[$k] = @(Get-HUAppAssignmentRows -TenantKey $k -Settings $Settings -AppId $Per[$k]) } catch { Write-HULog -Message "Zuweisungen: $($_.Exception.Message)" -Level 'WARN' -Tenant $k } }
             [pscustomobject]@{ Icon = $icon; Rel = $rel; Assign = $asg }
         } -OnDone {
             param($Result, $Errors)
@@ -358,6 +358,9 @@ function Add-HUIntRelation {
 function Remove-HUIntRelation {
     $sel = @($script:Controls['gridIntRel'].SelectedItems)
     if (-not $sel.Count) { Show-HUMessage 'Bitte in der Tabelle die Eintraege markieren.' -Icon Info; return }
+    if (@($sel | Where-Object { $_.Key -like 'par|*' }).Count) { Show-HUMessage "'Benoetigt von' / 'Ersetzt durch' gehoert zur anderen App - dort entfernen." -Icon Info }
+    $sel = @($sel | Where-Object { $_.Key -notlike 'par|*' })
+    if (-not $sel.Count) { return }
     $keys = @($sel | ForEach-Object { $_.Key } | Select-Object -Unique)
     if (-not (Confirm-HU "Entfernen:`n- $(@($sel | ForEach-Object { "$($_.Art): $($_.App)" }) -join "`n- ")`n`nin allen Tenants dieser App?" -Warning)) { return }
     Start-HUIntAction 'Beziehung entfernen' -Vars @{ Keys = $keys } -Code {

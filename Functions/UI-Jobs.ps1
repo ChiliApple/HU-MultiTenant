@@ -43,7 +43,8 @@ function Start-HUJob {
         [Parameter(Mandatory)][scriptblock]$Code,
         [hashtable]$Vars = @{},
         $Output = $null,
-        [scriptblock]$OnDone = $null
+        [scriptblock]$OnDone = $null,
+        [switch]$Quiet
     )
     if (Test-HUJobRunning $Name) { Show-HUMessage 'Es laeuft bereits ein Auftrag - bitte warten.' -Icon Warning; return $false }
     $log = Join-Path ([IO.Path]::GetTempPath()) ("hu-job-{0}-{1}.log" -f $Name, [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -64,7 +65,7 @@ function Start-HUJob {
             Initialize-Logging -LogFilePath $__JobLog -MinLevel 'INFO'
             & ([scriptblock]::Create($__JobCode))
         })
-    $state = @{ Name = $Name; PS = $ps; RS = $rs; Log = $log; Pos = 0L; Output = $Output; OnDone = $OnDone; Started = Get-Date; Timer = $null; Handle = $null }
+    $state = @{ Name = $Name; PS = $ps; RS = $rs; Log = $log; Pos = 0L; Output = $Output; OnDone = $OnDone; Started = Get-Date; Timer = $null; Handle = $null; Quiet = [bool]$Quiet }
     $state.Handle = $ps.BeginInvoke()
     $script:HUJobs[$Name] = $state
     $t = [System.Windows.Threading.DispatcherTimer]::new()
@@ -105,6 +106,6 @@ function Update-HUJob([string]$Name) {
     try { $s.PS.Dispose(); $s.RS.Dispose() } catch { }
     Remove-Item -LiteralPath $s.Log -Force -ErrorAction SilentlyContinue
     $secs = [Math]::Round(((Get-Date) - $s.Started).TotalSeconds, 1)
-    Add-HURtbLine $s.Output "--- fertig ($secs s) ---" '#666666'
+    if (-not $s.Quiet) { Add-HURtbLine $s.Output "--- fertig ($secs s) ---" '#666666' }
     if ($s.OnDone) { try { & $s.OnDone @($result) @($errs | Where-Object { $_ }) } catch { Add-HURtbLine $s.Output "[FEHLER] $($_.Exception.Message)" '#FF5252' } }
 }

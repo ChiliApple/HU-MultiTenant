@@ -1016,18 +1016,19 @@ function Get-HUAppIconBytes {
     return $null
 }
 
-# Beziehungen, bei denen die App die Quelle ist (Abhaengigkeiten, Ersetzungen)
+# Beziehungen der App: eigene (Abhaengigkeiten, Ersetzungen) und umgekehrte (wird benoetigt von, ersetzt durch - nur Anzeige)
 function Get-HUAppRelationRows {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId)
     foreach ($r in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/relationships")) {
-        if ("$($r.targetType)" -ne 'child') { continue }
+        $par = ("$($r.targetType)" -eq 'parent')
         $isDep = "$($r.'@odata.type')" -match 'Dependency'
         [pscustomobject]@{
-            Art = $(if ($isDep) { 'Abhaengigkeit' } else { 'Ersetzt' }); TargetId = "$($r.targetId)"; App = "$($r.targetDisplayName)"; Version = "$($r.targetDisplayVersion)"
+            Parent = $par
+            Art = $(if ($par) { $(if ($isDep) { 'Benoetigt von' } else { 'Ersetzt durch' }) } elseif ($isDep) { 'Abhaengigkeit' } else { 'Ersetzt' }); TargetId = "$($r.targetId)"; App = "$($r.targetDisplayName)"; Version = "$($r.targetDisplayVersion)"
             Typ = $(if ($isDep) { $(if ($r.dependencyType -eq 'detect') { 'nur pruefen' } else { 'automatisch installieren' }) } else { $(if ($r.supersedenceType -eq 'replace') { 'ersetzen (alte deinstallieren)' } else { 'aktualisieren' }) })
             Raw = $(if ($isDep) { @{ '@odata.type' = '#microsoft.graph.mobileAppDependency'; targetId = "$($r.targetId)"; dependencyType = "$($r.dependencyType)" } } else { @{ '@odata.type' = '#microsoft.graph.mobileAppSupersedence'; targetId = "$($r.targetId)"; supersedenceType = "$($r.supersedenceType)" } })
-            Key = "$(if ($isDep) { 'dep' } else { 'sup' })|$("$($r.targetDisplayName)".ToLower())"
+            Key = "$(if ($par) { 'par' } elseif ($isDep) { 'dep' } else { 'sup' })|$("$($r.targetDisplayName)".ToLower())"
         }
     }
 }
@@ -1036,7 +1037,7 @@ function Get-HUAppRelationRows {
 function Set-HUAppRelations {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId, [object[]]$Add = @(), [string[]]$RemoveKeys = @())
-    $rows = @(Get-HUAppRelationRows -TenantKey $TenantKey -Settings $Settings -AppId $AppId)
+    $rows = @(Get-HUAppRelationRows -TenantKey $TenantKey -Settings $Settings -AppId $AppId | Where-Object { -not $_.Parent })
     $list = New-Object System.Collections.Generic.List[object]
     foreach ($r in $rows) { if ($RemoveKeys -notcontains $r.Key -and -not @($Add | Where-Object { $_.TargetId -eq $r.TargetId }).Count) { $list.Add($r.Raw) } }
     foreach ($a in @($Add)) {
