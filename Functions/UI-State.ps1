@@ -84,6 +84,13 @@ function Restore-HUWindowState {
         if ($r) { Set-HUStarPair $c['rowQSEditor'] $c['rowQSOutput'] ([double]$r) }
         $r = Get-HUStateValue 'ExtDetailsRatio'
         if ($r) { Set-HUStarPair $c['rowExtDetails'] $c['rowExtLog'] ([double]$r) }
+        # Reiter Apps / Wartung: Listenbreite und Aufteilung Formular/Ausgabe
+        foreach ($p in @(@('Apps', 'colAppsLeft', 'rowAppsForm', 'rowAppsLog'), @('Rem', 'colRemLeft', 'rowRemForm', 'rowRemLog'))) {
+            $w = Get-HUStateValue "$($p[0])LeftWidth"
+            if ($w -and [double]$w -ge 150 -and $c[$p[1]]) { $c[$p[1]].Width = [System.Windows.GridLength]::new([double]$w) }
+            $r = Get-HUStateValue "$($p[0])FormRatio"
+            if ($r -and $c[$p[2]]) { Set-HUStarPair $c[$p[2]] $c[$p[3]] ([double]$r) }
+        }
         $fs = Get-HUStateValue 'EditorFontSize'
         if ($fs -and [double]$fs -ge 8 -and [double]$fs -le 32) { $c['txtQSEditor'].FontSize = [double]$fs }
     } catch { Write-Verbose "[UIState] Aufteilung: $_" }
@@ -109,6 +116,13 @@ function Save-HUWindowState {
         if ($r) { Set-HUStateValue 'QSEditorRatio' $r }
         $r = Get-HURatio $c['rowExtDetails'].ActualHeight $c['rowExtLog'].ActualHeight
         if ($r) { Set-HUStateValue 'ExtDetailsRatio' $r }
+        foreach ($p in @(@('Apps', 'colAppsLeft', 'rowAppsForm', 'rowAppsLog'), @('Rem', 'colRemLeft', 'rowRemForm', 'rowRemLog'))) {
+            if (-not $c[$p[1]]) { continue }
+            # nur gemessene Werte speichern (Reiter war sichtbar)
+            if ($c[$p[1]].ActualWidth -ge 150) { Set-HUStateValue "$($p[0])LeftWidth" ([Math]::Round($c[$p[1]].ActualWidth)) }
+            $r = Get-HURatio $c[$p[2]].ActualHeight $c[$p[3]].ActualHeight
+            if ($r) { Set-HUStateValue "$($p[0])FormRatio" $r }
+        }
         Set-HUStateValue 'EditorFontSize' $c['txtQSEditor'].FontSize
         $sel = $c['tabMain'].SelectedItem
         $last = if ($sel -eq $c['tabExtensions']) { 'Extensions' } elseif ($sel -eq $c['tabApps']) { 'Apps' } elseif ($sel -eq $c['tabMaint']) { 'Wartung' } else { 'QuickScript' }

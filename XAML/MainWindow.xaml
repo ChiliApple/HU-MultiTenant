@@ -365,7 +365,7 @@
                 <TabItem Header="&#x1F4E6; Apps" x:Name="tabApps" Style="{StaticResource DarkTabItem}">
                     <Grid Margin="0,8,0,0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="250" MinWidth="180"/>
+                            <ColumnDefinition x:Name="colAppsLeft" Width="250" MinWidth="180"/>
                             <ColumnDefinition Width="6"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
@@ -438,9 +438,9 @@
 
                         <Grid Grid.Column="2">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="2*" MinHeight="200"/>
+                                <RowDefinition x:Name="rowAppsForm" Height="2*" MinHeight="200"/>
                                 <RowDefinition Height="6"/>
-                                <RowDefinition Height="*" MinHeight="60"/>
+                                <RowDefinition x:Name="rowAppsLog" Height="*" MinHeight="60"/>
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0">
                             <DockPanel x:Name="pnlAppLibRight">
@@ -780,7 +780,7 @@
                 <TabItem Header="&#x1F6E0; Wartung" x:Name="tabMaint" Style="{StaticResource DarkTabItem}">
                     <Grid Margin="0,8,0,0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="250" MinWidth="180"/>
+                            <ColumnDefinition x:Name="colRemLeft" Width="250" MinWidth="180"/>
                             <ColumnDefinition Width="6"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
@@ -811,9 +811,9 @@
 
                         <Grid Grid.Column="2">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="2*" MinHeight="200"/>
+                                <RowDefinition x:Name="rowRemForm" Height="2*" MinHeight="200"/>
                                 <RowDefinition Height="6"/>
-                                <RowDefinition Height="*" MinHeight="60"/>
+                                <RowDefinition x:Name="rowRemLog" Height="*" MinHeight="60"/>
                             </Grid.RowDefinitions>
                             <DockPanel Grid.Row="0">
                             <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
