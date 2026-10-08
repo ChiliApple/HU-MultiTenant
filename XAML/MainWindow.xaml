@@ -526,8 +526,10 @@
                                                     </ListBox.ItemTemplate>
                                                 </ListBox>
                                                 <StackPanel Grid.Column="2" Margin="6,0,0,0">
-                                                    <Button x:Name="btnAppDepAdd" Content="+ Hinzufuegen ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,0,4"
-                                                            ToolTip="Andere App aus der Bibliothek, die vorher installiert sein muss (nur Setup-Dateien, keine Store-Apps)"/>
+                                                    <Button x:Name="btnAppDepAdd" Content="+ Aus Bibliothek ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,0,4"
+                                                            ToolTip="App aus der Bibliothek - wird beim Hochladen mit hochgeladen (nur Setup-Dateien, keine Store-Apps)"/>
+                                                    <Button x:Name="btnAppDepAddIntune" Content="+ Aus Intune ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,0,4"
+                                                            ToolTip="Win32-App, die schon in Intune liegt (z. B. Treiber, Runtime) - wird nur verknuepft, je Tenant per Name gesucht"/>
                                                     <Button x:Name="btnAppDepRemove" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"/>
                                                 </StackPanel>
                                                 <CheckBox Grid.Row="1" Grid.Column="1" x:Name="chkAppDepAuto" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,4,0,0"

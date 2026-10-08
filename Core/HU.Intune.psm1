@@ -118,6 +118,28 @@ function Get-HUTenantGroups {
     foreach ($g in $all) { $r = ConvertTo-HUGroupRow $g; if ($r -and $r.Name) { $r } }
 }
 
+# Win32-Apps eines Tenants (fuer Abhaengigkeiten aus Intune)
+function ConvertTo-HUW32Row($A) {
+    return [pscustomobject]@{ Name = "$($A.displayName)"; Version = "$($A.displayVersion)"; Publisher = "$($A.publisher)"; Id = "$($A.id)"; Modified = "$($A.lastModifiedDateTime)" }
+}
+
+function Get-HUTenantWin32Apps {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings)
+    $f = [uri]::EscapeDataString("isof('microsoft.graph.win32LobApp')")
+    $all = Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps?`$filter=$f"
+    foreach ($a in $all) { if ("$($a.'@odata.type')" -match 'win32LobApp' -and "$($a.displayName)") { ConvertTo-HUW32Row $a } }
+}
+
+# Win32-App per Anzeigename; bei mehreren gleichen Namens die zuletzt geaenderte
+function Find-HUWin32AppByName {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Name)
+    $hits = @(Get-HUTenantWin32Apps -TenantKey $TenantKey -Settings $Settings | Where-Object { $_.Name -eq $Name })
+    if ($hits.Count -gt 1) { Write-HULog -Message "'$Name' gibt es $($hits.Count)-mal - verwendet wird die zuletzt geaenderte" -Level 'WARN' -Tenant $TenantKey }
+    return (@($hits | Sort-Object { try { [datetime]$_.Modified } catch { [datetime]::MinValue } } -Descending) | Select-Object -First 1)
+}
+
 function Find-HUManagedDevice {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Name)
@@ -1062,7 +1084,7 @@ function Enable-HUSandbox {
 $script:SandboxScript = @'
 $ErrorActionPreference = 'Continue'
 $cfg = Get-Content -LiteralPath 'C:\HUTest\config.json' -Raw | ConvertFrom-Json
-$result = [ordered]@{ ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = '' }
+$result = [ordered]@{ ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @() }
 function Get-Snap {
     $l = @()
     foreach ($p in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall') {
@@ -1076,10 +1098,22 @@ function Get-Snap {
     $l
 }
 function Get-Dirs { @(Get-ChildItem $env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:ProgramData" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
+$script:Windows = @()
+# Befehl ausfuehren; sichtbare Fenster neuer Prozesse merken (unter Intune wuerde ein Dialog haengen)
 function Invoke-Cmd([string]$Line, [int]$Minutes) {
     Set-Content -LiteralPath 'C:\HUInstall\__run.cmd' -Value "@echo off`r`n$Line`r`nexit /b %errorlevel%" -Encoding Default
-    $p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'C:\HUInstall\__run.cmd' -WorkingDirectory 'C:\HUInstall' -PassThru
-    if (-not $p.WaitForExit($Minutes * 60000)) { try { $p.Kill() } catch { }; return -999 }
+    $base = @(Get-Process | ForEach-Object { $_.Id })
+    $seen = @{}
+    $p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'C:\HUInstall\__run.cmd' -WorkingDirectory 'C:\HUInstall' -PassThru -WindowStyle Hidden
+    $end = (Get-Date).AddMinutes($Minutes)
+    while (-not $p.HasExited) {
+        foreach ($w in @(Get-Process | Where-Object { $base -notcontains $_.Id -and $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -and $_.ProcessName -notmatch '^(explorer|conhost|cmd|powershell|ShellExperienceHost|SearchHost|StartMenuExperienceHost)$' })) {
+            $seen["$($w.ProcessName): $($w.MainWindowTitle)"] = $true
+        }
+        if ((Get-Date) -gt $end) { try { $p.Kill() } catch { }; $script:Windows = @($seen.Keys); return -999 }
+        Start-Sleep -Milliseconds 700
+    }
+    $script:Windows = @($seen.Keys)
     return $p.ExitCode
 }
 try {
@@ -1090,6 +1124,7 @@ try {
     Write-Host "Installiere: $($cfg.Install)" -ForegroundColor Yellow
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $result.ExitCode = Invoke-Cmd $cfg.Install 30
+    $result.InstallWindows = @($script:Windows)
     $result.Seconds = [Math]::Round($sw.Elapsed.TotalSeconds, 1)
     $keys = @($before | ForEach-Object { $_.Key })
     $after = @(Get-Snap)
@@ -1124,6 +1159,7 @@ try {
         Write-Host "Deinstalliere: $($cfg.Uninstall)" -ForegroundColor Yellow
         $result.UninstallTested = $true
         $result.UninstallExitCode = Invoke-Cmd $cfg.Uninstall 15
+        $result.UninstallWindows = @($script:Windows)
         # manche Deinstaller (NSIS) starten eine Kopie und kehren sofort zurueck -> bis 2 Minuten auf das Entfernen warten
         for ($i = 0; $i -lt 40; $i++) {
             $nowKeys = @(Get-Snap | ForEach-Object { $_.Key })
@@ -1223,7 +1259,7 @@ function Select-HUSandboxEntry([object[]]$Entries, [string]$AppName = '') {
 }
 
 Export-ModuleMember -Function @(
-    'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups',
+    'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups', 'ConvertTo-HUW32Row', 'Get-HUTenantWin32Apps', 'Find-HUWin32AppByName',
     'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo',
     'Get-HUIntuneWinAppUtil', 'New-HUIntuneWinPackage',
     'Get-HUDefaultReturnCodes', 'ConvertTo-HUDetectionRule', 'ConvertTo-HUWin32Payload',

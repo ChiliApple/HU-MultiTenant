@@ -78,7 +78,7 @@ function ConvertTo-HUApp($Src = $null) {
         Detection = (New-HUAppDetection); StoreId = ''
         TargetKind = 'group'; TargetGroup = ''; Intent = 'required'; Pilot = $false; PilotGroup = ''; Deadline = ''; Notify = 'showAll'
         Tenants = @(); Deployments = @(); SandboxNote = ''; Created = (Get-Date -Format 'yyyy-MM-dd HH:mm'); Modified = ''
-        Dependencies = @(); DepAuto = $true; DepsManaged = $false
+        Dependencies = @(); IntuneDeps = @(); DepAuto = $true; DepsManaged = $false
     }
     if ($Src) {
         foreach ($p in $a.PSObject.Properties.Name) { if ($Src.PSObject.Properties[$p] -and $null -ne $Src.$p) { $a.$p = $Src.$p } }
@@ -87,6 +87,7 @@ function ConvertTo-HUApp($Src = $null) {
         $a.Deployments = @($a.Deployments | Where-Object { $_ } | ForEach-Object { [pscustomobject][ordered]@{ Tenant = "$($_.Tenant)"; AppId = "$($_.AppId)"; Version = "$($_.Version)"; Signature = "$($_.Signature)"; Stage = "$($_.Stage)"; Time = "$($_.Time)" } })
         $a.WholeFolder = [bool]$a.WholeFolder; $a.Pilot = [bool]$a.Pilot
         $a.Dependencies = @($a.Dependencies | Where-Object { $_ } | ForEach-Object { "$_" })
+        $a.IntuneDeps = @($a.IntuneDeps | Where-Object { $_ } | ForEach-Object { "$_" })
         $a.DepAuto = [bool]$a.DepAuto; $a.DepsManaged = [bool]$a.DepsManaged
     }
     return $a
@@ -550,6 +551,7 @@ $script:AppDeployCode = {
         try {
             Write-HULog -Message "--- $tk ---" -Level 'INFO' -Tenant $tk
             $ids = @{}
+            $w32 = $null
             if ($Release) {
                 $k = $Known[$MainId][$tk]
                 $appId = if ($k) { "$($k.AppId)" } else { '' }
@@ -579,10 +581,20 @@ $script:AppDeployCode = {
                     else { $r.Deps.Add([pscustomobject]@{ Id = $d.Id; AppId = $res.AppId; Signature = $res.Signature; Version = "$($d.Version)" }) }
                     # Abhaengigkeiten setzen - nur wenn hier je welche festgelegt wurden (sonst bleiben im Portal gesetzte unangetastet)
                     $dep = @($d.Dependencies | Where-Object { $_ })
-                    if (($dep.Count -or $d.DepsManaged) -and $d.Type -eq 'win32') {
+                    $idep = @($d.IntuneDeps | Where-Object { $_ })
+                    if (($dep.Count -or $idep.Count -or $d.DepsManaged) -and $d.Type -eq 'win32') {
                         $tids = @($dep | ForEach-Object { $ids[$_] } | Where-Object { $_ })
+                        if ($idep.Count) {
+                            if ($null -eq $w32) { $w32 = @(Get-HUTenantWin32Apps -TenantKey $tk -Settings $Settings) }
+                            foreach ($n in $idep) {
+                                $hit = @($w32 | Where-Object { $_.Name -eq $n } | Sort-Object { try { [datetime]$_.Modified } catch { [datetime]::MinValue } } -Descending)
+                                if (-not $hit.Count) { throw "Abhaengigkeit '$n' gibt es in diesem Tenant nicht (Intune > Apps > Windows)" }
+                                if ($hit.Count -gt 1) { Write-HULog -Message "'$n' gibt es $($hit.Count)-mal - verwendet wird die zuletzt geaenderte" -Level 'WARN' -Tenant $tk }
+                                $tids += $hit[0].Id
+                            }
+                        }
                         $n = Set-HUAppDependencies -TenantKey $tk -Settings $Settings -AppId $res.AppId -DependencyIds $tids -AutoInstall ([bool]$d.DepAuto)
-                        $names = @($Order | Where-Object { $dep -contains $_.Id } | ForEach-Object { $_.Name }) -join ', '
+                        $names = (@($Order | Where-Object { $dep -contains $_.Id } | ForEach-Object { $_.Name }) + $idep) -join ', '
                         Write-HULog -Message "$($d.Name): $n Abhaengigkeit(en) gesetzt ($names)$(if (-not $d.DepAuto) { ' - nur pruefen, nicht automatisch installieren' })" -Level 'OK' -Tenant $tk
                     }
                 }
@@ -630,7 +642,10 @@ function Start-HUAppDeploy([switch]$Release) {
     $what = if ($Release) { "Freigeben fuer: $(Get-HUAppTargetText $a -Main)" } else { "Ziel: $(Get-HUAppTargetText $a)" }
     $dl = ConvertTo-HUDeadline $a.Deadline
     $msg = "$($a.Name)$(if ($a.Version) { " v$($a.Version)" })`n`nTenants: $names`n$what$(if ($dl) { "`nFrist: $($dl.ToString('dd.MM.yyyy HH:mm'))" })"
-    if ($depOrder.Count) { $msg += "`nAbhaengigkeiten (werden mit hochgeladen$(if ($a.DepAuto) { ' und automatisch installiert' })): $(@($depOrder | ForEach-Object { $_.Name }) -join ', ')" }
+    if ($depOrder.Count) { $msg += "`nAbhaengigkeiten aus der Bibliothek (werden mit hochgeladen): $(@($depOrder | ForEach-Object { $_.Name }) -join ', ')" }
+    $iAll = @(@($a) + $depOrder | ForEach-Object { $_.IntuneDeps } | Where-Object { $_ } | Select-Object -Unique)
+    if ($iAll.Count) { $msg += "`nAbhaengigkeiten aus Intune (je Tenant per Name): $($iAll -join ', ')" }
+    if (($depOrder.Count -or $iAll.Count) -and $a.DepAuto) { $msg += "`n  -> werden vor der App automatisch installiert" }
     if (-not $Release -and $a.Type -eq 'win32' -and -not $a.SandboxNote) { $msg += "`n`nHinweis: noch keine Testinstallation in der Sandbox." }
     if (-not $Release -and -not (Test-Path -LiteralPath (Get-HUAppIconPath $a))) { $msg += "`nHinweis: ohne Symbol (im Unternehmensportal erscheint ein Platzhalter)." }
     if (-not (Confirm-HU "$msg`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
@@ -693,11 +708,11 @@ function Complete-HUAppDeploy($Result) {
 # ----------------------------------------------------------------------------
 function Update-HUAppDepList {
     $c = $script:Controls; $a = $script:AppCurrent
-    $items = foreach ($id in @(if ($a) { $a.Dependencies })) {
-        $d = Get-HUAppById $id
-        if ($d) { [pscustomobject]@{ Title = $d.Name; Sub = "$(if ($d.Version) { "v$($d.Version) | " })$(Get-HUAppKindText $d)"; Id = $id } }
-        else { [pscustomobject]@{ Title = '(nicht mehr in der Bibliothek)'; Sub = ''; Id = $id } }
-    }
+    $items = @(foreach ($id in @(if ($a) { $a.Dependencies })) {
+            $d = Get-HUAppById $id
+            if ($d) { [pscustomobject]@{ Title = $d.Name; Sub = "Bibliothek | $(if ($d.Version) { "v$($d.Version) | " })$(Get-HUAppKindText $d)"; Id = $id; Kind = 'lib' } }
+            else { [pscustomobject]@{ Title = '(nicht mehr in der Bibliothek)'; Sub = ''; Id = $id; Kind = 'lib' } }
+        }) + @(foreach ($n in @(if ($a) { $a.IntuneDeps })) { [pscustomobject]@{ Title = $n; Sub = 'Intune | je Tenant per Name'; Id = $n; Kind = 'intune' } })
     $c['lstAppDeps'].ItemsSource = @($items)
     $c['btnAppDepRemove'].IsEnabled = [bool]@($items).Count
     $c['chkAppDepAuto'].IsEnabled = [bool]@($items).Count
@@ -861,6 +876,12 @@ function Start-HUAppSandbox {
     if (-not $a.SetupPath -or -not (Test-Path -LiteralPath $a.SetupPath)) { Show-HUMessage 'Setup-Datei nicht gefunden.' -Icon Warning; return }
     if (-not $a.InstallCmd) { Show-HUMessage 'Installationsbefehl fehlt.' -Icon Warning; return }
     if (-not (Test-HUSandboxAvailable)) { Show-HUSandboxSetup; return }
+    # Deinstallationsbefehl ohne Stummschaltung -> vor dem Test ergaenzen (sonst haengt er unter Intune)
+    $fixed = Add-HUSilentUninstall $a.UninstallCmd $a.InstallerType
+    if ($fixed -ne $a.UninstallCmd) {
+        $a.UninstallCmd = $fixed; $script:Controls['txtAppUninstall'].Text = $fixed; Save-HUAppLib
+        Add-HURtbLine $script:Controls['rtbApps'] "Deinstallationsbefehl fuer stilles Entfernen ergaenzt: $fixed" '#90CAF9'
+    }
     $c = $script:Controls
     $testUn = [bool]$c['chkAppSandboxUninstall'].IsChecked
     if ($testUn -and -not $a.UninstallCmd) { $testUn = $false }
@@ -951,12 +972,18 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     }
     $ok = ($null -ne $code -and "$code" -match '^-?\d+$' -and $okCodes -contains [int]$code)
     $lines.Add("Installation: $codeText nach $($Res.Seconds) s")
+    $winI = @($Res.InstallWindows | Where-Object { $_ })
+    $warn = $false
+    if ($winI.Count) { $warn = $true; $lines.Add("ACHTUNG: Setup zeigte ein Fenster ($($winI -join '; ')) - unter Intune wuerde die Installation haengen. Schalter fuer stille Installation pruefen.") }
     $entries = @($Res.NewEntries | Where-Object { $_ })
     $lines.Add("Neue Programme in 'Apps & Features': $($entries.Count)$(if ($entries.Count) { ' - ' + (@($entries | Select-Object -First 4 | ForEach-Object { "$($_.DisplayName) $($_.DisplayVersion)".Trim() }) -join '; ') })")
     if ($Res.UninstallTested) {
-        $lines.Add("Deinstallation: $(if ($Res.UninstallRemoved) { 'OK - Eintrag entfernt' } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
+        $winU = @($Res.UninstallWindows | Where-Object { $_ })
+        $unOk = $Res.UninstallRemoved -and -not $winU.Count
+        if (-not $unOk) { $warn = $true }
+        $lines.Add("Deinstallation: $(if ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
     } elseif (-not $TestUn) { $lines.Add('Deinstallation nicht getestet.') }
-    foreach ($l in $lines) { Add-HURtbLine $rtb $l $(if ($ok) { '#CCCCCC' } else { '#FFB74D' }) }
+    foreach ($l in $lines) { Add-HURtbLine $rtb $l $(if ($l -match '^ACHTUNG|nicht still|noch vorhanden') { '#FFB74D' } elseif ($ok) { '#CCCCCC' } else { '#FFB74D' }) }
     $a.SandboxNote = "Sandbox $(Get-Date -Format 'dd.MM. HH:mm'): " + ($lines -join ' | ')
 
     # Vorschlag fuer Erkennung und Deinstallation
@@ -1033,11 +1060,27 @@ function Register-HUAppHandlers {
         })
     $c['btnAppAddStore'].Add_Click({ Add-HUAppStore })
     $c['btnAppDepAdd'].Add_Click({ Add-HUAppDependency })
+    $c['btnAppDepAddIntune'].Add_Click({
+            Save-HUAppForm
+            $a = $script:AppCurrent
+            if (-not $a) { return }
+            $n = @(Show-HUTenantPicker -Kind 'win32' -Multi -TenantKeys @(Get-HUCheckedTenants $script:Controls['spAppTenants']) -Exclude @($a.Name) -Title 'Abhaengigkeit aus Intune' `
+                    -Info 'Win32-Apps, die schon in Intune liegen (Mehrfachauswahl mit Strg). Sie werden nicht veraendert, nur als Abhaengigkeit verknuepft')
+            $n = @($n | Where-Object { $_ })
+            if (-not $n.Count) { return }
+            $a.IntuneDeps = @(@($a.IntuneDeps) + $n | Select-Object -Unique)
+            $a.DepsManaged = $true
+            Save-HUAppLib; Update-HUAppDepList
+            Add-HURtbLine $script:Controls['rtbApps'] "Abhaengigkeit aus Intune: $($n -join ', ') - wird beim Hochladen je Tenant per Name verknuepft." '#81C784'
+        })
     $c['btnAppDepRemove'].Add_Click({
             $a = $script:AppCurrent
-            $sel = @($script:Controls['lstAppDeps'].SelectedItems | ForEach-Object { $_.Id })
-            if (-not $a -or -not $sel.Count) { return }
-            $a.Dependencies = @($a.Dependencies | Where-Object { $sel -notcontains $_ })
+            $selItems = @($script:Controls['lstAppDeps'].SelectedItems)
+            if (-not $a -or -not $selItems.Count) { return }
+            $selLib = @($selItems | Where-Object { $_.Kind -eq 'lib' } | ForEach-Object { $_.Id })
+            $selInt = @($selItems | Where-Object { $_.Kind -eq 'intune' } | ForEach-Object { $_.Id })
+            $a.Dependencies = @($a.Dependencies | Where-Object { $selLib -notcontains $_ })
+            $a.IntuneDeps = @($a.IntuneDeps | Where-Object { $selInt -notcontains $_ })
             Save-HUAppLib; Update-HUAppDepList
             Add-HURtbLine $script:Controls['rtbApps'] 'Abhaengigkeit entfernt - wird beim naechsten Hochladen auch in Intune entfernt.' '#90CAF9'
         })

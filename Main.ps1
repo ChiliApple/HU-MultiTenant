@@ -229,6 +229,9 @@ $script:Window.Add_ContentRendered({
                 $script:GroupCache[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'Lehrer'; Typ = 'Sicherheit'; Id = '1' }, [pscustomobject]@{ Name = 'Pilot-Geraete'; Typ = 'Sicherheit (dynamisch)'; Id = '2' }); Error = ''; Time = Get-Date }
                 if (@(Get-HUGroupPickRows -Keys @($k0) -Filter 'pilot').Count -ne 1) { throw 'Gruppenfilter' }
                 [void](Show-HUGroupPicker -TenantKeys @($k0) -Current 'Lehrer')
+                $script:W32Cache[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'VC++ 2015-2022 x64'; Version = '14.40'; Publisher = 'Microsoft'; Id = 'a'; Modified = '' }); Error = ''; Time = Get-Date }
+                if (@(Get-HUPickRows -Kind 'win32' -Keys @($k0) -Filter 'microsoft').Count -ne 1) { throw 'App-Filter (Hersteller)' }
+                [void](Show-HUTenantPicker -Kind 'win32' -Multi -TenantKeys @($k0) -Title 'Test')
                 $steps += 'Apps'
                 # Reiter Wartung: Beispiel uebernehmen und pruefen
                 $script:Controls['tabMain'].SelectedItem = $script:Controls['tabMaint']
