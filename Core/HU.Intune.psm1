@@ -1062,8 +1062,13 @@ try {
         Write-Host "Deinstalliere: $($cfg.Uninstall)" -ForegroundColor Yellow
         $result.UninstallTested = $true
         $result.UninstallExitCode = Invoke-Cmd $cfg.Uninstall 15
-        $nowKeys = @(Get-Snap | ForEach-Object { $_.Key })
-        $result.UninstallRemoved = -not @($result.NewEntries | Where-Object { $nowKeys -contains $_.Key }).Count
+        # manche Deinstaller (NSIS) starten eine Kopie und kehren sofort zurueck -> bis 2 Minuten auf das Entfernen warten
+        for ($i = 0; $i -lt 40; $i++) {
+            $nowKeys = @(Get-Snap | ForEach-Object { $_.Key })
+            $result.UninstallRemoved = -not @($result.NewEntries | Where-Object { $nowKeys -contains $_.Key }).Count
+            if ($result.UninstallRemoved) { break }
+            Start-Sleep -Seconds 3
+        }
     }
 } catch { $result.Error = $_.Exception.Message }
 $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'C:\HUTest\result.json' -Encoding UTF8
@@ -1107,7 +1112,22 @@ function Start-HUSandboxTest {
 }
 
 # Vorschlag fuer Erkennung/Deinstallation aus dem Sandbox-Ergebnis
-function ConvertFrom-HUSandboxEntry($Entry) {
+# Deinstallationsbefehl ohne Stummschaltung -> passenden Schalter ergaenzen (NSIS /S, Inno /VERYSILENT ...)
+function Add-HUSilentUninstall([string]$Cmd, [string]$InstallerType = '') {
+    $c = "$Cmd".Trim()
+    if (-not $c -or $c -match '(?i)msiexec') { return $c }
+    if ($c -match '(?i)(^|\s)(/S|/silent|/verysilent|/quiet|/qn|--silent|-s)(\s|$)') { return $c }
+    if ($c.StartsWith('"')) { $exe = $c.Substring(1, $c.IndexOf('"', 1) - 1); $rest = $c.Substring($c.IndexOf('"', 1) + 1).Trim() }
+    else { $m = [regex]::Match($c, '(?i)^(.+?\.exe)(.*)$'); if (-not $m.Success) { return $c }; $exe = $m.Groups[1].Value.Trim(); $rest = $m.Groups[2].Value.Trim() }
+    $leaf = ($exe -split '[\\/]')[-1]
+    $sw = ''
+    if ($leaf -match '(?i)^unins\d{3}\.exe$' -or $InstallerType -eq 'Inno Setup') { $sw = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' }
+    elseif ($InstallerType -eq 'NSIS' -or $leaf -match '(?i)^(uninst|uninstall|uninstaller)\.exe$') { $sw = '/S' }
+    if (-not $sw) { return $c }
+    return ("`"$exe`" $rest $sw" -replace '\s+', ' ').Trim()
+}
+
+function ConvertFrom-HUSandboxEntry($Entry, [string]$InstallerType = '') {
     $key = "$($Entry.Key)"
     $is32 = $key -match '\\WOW6432Node\\'
     $kp = ($key -replace '^HKEY_CURRENT_USER', 'HKEY_CURRENT_USER') -replace '\\WOW6432Node\\', '\'
@@ -1115,6 +1135,7 @@ function ConvertFrom-HUSandboxEntry($Entry) {
     if (-not $un) {
         $un = "$($Entry.UninstallString)"
         if ($un -match '(?i)msiexec(\.exe)?\s+/[ix]\s*(\{[0-9A-F-]{36}\})') { $un = "msiexec /x $($Matches[2]) /qn /norestart" }
+        else { $un = Add-HUSilentUninstall $un $InstallerType }
     }
     $pc = ''
     if ((Split-Path $key -Leaf) -match '^\{[0-9A-Fa-f-]{36}\}$') { $pc = Split-Path $key -Leaf }
@@ -1149,6 +1170,6 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo',
+    'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

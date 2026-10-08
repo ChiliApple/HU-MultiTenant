@@ -786,6 +786,10 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     $a = Get-HUAppById $AppId
     $rtb = $script:Controls['rtbApps']
     if (-not $a) { return }
+    Show-HUWindowFront
+    # passende App im Reiter zeigen
+    $script:Controls['tabMain'].SelectedItem = $script:Controls['tabApps']
+    if (-not $script:AppCurrent -or $script:AppCurrent.Id -ne $a.Id) { Save-HUAppForm; Update-HUAppList $a.Id; Show-HUAppForm $a }
     $code = $Res.ExitCode
     $okCodes = @(0, 1707, 3010, 1641)
     $lines = New-Object System.Collections.Generic.List[string]
@@ -810,7 +814,7 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     # Vorschlag fuer Erkennung und Deinstallation
     $prop = $null
     $e = Select-HUSandboxEntry -Entries $entries -AppName $a.Name
-    if ($e) { $prop = ConvertFrom-HUSandboxEntry $e }
+    if ($e) { $prop = ConvertFrom-HUSandboxEntry $e -InstallerType "$($a.InstallerType)" }
     $iconSrc = ''
     if ($prop -and $prop.IconFile) { $f = Join-Path (Join-Path (Get-HUWorkPath 'Sandbox') $AppId) $prop.IconFile; if (Test-Path -LiteralPath $f) { $iconSrc = $f } }
     $folders = @($Res.NewFolders | Where-Object { $_ -match '(?i)\\Program Files' })

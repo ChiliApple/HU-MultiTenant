@@ -112,6 +112,19 @@ function Read-HUNameDescription {
     return [pscustomobject]@{ Name = $c.txtName.Text.Trim(); Description = ($c.txtDesc.Text -replace '\s+', ' ').Trim() }
 }
 
+# Hauptfenster nach vorne holen (z. B. wenn die Windows Sandbox davor liegt), damit Rueckfragen sichtbar sind
+function Show-HUWindowFront($Window = $null) {
+    $w = if ($Window) { $Window } else { $script:Window }
+    if (-not $w) { return }
+    try {
+        if ($w.WindowState -eq [System.Windows.WindowState]::Minimized) { $w.WindowState = [System.Windows.WindowState]::Normal }
+        $w.Topmost = $true
+        [void]$w.Activate()
+        $w.Topmost = $false
+        [void]$w.Focus()
+    } catch { }
+}
+
 # Ordner/Datei im Explorer oeffnen (Browser/Explorer laeuft als angemeldeter Benutzer)
 function Open-HUPath([string]$Path) {
     try {

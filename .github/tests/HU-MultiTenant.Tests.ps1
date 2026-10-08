@@ -425,3 +425,16 @@ Describe 'Intune: Gruppen' {
         ConvertTo-HUGroupRow ([pscustomobject]@{ id = '3'; displayName = 'Verteiler'; groupTypes = @(); securityEnabled = $false; mailEnabled = $true }) | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Intune: stille Deinstallation' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'ergaenzt NSIS-, Inno- und laesst MSI/stille Befehle in Ruhe' {
+        Add-HUSilentUninstall '"C:\Program Files (x86)\VideoLAN\VLC\uninstall.exe"' 'NSIS' | Should -Be '"C:\Program Files (x86)\VideoLAN\VLC\uninstall.exe" /S'
+        Add-HUSilentUninstall 'C:\Program Files\Foo\unins000.exe' | Should -Be '"C:\Program Files\Foo\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+        Add-HUSilentUninstall '"C:\x\setup.exe" --uninstall' | Should -Be '"C:\x\setup.exe" --uninstall'
+        Add-HUSilentUninstall '"C:\x\uninstall.exe" /S' | Should -Be '"C:\x\uninstall.exe" /S'
+        Add-HUSilentUninstall 'MsiExec.exe /X{1}' | Should -Be 'MsiExec.exe /X{1}'
+        $e = ConvertFrom-HUSandboxEntry ([pscustomobject]@{ Key = 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player'; DisplayName = 'VLC media player'; DisplayVersion = '3.0.23'; UninstallString = '"C:\Program Files (x86)\VideoLAN\VLC\uninstall.exe"'; QuietUninstallString = '' }) -InstallerType 'NSIS'
+        $e.UninstallCmd | Should -Match '/S$'
+    }
+}

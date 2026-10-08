@@ -5,7 +5,7 @@
 ### Neu
 - **Reiter Apps**: MSI, EXE und Microsoft-Store-Apps (neu) an mehrere Tenants verteilen
   - Setup-Datei hinzufuegen oder auf die Liste ziehen: Name, Version, Befehle und Erkennung werden ausgelesen (MSI vollstaendig; EXE: Inno, NSIS, InstallShield, WiX, Advanced Installer, Squirrel mit stillem Schalter)
-  - **Testinstallation in der Windows Sandbox**: installiert im Wegwerf-Windows, schlaegt Erkennung und Deinstallation vor, testet die Deinstallation mit. Ist die Sandbox nicht aktiviert, aktiviert sie ein Knopf (Admin, Neustart)
+  - **Testinstallation in der Windows Sandbox**: installiert im Wegwerf-Windows, schlaegt Erkennung, Deinstallation (mit Schalter fuer stilles Entfernen, z. B. NSIS /S) und Symbol vor, testet die Deinstallation mit; das Ergebnis holt HU-MultiTenant vor das Sandbox-Fenster. Ist die Sandbox nicht aktiviert, aktiviert sie ein Knopf (Admin, Neustart)
   - Paket wird einmal gebaut und je Tenant hochgeladen; unveraenderte Pakete werden nicht erneut hochgeladen; neue Version aktualisiert dieselbe Intune-App
   - Ziel Gruppe (per Name je Tenant gesucht), Alle Geraete oder Alle Benutzer; Erforderlich/Verfuegbar/Deinstallieren, Frist, Hinweise; vorhandene Zuweisungen bleiben erhalten
   - optional **Pilotgruppe** und spaeter "Fuer alle freigeben"
