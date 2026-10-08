@@ -1,6 +1,6 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.1.2 (in Arbeit)
+## v2.1.2 (2026-10-08)
 
 ### Neu
 - **Sperre**: HU-MultiTenant nach einstellbarer Zeit ohne Eingabe in der App sperren, auf Wunsch auch beim Start; entsperren mit Windows Hello (Dialog mittig über der App, ab Windows 11) oder einer eigenen PIN (nur als Hash gespeichert, 5 Fehlversuche = 30 s Pause); Strg+L sperrt sofort; beim Sperren werden zwischengespeicherte Tokens verworfen (Einstellungen > Allgemein > Sperre)
