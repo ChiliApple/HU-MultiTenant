@@ -1372,8 +1372,11 @@ function Test-RealWindow([IntPtr]$H) {
     if (-not [HUSb.Win]::IsWindowVisible($H)) { return $false }
     $r = New-Object HUSb.Win+RECT
     if (-not [HUSb.Win]::GetWindowRect($H, [ref]$r)) { return $true }
-    return (($r.Right - $r.Left) -ge 80 -and ($r.Bottom - $r.Top) -ge 40 -and $r.Right -gt 0 -and $r.Bottom -gt 0)
+    $script:LastRect = "$($r.Right - $r.Left)x$($r.Bottom - $r.Top) @ $($r.Left),$($r.Top)"
+    # zu klein oder ausserhalb des Bildschirms (z. B. -32000) -> kein echtes Fenster
+    return (($r.Right - $r.Left) -ge 80 -and ($r.Bottom - $r.Top) -ge 40 -and $r.Right -gt 0 -and $r.Bottom -gt 0 -and $r.Left -gt -10000 -and $r.Top -gt -10000)
 }
+$script:LastRect = ''
 # Befehl ausfuehren; Ausgabe nach C:\HUTest\logs\<Tag>-ausgabe.txt, bei msiexec ein ausfuehrliches MSI-Protokoll.
 # Sichtbare Fenster neuer Prozesse merken (unter Intune wuerde ein Dialog haengen).
 function Invoke-Cmd([string]$Line, [int]$Minutes, [string]$Tag = 'install') {
@@ -1387,8 +1390,9 @@ function Invoke-Cmd([string]$Line, [int]$Minutes, [string]$Tag = 'install') {
     $end = (Get-Date).AddMinutes($Minutes)
     while (-not $p.HasExited) {
         foreach ($w in @(Get-Process | Where-Object { $base -notcontains $_.Id -and $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -and $_.ProcessName -notmatch '^(explorer|conhost|cmd|powershell|ShellExperienceHost|SearchHost|StartMenuExperienceHost)$' })) {
+            $script:LastRect = ''
             if (-not (Test-RealWindow $w.MainWindowHandle)) { continue }
-            $seen["$($w.ProcessName): $($w.MainWindowTitle)"] = $true
+            $seen["$($w.ProcessName): $($w.MainWindowTitle) [$($script:LastRect)]"] = $true
         }
         if ((Get-Date) -gt $end) { try { $p.Kill() } catch { }; $script:Windows = @($seen.Keys); return -999 }
         Start-Sleep -Milliseconds 700
