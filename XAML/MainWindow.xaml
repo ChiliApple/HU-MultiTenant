@@ -861,6 +861,8 @@
                                         ToolTip="Ergebnis je Geraet: Problem gefunden, behoben, Fehler, Ausgabe"/>
                                 <Button x:Name="btnRintRunNow" Content="&#x25B6; Jetzt auf Geraet ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
                                         ToolTip="Sofort auf einem Geraet ausfuehren (Geraet muss online sein)"/>
+                                <Button x:Name="btnRintCopy" Content="In andere Tenants kopieren ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Skript (und auf Wunsch die Zuweisungen) in weitere Tenants anlegen - Gruppen werden dort per Name gesucht"/>
                                 <Button x:Name="btnRintToLib" Content="In Bibliothek uebernehmen" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
                                         ToolTip="Skripte und Verteilung in die eigene Bibliothek holen (z. B. um sie mit KI zu ueberarbeiten)"/>
                                 <Button x:Name="btnRintReloadOne" Content="&#x21BB; Neu laden" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>

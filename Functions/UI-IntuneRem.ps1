@@ -158,6 +158,7 @@ function Update-HURintButtons {
     $c['btnRintReloadOne'].IsEnabled = $has
     $c['btnRintPortal'].IsEnabled = $has
     $c['btnRintToLib'].IsEnabled = $detail
+    $c['btnRintCopy'].IsEnabled = $detail -and -not $it.Global -and -not $busy
     $edit = $has -and -not $it.Global
     $c['btnRintDelete'].IsEnabled = $edit -and -not $busy
     $c['btnRintSave'].IsEnabled = $edit -and $detail -and -not $busy
@@ -463,6 +464,100 @@ function Copy-HURintToLib {
     Add-HURtbLine $script:Controls['rtbRem'] "$(if ($isNew) { 'In die Bibliothek uebernommen' } else { 'Bibliothek aktualisiert' }): $($r.Name).$note" '#81C784'
 }
 
+# Skript in weitere Tenants kopieren (Name, Hersteller, Skripte, Ausfuehren als; optional Zuweisungen per Gruppenname)
+function Copy-HURintToTenants {
+    $it = $script:RintCurrent
+    if (-not $it -or $it.Global -or -not $script:RintDetail.Count) { return }
+    $have = @($it.Per.Keys)
+    $cand = @(@($script:Settings.tenants) | Where-Object { $have -notcontains "$($_.key)" })
+    if (-not $cand.Count) { Show-HUMessage 'Das Skript gibt es schon in allen Tenants (soweit angehakt und geladen).' -Icon Info; return }
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="In andere Tenants kopieren" Width="460" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <StackPanel Margin="18">
+        <TextBlock x:Name="lblHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <TextBlock Text="Ziel-Tenants" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
+        <WrapPanel x:Name="spTenants" Margin="0,0,0,8"/>
+        <CheckBox x:Name="chkAssign" Content="Zuweisungen mitnehmen (Gruppen werden je Tenant per Name gesucht)" Style="{StaticResource DarkCheckBox}" IsChecked="True"/>
+        <TextBlock x:Name="lblAssign" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="20,4,0,0"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="btnOk" Content="Kopieren" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
+            <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
+'@
+    $theme = Get-HUXaml 'Theme'
+    $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+    $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
+    $w = $d.Window; $c = $d.C
+    $src = $have | Select-Object -First 1
+    $d0 = $script:RintDetail[$src]
+    if (-not $d0) { $d0 = @($script:RintDetail.Values)[0]; $src = $d0.Tenant }
+    $c.lblHint.Text = "'$($it.Name)' wird mit Pruef- und Reparaturskript aus $(Get-HUTenantDisplayName $src) angelegt. Gibt es im Ziel schon ein Skript mit diesem Namen, wird der Tenant uebersprungen."
+    foreach ($t in $cand) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Content = "$($t.displayName)"; $cb.Tag = "$($t.key)"
+        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.Margin = [System.Windows.Thickness]::new(0, 2, 14, 2)
+        [void]$c.spTenants.Children.Add($cb)
+    }
+    $asg = @($d0.Assignments)
+    $c.lblAssign.Text = $(if ($asg.Count) { (@($asg | ForEach-Object { "$($_.Ziel)$(if ($_.Zeitplan) { " ($($_.Zeitplan), Reparatur $($_.Reparatur))" })" }) -join "`n") } else { 'Keine Zuweisungen vorhanden.' })
+    if (-not $asg.Count) { $c.chkAssign.IsChecked = $false; $c.chkAssign.IsEnabled = $false }
+    $state = @{ Ok = $false; Keys = @() }
+    $c.btnOk.Add_Click({
+            $state.Keys = @($c.spTenants.Children | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+            if (-not $state.Keys.Count) { Show-HUMessage 'Bitte mindestens einen Tenant anhaken.' -Icon Warning -Owner $w; return }
+            $state.Ok = $true; $w.Close()
+        })
+    [void]$w.ShowDialog()
+    if (-not $state.Ok) { return }
+    if (Test-HUJobRunning 'RintAct') { Show-HUMessage 'Es laeuft bereits eine Aktion - bitte warten.' -Icon Warning; return }
+    $withAsg = [bool]$c.chkAssign.IsChecked
+    $rows = @(if ($withAsg) {
+            foreach ($a in $asg) {
+                $sc = $a.Schedule
+                $date = ''; if ("$($sc.Date)" -match '^(\d{1,2})\.(\d{1,2})\.(\d{4})$') { $date = '{2}-{1:00}-{0:00}' -f [int]$Matches[1], [int]$Matches[2], $Matches[3] }
+                @{ Kind = $a.Kind; GroupName = $a.GroupName; Label = $a.Ziel; Fix = ($a.Reparatur -eq 'ja'); Schedule = @{ Type = $sc.Type; Interval = $sc.Interval; Time = $sc.Time; Date = $date } }
+            }
+        })
+    $def = [pscustomobject]@{ Name = $d0.Name; Description = $d0.Description; Publisher = $d0.Publisher; Detection = $d0.Detection; Remediation = $d0.Remediation; RunAs = $d0.RunAs; RunAs32 = [bool]$d0.RunAs32 }
+    $script:RintCopyKeys = @($state.Keys)
+    Add-HURtbLine $script:Controls['rtbRem'] "=== Kopieren: $($it.Name) -> $(@($state.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') ===" '#4FC3F7'
+    [void](Start-HUJob -Name 'RintAct' -Output $script:Controls['rtbRem'] -Vars @{ Keys = $state.Keys; Def = $def; Rows = $rows } -Code {
+            foreach ($k in $Keys) {
+                try {
+                    $exist = @(Get-HUIntuneGraphAll -TenantKey $k -Settings $Settings -Endpoint '/deviceManagement/deviceHealthScripts' | Where-Object { "$($_.displayName)" -eq $Def.Name })
+                    if ($exist.Count) { Write-HULog -Message "'$($Def.Name)' gibt es hier schon - uebersprungen" -Level 'WARN' -Tenant $k; continue }
+                    $id = Publish-HURemediation -TenantKey $k -Settings $Settings -Def $Def
+                    Write-HULog -Message "Angelegt: $($Def.Name)" -Level 'OK' -Tenant $k
+                    foreach ($r in $Rows) {
+                        try {
+                            $tg = @(Resolve-HUTargets -TenantKey $k -Settings $Settings -Targets @(@{ Kind = $r.Kind; GroupName = $r.GroupName }))
+                            $n = Set-HURemediationAssignment -TenantKey $k -Settings $Settings -Id $id -Targets $tg -Schedule $r.Schedule -RunRemediation ([bool]$r.Fix)
+                            Write-HULog -Message "Zugewiesen: $($tg[0].Label) - insgesamt $n Zuweisung(en)" -Level 'OK' -Tenant $k
+                        } catch { Write-HULog -Message "Zuweisung '$($r.Label)': $($_.Exception.Message)" -Level 'WARN' -Tenant $k }
+                    }
+                } catch {
+                    $msg = $_.Exception.Message
+                    if ($msg -match '(?i)licen|lizenz') { $msg += ' -> Windows-Lizenzueberpruefung im Intune Admin Center einschalten (A3/E3)' }
+                    Write-HULog -Message $msg -Level 'ERROR' -Tenant $k
+                }
+            }
+        } -OnDone {
+            param($Result, $Errors)
+            $shown = @(Get-HURintTenants)
+            $re = @($script:RintCopyKeys | Where-Object { $shown -contains $_ })
+            if ($re.Count) { Start-HURintLoad -Keys $re -Force }
+            Add-HURtbLine $script:Controls['rtbRem'] 'Tipp: Ziel-Tenants links anhaken, um das Skript dort zu sehen.' '#90CAF9'
+            Update-HURintButtons
+        })
+    Update-HURintButtons
+}
+
 function Open-HURintPortal {
     $it = $script:RintCurrent
     if (-not $it) { return }
@@ -510,6 +605,7 @@ function Register-HURintHandlers {
     $c['btnRintResults'].Add_Click({ Start-HURintResults })
     $c['btnRintRunNow'].Add_Click({ Show-HURintRunNow })
     $c['btnRintToLib'].Add_Click({ Copy-HURintToLib })
+    $c['btnRintCopy'].Add_Click({ Copy-HURintToTenants })
     $c['btnRintReloadOne'].Add_Click({ if ($script:RintCurrent) { Start-HURintLoad -Keys @($script:RintCurrent.Per.Keys) -Force -Then { if ($script:RintCurrent) { Show-HURint } } } })
     $c['btnRintPortal'].Add_Click({ Open-HURintPortal })
     $c['btnRintDelete'].Add_Click({ Remove-HURintScript })
