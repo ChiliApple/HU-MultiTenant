@@ -352,9 +352,9 @@ function Remove-HURintAssignment {
     if (-not $sel.Count) { Show-HUMessage 'Bitte in der Tabelle die Zuweisung(en) markieren.' -Icon Info; return }
     $keys = @($sel | ForEach-Object { $_.Key } | Select-Object -Unique)
     if (-not (Confirm-HU "Zuweisung(en) entfernen:`n- $(@($sel | ForEach-Object { "$($_.Ziel)$(if ($_.Zeitplan) { " ($($_.Zeitplan))" })" }) -join "`n- ")`n`nin allen Tenants dieses Skripts?" -Warning)) { return }
-    Start-HURintAction 'Zuweisung entfernen' -Vars @{ Keys = $keys } -Code {
+    Start-HURintAction 'Zuweisung entfernen' -Vars @{ RemoveKeys = $keys } -Code {
         foreach ($k in $Per.Keys) {
-            try { $n = Remove-HURemediationAssignments -TenantKey $k -Settings $Settings -Id $Per[$k] -Keys $Keys; Write-HULog -Message "$n Zuweisung(en) entfernt" -Level $(if ($n) { 'OK' } else { 'INFO' }) -Tenant $k }
+            try { $n = Remove-HURemediationAssignments -TenantKey $k -Settings $Settings -Id $Per[$k] -Keys $RemoveKeys; Write-HULog -Message "$n Zuweisung(en) entfernt" -Level $(if ($n) { 'OK' } else { 'INFO' }) -Tenant $k }
             catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $k }
         }
     }
@@ -536,8 +536,8 @@ function Copy-HURintToTenants {
     $def = [pscustomobject]@{ Name = $d0.Name; Description = $d0.Description; Publisher = $d0.Publisher; Detection = $d0.Detection; Remediation = $d0.Remediation; RunAs = $d0.RunAs; RunAs32 = [bool]$d0.RunAs32 }
     $script:RintCopyKeys = @($state.Keys)
     Add-HURtbLine $script:Controls['rtbRem'] "=== Kopieren: $($it.Name) -> $(@($state.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') ===" '#4FC3F7'
-    [void](Start-HUJob -Name 'RintAct' -Output $script:Controls['rtbRem'] -Vars @{ Keys = $state.Keys; Def = $def; Rows = $rows } -Code {
-            foreach ($k in $Keys) {
+    [void](Start-HUJob -Name 'RintAct' -Output $script:Controls['rtbRem'] -Vars @{ TargetKeys = @($state.Keys); Def = $def; Rows = $rows } -Code {
+            foreach ($k in $TargetKeys) {
                 try {
                     $exist = @(Get-HUIntuneGraphAll -TenantKey $k -Settings $Settings -Endpoint '/deviceManagement/deviceHealthScripts' | Where-Object { "$($_.displayName)" -eq $Def.Name })
                     if ($exist.Count) { Write-HULog -Message "'$($Def.Name)' gibt es hier schon - uebersprungen" -Level 'WARN' -Tenant $k; continue }

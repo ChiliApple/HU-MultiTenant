@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Hintergrund-Auftraege fuer die Reiter Apps und Wartung: eigener Runspace, Live-Protokoll in eine RichTextBox.
@@ -55,7 +55,8 @@ function Start-HUJob {
     $rs.SessionStateProxy.SetVariable('Settings', $script:Settings)
     $rs.SessionStateProxy.SetVariable('__JobLog', $log)
     $rs.SessionStateProxy.SetVariable('__JobCode', $Code.ToString())
-    foreach ($k in $Vars.Keys) { $rs.SessionStateProxy.SetVariable($k, $Vars[$k]) }
+    # GetEnumerator statt .Keys: ein Eintrag namens 'Keys' wuerde sonst die Schluesselliste verdecken
+    foreach ($e in $Vars.GetEnumerator()) { $rs.SessionStateProxy.SetVariable([string]$e.Key, $e.Value) }
     $ps = [powershell]::Create()
     $ps.Runspace = $rs
     [void]$ps.AddScript({
