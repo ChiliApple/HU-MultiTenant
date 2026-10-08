@@ -157,8 +157,36 @@ function Update-HUAppTenantChecks {
     }
 }
 
-function Get-HUCheckedTenants($Panel) { return @($Panel.Children | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" }) }
-function Set-HUCheckedTenants($Panel, [string[]]$Keys) { foreach ($cb in $Panel.Children) { $cb.IsChecked = (@($Keys) -contains "$($cb.Tag)") } }
+function Get-HUCheckedTenants($Panel) { return @($Panel.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and $_.IsChecked } | ForEach-Object { "$($_.Tag)" }) }
+function Set-HUCheckedTenants($Panel, [string[]]$Keys) { foreach ($cb in @($Panel.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = (@($Keys) -contains "$($cb.Tag)") } }
+
+# Kleiner Knopf "alle" am Ende einer Tenant-Hakenleiste: alle an bzw. (wenn schon alle an) alle aus.
+# OnChange wird danach einmal aufgerufen (nicht je Haken).
+function Add-HUTenantAllToggle($Panel, [scriptblock]$OnChange) {
+    $b = New-Object System.Windows.Controls.Button
+    $b.Content = 'alle'
+    $b.ToolTip = 'Alle Tenants an- bzw. abhaken'
+    $b.FontSize = 10
+    $b.Padding = [System.Windows.Thickness]::new(5, 0, 5, 1)
+    $b.Margin = [System.Windows.Thickness]::new(0, 1, 0, 1)
+    $b.VerticalAlignment = 'Center'
+    $b.Cursor = [System.Windows.Input.Cursors]::Hand
+    $b.Background = [System.Windows.Media.Brushes]::Transparent
+    $b.Foreground = Get-HUBrush '#8A8A8A'
+    $b.BorderBrush = Get-HUBrush '#4A4A4A'
+    $b.BorderThickness = [System.Windows.Thickness]::new(1)
+    $b.Tag = @{ Panel = $Panel; OnChange = $OnChange }
+    $b.Add_Click({
+            $p = $this.Tag.Panel
+            $cbs = @($p.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
+            $on = (@($cbs | Where-Object { -not $_.IsChecked }).Count -gt 0)
+            $script:TenantToggleBusy = $true
+            try { foreach ($cb in $cbs) { $cb.IsChecked = $on } } finally { $script:TenantToggleBusy = $false }
+            if ($this.Tag.OnChange) { & $this.Tag.OnChange }
+        })
+    [void]$Panel.Children.Add($b)
+}
+$script:TenantToggleBusy = $false
 
 function Get-HUComboTag($Combo) { if ($Combo.SelectedItem) { return "$($Combo.SelectedItem.Tag)" }; return '' }
 

@@ -61,10 +61,11 @@ function Update-HUIntTenantChecks {
         $cb.FontSize = 11
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
         $cb.IsChecked = ($saved -contains "$($t.key)")
-        $cb.Add_Checked({ Save-HUIntTenants })
-        $cb.Add_Unchecked({ Save-HUIntTenants })
+        $cb.Add_Checked({ if (-not $script:TenantToggleBusy) { Save-HUIntTenants } })
+        $cb.Add_Unchecked({ if (-not $script:TenantToggleBusy) { Save-HUIntTenants } })
         [void]$sp.Children.Add($cb)
     }
+    if (@($script:Settings.tenants).Count -gt 1) { Add-HUTenantAllToggle $sp { Save-HUIntTenants } }
 }
 
 function Get-HUIntTenants { return @(Get-HUCheckedTenants $script:Controls['spIntTenants']) }
