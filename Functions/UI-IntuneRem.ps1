@@ -491,6 +491,13 @@ function Copy-HURintToTenants {
         <WrapPanel x:Name="spTenants" Margin="0,0,0,8"/>
         <CheckBox x:Name="chkAssign" Content="Zuweisungen mitnehmen (Gruppen werden je Tenant per Name gesucht)" Style="{StaticResource DarkCheckBox}" IsChecked="True"/>
         <TextBlock x:Name="lblAssign" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="20,4,0,0"/>
+        <StackPanel x:Name="pnlMissing" Orientation="Horizontal" Margin="20,8,0,0">
+            <TextBlock Text="Fehlt die Gruppe im Ziel:" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox x:Name="cmbMissing" Style="{StaticResource DarkComboBox}" Width="190">
+                <ComboBoxItem Content="nicht zuweisen" Tag="skip" IsSelected="True"/>
+                <ComboBoxItem Content="stattdessen Alle Geraete" Tag="allDevices"/>
+            </ComboBox>
+        </StackPanel>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button x:Name="btnOk" Content="Kopieren" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
             <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
@@ -516,6 +523,9 @@ function Copy-HURintToTenants {
     $asg = @($d0.Assignments)
     $c.lblAssign.Text = $(if ($asg.Count) { (@($asg | ForEach-Object { "$($_.Ziel)$(if ($_.Zeitplan) { " ($($_.Zeitplan), Reparatur $($_.Reparatur))" })" }) -join "`n") } else { 'Keine Zuweisungen vorhanden.' })
     if (-not $asg.Count) { $c.chkAssign.IsChecked = $false; $c.chkAssign.IsEnabled = $false }
+    if (-not @($asg | Where-Object { $_.Kind -eq 'group' }).Count) { $c.pnlMissing.Visibility = 'Collapsed' }
+    $c.chkAssign.Add_Checked({ $c.pnlMissing.IsEnabled = $true })
+    $c.chkAssign.Add_Unchecked({ $c.pnlMissing.IsEnabled = $false })
     $state = @{ Ok = $false; Keys = @() }
     $c.btnOk.Add_Click({
             $state.Keys = @($c.spTenants.Children | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
@@ -526,6 +536,7 @@ function Copy-HURintToTenants {
     if (-not $state.Ok) { return }
     if (Test-HUJobRunning 'RintAct') { Show-HUMessage 'Es laeuft bereits eine Aktion - bitte warten.' -Icon Warning; return }
     $withAsg = [bool]$c.chkAssign.IsChecked
+    $missing = "$($c.cmbMissing.SelectedItem.Tag)"
     $rows = @(if ($withAsg) {
             foreach ($a in $asg) {
                 $sc = $a.Schedule
@@ -536,16 +547,26 @@ function Copy-HURintToTenants {
     $def = [pscustomobject]@{ Name = $d0.Name; Description = $d0.Description; Publisher = $d0.Publisher; Detection = $d0.Detection; Remediation = $d0.Remediation; RunAs = $d0.RunAs; RunAs32 = [bool]$d0.RunAs32 }
     $script:RintCopyKeys = @($state.Keys)
     Add-HURtbLine $script:Controls['rtbRem'] "=== Kopieren: $($it.Name) -> $(@($state.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') ===" '#4FC3F7'
-    [void](Start-HUJob -Name 'RintAct' -Output $script:Controls['rtbRem'] -Vars @{ TargetKeys = @($state.Keys); Def = $def; Rows = $rows } -Code {
+    [void](Start-HUJob -Name 'RintAct' -Output $script:Controls['rtbRem'] -Vars @{ TargetKeys = @($state.Keys); Def = $def; Rows = $rows; Missing = $missing } -Code {
             foreach ($k in $TargetKeys) {
                 try {
                     $exist = @(Get-HUIntuneGraphAll -TenantKey $k -Settings $Settings -Endpoint '/deviceManagement/deviceHealthScripts' | Where-Object { "$($_.displayName)" -eq $Def.Name })
                     if ($exist.Count) { Write-HULog -Message "'$($Def.Name)' gibt es hier schon - uebersprungen" -Level 'WARN' -Tenant $k; continue }
                     $id = Publish-HURemediation -TenantKey $k -Settings $Settings -Def $Def
                     Write-HULog -Message "Angelegt: $($Def.Name)" -Level 'OK' -Tenant $k
+                    $allDone = $false
                     foreach ($r in $Rows) {
                         try {
-                            $tg = @(Resolve-HUTargets -TenantKey $k -Settings $Settings -Targets @(@{ Kind = $r.Kind; GroupName = $r.GroupName }))
+                            $tg = $null
+                            try { $tg = @(Resolve-HUTargets -TenantKey $k -Settings $Settings -Targets @(@{ Kind = $r.Kind; GroupName = $r.GroupName })) }
+                            catch {
+                                # fehlende Gruppe: je nach Auswahl auf "Alle Geraete" ausweichen (nur einmal je Tenant; Ausschluesse entfallen)
+                                if ($r.Kind -ne 'group' -or $Missing -ne 'allDevices' -or "$($_.Exception.Message)" -notmatch 'gibt es in diesem Tenant nicht') { throw }
+                                if ($allDone) { Write-HULog -Message "Gruppe '$($r.GroupName)' fehlt - 'Alle Geraete' ist schon zugewiesen" -Level 'INFO' -Tenant $k; continue }
+                                Write-HULog -Message "Gruppe '$($r.GroupName)' fehlt - stattdessen Alle Geraete" -Level 'WARN' -Tenant $k
+                                $tg = @(Resolve-HUTargets -TenantKey $k -Settings $Settings -Targets @(@{ Kind = 'allDevices' }))
+                                $allDone = $true
+                            }
                             $n = Set-HURemediationAssignment -TenantKey $k -Settings $Settings -Id $id -Targets $tg -Schedule $r.Schedule -RunRemediation ([bool]$r.Fix)
                             Write-HULog -Message "Zugewiesen: $($tg[0].Label) - insgesamt $n Zuweisung(en)" -Level 'OK' -Tenant $k
                         } catch { Write-HULog -Message "Zuweisung '$($r.Label)': $($_.Exception.Message)" -Level 'WARN' -Tenant $k }
