@@ -16,6 +16,7 @@
   - **Ohne Desktop-Verknuepfung**: neue Desktop-Verknuepfungen werden nach der Installation entfernt (HU-Install.ps1 im Paket); die Testinstallation zeigt, welche Verknuepfungen ein Setup anlegt
   - Inno-Setups werden fuer alle Benutzer installiert (/ALLUSERS); Inno-Deinstallation immer /VERYSILENT /SUPPRESSMSGBOXES, laufende App wird vorher beendet; Warnung, wenn ein Setup nur ins Benutzerprofil installiert; bestehende Eintraege werden beim Oeffnen angepasst
   - Installationsstatus mit Klartext (Installiert, Fehlgeschlagen, Nicht installiert, Ausstehend ...) statt Zahlencodes
+  - Statusbericht: kurze 503-Fehler von Intune beim Warten werden abgefangen; Hinweis fuer 0x87D300C9; Sandbox meldet unsichtbare Setup-Hauptfenster (Inno) nicht mehr als Dialog
   - In Intune: Abhaengigkeiten zeigen auch "Benoetigt von" / "Ersetzt durch"
   - Testinstallation zeigt bei Problemen die Protokolle (Befehlsausgabe, MSI-Protokoll, neue Log-Dateien, MSI-Ereignisse) direkt in der Ausgabe
   - **Abhaengigkeiten** (z. B. Treiber, Laufzeitumgebungen): aus der Bibliothek (werden mit hochgeladen, auch mehrstufig, Kreise werden erkannt) oder **bereits in Intune vorhandene Win32-Apps** (Auswahl mit Filter und "vorhanden in x von y Tenants", je Tenant per Name verknuepft); automatisch installieren oder nur pruefen

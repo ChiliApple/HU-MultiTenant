@@ -1070,7 +1070,9 @@ function Invoke-HUExportReport {
         if ("$($job.status)" -eq 'failed') { throw "Report $ReportName fehlgeschlagen" }
         if (((Get-Date) - $start).TotalSeconds -gt $MaxSeconds) { throw "Report ${ReportName}: Zeitueberschreitung" }
         Start-Sleep -Seconds 3
-        $job = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/reports/exportJobs('$($job.id)')"
+        # einzelne 503 beim Abfragen des Berichtsstatus sind bei Intune normal -> weiter warten
+        try { $job = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/reports/exportJobs('$($job.id)')" }
+        catch { if (((Get-Date) - $start).TotalSeconds -gt $MaxSeconds) { throw }; Start-Sleep -Seconds 5 }
     }
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("hu-report-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmp -Force | Out-Null
@@ -1094,6 +1096,7 @@ function Get-HUErrorText([string]$Hex) {
         '0X80070653' = 'Installationspaket nicht lesbar (1619) - Dateiname im Befehl pruefen'
         '0X80070002' = 'Datei nicht gefunden - Befehl/Setup-Datei pruefen'
         '0X80070005' = 'Zugriff verweigert - Kontext System/Benutzer pruefen'
+        '0X87D300C9' = 'Intune hat das Warten aufgegeben (Setup lief zu lange / wartete auf Eingabe) - stille Schalter pruefen'
     }
     if ($map.ContainsKey($h)) { return $map[$h] }
     return ''
@@ -1133,7 +1136,7 @@ function Get-HUAppInstallStatus {
         -Localization 'LocalizedValuesAsAdditionalColumn'
     foreach ($r in $rows) {
         $detail = Get-HUReportValue $r 'InstallStateDetail'
-        if ($detail -match '^-?\d+$' -and $detail -in @('0', '-1')) { $detail = '' }
+        if ($detail -match '^-?\d+$') { $detail = '' }   # reine Zahlencodes ohne Text sagen nichts aus
         [pscustomobject][ordered]@{
             Geraet   = "$($r.DeviceName)"
             Benutzer = "$($r.UserPrincipalName)"
@@ -1355,6 +1358,22 @@ function Get-Snap {
 }
 function Get-Dirs { @(Get-ChildItem $env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:ProgramData" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
 $script:Windows = @()
+# Fenstergroesse pruefen: Inno/Delphi-Setups haben auch bei /VERYSILENT ein unsichtbares 0x0-Hauptfenster
+try {
+    Add-Type -Namespace HUSb -Name Win -MemberDefinition @"
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+[StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+"@ -ErrorAction Stop
+    $script:CanRect = $true
+} catch { $script:CanRect = $false }
+function Test-RealWindow([IntPtr]$H) {
+    if (-not $script:CanRect) { return $true }
+    if (-not [HUSb.Win]::IsWindowVisible($H)) { return $false }
+    $r = New-Object HUSb.Win+RECT
+    if (-not [HUSb.Win]::GetWindowRect($H, [ref]$r)) { return $true }
+    return (($r.Right - $r.Left) -ge 80 -and ($r.Bottom - $r.Top) -ge 40 -and $r.Right -gt 0 -and $r.Bottom -gt 0)
+}
 # Befehl ausfuehren; Ausgabe nach C:\HUTest\logs\<Tag>-ausgabe.txt, bei msiexec ein ausfuehrliches MSI-Protokoll.
 # Sichtbare Fenster neuer Prozesse merken (unter Intune wuerde ein Dialog haengen).
 function Invoke-Cmd([string]$Line, [int]$Minutes, [string]$Tag = 'install') {
@@ -1368,6 +1387,7 @@ function Invoke-Cmd([string]$Line, [int]$Minutes, [string]$Tag = 'install') {
     $end = (Get-Date).AddMinutes($Minutes)
     while (-not $p.HasExited) {
         foreach ($w in @(Get-Process | Where-Object { $base -notcontains $_.Id -and $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -and $_.ProcessName -notmatch '^(explorer|conhost|cmd|powershell|ShellExperienceHost|SearchHost|StartMenuExperienceHost)$' })) {
+            if (-not (Test-RealWindow $w.MainWindowHandle)) { continue }
             $seen["$($w.ProcessName): $($w.MainWindowTitle)"] = $true
         }
         if ((Get-Date) -gt $end) { try { $p.Kill() } catch { }; $script:Windows = @($seen.Keys); return -999 }
