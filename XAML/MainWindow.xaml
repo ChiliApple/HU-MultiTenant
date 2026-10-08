@@ -49,8 +49,8 @@
             </DockPanel>
         </Border>
 
-        <!-- ========== TENANT-AUSWAHL ========== -->
-        <Border DockPanel.Dock="Top" Background="#252526" Padding="14,8">
+        <!-- ========== TENANT-AUSWAHL (nur im Reiter Extensions) ========== -->
+        <Border x:Name="pnlTenantBar" DockPanel.Dock="Top" Background="#252526" Padding="14,8">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                     <TextBlock Text="Tenant:" Foreground="White" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>

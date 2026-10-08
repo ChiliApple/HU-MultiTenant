@@ -156,6 +156,8 @@ $script:LeftWidthSaved = 320.0
 function Update-HULeftPanel {
     $c = $script:Controls
     $sel = $c['tabMain'].SelectedItem
+    # Tenant-Leiste (Verbinden/Trennen) gilt nur fuer Extensions - Quick Script, Apps und Wartung waehlen Tenants selbst
+    $c['pnlTenantBar'].Visibility = $(if ($sel -eq $c['tabExtensions']) { 'Visible' } else { 'Collapsed' })
     $hide = ($sel -eq $c['tabApps'] -or $sel -eq $c['tabMaint'])
     if ($hide -eq $script:LeftHidden) { return }
     if ($hide) {

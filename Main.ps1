@@ -191,7 +191,9 @@ $script:Window.Add_ContentRendered({
                 if ($first) { [void](Switch-HUSnippetFavorite $first.name); Update-HUSnippetCombo; if ($script:Controls['cmbSnippets'].Items[0].Fav) { $steps += 'Favorit' } }
                 $script:Controls['tabMain'].SelectedItem = $script:Controls['tabExtensions']
                 if ($script:Controls['lstExtensions'].Items.Count) { $script:Controls['lstExtensions'].SelectedIndex = 0; $steps += 'Extension-Details' }
+                if ($script:Controls['pnlTenantBar'].Visibility -ne 'Visible') { throw 'Tenant-Leiste fehlt in Extensions' }
                 $script:Controls['tabMain'].SelectedItem = $script:Controls['tabQuickScript']
+                if ($script:Controls['pnlTenantBar'].Visibility -eq 'Visible') { throw 'Tenant-Leiste in Quick Script sichtbar' }
                 $script:Controls['txtQSEditor'].Text = "# @param DryRun|bool|Nur anzeigen|true`n# @param Tage|int|Tage|30`n# @param Modus|choice|Modus|A|A;B`n[pscustomobject]@{ Tenant2 = `$TenantKey; Tage = `$Tage }"
                 Update-HUQSParamPanel -Force
                 if ($script:QSParamCtl.Count -ne 3) { throw "Parameterfelder: $($script:QSParamCtl.Count) statt 3" }
