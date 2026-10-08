@@ -1,7 +1,7 @@
 ﻿<h1 align="center"><img src="Assets/logo64.png" width="44" alt="" align="absmiddle"/> HU-MultiTenant</h1>
 
 <p align="center"><b>Microsoft 365 und Intune für mehrere Tenants – aus einer Oberfläche</b><br>
-Ad-hoc-PowerShell im Tenant-Kontext mit Snippet-Bibliothek, fertige Reports als Extensions, Secret-Ablauf im Blick.<br>
+Ad-hoc-PowerShell im Tenant-Kontext mit Snippet-Bibliothek, fertige Reports als Extensions, App-Verteilung und Wartungsskripte, Secret-Ablauf im Blick.<br>
 Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit mehreren M365-Tenants.</p>
 
 <p align="center">
@@ -22,7 +22,13 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
   <a href="LICENSE">Lizenz</a>
 </p>
 
-<p align="center"><img src="Docs/screenshot.png" width="900" alt="HU-MultiTenant – Quick Script"/></p>
+<p align="center">
+  <a href="Docs/screenshot.png"><img src="Docs/screenshot.png" width="200" alt="Quick Script"/></a>
+  <a href="Docs/screenshot-extensions.png"><img src="Docs/screenshot-extensions.png" width="200" alt="Extensions"/></a>
+  <a href="Docs/screenshot-apps.png"><img src="Docs/screenshot-apps.png" width="200" alt="Apps"/></a>
+  <a href="Docs/screenshot-wartung.png"><img src="Docs/screenshot-wartung.png" width="200" alt="Wartung"/></a>
+  <br><sub>Quick Script · Extensions · Apps · Wartung – zum Vergrößern anklicken</sub>
+</p>
 
 ---
 
@@ -31,6 +37,8 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
 | **Quick Script** | PowerShell direkt im Tenant – Token und Graph-Funktionen sind schon da. Auf mehreren Tenants nacheinander, Eingabefelder per `# @param`, Ergebnis als Tabelle mit CSV-/Excel-Export, Verlauf je Lauf |
 | **Snippets** | eigene Skript-Bibliothek mit Beschreibung, Kategorien, Favoriten, Suche (auch im Code), Import/Export; 12 Beispiele dabei |
 | **Extensions** | fertige Reports und Aktionen mit Parametern, Dry-Run und Excel-Report (Liste unten) |
+| **Apps** | MSI, EXE und Store-Apps an mehrere Tenants verteilen: Setup hineinziehen, Testinstallation in der Windows Sandbox ermittelt Erkennung und Deinstallation, Abhängigkeiten, Status je Gerät; vorhandene Intune-Apps tenantübergreifend verwalten |
+| **Wartung** | Intune Remediations mit KI erstellen, automatisch prüfen, mit Zeitplan verteilen, Ergebnisse je Gerät; vorhandene Skripte verwalten und in andere Tenants kopieren |
 | **Secrets** | DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf |
 | **Update** | Kanal Stabil/Test, jede Datei per SHA-256 geprüft, nur signierte Releases |
 

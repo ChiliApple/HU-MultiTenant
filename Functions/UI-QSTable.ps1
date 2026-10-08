@@ -63,9 +63,11 @@ function Update-HUQSTableButton {
     $b.Content = "$([char]::ConvertFromUtf32(0x1F4CA)) Tabelle$(if ($n) { " ($n)" })"
 }
 
-function Show-HUQSTable([string]$Title = '') {
-    if (-not $script:QS_Objects.Count) { return }
-    $data = ConvertTo-HUQSRows $script:QS_Objects.ToArray()
+# -Objects: andere Quelle (Reiter Apps/Wartung), -FilePrefix: Vorschlag fuer den Dateinamen beim Export
+function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string]$FilePrefix = 'QuickScript') {
+    $src = if ($null -ne $Objects) { @($Objects) } else { $script:QS_Objects.ToArray() }
+    if (-not @($src).Count) { return }
+    $data = ConvertTo-HUQSRows $src
     # DataTable mit sicheren Spaltennamen (Bindung verkraftet keine Punkte/Klammern); Kopfzeile zeigt den echten Namen
     $dt = New-Object System.Data.DataTable
     $map = [ordered]@{}
@@ -140,7 +142,7 @@ function Show-HUQSTable([string]$Title = '') {
             [pscustomobject]$o
         }
     }
-    $defaultName = "QuickScript_$(if ($Title) { ($Title -replace '[\\/:*?"<>|]', '_') + '_' })$(Get-Date -Format 'yyyy-MM-dd_HHmm')"
+    $defaultName = "${FilePrefix}_$(if ($Title) { ($Title -replace '[\\/:*?"<>|]', '_') + '_' })$(Get-Date -Format 'yyyy-MM-dd_HHmm')"
     $reports = Get-HUReportsPath
     $c.btnCsv.Add_Click({
         $dlg = New-Object Microsoft.Win32.SaveFileDialog

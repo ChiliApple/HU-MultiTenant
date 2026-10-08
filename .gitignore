@@ -3,6 +3,12 @@ Config/settings.json
 Config/settings.json.bak
 Config/quick-snippets.json
 Config/quick-snippets.json.bak
+Config/apps.json
+Config/apps.json.bak
+Config/remediations.json
+Config/remediations.json.bak
+Config/app-icons/
+Tools/
 Config/ui-state.json
 Config/update.json
 Config/installed.json

@@ -177,6 +177,20 @@
       "category": "Directory",
       "usedBy": [],
       "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Directory.ReadWrite.All > Administratorzustimmung erteilen"
+    },
+    "DeviceManagementApps.ReadWrite.All": {
+      "description": "Intune-Apps anlegen, hochladen und zuweisen (Reiter Apps)",
+      "risk": "High",
+      "category": "Device Management",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > DeviceManagementApps.ReadWrite.All > Administratorzustimmung erteilen"
+    },
+    "DeviceManagementScripts.ReadWrite.All": {
+      "description": "Wartungsskripte (Remediations) anlegen, zuweisen und auswerten (Reiter Wartung)",
+      "risk": "High",
+      "category": "Device Management",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > DeviceManagementScripts.ReadWrite.All > Administratorzustimmung erteilen"
     }
   },
   "categoriesMapping": {

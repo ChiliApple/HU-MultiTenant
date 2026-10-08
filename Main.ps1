@@ -4,8 +4,8 @@
     HU-MultiTenant - Microsoft 365 / Intune fuer mehrere Tenants (WPF, Graph API, Client Credentials).
 .DESCRIPTION
     Startpunkt. Laedt Core-Module (Core\*.psm1), Oberflaeche (XAML\*.xaml) und Funktionen (Functions\*.ps1).
-      Core\        Auth, Graph, Tenant, Logging, Extensions, Excel (auch von Extensions/Snippets genutzt)
-      Functions\   Oberflaeche: Quick Script, Snippets, Extensions, Tenants/Secrets, Einstellungen, Update
+      Core\        Auth, Graph, Tenant, Logging, Extensions, Intune, Excel (auch von Extensions/Snippets genutzt)
+      Functions\   Oberflaeche: Quick Script, Snippets, Extensions, Apps, Wartung, Tenants/Secrets, Einstellungen, Update
       XAML\        Fenster und gemeinsames Theme
     Start: HU-MultiTenant.exe (Einstellungen > Verknuepfung) oder Start-HUMultiTenant.cmd.
 .NOTES
@@ -55,7 +55,7 @@ function Show-HUFatal([string]$Text) {
 $script:Version = '0.0.0'
 try { $script:Version = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
 
-foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions')) {
+foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune')) {
     $modPath = Join-Path $script:AppRoot "Core\$mod.psm1"
     if (-not (Test-Path -LiteralPath $modPath)) { Show-HUFatal "Core-Modul fehlt: $modPath`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     Import-Module $modPath -Force -DisableNameChecking
@@ -65,7 +65,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 foreach ($f in @('Core-Async', 'Core-Update', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-                 'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update')) {
+                 'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-Support')) {
     $fp = Join-Path $script:AppRoot "Functions\$f.ps1"
     if (-not (Test-Path -LiteralPath $fp)) { Show-HUFatal "Datei fehlt: $fp`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     . $fp
@@ -126,7 +126,14 @@ Register-HUTenantHandlers
 Register-HUQuickScriptHandlers
 Register-HUExtensionHandlers
 Register-HUUpdateHandlers
+Register-HUAppHandlers
+Register-HUIntAppHandlers
+Register-HURemHandlers
+Register-HURintHandlers
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
+$script:Controls['btnSupport'].Add_Click({ Show-HUSupport })
+# Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
+$script:Controls['tabMain'].Add_SelectionChanged({ param($s, $e) if ($e.OriginalSource -eq $script:Controls['tabMain']) { Update-HULeftPanel } })
 # Rechtsklick in den Ausgaben: Kopieren / Alles kopieren / Ausgabe leeren
 Add-HUOutputMenu $script:Controls['rtbQSOutput'] { $script:Controls['rtbQSOutput'].Document.Blocks.Clear() }
 Add-HUOutputMenu $script:Controls['rtbLog'] { Clear-LogBuffer -IncludeGui }
@@ -184,7 +191,9 @@ $script:Window.Add_ContentRendered({
                 if ($first) { [void](Switch-HUSnippetFavorite $first.name); Update-HUSnippetCombo; if ($script:Controls['cmbSnippets'].Items[0].Fav) { $steps += 'Favorit' } }
                 $script:Controls['tabMain'].SelectedItem = $script:Controls['tabExtensions']
                 if ($script:Controls['lstExtensions'].Items.Count) { $script:Controls['lstExtensions'].SelectedIndex = 0; $steps += 'Extension-Details' }
+                if ($script:Controls['pnlTenantBar'].Visibility -ne 'Visible') { throw 'Tenant-Leiste fehlt in Extensions' }
                 $script:Controls['tabMain'].SelectedItem = $script:Controls['tabQuickScript']
+                if ($script:Controls['pnlTenantBar'].Visibility -eq 'Visible') { throw 'Tenant-Leiste in Quick Script sichtbar' }
                 $script:Controls['txtQSEditor'].Text = "# @param DryRun|bool|Nur anzeigen|true`n# @param Tage|int|Tage|30`n# @param Modus|choice|Modus|A|A;B`n[pscustomobject]@{ Tenant2 = `$TenantKey; Tage = `$Tage }"
                 Update-HUQSParamPanel -Force
                 if ($script:QSParamCtl.Count -ne 3) { throw "Parameterfelder: $($script:QSParamCtl.Count) statt 3" }
@@ -197,8 +206,77 @@ $script:Window.Add_ContentRendered({
                 $script:PermCache[$k1] = @{ Roles = @('User.Read.All', 'Organization.Read.All'); Error = ''; Time = Get-Date }
                 Show-HUPermissions -TenantKey $k1; $steps += 'Berechtigungen'
                 if (-not $script:Controls['rtbQSOutput'].ContextMenu -or -not $script:Controls['rtbLog'].ContextMenu) { throw 'Rechtsklick-Menue fehlt' }
+                # Reiter Apps: Store-App und Win32-Erkennung im Formular
+                $script:Controls['tabMain'].SelectedItem = $script:Controls['tabApps']
+                if (-not $script:LeftHidden -or $script:Controls['pnlLeft'].Visibility -ne 'Collapsed') { throw 'Extension-Liste wird in Apps nicht ausgeblendet' }
+                $ta = ConvertTo-HUApp; $ta.Type = 'store'; $ta.Kind = 'store'; $ta.Name = 'Smoke-Store'; $ta.StoreId = '9NKSQGP7F2NH'; $ta.TargetKind = 'allDevices'
+                $ta.Tenants = @("$(@($script:Settings.tenants)[0].key)")
+                $script:AppLib.Add($ta); Update-HUAppList $ta.Id; Show-HUAppForm $ta; Save-HUAppForm
+                if (@(Test-HUAppReady $ta).Count) { throw "Apps: $(@(Test-HUAppReady $ta) -join '; ')" }
+                $tw = ConvertTo-HUApp; $tw.Name = 'Smoke-Win32'; $tw.Kind = 'exe'; $script:AppLib.Add($tw); Update-HUAppList $tw.Id; Show-HUAppForm $tw
+                [void](Select-HUComboTag $script:Controls['cmbAppDetType'] 'file')
+                $script:Controls['txtAppDetA'].Text = 'C:\Program Files\X'; $script:Controls['txtAppDetB'].Text = 'x.exe'; Save-HUAppForm
+                if ($tw.Detection.Type -ne 'file' -or $tw.Detection.FileName -ne 'x.exe') { throw 'Apps: Erkennung wird nicht uebernommen' }
+                if (-not (Set-HUAppIcon $tw "$env:windir\System32\notepad.exe" -Quiet) -or -not $script:Controls['imgAppIcon'].Source) { throw 'Apps: Symbol wird nicht uebernommen' }
+                Remove-Item -LiteralPath (Get-HUAppIconPath $tw) -Force -ErrorAction SilentlyContinue
+                # Abhaengigkeiten: Reihenfolge (tiefste zuerst) und Kreis-Erkennung
+                $td1 = ConvertTo-HUApp; $td1.Name = 'Smoke-Treiber'; $td2 = ConvertTo-HUApp; $td2.Name = 'Smoke-Runtime'; $td2.Dependencies = @($td1.Id)
+                $script:AppLib.Add($td1); $script:AppLib.Add($td2); $tw.Dependencies = @($td2.Id)
+                $o = Get-HUAppDepOrder $tw
+                if (@($o.Order).Count -ne 2 -or $o.Order[0].Id -ne $td1.Id -or @($o.Errors).Count) { throw 'Abhaengigkeiten: Reihenfolge' }
+                $td1.Dependencies = @($tw.Id)
+                if (-not @((Get-HUAppDepOrder $tw).Errors).Count) { throw 'Abhaengigkeiten: Kreis nicht erkannt' }
+                Show-HUAppForm $tw
+                if (@($script:Controls['lstAppDeps'].ItemsSource).Count -ne 1) { throw 'Abhaengigkeiten: Liste' }
+                foreach ($x in $ta, $tw, $td1, $td2) { [void]$script:AppLib.Remove($x) }
+                $script:AppCurrent = $null; Update-HUAppList; Show-HUAppForm $null
+                $k0 = "$(@($script:Settings.tenants)[0].key)"
+                $script:GroupCache[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'Lehrer'; Typ = 'Sicherheit'; Id = '1' }, [pscustomobject]@{ Name = 'Pilot-Geraete'; Typ = 'Sicherheit (dynamisch)'; Id = '2' }); Error = ''; Time = Get-Date }
+                if (@(Get-HUGroupPickRows -Keys @($k0) -Filter 'pilot').Count -ne 1) { throw 'Gruppenfilter' }
+                [void](Show-HUGroupPicker -TenantKeys @($k0) -Current 'Lehrer')
+                $script:W32Cache[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'VC++ 2015-2022 x64'; Version = '14.40'; Publisher = 'Microsoft'; Id = 'a'; Modified = '' }); Error = ''; Time = Get-Date }
+                if (@(Get-HUPickRows -Kind 'win32' -Keys @($k0) -Filter 'microsoft').Count -ne 1) { throw 'App-Filter (Hersteller)' }
+                [void](Show-HUTenantPicker -Kind 'win32' -Multi -TenantKeys @($k0) -Title 'Test')
+                # Ansicht "In Intune" mit vorgegebenen Daten
+                Set-HUStateValue 'intTenants' @($k0); Update-HUIntTenantChecks
+                $script:IntRaw[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'Next-Exam-Student'; Typ = 'Win32'; OType = 'win32LobApp'; Kind = 'win32'; Version = '2.1'; Publisher = 'X'; Description = ''; Id = 'id1'; Modified = ''; State = 'published'
+                            Assignments = @([pscustomobject]@{ Key = 'group|schueler'; Kind = 'group'; GroupId = 'g'; GroupName = 'Schueler'; Ziel = 'Schueler'; Intent = 'required'; Notify = 'showAll'; Deadline = '' }) }); Error = ''; Time = Get-Date }
+                Set-HUAppMode 'int'
+                if ($script:Controls['pnlAppIntRight'].Visibility -ne 'Visible' -or @($script:Controls['lstIntApps'].ItemsSource).Count -ne 1) { throw 'In Intune: Liste' }
+                $script:Controls['lstIntApps'].SelectedIndex = 0
+                if (@($script:Controls['gridIntAssign'].ItemsSource).Count -ne 1) { throw 'In Intune: Zuweisungen' }
+                Set-HUAppMode 'lib'
+                $steps += 'Apps'
+                # Reiter Wartung: Beispiel uebernehmen und pruefen
+                $script:Controls['tabMain'].SelectedItem = $script:Controls['tabMaint']
+                $ex = @(Get-HURemExamples)
+                if (-not $ex.Count) { throw 'Wartung: keine Beispiele' }
+                Add-HURem $ex[0]
+                if (-not (Invoke-HURemCheck)) { throw 'Wartung: Beispiel hat Pruef-Fehler' }
+                [void]$script:RemLib.Remove($script:RemCurrent); $script:RemCurrent = $null; Update-HURemList; Show-HURemForm $null
+                if (-not $script:Controls['rtbApps'].ContextMenu -or -not $script:Controls['rtbRem'].ContextMenu) { throw 'Rechtsklick-Menue Apps/Wartung fehlt' }
+                # Wartung "In Intune" mit vorgegebenen Daten
+                Set-HUStateValue 'rintTenants' @($k0); Update-HURintTenantChecks
+                $script:RintRaw[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'Temp aufraeumen'; Description = 'x'; Publisher = 'HU'; Id = 'r1'; RunAs = 'system'; RunAs32 = $false; Global = $false; Version = '1'; Modified = ''; HasRemediation = $true; AssignKnown = $true
+                            Assignments = @([pscustomobject]@{ Key = 'group|lehrer'; Kind = 'group'; GroupName = 'Lehrer'; Ziel = 'Lehrer'; Zeitplan = 'taeglich um 08:00'; Reparatur = 'ja'; Schedule = [pscustomobject]@{ Type = 'daily'; Interval = 1; Time = '08:00'; Date = '' } }) }); Error = ''; Time = Get-Date }
+                Set-HURemMode 'int'
+                if ($script:Controls['pnlRemIntRight'].Visibility -ne 'Visible' -or @($script:Controls['lstRint'].ItemsSource).Count -ne 1) { throw 'Wartung In Intune: Liste' }
+                $script:RintCurrent = $script:RintItems[0]; $script:RintDetail = @{ $k0 = [pscustomobject]@{ Tenant = $k0; Id = 'r1'; Name = 'Temp aufraeumen'; Description = 'x'; Publisher = 'HU'; RunAs = 'system'; RunAs32 = $false; Global = $false; Detection = "Write-Output 'ok'`nexit 0"; Remediation = ''; Assignments = @($script:RintRaw[$k0].Rows[0].Assignments); Summary = '' } }
+                Update-HURintAssignGrid
+                if (@($script:Controls['gridRintAssign'].ItemsSource).Count -ne 1) { throw 'Wartung In Intune: Zuweisungen' }
+                $n0 = $script:RemLib.Count; Copy-HURintToLib
+                if ($script:RemLib.Count -ne $n0 + 1 -or $script:RemCurrent.TargetGroup -ne 'Lehrer' -or $script:RemMode -ne 'lib') { throw 'Wartung: In Bibliothek uebernehmen' }
+                [void]$script:RemLib.Remove($script:RemCurrent); $script:RemCurrent = $null; $script:RintCurrent = $null; $script:RintDetail = @{}; Update-HURemList; Show-HURemForm $null
+                $steps += 'Wartung'
+                $script:Controls['tabMain'].SelectedItem = $script:Controls['tabQuickScript']
+                if ($script:LeftHidden -or $script:Controls['colLeft'].Width.Value -lt 200) { throw 'Extension-Liste kommt nicht zurueck' }
+                $steps += 'Liste links'
                 $steps += 'Rechtsklick'
                 if ('HUTaskbar' -as [type]) { $steps += 'Taskleiste' }
+                $zip = New-HUSupportZip -Description 'Smoke' -Include @{ Logs = $true; Sandbox = $true; Settings = $true; Library = $true; Maint = $true }
+                if (-not (Test-Path -LiteralPath $zip)) { throw 'Support-ZIP fehlt' }
+                Remove-Item -LiteralPath $zip -Force
+                Show-HUSupport; $steps += 'Support'
                 Update-HUSecretDisplay; $steps += 'Secret-Anzeige'
                 Save-HUWindowState; $steps += 'Fensterzustand'
                 # Lauf auf zwei Tenants (ohne Secret -> je Tenant "Kein Token", Lauf muss sauber zu Ende gehen)
@@ -234,6 +312,9 @@ $script:Window.Add_Closing({
     if (-not $script:SkipCloseChecks) {
         if ($script:IsRunning -and -not (Confirm-HU 'Eine Extension laeuft noch. Trotzdem beenden?' -Warning)) { $e.Cancel = $true; return }
         if (-not (Confirm-HUQSDiscard 'beenden')) { $e.Cancel = $true; return }
+        if ((Test-HUJobRunning 'Apps') -or (Test-HUJobRunning 'Rem')) {
+            if (-not (Confirm-HU 'Ein Upload/Auftrag in Apps oder Wartung laeuft noch und wird abgebrochen. Trotzdem beenden?' -Warning)) { $e.Cancel = $true; return }
+        }
     }
     Save-HUWindowState
     Write-HULog -Message '=== Beenden: alle Tenants trennen ===' -Level 'INFO'
@@ -245,6 +326,7 @@ $script:Window.Add_Closing({
         }
     }
     Close-HUQuickScript
+    try { Close-HUApps; Close-HUMaint } catch { }
     try { if ($script:BgPowerShell) { $script:BgPowerShell.Stop() } } catch { }
     try { if ($script:BgProcess -and -not $script:BgProcess.HasExited) { $script:BgProcess.Kill() } } catch { }
     Close-AsyncPool
@@ -259,6 +341,10 @@ Update-VersionDisplay
 Update-TenantDropdown
 Load-Extensions
 Initialize-HUQuickScript
+Initialize-HUApps
+Initialize-HUIntApps
+Initialize-HUMaint
+Initialize-HURint
 Restore-HUWindowState
 Select-HUStartTab
 Write-HULogOK "Bereit - $(@($script:Settings.tenants).Count) Tenant(s), $($script:ExtensionItems.Count) Extension(s)."

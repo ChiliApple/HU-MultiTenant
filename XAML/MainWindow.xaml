@@ -39,6 +39,8 @@
                             ToolTip="Benoetigte Graph-Berechtigungen der gewaehlten Extension pruefen und einrichten"/>
                     <Button x:Name="btnSettings" Content="&#x2699; Einstellungen" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
                             ToolTip="Tenants, Secrets, Verknuepfungen, Darstellung, Update"/>
+                    <Button x:Name="btnSupport" Content="&#x1F6DF; Support" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
+                            ToolTip="Protokolle anonymisiert als ZIP packen und per E-Mail oder GitHub-Issue Hilfe anfragen"/>
                     <Button x:Name="btnHelp" Content="?" Style="{StaticResource ToolButton}" Width="32" Margin="0,0,6,0"
                             ToolTip="Anleitung (F1)"/>
                     <Button x:Name="btnUpdate" Content="Update" Style="{StaticResource ToolButton}"
@@ -47,8 +49,8 @@
             </DockPanel>
         </Border>
 
-        <!-- ========== TENANT-AUSWAHL ========== -->
-        <Border DockPanel.Dock="Top" Background="#252526" Padding="14,8">
+        <!-- ========== TENANT-AUSWAHL (nur im Reiter Extensions) ========== -->
+        <Border x:Name="pnlTenantBar" DockPanel.Dock="Top" Background="#252526" Padding="14,8">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                     <TextBlock Text="Tenant:" Foreground="White" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -71,12 +73,12 @@
         <Grid x:Name="gridMain" Margin="10,8,10,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="colLeft" Width="320" MinWidth="200"/>
-                <ColumnDefinition Width="8"/>
+                <ColumnDefinition x:Name="colSplit" Width="8"/>
                 <ColumnDefinition Width="*" MinWidth="380"/>
             </Grid.ColumnDefinitions>
 
             <!-- LINKS: EXTENSIONS -->
-            <Border Grid.Column="0" Background="#2D2D2D" CornerRadius="4" Padding="10">
+            <Border Grid.Column="0" x:Name="pnlLeft" Background="#2D2D2D" CornerRadius="4" Padding="10">
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock x:Name="btnReloadExt" DockPanel.Dock="Right" Text="&#x21BB;" Foreground="#858585"
@@ -118,10 +120,10 @@
                 </DockPanel>
             </Border>
 
-            <GridSplitter Grid.Column="1" Width="4" Background="#3E3E42" Opacity="0.5" HorizontalAlignment="Center"
+            <GridSplitter Grid.Column="1" x:Name="splLeft" Width="4" Background="#3E3E42" Opacity="0.5" HorizontalAlignment="Center"
                           VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext" Cursor="SizeWE"/>
 
-            <!-- RECHTS: Reiter Quick Script | Extensions -->
+            <!-- RECHTS: Reiter Quick Script | Extensions | Apps | Wartung -->
             <TabControl Grid.Column="2" x:Name="tabMain" Style="{StaticResource DarkTabControl}" Background="#1E1E1E">
 
                 <!-- ===== REITER: QUICK SCRIPT ===== -->
@@ -358,6 +360,715 @@
                                 </RichTextBox>
                             </DockPanel>
                         </Border>
+                    </Grid>
+                </TabItem>
+
+                <!-- ===== REITER: APPS ===== -->
+                <TabItem Header="&#x1F4E6; Apps" x:Name="tabApps" Style="{StaticResource DarkTabItem}">
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="colAppsLeft" Width="250" MinWidth="180"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Bibliothek | In Intune -->
+                        <Border Grid.Column="0" Background="#252526" CornerRadius="4" Padding="8">
+                            <DockPanel>
+                            <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="0,0,0,8">
+                                <Button x:Name="btnAppModeLib" Content="Bibliothek" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="0,0,2,0"
+                                        ToolTip="Eigene Apps: Setup-Dateien und Store-Apps, die HU-MultiTenant paketiert und hochlaedt"/>
+                                <Button x:Name="btnAppModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                        ToolTip="Alle Windows-Apps, die schon in Intune liegen: Zuweisungen, Eigenschaften, Abhaengigkeiten, Status, Loeschen"/>
+                            </UniformGrid>
+                            <Grid>
+                            <DockPanel x:Name="pnlAppLibLeft">
+                                <TextBlock DockPanel.Dock="Top" Text="App-Bibliothek" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                    <Button x:Name="btnAppAdd" Content="+ MSI / EXE ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                            ToolTip="Setup-Datei waehlen - Name, Version, Befehle und Erkennung werden ausgelesen"/>
+                                    <Button x:Name="btnAppAddStore" Content="+ Store-App" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                            ToolTip="Microsoft Store App (neu) - nur die Store-ID, kein Paket"/>
+                                    <Button x:Name="btnAppRemove" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                            ToolTip="Nur aus der Bibliothek entfernen - in Intune bleibt die App bestehen"/>
+                                </WrapPanel>
+                                <TextBlock DockPanel.Dock="Bottom" Text="Setup-Datei auch per Ziehen &amp; Ablegen auf die Liste." Style="{StaticResource HintText}" Margin="0,6,0,0"/>
+                                <ListBox x:Name="lstApps" Style="{StaticResource DarkListBox}" AllowDrop="True">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2">
+                                                <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlAppIntLeft" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Top" Text="Apps in Intune" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="spIntTenants" Margin="0,0,0,4"/>
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                    <Button x:Name="btnIntLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
+                                    <ComboBox x:Name="cmbIntType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="86" Margin="4,0,0,0">
+                                        <ComboBoxItem Content="Alle" Tag="" IsSelected="True"/>
+                                        <ComboBoxItem Content="Win32" Tag="win32"/>
+                                        <ComboBoxItem Content="Store" Tag="winget"/>
+                                        <ComboBoxItem Content="Sonstige" Tag="other"/>
+                                    </ComboBox>
+                                    <Grid>
+                                        <TextBox x:Name="txtIntFilter" Style="{StaticResource DarkTextBox}"/>
+                                        <TextBlock x:Name="lblIntFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                    </Grid>
+                                </DockPanel>
+                                <TextBlock DockPanel.Dock="Bottom" x:Name="lblIntState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                <ListBox x:Name="lstIntApps" Style="{StaticResource DarkListBox}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2" ToolTip="{Binding Tip}">
+                                                <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                            </Grid>
+                            </DockPanel>
+                        </Border>
+
+                        <GridSplitter Grid.Column="1" Width="6" Background="#3E3E42" Opacity="0.4" HorizontalAlignment="Center" ResizeBehavior="PreviousAndNext"/>
+
+                        <Grid Grid.Column="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition x:Name="rowAppsForm" Height="2*" MinHeight="200"/>
+                                <RowDefinition Height="6"/>
+                                <RowDefinition x:Name="rowAppsLog" Height="*" MinHeight="60"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                            <DockPanel x:Name="pnlAppLibRight">
+                            <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                <Button x:Name="btnAppSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnAppDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"
+                                        ToolTip="Paket bauen (einmal), in jeden gewaehlten Tenant hochladen bzw. aktualisieren und zuweisen"/>
+                                <Button x:Name="btnAppRelease" Content="Fuer alle freigeben" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Nach dem Pilot: Zuweisung an das eigentliche Ziel ergaenzen"/>
+                                <Button x:Name="btnAppStatus" Content="&#x1F4CA; Status" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Installationsstatus je Geraet (Intune-Bericht, kann 1-2 Minuten dauern)"/>
+                                <Button x:Name="btnAppPackages" Content="Paket-Ordner" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                            </WrapPanel>
+                            <Border Background="#2D2D2D" CornerRadius="4" Padding="12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="pnlAppForm" IsEnabled="False">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtAppName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="2" x:Name="txtAppKind" Foreground="#4FC3F7" FontSize="10" FontWeight="Bold" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                            <TextBlock Grid.Row="1" Text="Hersteller" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtAppPublisher" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="2" Text="Version" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppVersion" Style="{StaticResource DarkTextBox}" Margin="0,2" Width="160" HorizontalAlignment="Left"/>
+                                            <TextBlock Grid.Row="3" Text="Beschreibung" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="3" Grid.Column="1" x:Name="txtAppDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <StackPanel Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Orientation="Horizontal" Margin="10,2,0,2" VerticalAlignment="Top">
+                                                <Border Width="72" Height="72" Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="4"
+                                                        ToolTip="Symbol im Unternehmensportal">
+                                                    <Grid>
+                                                        <TextBlock x:Name="lblAppIconNone" Text="kein&#x0a;Symbol" Foreground="#666666" FontSize="10" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        <Image x:Name="imgAppIcon" Width="64" Height="64" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                    </Grid>
+                                                </Border>
+                                                <StackPanel Margin="6,0,0,0" VerticalAlignment="Center">
+                                                    <Button x:Name="btnAppIcon" Content="Symbol ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,0,4"
+                                                            ToolTip="Bild (PNG, JPG), ICO oder EXE waehlen - wird als PNG (max. 256 px) im Unternehmensportal angezeigt"/>
+                                                    <Button x:Name="btnAppIconClear" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Win32 (MSI/EXE) -->
+                                        <StackPanel x:Name="pnlAppWin32" Margin="0,8,0,0">
+                                            <TextBlock Text="Installation" Style="{StaticResource SectionTitle}"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="130"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Text="Setup-Datei" Style="{StaticResource FieldLabel}"/>
+                                                <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,2">
+                                                    <Button x:Name="btnAppBrowse" DockPanel.Dock="Right" Content="Andere Datei ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"/>
+                                                    <TextBox x:Name="txtAppSetup" Style="{StaticResource DarkTextBox}" IsReadOnly="True"/>
+                                                </DockPanel>
+                                                <WrapPanel Grid.Row="1" Grid.Column="1">
+                                                    <CheckBox x:Name="chkAppWholeFolder" Content="Ganzen Ordner mitpacken" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"
+                                                              ToolTip="Bei Setups mit Zusatzdateien (Transform .mst, Konfiguration, CAB)"/>
+                                                    <CheckBox x:Name="chkAppNoDesktop" Content="Ohne Desktop-Verknuepfung" Style="{StaticResource DarkCheckBox}" Margin="0,2"
+                                                              ToolTip="Neue Verknuepfungen auf dem Desktop werden nach der Installation entfernt (HU-Install.ps1 im Paket) - klappt bei jedem Setup"/>
+                                                </WrapPanel>
+                                                <TextBlock Grid.Row="2" Text="Installieren" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppInstall" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,2"/>
+                                                <TextBlock Grid.Row="3" Text="Deinstallieren" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox Grid.Row="3" Grid.Column="1" x:Name="txtAppUninstall" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,2"/>
+                                                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="txtAppInfo" Style="{StaticResource HintText}" Margin="0,2,0,0"/>
+                                            </Grid>
+
+                                            <TextBlock Text="Erkennung (woran Intune sieht, dass die App installiert ist)" Style="{StaticResource SectionTitle}" Margin="0,10,0,6"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="130"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Text="Art" Style="{StaticResource FieldLabel}"/>
+                                                <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbAppDetType" Style="{StaticResource DarkComboBox}" Width="260" HorizontalAlignment="Left" Margin="0,2">
+                                                    <ComboBoxItem Content="MSI-Produktcode" Tag="msi"/>
+                                                    <ComboBoxItem Content="Registry-Eintrag" Tag="registry"/>
+                                                    <ComboBoxItem Content="Datei oder Ordner" Tag="file"/>
+                                                    <ComboBoxItem Content="Skript" Tag="script"/>
+                                                </ComboBox>
+                                                <TextBlock Grid.Row="1" x:Name="lblAppDetA" Text="Produktcode" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtAppDetA" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,2"/>
+                                                <TextBlock Grid.Row="2" x:Name="lblAppDetB" Text="Wert" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppDetB" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,2"/>
+                                                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                    <CheckBox x:Name="chkAppDetVer" Content="Version mindestens" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                    <TextBox x:Name="txtAppDetVer" Style="{StaticResource DarkTextBox}" Width="120" Margin="6,0,16,0"/>
+                                                    <CheckBox x:Name="chkAppDet32" Content="32-Bit-Bereich (WOW6432Node / Program Files (x86))" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBox Grid.Row="4" Grid.Column="1" x:Name="txtAppDetScript" Style="{StaticResource DarkTextBox}" FontFamily="Consolas"
+                                                         AcceptsReturn="True" AcceptsTab="True" Height="110" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Margin="0,2" Visibility="Collapsed"/>
+                                            </Grid>
+                                            <Border Background="#252526" CornerRadius="4" Padding="8" Margin="0,8,0,0">
+                                                <StackPanel>
+                                                    <WrapPanel>
+                                                        <Button x:Name="btnAppSandbox" Content="&#x1F9EA; Testinstallation in der Windows Sandbox" Background="#6A1B9A" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,10,0"
+                                                                ToolTip="Installiert in einer Wegwerf-Sandbox und ermittelt Erkennung und Deinstallation - dein PC bleibt sauber"/>
+                                                        <CheckBox x:Name="chkAppSandboxUninstall" Content="Deinstallation mittesten" IsChecked="True" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                        <CheckBox x:Name="chkAppSandboxKeep" Content="Sandbox offen lassen" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                    </WrapPanel>
+                                                    <TextBlock x:Name="txtAppSandbox" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Grid Margin="0,8,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="130"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                                <TextBlock Text="Abhaengigkeiten" Style="{StaticResource FieldLabel}" ToolTip="Werden vor der App installiert - z. B. Treiber, Laufzeitumgebungen"/>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                    <TextBlock x:Name="lblAppDeps" Text="keine" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                    <Button x:Name="btnAppDepAdd" Content="+ Bibliothek ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,4,0"
+                                                            ToolTip="App aus der Bibliothek - wird beim Hochladen mit hochgeladen (nur Setup-Dateien, keine Store-Apps)"/>
+                                                    <Button x:Name="btnAppDepAddIntune" Content="+ Intune ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,4,0"
+                                                            ToolTip="Win32-App, die schon in Intune liegt (z. B. Treiber, Runtime) - wird nur verknuepft, je Tenant per Name gesucht"/>
+                                                    <Button x:Name="btnAppDepRemove" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Visibility="Collapsed"/>
+                                                </StackPanel>
+                                                <ListBox Grid.Row="1" Grid.Column="1" x:Name="lstAppDeps" Style="{StaticResource DarkListBox}" MaxHeight="110" SelectionMode="Extended" Margin="0,2" Visibility="Collapsed">
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" Margin="0,1">
+                                                                <TextBlock Text="{Binding Title}" Foreground="#E0E0E0"/>
+                                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+                                                <CheckBox Grid.Row="2" Grid.Column="1" x:Name="chkAppDepAuto" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,2,0,0" Visibility="Collapsed"
+                                                          Content="automatisch mitinstallieren (brauchen keine eigene Zuweisung)"/>
+                                            </Grid>
+                                        </StackPanel>
+
+                                        <!-- Store -->
+                                        <StackPanel x:Name="pnlAppStore" Margin="0,8,0,0" Visibility="Collapsed">
+                                            <TextBlock Text="Microsoft Store App (neu)" Style="{StaticResource SectionTitle}"/>
+                                            <DockPanel>
+                                                <TextBlock Text="Store-ID" Style="{StaticResource FieldLabel}" Width="122"/>
+                                                <Button x:Name="btnAppStoreOpen" DockPanel.Dock="Right" Content="apps.microsoft.com" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"
+                                                        ToolTip="App im Browser suchen - die ID steht in der Adresse (z. B. 9NKSQGP7F2NH)"/>
+                                                <TextBox x:Name="txtAppStoreId" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Width="200" HorizontalAlignment="Left"/>
+                                            </DockPanel>
+                                            <TextBlock Text="Store-Apps aktualisieren sich selbst; Intune braucht kein Paket. Nur Apps aus dem Microsoft Store (keine Win32-Store-Apps mit Lizenzpflicht)." Style="{StaticResource HintText}" Margin="130,4,0,0"/>
+                                        </StackPanel>
+
+                                        <DockPanel Margin="0,8,0,0">
+                                            <TextBlock Text="Ausfuehren als" Style="{StaticResource FieldLabel}" Width="122"/>
+                                            <ComboBox x:Name="cmbAppRunAs" Style="{StaticResource DarkComboBox}" Width="160" HorizontalAlignment="Left">
+                                                <ComboBoxItem Content="System (fuer alle)" Tag="system"/>
+                                                <ComboBoxItem Content="Benutzer" Tag="user"/>
+                                            </ComboBox>
+                                        </DockPanel>
+
+                                        <!-- Verteilen -->
+                                        <TextBlock Text="Verteilen" Style="{StaticResource SectionTitle}" Margin="0,12,0,6"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="Tenants" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,8,0"/>
+                                            <WrapPanel Grid.Row="0" Grid.Column="1" x:Name="spAppTenants" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Ziel" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbAppTarget" Style="{StaticResource DarkComboBox}" Width="150">
+                                                    <ComboBoxItem Content="Gruppe" Tag="group"/>
+                                                    <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                    <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
+                                                    <ComboBoxItem Content="Keine Zuweisung" Tag="none" ToolTip="Nur hochladen bzw. aktualisieren - z. B. als Abhaengigkeit oder zum spaeteren Zuweisen im Portal"/>
+                                                </ComboBox>
+                                                <TextBox x:Name="txtAppGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                                <Button x:Name="btnAppGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>
+                                                <ComboBox x:Name="cmbAppIntent" Style="{StaticResource DarkComboBox}" Width="200" Margin="6,0,0,0">
+                                                    <ComboBoxItem Content="Erforderlich (installieren)" Tag="required"/>
+                                                    <ComboBoxItem Content="Verfuegbar (Unternehmensportal)" Tag="available"/>
+                                                    <ComboBoxItem Content="Deinstallieren" Tag="uninstall"/>
+                                                </ComboBox>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="2" Text="Pilot" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <CheckBox x:Name="chkAppPilot" Content="zuerst nur an Pilotgruppe:" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                <TextBox x:Name="txtAppPilot" Style="{StaticResource DarkTextBox}" Width="200" Margin="6,0,0,0"/>
+                                                <Button x:Name="btnAppPilotPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>
+                                                <TextBlock Text="(spaeter &quot;Fuer alle freigeben&quot;)" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="3" Text="Frist / Hinweise" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <TextBox x:Name="txtAppDeadline" Style="{StaticResource DarkTextBox}" Width="110" ToolTip="Optional (nur bei Erforderlich): TT.MM.JJJJ oder TT.MM.JJJJ HH:mm - bis dahin muss installiert sein (ohne Uhrzeit 16:00)"/>
+                                                <ComboBox x:Name="cmbAppNotify" Style="{StaticResource DarkComboBox}" Width="200" Margin="6,0,0,0">
+                                                    <ComboBoxItem Content="Hinweise anzeigen" Tag="showAll"/>
+                                                    <ComboBoxItem Content="Nur Neustart-Hinweise" Tag="showReboot"/>
+                                                    <ComboBoxItem Content="Keine Hinweise" Tag="hideAll"/>
+                                                </ComboBox>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="4" Grid.Column="1" x:Name="txtAppTenantState" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlAppIntRight" Visibility="Collapsed">
+                            <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                <Button x:Name="btnIntStatus" Content="&#x1F4CA; Status" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Installationsstatus je Geraet (Intune-Bericht, kann 1-2 Minuten dauern)"/>
+                                <Button x:Name="btnIntReloadOne" Content="&#x21BB; Neu laden" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnIntPortal" Content="Im Portal oeffnen" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnIntDelete" Content="&#x1F5D1; Loeschen ..." Background="#B71C1C" Style="{StaticResource DarkButton}" FontSize="11" Margin="12,0,6,4"
+                                        ToolTip="App in den gewaehlten Tenants aus Intune loeschen (mit Rueckfrage)"/>
+                            </WrapPanel>
+                            <Border Background="#2D2D2D" CornerRadius="4" Padding="12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="pnlIntForm" IsEnabled="False">
+                                        <DockPanel>
+                                            <Border DockPanel.Dock="Left" Width="56" Height="56" Background="#252526" CornerRadius="4" Margin="0,0,12,0">
+                                                <Image x:Name="imgIntIcon" Width="48" Height="48" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                            </Border>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock x:Name="txtIntTitle" Text="Links eine App waehlen" Foreground="#E0E0E0" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock x:Name="txtIntInfo" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </DockPanel>
+
+                                        <TextBlock Text="Zuweisungen" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                        <DataGrid x:Name="gridIntAssign" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                                  SelectionMode="Extended" MinHeight="40" MaxHeight="190">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="2*"/>
+                                                <DataGridTextColumn Header="Absicht" Binding="{Binding Absicht}" Width="120"/>
+                                                <DataGridTextColumn Header="Hinweise" Binding="{Binding Hinweise}" Width="110"/>
+                                                <DataGridTextColumn Header="Frist" Binding="{Binding Frist}" Width="110"/>
+                                                <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                        <WrapPanel Margin="0,6,0,0">
+                                            <ComboBox x:Name="cmbIntTarget" Style="{StaticResource DarkComboBox}" Width="140" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Gruppe" Tag="group" IsSelected="True"/>
+                                                <ComboBoxItem Content="Gruppe ausschliessen" Tag="exclude"/>
+                                                <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
+                                            </ComboBox>
+                                            <TextBox x:Name="txtIntGroup" Style="{StaticResource DarkTextBox}" Width="190" Margin="0,0,2,4" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                            <Button x:Name="btnIntGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,4,4"/>
+                                            <ComboBox x:Name="cmbIntIntent" Style="{StaticResource DarkComboBox}" Width="170" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Erforderlich" Tag="required" IsSelected="True"/>
+                                                <ComboBoxItem Content="Verfuegbar (Portal)" Tag="available"/>
+                                                <ComboBoxItem Content="Deinstallieren" Tag="uninstall"/>
+                                            </ComboBox>
+                                            <ComboBox x:Name="cmbIntNotify" Style="{StaticResource DarkComboBox}" Width="150" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Hinweise anzeigen" Tag="showAll" IsSelected="True"/>
+                                                <ComboBoxItem Content="Nur Neustart" Tag="showReboot"/>
+                                                <ComboBoxItem Content="Keine Hinweise" Tag="hideAll"/>
+                                            </ComboBox>
+                                            <TextBox x:Name="txtIntDeadline" Style="{StaticResource DarkTextBox}" Width="100" Margin="0,0,4,4" ToolTip="Frist (optional, nur Erforderlich): TT.MM.JJJJ [HH:mm]"/>
+                                            <Button x:Name="btnIntAssignAdd" Content="+ Zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"
+                                                    ToolTip="Zuweisung ergaenzen bzw. aendern (gleiche Gruppe: Absicht/Hinweise werden ersetzt)"/>
+                                            <Button x:Name="btnIntAssignRemove" Content="Markierte entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4"/>
+                                        </WrapPanel>
+
+                                        <StackPanel x:Name="pnlIntRel">
+                                            <TextBlock Text="Abhaengigkeiten und Ersetzungen" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                            <DataGrid x:Name="gridIntRel" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                                      SelectionMode="Extended" MinHeight="40" MaxHeight="160">
+                                                <DataGrid.Columns>
+                                                    <DataGridTextColumn Header="Art" Binding="{Binding Art}" Width="110"/>
+                                                    <DataGridTextColumn Header="App" Binding="{Binding App}" Width="2*"/>
+                                                    <DataGridTextColumn Header="Verhalten" Binding="{Binding Typ}" Width="170"/>
+                                                    <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                            <WrapPanel Margin="0,6,0,0">
+                                                <ComboBox x:Name="cmbIntRelKind" Style="{StaticResource DarkComboBox}" Width="250" Margin="0,0,4,4">
+                                                    <ComboBoxItem Content="Abhaengigkeit - automatisch installieren" Tag="dep|autoInstall" IsSelected="True"/>
+                                                    <ComboBoxItem Content="Abhaengigkeit - nur pruefen" Tag="dep|detect"/>
+                                                    <ComboBoxItem Content="Ersetzt - aktualisieren" Tag="sup|update"/>
+                                                    <ComboBoxItem Content="Ersetzt - alte deinstallieren" Tag="sup|replace"/>
+                                                </ComboBox>
+                                                <Button x:Name="btnIntRelAdd" Content="+ App waehlen ..." Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"/>
+                                                <Button x:Name="btnIntRelRemove" Content="Markierte entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4"/>
+                                            </WrapPanel>
+                                        </StackPanel>
+
+                                        <TextBlock Text="Eigenschaften" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                            <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Column="1" x:Name="txtIntName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Hersteller" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtIntPublisher" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="2" Text="Beschreibung" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,6,8,0"/>
+                                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtIntDesc" Style="{StaticResource DarkTextBox}" Margin="0,2" AcceptsReturn="True" TextWrapping="Wrap" Height="54" VerticalScrollBarVisibility="Auto"/>
+                                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
+                                                <Button x:Name="btnIntIcon" Content="Symbol ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                        ToolTip="Neues Symbol (Bild, ICO, EXE) - wird mit 'Eigenschaften speichern' gesetzt"/>
+                                                <TextBlock x:Name="lblIntIcon" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                                <Button x:Name="btnIntPropSave" Content="&#x1F4BE; Eigenschaften speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                            </DockPanel>
+                            </Grid>
+
+                            <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
+
+                            <Border Grid.Row="2" Background="#2D2D2D" CornerRadius="4" Padding="8">
+                                <RichTextBox x:Name="rtbApps" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
+                                             VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6">
+                                    <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
+                                </RichTextBox>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+
+                <!-- ===== REITER: WARTUNG ===== -->
+                <TabItem Header="&#x1F6E0; Wartung" x:Name="tabMaint" Style="{StaticResource DarkTabItem}">
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="colRemLeft" Width="250" MinWidth="180"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="#252526" CornerRadius="4" Padding="8">
+                            <DockPanel>
+                            <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="0,0,0,8">
+                                <Button x:Name="btnRemModeLib" Content="Bibliothek" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="0,0,2,0"
+                                        ToolTip="Eigene Wartungspakete: mit KI erstellen, pruefen, verteilen"/>
+                                <Button x:Name="btnRemModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                        ToolTip="Alle Wartungsskripte, die schon in Intune liegen: Zuweisungen, Skripte, Ergebnisse, Loeschen"/>
+                            </UniformGrid>
+                            <Grid>
+                            <DockPanel x:Name="pnlRemIntLeft" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Top" Text="Wartung in Intune" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="spRintTenants" Margin="0,0,0,4"/>
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                    <Button x:Name="btnRintLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
+                                    <ComboBox x:Name="cmbRintType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="96" Margin="4,0,0,0">
+                                        <ComboBoxItem Content="Alle" Tag="" IsSelected="True"/>
+                                        <ComboBoxItem Content="Eigene" Tag="own"/>
+                                        <ComboBoxItem Content="Microsoft" Tag="global"/>
+                                        <ComboBoxItem Content="Nicht ueberall" Tag="partial" ToolTip="Nur Skripte, die in einem der angehakten Tenants fehlen"/>
+                                    </ComboBox>
+                                    <Grid>
+                                        <TextBox x:Name="txtRintFilter" Style="{StaticResource DarkTextBox}"/>
+                                        <TextBlock x:Name="lblRintFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                    </Grid>
+                                </DockPanel>
+                                <TextBlock DockPanel.Dock="Bottom" x:Name="lblRintState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                <ListBox x:Name="lstRint" Style="{StaticResource DarkListBox}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2" ToolTip="{Binding Tip}">
+                                                <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlRemLibLeft">
+                                <TextBlock DockPanel.Dock="Top" Text="Wartungspakete" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                    <Button x:Name="btnRemNew" Content="+ Neu" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"/>
+                                    <Button x:Name="btnRemExamples" Content="Beispiele ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"/>
+                                    <Button x:Name="btnRemRemove" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                            ToolTip="Nur aus der Liste entfernen - in Intune bleibt das Paket bestehen"/>
+                                </WrapPanel>
+                                <ListBox x:Name="lstRem" Style="{StaticResource DarkListBox}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2">
+                                                <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                            </Grid>
+                            </DockPanel>
+                        </Border>
+
+                        <GridSplitter Grid.Column="1" Width="6" Background="#3E3E42" Opacity="0.4" HorizontalAlignment="Center" ResizeBehavior="PreviousAndNext"/>
+
+                        <Grid Grid.Column="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition x:Name="rowRemForm" Height="2*" MinHeight="200"/>
+                                <RowDefinition Height="6"/>
+                                <RowDefinition x:Name="rowRemLog" Height="*" MinHeight="60"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                            <DockPanel x:Name="pnlRemIntRight" Visibility="Collapsed">
+                            <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                <Button x:Name="btnRintResults" Content="&#x1F4CA; Ergebnisse" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Ergebnis je Geraet: Problem gefunden, behoben, Fehler, Ausgabe"/>
+                                <Button x:Name="btnRintRunNow" Content="&#x25B6; Jetzt auf Geraet ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Sofort auf einem Geraet ausfuehren (Geraet muss online sein)"/>
+                                <Button x:Name="btnRintCopy" Content="In andere Tenants kopieren ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Skript (und auf Wunsch die Zuweisungen) in weitere Tenants anlegen - Gruppen werden dort per Name gesucht"/>
+                                <Button x:Name="btnRintToLib" Content="In Bibliothek uebernehmen" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Skripte und Verteilung in die eigene Bibliothek holen (z. B. um sie mit KI zu ueberarbeiten)"/>
+                                <Button x:Name="btnRintReloadOne" Content="&#x21BB; Neu laden" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRintPortal" Content="Im Portal oeffnen" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRintDelete" Content="&#x1F5D1; Loeschen ..." Background="#B71C1C" Style="{StaticResource DarkButton}" FontSize="11" Margin="12,0,6,4"
+                                        ToolTip="Wartungsskript in den gewaehlten Tenants aus Intune loeschen (mit Rueckfrage)"/>
+                            </WrapPanel>
+                            <Border Background="#2D2D2D" CornerRadius="4" Padding="12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="pnlRintForm" IsEnabled="False">
+                                        <TextBlock x:Name="txtRintTitle" Text="Links ein Wartungsskript waehlen" Foreground="#E0E0E0" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="txtRintInfo" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="txtRintSummary" Foreground="#90CAF9" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+
+                                        <TextBlock Text="Zuweisungen" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                        <DataGrid x:Name="gridRintAssign" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                                  SelectionMode="Extended" MinHeight="40" MaxHeight="190">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="2*"/>
+                                                <DataGridTextColumn Header="Zeitplan" Binding="{Binding Zeitplan}" Width="170"/>
+                                                <DataGridTextColumn Header="Reparatur" Binding="{Binding Reparatur}" Width="75"/>
+                                                <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                        <WrapPanel Margin="0,6,0,0">
+                                            <ComboBox x:Name="cmbRintTarget" Style="{StaticResource DarkComboBox}" Width="140" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Gruppe" Tag="group" IsSelected="True"/>
+                                                <ComboBoxItem Content="Gruppe ausschliessen" Tag="exclude"/>
+                                                <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
+                                            </ComboBox>
+                                            <TextBox x:Name="txtRintGroup" Style="{StaticResource DarkTextBox}" Width="180" Margin="0,0,2,4" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                            <Button x:Name="btnRintGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,6,4"/>
+                                            <ComboBox x:Name="cmbRintSchedule" Style="{StaticResource DarkComboBox}" Width="100" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Taeglich" Tag="daily" IsSelected="True"/>
+                                                <ComboBoxItem Content="Stuendlich" Tag="hourly"/>
+                                                <ComboBoxItem Content="Einmal" Tag="once"/>
+                                            </ComboBox>
+                                            <TextBlock x:Name="lblRintInterval" Text="alle" Style="{StaticResource FieldLabel}" Margin="2,0,4,4"/>
+                                            <TextBox x:Name="txtRintInterval" Style="{StaticResource DarkTextBox}" Width="36" Text="1" Margin="0,0,4,4"/>
+                                            <TextBox x:Name="txtRintDate" Style="{StaticResource DarkTextBox}" Width="90" Margin="0,0,4,4" ToolTip="Datum TT.MM.JJJJ (nur bei Einmal)"/>
+                                            <TextBlock x:Name="lblRintTime" Text="um" Style="{StaticResource FieldLabel}" Margin="2,0,4,4"/>
+                                            <TextBox x:Name="txtRintTime" Style="{StaticResource DarkTextBox}" Width="54" Text="08:00" Margin="0,0,6,4"/>
+                                            <CheckBox x:Name="chkRintFix" Content="mit Reparatur" Style="{StaticResource DarkCheckBox}" IsChecked="True" VerticalAlignment="Center" Margin="0,0,6,4"
+                                                      ToolTip="Aus = nur pruefen und berichten"/>
+                                            <Button x:Name="btnRintAssignAdd" Content="+ Zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"
+                                                    ToolTip="Zuweisung ergaenzen bzw. aendern (gleiche Gruppe: Zeitplan wird ersetzt)"/>
+                                            <Button x:Name="btnRintAssignRemove" Content="Markierte entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4"/>
+                                        </WrapPanel>
+
+                                        <TextBlock Text="Skripte und Eigenschaften" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                        <TextBlock x:Name="lblRintScriptState" Foreground="#FFB74D" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                            <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Column="1" x:Name="txtRintName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Beschreibung" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtRintDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="2" Text="Ausfuehren als" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbRintRunAs" Style="{StaticResource DarkComboBox}" Width="170">
+                                                    <ComboBoxItem Content="System" Tag="system" IsSelected="True"/>
+                                                    <ComboBoxItem Content="Angemeldeter Benutzer" Tag="user"/>
+                                                </ComboBox>
+                                                <CheckBox x:Name="chkRint32" Content="32-Bit-PowerShell" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        <TextBlock Text="Pruefskript" Style="{StaticResource FieldLabel}" Margin="0,8,0,3"/>
+                                        <TextBox x:Name="txtRintDetect" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
+                                                 Height="140" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                                        <TextBlock Text="Reparaturskript (leer = nur pruefen)" Style="{StaticResource FieldLabel}" Margin="0,8,0,3"/>
+                                        <TextBox x:Name="txtRintFix" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
+                                                 Height="140" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                                        <WrapPanel Margin="0,6,0,0">
+                                            <Button x:Name="btnRintCheck" Content="&#x2714; Pruefen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
+                                                    ToolTip="Syntax, Exit-Codes und verbotene Befehle pruefen (ohne Ausfuehrung)"/>
+                                            <Button x:Name="btnRintSave" Content="&#x1F4BE; Aenderungen speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11"
+                                                    ToolTip="Geaenderte Felder in allen Tenants dieses Skripts speichern"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlRemLibRight">
+                            <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                <Button x:Name="btnRemSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRemDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRemRelease" Content="Fuer alle freigeben" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRemResults" Content="&#x1F4CA; Ergebnisse" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Ergebnis je Geraet: Problem gefunden, behoben, Fehler, Ausgabe"/>
+                                <Button x:Name="btnRemRunNow" Content="&#x25B6; Jetzt auf Geraet ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Sofort auf einem Geraet ausfuehren (Geraet muss online sein)"/>
+                            </WrapPanel>
+                            <Border Background="#2D2D2D" CornerRadius="4" Padding="12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="pnlRemForm" IsEnabled="False">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtRemName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Beschreibung" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtRemDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                        </Grid>
+
+                                        <Border Background="#252526" CornerRadius="4" Padding="8" Margin="0,8,0,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Mit KI erstellen" Foreground="#CE93D8" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <DockPanel>
+                                                    <Button x:Name="btnRemAiCopy" DockPanel.Dock="Right" Content="Prompt kopieren" Background="#6A1B9A" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                                            ToolTip="Kopiert eine Anweisung mit allen Intune-Regeln - in ChatGPT/Claude/Copilot einfuegen"/>
+                                                    <TextBox x:Name="txtRemAiTask" Style="{StaticResource DarkTextBox}" ToolTip="In einem Satz: was soll geprueft und repariert werden?"/>
+                                                </DockPanel>
+                                                <DockPanel Margin="0,4,0,0">
+                                                    <Button x:Name="btnRemAiPaste" DockPanel.Dock="Left" Content="Antwort einfuegen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"
+                                                            ToolTip="Antwort der KI aus der Zwischenablage - wird automatisch in Pruef- und Reparaturskript aufgeteilt"/>
+                                                    <TextBlock Text="Beschreibe die Aufgabe, kopiere den Prompt in deine KI und fuege die Antwort hier ein." Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                </DockPanel>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <TextBlock Text="Pruefskript (exit 1 = Problem gefunden)" Style="{StaticResource SectionTitle}" Margin="0,10,0,4"/>
+                                        <TextBox x:Name="txtRemDetect" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
+                                                 Height="150" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                                        <TextBlock Text="Reparaturskript (leer = nur pruefen und berichten)" Style="{StaticResource SectionTitle}" Margin="0,10,0,4"/>
+                                        <TextBox x:Name="txtRemFix" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
+                                                 Height="150" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                                        <WrapPanel Margin="0,6,0,0">
+                                            <Button x:Name="btnRemCheck" Content="&#x2714; Pruefen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
+                                                    ToolTip="Syntax, Exit-Codes und verbotene Befehle pruefen (ohne Ausfuehrung)"/>
+                                            <Button x:Name="btnRemTestLocal" Content="Pruefskript hier ausfuehren" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
+                                                    ToolTip="Fuehrt nur das Pruefskript auf diesem PC aus (aendert nichts, wenn es korrekt geschrieben ist)"/>
+                                        </WrapPanel>
+
+                                        <TextBlock Text="Verteilen" Style="{StaticResource SectionTitle}" Margin="0,12,0,6"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="Tenants" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,8,0"/>
+                                            <WrapPanel Grid.Row="0" Grid.Column="1" x:Name="spRemTenants" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Ziel" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbRemTarget" Style="{StaticResource DarkComboBox}" Width="150">
+                                                    <ComboBoxItem Content="Gruppe" Tag="group"/>
+                                                    <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                    <ComboBoxItem Content="Keine Zuweisung" Tag="none" ToolTip="Nur hochladen bzw. aktualisieren - zuweisen spaeter hier oder im Portal"/>
+                                                </ComboBox>
+                                                <TextBox x:Name="txtRemGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                                <Button x:Name="btnRemGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="2" Text="Pilot" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <CheckBox x:Name="chkRemPilot" Content="zuerst nur an Pilotgruppe:" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                <TextBox x:Name="txtRemPilot" Style="{StaticResource DarkTextBox}" Width="200" Margin="6,0,0,0"/>
+                                                <Button x:Name="btnRemPilotPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="3" Text="Zeitplan" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbRemSchedule" Style="{StaticResource DarkComboBox}" Width="150">
+                                                    <ComboBoxItem Content="Taeglich" Tag="daily"/>
+                                                    <ComboBoxItem Content="Stuendlich" Tag="hourly"/>
+                                                    <ComboBoxItem Content="Einmal" Tag="once"/>
+                                                </ComboBox>
+                                                <TextBlock x:Name="lblRemInterval" Text="alle" Style="{StaticResource FieldLabel}" Margin="8,0,4,0"/>
+                                                <TextBox x:Name="txtRemInterval" Style="{StaticResource DarkTextBox}" Width="40" Text="1"/>
+                                                <TextBlock x:Name="lblRemTime" Text="um" Style="{StaticResource FieldLabel}" Margin="8,0,4,0"/>
+                                                <TextBox x:Name="txtRemTime" Style="{StaticResource DarkTextBox}" Width="60" Text="08:00"/>
+                                                <TextBox x:Name="txtRemDate" Style="{StaticResource DarkTextBox}" Width="100" Margin="6,0,0,0" ToolTip="Datum TT.MM.JJJJ (nur bei Einmal)"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="4" Text="Ausfuehren als" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbRemRunAs" Style="{StaticResource DarkComboBox}" Width="150">
+                                                    <ComboBoxItem Content="System" Tag="system"/>
+                                                    <ComboBoxItem Content="Angemeldeter Benutzer" Tag="user"/>
+                                                </ComboBox>
+                                                <CheckBox x:Name="chkRem32" Content="32-Bit-PowerShell" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="5" Grid.Column="1" x:Name="txtRemTenantState" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                            </DockPanel>
+                            </Grid>
+
+                            <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
+
+                            <Border Grid.Row="2" Background="#2D2D2D" CornerRadius="4" Padding="8">
+                                <RichTextBox x:Name="rtbRem" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
+                                             VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6">
+                                    <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
+                                </RichTextBox>
+                            </Border>
+                        </Grid>
                     </Grid>
                 </TabItem>
             </TabControl>

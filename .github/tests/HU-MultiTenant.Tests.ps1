@@ -291,3 +291,254 @@ Describe 'Graph-Batch (Invoke-GraphBatchGet)' {
         $r.Count | Should -Be 2
     }
 }
+
+Describe 'Intune: Apps und Wartung (HU.Intune)' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+    }
+    It 'MSI-Erkennung mit Mindestversion' {
+        $r = ConvertTo-HUDetectionRule ([pscustomobject]@{ Type = 'msi'; ProductCode = '{11111111-2222-3333-4444-555555555555}'; Version = '1.2.3'; VersionCheck = $true })
+        $r['@odata.type'] | Should -Be '#microsoft.graph.win32LobAppProductCodeRule'
+        $r.productVersionOperator | Should -Be 'greaterThanOrEqual'
+        $r.productVersion | Should -Be '1.2.3'
+    }
+    It 'Registry-Erkennung ohne Wert = vorhanden' {
+        $r = ConvertTo-HUDetectionRule ([pscustomobject]@{ Type = 'registry'; KeyPath = 'HKEY_LOCAL_MACHINE\SOFTWARE\X'; ValueName = ''; Check32 = $true })
+        $r.operationType | Should -Be 'exists'
+        $r.check32BitOn64System | Should -BeTrue
+    }
+    It 'ungueltige Erkennung wird abgelehnt' {
+        { ConvertTo-HUDetectionRule ([pscustomobject]@{ Type = 'msi'; ProductCode = 'abc' }) } | Should -Throw
+        { ConvertTo-HUDetectionRule ([pscustomobject]@{ Type = 'file'; Path = 'C:\X' }) } | Should -Throw
+    }
+    It 'Win32-Payload: Pflichtfelder, Kontext, MSI-Info' {
+        $def = [pscustomobject]@{ Name = 'Test'; Publisher = ''; Description = ''; Version = '1.0'; SetupFile = 'a.msi'; InstallCmd = 'msiexec /i "a.msi" /qn'; UninstallCmd = 'msiexec /x {11111111-2222-3333-4444-555555555555} /qn'
+            RunAs = 'user'; Kind = 'msi'; UpgradeCode = ''; Detection = [pscustomobject]@{ Type = 'msi'; ProductCode = '{11111111-2222-3333-4444-555555555555}' } }
+        $p = ConvertTo-HUWin32Payload $def 'a.intunewin'
+        $p.fileName | Should -Be 'a.intunewin'
+        $p.installExperience.runAsAccount | Should -Be 'user'
+        $p.installExperience.deviceRestartBehavior | Should -Be 'suppress'
+        $p.publisher | Should -Be '-'
+        $p.msiInformation.productCode | Should -Be '{11111111-2222-3333-4444-555555555555}'
+        @($p.rules).Count | Should -Be 1
+        $def.UninstallCmd = ''
+        { ConvertTo-HUWin32Payload $def } | Should -Throw
+    }
+    It 'Zeitplan taeglich / stuendlich / einmal' {
+        $d = New-HURunSchedule @{ Type = 'daily'; Interval = 2; Time = '7:30' }
+        $d['@odata.type'] | Should -Be '#microsoft.graph.deviceHealthScriptDailySchedule'
+        $d.time | Should -Be '07:30:00.0000000'
+        $d.interval | Should -Be 2
+        (New-HURunSchedule @{ Type = 'hourly'; Interval = 50 }).interval | Should -Be 23
+        (New-HURunSchedule @{ Type = 'once'; Time = '08:00'; Date = '2026-11-02' }).date | Should -Be '2026-11-02'
+    }
+    It 'Remediation-Payload: Base64 UTF-8 ohne BOM' {
+        $p = ConvertTo-HURemediationPayload ([pscustomobject]@{ Name = 'X'; Description = ''; Detection = "Write-Output 'ä'; exit 0"; Remediation = ''; RunAs = 'system'; RunAs32 = $false })
+        $bytes = [Convert]::FromBase64String($p.detectionScriptContent)
+        $bytes[0] | Should -Not -Be 0xEF
+        [Text.Encoding]::UTF8.GetString($bytes) | Should -Match 'ä'
+        $p.runAsAccount | Should -Be 'system'
+    }
+    It 'Skriptpruefung findet typische Fehler' {
+        $r = @(Test-HURemediationScript -Code "Write-Output 'x'`nRestart-Computer`nexit 0" -Kind detection)
+        @($r | Where-Object { $_.Stufe -eq 'Fehler' }).Count | Should -Be 2
+        $ok = @(Test-HURemediationScript -Code "if (1) { Write-Output 'p'; exit 1 }`nWrite-Output 'ok'; exit 0" -Kind detection)
+        @($ok | Where-Object { $_.Stufe -in 'Fehler', 'Warnung' }).Count | Should -Be 0
+        @(Test-HURemediationScript -Code 'Set-ItemProperty HKCU:\X -Name a -Value 1' -Kind remediation -RunAs system | Where-Object { $_.Stufe -eq 'Warnung' }).Count | Should -BeGreaterThan 0
+    }
+    It 'KI-Antwort wird aufgeteilt (Codebloecke und Ueberschriften)' {
+        $t = "Hier:`n``````powershell`nexit 1`n```````n``````powershell`nexit 0`n``````"
+        $s = Split-HUAiAnswer $t
+        $s.Detection | Should -Be 'exit 1'
+        $s.Remediation | Should -Be 'exit 0'
+        $s2 = Split-HUAiAnswer "### Pruefskript`nA`n### Reparaturskript`nB"
+        $s2.Detection | Should -Be 'A'
+        $s2.Remediation | Should -Be 'B'
+        (Get-HUAiPrompt -Task 'Test') | Should -Match '### Pruefskript'
+    }
+    It 'Sandbox-Ergebnis -> Erkennung und Deinstallation' {
+        $msi = ConvertFrom-HUSandboxEntry ([pscustomobject]@{ Key = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{11111111-2222-3333-4444-555555555555}'; DisplayName = 'A'; DisplayVersion = '2.0'; UninstallString = 'MsiExec.exe /I{11111111-2222-3333-4444-555555555555}'; QuietUninstallString = '' })
+        $msi.Detection.Type | Should -Be 'msi'
+        $msi.UninstallCmd | Should -Be 'msiexec /x {11111111-2222-3333-4444-555555555555} /qn /norestart'
+        $reg = ConvertFrom-HUSandboxEntry ([pscustomobject]@{ Key = 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Foo_is1'; DisplayName = 'Foo'; DisplayVersion = '1.5'; UninstallString = 'x'; QuietUninstallString = '"C:\Foo\unins000.exe" /SILENT' })
+        $reg.Detection.Type | Should -Be 'registry'
+        $reg.Detection.Check32 | Should -BeTrue
+        $reg.Detection.KeyPath | Should -Not -Match 'WOW6432Node'
+        $reg.UninstallCmd | Should -Match 'unins000'
+        $best = Select-HUSandboxEntry -Entries @([pscustomobject]@{ DisplayName = 'Microsoft Visual C++ 2015 Redistributable'; UninstallString = 'x' }, [pscustomobject]@{ DisplayName = 'Foo Editor'; UninstallString = 'y' }) -AppName 'Foo Editor 3'
+        $best.DisplayName | Should -Be 'Foo Editor'
+    }
+    It 'Store-ID erkennen' {
+        Get-HUStoreIdFromText 'https://apps.microsoft.com/detail/9nksqgp7f2nh?hl=de-at' | Should -Be '9NKSQGP7F2NH'
+        Get-HUStoreIdFromText 'XP89DCGQ3K6VLD' | Should -Be 'XP89DCGQ3K6VLD'
+        Test-HUStoreId 'ABC' | Should -BeFalse
+    }
+    It 'Quellordner wird nur bei Aenderung neu kopiert' {
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("hu-src-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path "$tmp\in" -Force | Out-Null
+        Set-Content -LiteralPath "$tmp\in\setup.exe" -Value 'x'
+        Set-Content -LiteralPath "$tmp\in\config.ini" -Value 'y'
+        $a = Sync-HUAppSource -SetupPath "$tmp\in\setup.exe" -WholeFolder $true -Destination "$tmp\out"
+        $a.Copied | Should -BeTrue
+        @(Get-ChildItem "$tmp\out").Count | Should -Be 2
+        (Sync-HUAppSource -SetupPath "$tmp\in\setup.exe" -WholeFolder $true -Destination "$tmp\out").Copied | Should -BeFalse
+        $b = Sync-HUAppSource -SetupPath "$tmp\in\setup.exe" -WholeFolder $false -Destination "$tmp\out"
+        $b.Copied | Should -BeTrue
+        @(Get-ChildItem "$tmp\out").Count | Should -Be 1
+        Remove-Item -LiteralPath $tmp -Recurse -Force
+    }
+}
+
+Describe 'Intune: App-Symbol' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+    }
+    It 'Symbol-Ort aus DisplayIcon lesen' {
+        $l = Split-HUIconLocation '"C:\Program Files\Foo\foo.exe",-101'
+        $l.Path | Should -Be 'C:\Program Files\Foo\foo.exe'
+        $l.Index | Should -Be -101
+        (Split-HUIconLocation 'C:\x\a.ico').Index | Should -Be 0
+    }
+    It 'Bild wird auf 256 px verkleinert und als largeIcon mitgegeben' -Skip:($env:OS -ne 'Windows_NT') {
+        Add-Type -AssemblyName System.Drawing
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("hu-icon-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+        $b = New-Object System.Drawing.Bitmap(400, 200); $b.Save("$tmp\in.jpg", [System.Drawing.Imaging.ImageFormat]::Jpeg); $b.Dispose()
+        [void](ConvertTo-HUIconPng -Path "$tmp\in.jpg" -OutFile "$tmp\out.png")
+        $img = [System.Drawing.Image]::FromFile("$tmp\out.png"); $img.Width | Should -Be 256; $img.Height | Should -Be 128; $img.Dispose()
+        [void](ConvertTo-HUIconPng -Path "$env:windir\System32\notepad.exe" -OutFile "$tmp\np.png")
+        (Get-Item "$tmp\np.png").Length | Should -BeGreaterThan 100
+        $def = [pscustomobject]@{ Name = 'T'; Version = '1'; SetupFile = 's.exe'; InstallCmd = 's.exe /S'; UninstallCmd = 'u.exe /S'; RunAs = 'system'; Kind = 'exe'
+            Detection = [pscustomobject]@{ Type = 'file'; Path = 'C:\T'; FileName = 't.exe' }; IconFile = "$tmp\out.png" }
+        $p = ConvertTo-HUWin32Payload $def
+        $p.largeIcon.type | Should -Be 'image/png'
+        $p.largeIcon.value.Length | Should -BeGreaterThan 100
+        Remove-Item -LiteralPath $tmp -Recurse -Force
+    }
+}
+
+Describe 'Intune: Gruppen' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'nur zuweisbare Gruppen, Typ lesbar' {
+        (ConvertTo-HUGroupRow ([pscustomobject]@{ id = '1'; displayName = 'A'; groupTypes = @(); securityEnabled = $true })).Typ | Should -Be 'Sicherheit'
+        (ConvertTo-HUGroupRow ([pscustomobject]@{ id = '2'; displayName = 'B'; groupTypes = @('Unified', 'DynamicMembership'); securityEnabled = $false })).Typ | Should -Be 'Microsoft 365 (dynamisch)'
+        ConvertTo-HUGroupRow ([pscustomobject]@{ id = '3'; displayName = 'Verteiler'; groupTypes = @(); securityEnabled = $false; mailEnabled = $true }) | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Intune: stille Deinstallation' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'ergaenzt NSIS-, Inno- und laesst MSI/stille Befehle in Ruhe' {
+        Add-HUSilentUninstall '"C:\Program Files (x86)\VideoLAN\VLC\uninstall.exe"' 'NSIS' | Should -Be '"C:\Program Files (x86)\VideoLAN\VLC\uninstall.exe" /S'
+        Add-HUSilentUninstall 'C:\Program Files\Foo\unins000.exe' | Should -Be '"C:\Program Files\Foo\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+        Add-HUSilentUninstall '"C:\x\setup.exe" --uninstall' | Should -Be '"C:\x\setup.exe" --uninstall'
+        Add-HUSilentUninstall '"C:\x\uninstall.exe" /S' | Should -Be '"C:\x\uninstall.exe" /S'
+        Add-HUSilentUninstall 'MsiExec.exe /X{1}' | Should -Be 'MsiExec.exe /X{1}'
+        $e = ConvertFrom-HUSandboxEntry ([pscustomobject]@{ Key = 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\VLC media player'; DisplayName = 'VLC media player'; DisplayVersion = '3.0.23'; UninstallString = '"C:\Program Files (x86)\VideoLAN\VLC\uninstall.exe"'; QuietUninstallString = '' }) -InstallerType 'NSIS'
+        $e.UninstallCmd | Should -Match '/S$'
+    }
+}
+
+Describe 'Intune: Abhaengigkeiten' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'ersetzt Abhaengigkeiten, behaelt Ersetzungen (Supersedence)' {
+        $ex = @(
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.mobileAppSupersedence'; targetType = 'child'; targetId = 'old'; supersedenceType = 'update' }
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.mobileAppDependency'; targetType = 'child'; targetId = 'gone'; dependencyType = 'autoInstall' }
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.mobileAppDependency'; targetType = 'parent'; targetId = 'parentApp'; dependencyType = 'autoInstall' }
+        )
+        $b = Get-HUDependencyBody -Existing $ex -DependencyIds @('drv', 'rt', 'drv') -AutoInstall $true
+        $r = @($b.relationships)
+        $r.Count | Should -Be 3
+        @($r | Where-Object { $_['@odata.type'] -match 'Supersedence' }).Count | Should -Be 1
+        @($r | Where-Object { $_.targetId -eq 'gone' }).Count | Should -Be 0
+        @($r | Where-Object { $_['@odata.type'] -match 'Dependency' } | ForEach-Object { $_.dependencyType } | Select-Object -Unique) | Should -Be 'autoInstall'
+        (@((Get-HUDependencyBody -Existing @() -DependencyIds @('x') -AutoInstall $false).relationships)[0]).dependencyType | Should -Be 'detect'
+        ((Get-HUDependencyBody -Existing @() -DependencyIds @()) | ConvertTo-Json -Compress) | Should -Be '{"relationships":[]}'
+    }
+}
+
+Describe 'Intune: vorhandene Apps und Installationshuelle' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'Zuweisung wird lesbar und ueber Tenants vergleichbar' {
+        $a = [pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'g1' }; settings = [pscustomobject]@{ notifications = 'hideAll'; installTimeSettings = $null } }
+        $r = ConvertFrom-HUAssignment $a @{ g1 = 'Schueler' }
+        $r.Key | Should -Be 'group|schueler'
+        $r.Ziel | Should -Be 'Schueler'
+        $r.Notify | Should -Be 'hideAll'
+        $x = ConvertFrom-HUAssignment ([pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.exclusionGroupAssignmentTarget'; groupId = 'g1' } }) @{ g1 = 'Lehrer' }
+        $x.Ziel | Should -Be 'Ausschluss: Lehrer'
+        (ConvertFrom-HUAssignment ([pscustomobject]@{ intent = 'available'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allLicensedUsersAssignmentTarget' } })).Kind | Should -Be 'allUsers'
+        Get-HUAppKindFromType '#microsoft.graph.winGetApp' | Should -Be 'winget'
+        Get-HUAppKindFromType 'officeSuiteApp' | Should -Be 'other'
+    }
+    It 'ohne Desktop-Verknuepfung: Huelle und Befehl' {
+        $p = Get-HUInstallPlan ([pscustomobject]@{ InstallCmd = '"vlc.exe" /S'; NoDesktop = $true })
+        $p.Cmd | Should -Match 'Sysnative.*HU-Install\.ps1'
+        $p.Extra['HU-Install.ps1'] | Should -Match 'exit \$p\.ExitCode'
+        $e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($p.Extra['HU-Install.ps1'], [ref]$null, [ref]$e); @($e).Count | Should -Be 0
+        (Get-HUInstallPlan ([pscustomobject]@{ InstallCmd = 'a.exe'; NoDesktop = $true }) -Sandbox).Cmd | Should -Match '^powershell\.exe'
+        (Get-HUInstallPlan ([pscustomobject]@{ InstallCmd = 'a.exe /S'; NoDesktop = $false })).Cmd | Should -Be 'a.exe /S'
+    }
+}
+
+Describe 'Intune: Seitenweises Lesen und App-Liste' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+    }
+    It 'liefert einzelne Eintraege (nicht ein verschachteltes Array) und filtert Windows-Apps' {
+        Mock -ModuleName HU.Intune Invoke-HUIntuneGraph {
+            if ($Endpoint -like '*mobileApps*') {
+                [pscustomobject]@{ value = @(
+                        [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobApp'; id = '1'; displayName = 'VLC'; displayVersion = '3'; publisher = 'V'; assignments = @([pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'g1' } }) }
+                        [pscustomobject]@{ '@odata.type' = '#microsoft.graph.iosStoreApp'; id = '2'; displayName = 'iOS'; assignments = @() }
+                        [pscustomobject]@{ '@odata.type' = '#microsoft.graph.winGetApp'; id = '3'; displayName = 'Teams'; assignments = @() }
+                    ) }
+            } else { [pscustomobject]@{ value = @([pscustomobject]@{ id = 'g1'; displayName = 'Schueler' }) } }
+        }
+        @(Get-HUIntuneGraphAll -TenantKey 't' -Settings @{} -Endpoint '/deviceAppManagement/mobileApps').Count | Should -Be 3
+        $l = @(Get-HUTenantAppList -TenantKey 't' -Settings @{})
+        $l.Count | Should -Be 2
+        ($l | Where-Object Name -eq 'VLC').Assignments[0].Ziel | Should -Be 'Schueler'
+        ($l | Where-Object Name -eq 'Teams').Kind | Should -Be 'winget'
+    }
+}
+
+Describe 'Support: Anonymisieren' {
+    BeforeAll { . (Join-Path $script:AppRoot 'Functions\UI-Support.ps1') }
+    It 'ersetzt Namen, Mails, IDs, IPs und Tokens' {
+        $map = @(@{ From = 'Musterschule Nord'; To = 'Tenant-1' }, @{ From = 'musterschule.example'; To = 'Tenant-1' })
+        $t = ConvertTo-HURedacted 'Musterschule Nord: max.muster@musterschule.example an 192.0.2.10 id 0f0f0f0f-1234-4abc-9def-0123456789ab Bearer eyJhbGciOiJSUzI1NiIs.eyJhdWQiOiJodHRwczov.abc sig=XYZ' $map
+        $t | Should -Not -Match 'Musterschule|max\.muster|192\.0\.2\.10|1234-4abc|XYZ'
+        $t | Should -Match 'Tenant-1'
+        $t | Should -Match '0f0f0f0f-\*\*\*\*'
+    }
+}
+
+Describe 'Intune: Inno-Deinstallation (Greenshot-Fall)' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It '/SILENT wird zu /VERYSILENT, laufende App wird vorher beendet, kein doppeltes Anhaengen' {
+        $e = ConvertFrom-HUSandboxEntry ([pscustomobject]@{ Key = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Greenshot_is1'; DisplayName = 'Greenshot'; DisplayVersion = '1.3'
+                UninstallString = '"C:\Program Files\Greenshot\unins000.exe"'; QuietUninstallString = '"C:\Program Files\Greenshot\unins000.exe" /SILENT'; DisplayIcon = 'C:\Program Files\Greenshot\Greenshot.exe' }) 'Inno Setup'
+        $e.UninstallCmd | Should -Be 'cmd.exe /c "taskkill /f /im "Greenshot.exe" >nul 2>&1 & "C:\Program Files\Greenshot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART"'
+        Add-HUSilentUninstall $e.UninstallCmd 'Inno Setup' | Should -Be $e.UninstallCmd
+        (Get-HUExeInstallerType -Path $PSCommandPath).Type | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Wartung: vorhandene Skripte lesen' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'liest Zeitplaene, Zuweisungen, Skripttext und Status' {
+        (ConvertFrom-HURunSchedule ([pscustomobject]@{ '@odata.type' = '#microsoft.graph.deviceHealthScriptDailySchedule'; interval = 2; time = '07:30:00.0000000'; useUtc = $false })).Text | Should -Be 'alle 2 Tage um 07:30'
+        $o = ConvertFrom-HURunSchedule ([pscustomobject]@{ '@odata.type' = '#microsoft.graph.deviceHealthScriptRunOnceSchedule'; interval = 1; time = '7:05:00'; date = '2026-10-12'; useUtc = $false })
+        $o.Type | Should -Be 'once'; $o.Date | Should -Be '12.10.2026'; $o.Time | Should -Be '07:05'
+        (ConvertFrom-HURunSchedule ([pscustomobject]@{ '@odata.type' = '#microsoft.graph.deviceHealthScriptHourlySchedule'; interval = 4 })).Text | Should -Be 'alle 4 Std.'
+        $a = ConvertFrom-HURemAssignment ([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.exclusionGroupAssignmentTarget'; groupId = 'g1' }; runRemediationScript = $true; runSchedule = $null }) @{ g1 = 'Lehrer' }
+        $a.Key | Should -Be 'exclude|lehrer'; $a.Zeitplan | Should -Be ''
+        ConvertFrom-HUBase64Text ([Convert]::ToBase64String([byte[]](0xFF, 0xFE) + [Text.Encoding]::Unicode.GetBytes('exit 1'))) | Should -Be 'exit 1'
+        ConvertFrom-HUBase64Text (ConvertTo-HUBase64Utf8 "Write-Output 'Ä'") | Should -Be "Write-Output 'Ä'"
+        ConvertTo-HUInstallStateText '3' | Should -Be 'Nicht installiert'
+        ConvertTo-HUInstallStateText 'Installed' | Should -Be 'Installiert'
+    }
+}

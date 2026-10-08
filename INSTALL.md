@@ -29,6 +29,10 @@ Alternativ: Repository als ZIP laden und entpacken (dann ohne Prüfsumme/Signatu
 | `AuditLog.Read.All` | MFA-Status, inaktive Benutzer (signInActivity) |
 | `Organization.Read.All` | Tenant-Übersicht, Lizenzen |
 | `Directory.Read.All` | Enterprise-App-Inventur |
+| `DeviceManagementApps.ReadWrite.All` | Reiter **Apps** (hochladen, zuweisen, Status) |
+| `DeviceManagementScripts.ReadWrite.All` | Reiter **Wartung** (Remediations) |
+| `Group.Read.All` | Apps/Wartung: Zielgruppe per Name finden |
+| `DeviceManagementManagedDevices.PrivilegedOperations.All` | Wartung: *Jetzt auf Gerät ausführen* |
 
    Jede Extension zeigt ihre Berechtigungen im Reiter *Extensions*; der Knopf **Berechtigungen** vergleicht sie mit dem Token.
    Schreibende Extensions (`READ/WRITE`) brauchen zusätzlich die passenden `ReadWrite`-Berechtigungen.
@@ -40,7 +44,7 @@ Tenant anlegen, Secret eintragen, Verknüpfung: **[Anleitung](Docs/Anleitung.htm
 ## Update
 Im Programm über den Knopf **Update** (Details in der Anleitung) oder von Hand:
 `powershell -ExecutionPolicy Bypass -File Pull.ps1` – bestimmte Version: `-Version 2.0.0`.
-Einstellungen, Snippets, Protokolle, Reports und eigene Extensions bleiben erhalten.
+Einstellungen, Snippets, Apps- und Wartungs-Bibliothek, Protokolle, Reports und eigene Extensions bleiben erhalten.
 
 ## Von v1.x umsteigen
 `Pull.ps1` in den bestehenden Ordner legen und ausführen. Tenants, Snippets und gespeicherte Secrets werden übernommen. Nicht mehr gebraucht: `Publish-ToGitHub.ps1`, `HU-MultiTenant-Distribution*`.
@@ -53,6 +57,8 @@ Einstellungen, Snippets, Protokolle, Reports und eigene Extensions bleiben erhal
 | *Fehlende Berechtigungen* | Knopf **Berechtigungen** – zeigt, was fehlt; danach Administratorzustimmung erteilen und neu verbinden |
 | *Secret-Ablauf unbekannt* | `Application.Read.All` erteilen oder Datum manuell eintragen |
 | Excel-Report schlägt fehl | `Install-Module ImportExcel -Scope CurrentUser` |
+| Wartung: Fehler mit *license* | Intune Admin Center › Mandantenverwaltung › Connectors und Token › Windows-Datenverarbeitung › *Windows-Lizenzüberprüfung* einschalten (A3/E3 nötig) |
+| Testinstallation: Sandbox fehlt | Knopf im Hinweisfenster aktiviert sie (Admin, Neustart); Windows Home hat keine Sandbox |
 | Oberfläche zu klein/groß | Strg + Mausrad, Strg + 0 = 100 % |
 
 ## Selbsttest (Entwicklung)

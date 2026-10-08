@@ -88,11 +88,13 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 
 <section id="start">
   <h1>HU-MultiTenant</h1>
-  <p class="lead">Microsoft 365 und Intune für mehrere Tenants aus einer Oberfläche: PowerShell im Tenant-Kontext mit eigener Snippet-Bibliothek, fertige Reports als Extensions und das Ablaufdatum der Client Secrets im Blick.</p>
+  <p class="lead">Microsoft 365 und Intune für mehrere Tenants aus einer Oberfläche: PowerShell im Tenant-Kontext mit eigener Snippet-Bibliothek, fertige Reports als Extensions, App-Verteilung, Wartungsskripte und das Ablaufdatum der Client Secrets im Blick.</p>
   <div class="cards">
     <div class="card g"><b>⚡ Quick Script</b>Eigene Skripte gegen einen Tenant ausführen – Token, Tenant und Graph-Funktionen sind schon da.</div>
     <div class="card b"><b>📚 Snippets</b>Skript-Bibliothek mit Kurzbeschreibung, Suche, Import und Export.</div>
     <div class="card p"><b>🧩 Extensions</b>Reports und Aktionen mit Parametern, Dry-Run und Excel-Ausgabe.</div>
+    <div class="card b"><b>📦 Apps</b>MSI, EXE und Store-Apps testen und an mehrere Tenants verteilen.</div>
+    <div class="card g"><b>🛠 Wartung</b>Remediations mit KI erstellen, verteilen und auswerten.</div>
     <div class="card m"><b>🔑 Secrets</b>DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf.</div>
   </div>
   <div class="flow"><span>Einstellungen › Tenants</span><i>→</i><span>Secret eingeben</span><i>→</i><span>Snippet wählen</span><i>→</i><span>Strg + Enter</span></div>
@@ -125,12 +127,12 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <h2><span class="n">2</span>Oberfläche</h2>
   <table>
     <tr><th>Bereich</th><th>Inhalt</th></tr>
-    <tr><td>Titelleiste</td><td>Version, Warnung bei bald ablaufenden Secrets (Klick öffnet die Tenants), <span class="ui">🛠 Berechtigungen</span>, <span class="ui">⚙ Einstellungen</span>, <span class="ui">?</span> Anleitung, <span class="ui">Update</span></td></tr>
-    <tr><td>Tenant-Leiste</td><td>Tenant für die Extensions, Status (● grün = verbunden, gelb = Berechtigungen fehlen, rot = Fehler), Secret-Ablauf, <span class="ui b">Verbinden</span> / <span class="ui r">Trennen</span></td></tr>
-    <tr><td>links</td><td>Extensions mit Suche, ↻ lädt neu (eigene Extensions ohne Neustart)</td></tr>
-    <tr><td>rechts</td><td>Reiter <b>⚡ Quick Script</b> (Start-Reiter) und <b>🧩 Extensions</b></td></tr>
+    <tr><td>Titelleiste</td><td>Version, Warnung bei bald ablaufenden Secrets (Klick öffnet die Tenants), <span class="ui">🛠 Berechtigungen</span>, <span class="ui">⚙ Einstellungen</span>, <span class="ui">🛟 Support</span> (Protokolle anonymisiert als ZIP, per E-Mail oder GitHub-Issue), <span class="ui">?</span> Anleitung, <span class="ui">Update</span></td></tr>
+    <tr><td>Tenant-Leiste</td><td>nur im Reiter Extensions: Tenant für die Extensions, Status (● grün = verbunden, gelb = Berechtigungen fehlen, rot = Fehler), Secret-Ablauf, <span class="ui b">Verbinden</span> / <span class="ui r">Trennen</span></td></tr>
+    <tr><td>links</td><td>Extensions mit Suche, ↻ lädt neu (eigene Extensions ohne Neustart) – in Apps und Wartung ausgeblendet; ein Klick auf eine Extension wechselt zum Reiter Extensions</td></tr>
+    <tr><td>rechts</td><td>Reiter <b>⚡ Quick Script</b> (Start-Reiter), <b>🧩 Extensions</b>, <b>📦 Apps</b> und <b>🛠 Wartung</b></td></tr>
   </table>
-  <div class="note tip"><b class="h">Bleibt gespeichert</b>Fensterposition und -größe (auch maximiert), Breite der Extension-Liste, Aufteilung Editor/Ausgabe und Details/Protokoll, Schriftgröße im Editor, letzter Tenant, letztes Snippet, Oberflächengröße. <kbd>Strg</kbd> + Mausrad skaliert die Oberfläche, <kbd>Strg</kbd>+<kbd>0</kbd> = 100 %.</div>
+  <div class="note tip"><b class="h">Bleibt gespeichert</b>Fensterposition und -größe (auch maximiert), Breite der Listen, Aufteilung Editor/Ausgabe, Details/Protokoll und in Apps/Wartung, Schriftgröße im Editor, letzter Tenant, letztes Snippet, Oberflächengröße. <kbd>Strg</kbd> + Mausrad skaliert die Oberfläche, <kbd>Strg</kbd>+<kbd>0</kbd> = 100 %.</div>
 </section>
 
 <section id="qs">
@@ -194,9 +196,67 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <p>Vorlage <code>Extensions\Template.ps1</code> kopieren, Kopf ausfüllen (<code>.REQUIRED_PERMISSIONS</code>, <code>.PARAM</code>, <code>.DRY_RUN_CAPABLE</code>, <code>.MODE</code>, <code>.RUNTIME</code>) und ↻ drücken. Details: <code>EXTENSION-DEVELOPMENT.md</code>. Eigene Extensions bleiben bei Updates erhalten.</p>
 </section>
 
+<section id="apps">
+  <h2><span class="n">6</span>Apps verteilen</h2>
+  <p>Programme (MSI, EXE) und Microsoft-Store-Apps an einen oder mehrere Tenants verteilen. Oben links umschalten: <span class="ui">Bibliothek</span> (eigene Apps, die HU-MultiTenant paketiert und hochlädt) oder <span class="ui">In Intune</span> (alle vorhandenen Apps verwalten).</p>
+  <ol class="steps">
+    <li><span class="ui">+ MSI / EXE …</span> oder die Setup-Datei auf die Liste ziehen. Name, Version, Hersteller, Befehle und Erkennung werden ausgelesen – bei MSI vollständig, bei EXE mit stillem Schalter (Inno, NSIS, InstallShield, WiX, Advanced Installer, Squirrel).</li>
+    <li><span class="ui m">Testinstallation in der Windows Sandbox</span> – schlägt Erkennung, Deinstallation und Symbol vor (siehe unten).</li>
+    <li>Tenants anhaken, Ziel wählen – Gruppe (🔍 sucht in den angehakten Tenants und zeigt, wo eine fehlt), Alle Geräte, Alle Benutzer oder <i>Keine Zuweisung</i> – dazu <i>Erforderlich</i>, <i>Verfügbar</i> (Unternehmensportal) oder <i>Deinstallieren</i>, optional Frist und Hinweise.</li>
+    <li><span class="ui b">⬆ Hochladen &amp; zuweisen</span> – das Paket wird einmal gebaut und in jeden Tenant hochgeladen; die Geräte holen die App beim nächsten Sync.</li>
+    <li><span class="ui">📊 Status</span> – je Gerät Installiert / Fehlgeschlagen / Nicht installiert mit Fehlertext und Export (der Intune-Bericht braucht nach dem Zuweisen oft 1–2 Stunden).</li>
+  </ol>
+  <h3 id="apps-sandbox">Testinstallation (Windows Sandbox)</h3>
+  <p>Das Setup läuft in einem Wegwerf-Windows, dein PC bleibt sauber. Danach: <i>Vorschlag übernehmen?</i> (Erkennung, Deinstallationsbefehl, Symbol). <i>Deinstallation mittesten</i> prüft auch das Entfernen. Der Test meldet Fenster, die unter Intune hängen würden, Desktop-Verknüpfungen und Installationen nur ins Benutzerprofil; bei Fehlern stehen die Protokolle gleich in der Ausgabe. Stille Schalter werden automatisch ergänzt (Inno: <code>/ALLUSERS</code> beim Installieren, <code>/VERYSILENT</code> und Beenden der laufenden App beim Deinstallieren). Die Sandbox schließt sich danach selbst (<i>Sandbox offen lassen</i> zum Nachsehen).</p>
+  <p>Ist die Sandbox nicht aktiviert, öffnet sich ein Fenster mit <span class="ui m">Sandbox jetzt aktivieren</span> (Administratorrechte, Neustart). Voraussetzung: Windows 10/11 Pro, Education oder Enterprise mit Virtualisierung; es läuft immer nur eine Sandbox.</p>
+  <h3 id="apps-update">Neue Version</h3>
+  <p>Neue Setup-Datei auf die Liste ziehen (oder in der App <span class="ui">Andere Datei …</span>) und <b>Ja</b> wählen: dieselbe Intune-App wird aktualisiert, Zuweisungen bleiben. Versionsnummern im Namen werden dabei ignoriert; neue Apps bekommen einen Namen ohne Version vorgeschlagen. Bei EXE-Setups mit Registry-Erkennung die Versionsprüfung einschalten – sonst gilt die alte Version auf den Geräten als „installiert“.</p>
+  <h3 id="apps-deps">Abhängigkeiten (Treiber, Laufzeitumgebungen)</h3>
+  <p>Unter <i>Abhängigkeiten</i>: <span class="ui">+ Bibliothek …</span> (eigene App, wird mit hochgeladen, auch mehrstufig) oder <span class="ui">+ Intune …</span> (schon vorhandene Win32-App, je Tenant per Name verknüpft). Mit <i>automatisch mitinstallieren</i> installiert Intune sie vor der App. Store-Apps können keine Abhängigkeit sein.</p>
+  <h3 id="apps-options">Weitere Optionen</h3>
+  <table>
+    <tr><th>Option</th><th>Wirkung</th></tr>
+    <tr><td>Symbol …</td><td>Bild, ICO oder EXE für das Unternehmensportal (PNG, max. 256 px). Automatisch aus Setup, Testinstallation oder Microsoft Store.</td></tr>
+    <tr><td>Ohne Desktop-Verknüpfung</td><td>ins Paket kommt <code>HU-Install.ps1</code>, das nach dem Setup neue Desktop-Verknüpfungen entfernt – funktioniert bei jedem Setup.</td></tr>
+    <tr><td>Pilotgruppe</td><td>die App geht zuerst nur an diese Gruppe; <span class="ui">Für alle freigeben</span> ergänzt danach das eigentliche Ziel.</td></tr>
+    <tr><td>Store-App</td><td><span class="ui">+ Store-App</span>, Adresse von <span class="ui">apps.microsoft.com</span> oder nur die ID (z. B. <code>9NKSQGP7F2NH</code>) einfügen – kein Paket nötig, aktualisiert sich selbst.</td></tr>
+  </table>
+  <h3 id="apps-intune">In Intune (vorhandene Apps)</h3>
+  <p>Zeigt alle Windows-Apps der angehakten Tenants, auch von Hand angelegte. Gleiche Namen werden über die Tenants zusammengefasst; die Liste zeigt „alle 2“, „nur: …“ oder „fehlt: …“ (Maus darüber: alle Tenants). Jede Änderung gilt für alle Tenants, in denen es die App gibt:</p>
+  <ul>
+    <li><b>Zuweisungen</b> ergänzen (gleiche Gruppe = ersetzen, auch Ausschluss) oder markierte entfernen</li>
+    <li><b>Abhängigkeiten und Ersetzungen</b> (Win32), inkl. „Benötigt von“ / „Ersetzt durch“</li>
+    <li><b>Eigenschaften</b>: Name, Hersteller, Beschreibung, Symbol</li>
+    <li><span class="ui">📊 Status</span>, <span class="ui">Im Portal öffnen</span>, <span class="ui r">Löschen …</span> – bei mehreren Tenants per Haken wählen, in welchen; danach doppelte Rückfrage</li>
+  </ul>
+  <div class="note tip"><b class="h">Einmalig: Paketier-Werkzeug</b>Beim ersten Hochladen fragt das Tool, ob es das <i>Microsoft Win32 Content Prep Tool</i> von GitHub laden darf (Microsoft erlaubt keine Weitergabe). Die Signatur wird geprüft, Ablage in <code>Tools\</code>.</div>
+  <div class="note warn"><b class="h">Berechtigungen</b><code>DeviceManagementApps.ReadWrite.All</code> und <code>Group.Read.All</code>.</div>
+</section>
+
+<section id="wartung">
+  <h2><span class="n">7</span>Wartung (Remediations)</h2>
+  <p>Wartungspakete prüfen regelmäßig etwas auf den Geräten und reparieren es bei Bedarf – z. B. volle Festplatte, abgeschalteter Dienst. Ein Paket besteht aus <b>Prüfskript</b> (<code>exit 1</code> = Problem) und optional <b>Reparaturskript</b>; ohne Reparatur wird nur berichtet. Oben links: <span class="ui">Bibliothek</span> oder <span class="ui">In Intune</span>.</p>
+  <ol class="steps">
+    <li><span class="ui">+ Neu</span> oder <span class="ui">Beispiele …</span> (fünf fertige Pakete).</li>
+    <li><b>Mit KI erstellen</b>: Aufgabe in einem Satz → <span class="ui m">Prompt kopieren</span> → in ChatGPT, Claude oder Copilot einfügen → Antwort kopieren → <span class="ui">Antwort einfügen</span> (wird in Prüf- und Reparaturskript aufgeteilt).</li>
+    <li><span class="ui">✔ Prüfen</span> findet typische Fehler (fehlendes <code>exit 1</code>, Neustart, Eingaben, PowerShell-7-Syntax, Benutzerpfade unter SYSTEM, Secrets im Klartext). <span class="ui">Prüfskript hier ausführen</span> testet das Prüfskript auf deinem PC.</li>
+    <li>Tenants, Ziel, Zeitplan (täglich, stündlich, einmal) und Kontext → <span class="ui b">⬆ Hochladen &amp; zuweisen</span> (optional Pilotgruppe wie bei Apps).</li>
+    <li><span class="ui">📊 Ergebnisse</span>: je Gerät kein Problem / Problem / behoben / Fehler mit Skript-Ausgabe und Export. <span class="ui">▶ Jetzt auf Gerät …</span> startet das Paket sofort (Gerät muss online sein).</li>
+  </ol>
+  <h3 id="rem-intune">In Intune (vorhandene Wartungsskripte)</h3>
+  <p>Wie bei den Apps: alle Skripte der angehakten Tenants, auch die von Microsoft (nur lesen und zuweisen), nach Namen zusammengefasst; Filter <i>Nicht überall</i> zeigt Skripte, die in einem Tenant fehlen. Rechts stehen Zusammenfassung (ohne Problem, Problem, behoben, Fehler), Zuweisungen mit Zeitplan und „mit Reparatur“ sowie Skripte und Eigenschaften.</p>
+  <ul>
+    <li><b>Skripte ändern</b>: werden vor dem Speichern geprüft. Unterscheiden sich die Skripte zwischen Tenants (z. B. eigene IDs), steht das darüber – sie werden nur überschrieben, wenn du sie im Editor änderst, und nur nach Rückfrage.</li>
+    <li><span class="ui">In andere Tenants kopieren …</span>: legt das Skript mit Hersteller und Kontext in weiteren Tenants an, auf Wunsch mit Zuweisungen (Gruppen per Name; fehlt eine: nicht zuweisen oder <i>Alle Geräte</i>). Gibt es dort schon eines mit diesem Namen, wird der Tenant übersprungen.</li>
+    <li><span class="ui">In Bibliothek übernehmen</span>: z. B. um ein Skript mit KI zu überarbeiten und neu zu verteilen.</li>
+    <li><span class="ui">📊 Ergebnisse</span>, <span class="ui">▶ Jetzt auf Gerät …</span>, <span class="ui r">Löschen …</span> wie oben bzw. wie bei den Apps.</li>
+  </ul>
+  <div class="note warn"><b class="h">Lizenz und Berechtigungen</b>Remediations brauchen Windows Enterprise/Education E3/A3 (oder höher) und einmal je Tenant im Intune Admin Center: <i>Mandantenverwaltung › Connectors und Token › Windows-Datenverarbeitung › Windows-Lizenzüberprüfung</i>. Berechtigungen: <code>DeviceManagementScripts.ReadWrite.All</code>, <code>Group.Read.All</code>; für <i>Jetzt auf Gerät</i> zusätzlich <code>DeviceManagementManagedDevices.PrivilegedOperations.All</code>.</div>
+</section>
+
 <section id="secrets">
-  <h2><span class="n">6</span>Secrets und Ablaufdatum</h2>
-  <p>Neben dem Tenant steht, bis wann das Client Secret gültig ist. Gewarnt wird ab 30 Tagen (einstellbar): orange neben dem Tenant und in der Titelleiste, ab 7 Tagen rot.</p>
+  <h2><span class="n">8</span>Secrets und Ablaufdatum</h2>
+  <p>Bis wann das Client Secret gültig ist, steht in der Tenant-Leiste (Reiter Extensions) und unter Einstellungen › Tenants. Gewarnt wird ab 30 Tagen (einstellbar) in der Titelleiste – orange, ab 7 Tagen rot.</p>
   <table>
     <tr><th>Quelle</th><th>Wie</th></tr>
     <tr><td>Graph</td><td>beim Verbinden und beim Start (im Hintergrund, höchstens einmal am Tag). Das verwendete Secret wird an seinen ersten 3 Zeichen erkannt – hat die App mehrere Secrets, zählt genau das gespeicherte. Braucht <code>Application.Read.All</code>.</td></tr>
@@ -212,7 +272,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="update">
-  <h2><span class="n">7</span>Update</h2>
+  <h2><span class="n">9</span>Update</h2>
   <p>Beim Start wird im Hintergrund nach Updates gesucht; bei einer neuen Version wird <span class="ui">Update</span> gold. Klick: HU-MultiTenant schließt sich, <code>Pull.ps1</code> lädt alle Dateien, prüft jede gegen die SHA-256-Liste und die Signatur des Herausgebers und ersetzt erst dann. Danach startet das Tool neu.</p>
   <table>
     <tr><th>Rechtsklick auf Update</th><th>Wirkung</th></tr>
@@ -220,16 +280,20 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><td>Update-Einstellungen</td><td>Kanal <b>Stabil</b> (Standard) / <b>Test</b>, nur signierte Updates</td></tr>
     <tr><td>Info</td><td>Version, Kanal, Prüfung der installierten Version</td></tr>
   </table>
-  <p>Erhalten bleiben <code>Config\settings.json</code>, <code>Config\quick-snippets.json</code>, <code>Config\update.json</code>, <code>Logs\</code>, <code>Reports\</code>, eigene Extensions und <code>HU-MultiTenant.exe</code>.</p>
+  <p>Erhalten bleiben <code>Config\settings.json</code>, <code>Config\quick-snippets.json</code>, <code>Config\apps.json</code>, <code>Config\remediations.json</code>, <code>Config\update.json</code>, <code>Logs\</code>, <code>Reports\</code>, eigene Extensions und <code>HU-MultiTenant.exe</code>.</p>
 </section>
 
 <section id="dateien">
-  <h2><span class="n">8</span>Dateien</h2>
+  <h2><span class="n">10</span>Dateien</h2>
   <table>
     <tr><th>Pfad</th><th>Inhalt</th></tr>
     <tr><td><code>Config\settings.json</code></td><td>Tenants und Einstellungen (Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>Config\quick-snippets.json</code></td><td>Snippets (Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>Config\update.json</code></td><td>Update-Kanal, Signaturpflicht</td></tr>
+    <tr><td><code>Config\apps.json</code> · <code>Config\remediations.json</code></td><td>Apps- und Wartungs-Bibliothek mit Verteilstand je Tenant (Sicherung <code>.bak</code>)</td></tr>
+    <tr><td><code>Config\app-icons\</code></td><td>App-Symbole (PNG je App)</td></tr>
+    <tr><td><code>%LOCALAPPDATA%\HU-MultiTenant\Packages\</code> · <code>…\Sandbox\</code></td><td>gebaute App-Pakete (Knopf <span class="ui">Paket-Ordner</span>) · Testinstallationen mit Protokollen – liegt bewusst nicht in OneDrive</td></tr>
+    <tr><td><code>Tools\IntuneWinAppUtil.exe</code></td><td>Paketier-Werkzeug von Microsoft (wird beim ersten Hochladen geladen)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\*.cred</code></td><td>Client Secrets (DPAPI)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\ui-state.json</code></td><td>Fenster und letzte Auswahl</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\secret-expiry.json</code></td><td>zuletzt gelesene Ablaufdaten</td></tr>
@@ -240,7 +304,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="tasten">
-  <h2><span class="n">9</span>Tastenkürzel</h2>
+  <h2><span class="n">11</span>Tastenkürzel</h2>
   <table>
     <tr><th>Taste</th><th>Wirkung</th></tr>
     <tr><td><kbd>F1</kbd></td><td>diese Anleitung</td></tr>

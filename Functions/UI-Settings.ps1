@@ -49,6 +49,9 @@ function Open-HUSettings([string]$Tab = '', [string]$TenantKey = '') {
     if (Show-HUSettingsDialog -Tab $Tab -TenantKey $TenantKey) {
         Update-TenantDropdown
         Update-HUSecretDisplay
+        # Schulen-Haken in Apps/Wartung neu aufbauen (Auswahl der offenen Eintraege bleibt)
+        Save-HUAppForm; Update-HUAppTenantChecks; Show-HUAppForm $script:AppCurrent; Update-HUIntTenantChecks
+        Save-HURemForm; Update-HURemTenantChecks; Show-HURemForm $script:RemCurrent
     }
 }
 

@@ -212,7 +212,14 @@ function Update-DryRunBanner {
 # ============================================================================
 function Register-HUExtensionHandlers {
     # --- Extension Selected ---
+    # Klick auf eine Extension (z. B. aus Quick Script) -> zum Reiter Extensions wechseln
+    $script:Controls['lstExtensions'].Add_PreviewMouseLeftButtonUp({
+        $c = $script:Controls
+        if ($c['tabMain'].SelectedItem -ne $c['tabExtensions']) { $c['tabMain'].SelectedItem = $c['tabExtensions'] }
+    })
     $script:Controls['lstExtensions'].Add_SelectionChanged({
+        $c = $script:Controls
+        if ($c['lstExtensions'].SelectedItem -and $c['lstExtensions'].IsKeyboardFocusWithin -and $c['tabMain'].SelectedItem -ne $c['tabExtensions']) { $c['tabMain'].SelectedItem = $c['tabExtensions'] }
         $selectedItem = $script:Controls['lstExtensions'].SelectedItem
         if ($selectedItem -and $selectedItem.ExtensionObj) {
             Show-ExtensionDetails -Extension $selectedItem.ExtensionObj

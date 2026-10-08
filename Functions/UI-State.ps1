@@ -79,11 +79,18 @@ function Restore-HUWindowState {
 
     try {
         $lw = Get-HUStateValue 'LeftWidth'
-        if ($lw -and [double]$lw -ge 200) { $c['colLeft'].Width = [System.Windows.GridLength]::new([double]$lw) }
+        if ($lw -and [double]$lw -ge 200) { $c['colLeft'].Width = [System.Windows.GridLength]::new([double]$lw); $script:LeftWidthSaved = [double]$lw }
         $r = Get-HUStateValue 'QSEditorRatio'
         if ($r) { Set-HUStarPair $c['rowQSEditor'] $c['rowQSOutput'] ([double]$r) }
         $r = Get-HUStateValue 'ExtDetailsRatio'
         if ($r) { Set-HUStarPair $c['rowExtDetails'] $c['rowExtLog'] ([double]$r) }
+        # Reiter Apps / Wartung: Listenbreite und Aufteilung Formular/Ausgabe
+        foreach ($p in @(@('Apps', 'colAppsLeft', 'rowAppsForm', 'rowAppsLog'), @('Rem', 'colRemLeft', 'rowRemForm', 'rowRemLog'))) {
+            $w = Get-HUStateValue "$($p[0])LeftWidth"
+            if ($w -and [double]$w -ge 150 -and $c[$p[1]]) { $c[$p[1]].Width = [System.Windows.GridLength]::new([double]$w) }
+            $r = Get-HUStateValue "$($p[0])FormRatio"
+            if ($r -and $c[$p[2]]) { Set-HUStarPair $c[$p[2]] $c[$p[3]] ([double]$r) }
+        }
         $fs = Get-HUStateValue 'EditorFontSize'
         if ($fs -and [double]$fs -ge 8 -and [double]$fs -le 32) { $c['txtQSEditor'].FontSize = [double]$fs }
     } catch { Write-Verbose "[UIState] Aufteilung: $_" }
@@ -103,13 +110,23 @@ function Save-HUWindowState {
         }
         Set-HUStateValue 'Maximized' $isMax
         foreach ($old in @('windowLeft', 'windowTop', 'windowWidth', 'windowHeight')) { if ($script:UIState.PSObject.Properties[$old]) { $script:UIState.PSObject.Properties.Remove($old) } }
-        if ($c['colLeft'].ActualWidth -gt 0) { Set-HUStateValue 'LeftWidth' ([Math]::Round($c['colLeft'].ActualWidth)) }
+        $lw = if ($script:LeftHidden) { $script:LeftWidthSaved } else { $c['colLeft'].ActualWidth }
+        if ($lw -ge 200) { Set-HUStateValue 'LeftWidth' ([Math]::Round($lw)) }
         $r = Get-HURatio $c['rowQSEditor'].ActualHeight $c['rowQSOutput'].ActualHeight
         if ($r) { Set-HUStateValue 'QSEditorRatio' $r }
         $r = Get-HURatio $c['rowExtDetails'].ActualHeight $c['rowExtLog'].ActualHeight
         if ($r) { Set-HUStateValue 'ExtDetailsRatio' $r }
+        foreach ($p in @(@('Apps', 'colAppsLeft', 'rowAppsForm', 'rowAppsLog'), @('Rem', 'colRemLeft', 'rowRemForm', 'rowRemLog'))) {
+            if (-not $c[$p[1]]) { continue }
+            # nur gemessene Werte speichern (Reiter war sichtbar)
+            if ($c[$p[1]].ActualWidth -ge 150) { Set-HUStateValue "$($p[0])LeftWidth" ([Math]::Round($c[$p[1]].ActualWidth)) }
+            $r = Get-HURatio $c[$p[2]].ActualHeight $c[$p[3]].ActualHeight
+            if ($r) { Set-HUStateValue "$($p[0])FormRatio" $r }
+        }
         Set-HUStateValue 'EditorFontSize' $c['txtQSEditor'].FontSize
-        Set-HUStateValue 'LastTab' $(if ($c['tabMain'].SelectedItem -eq $c['tabExtensions']) { 'Extensions' } else { 'QuickScript' })
+        $sel = $c['tabMain'].SelectedItem
+        $last = if ($sel -eq $c['tabExtensions']) { 'Extensions' } elseif ($sel -eq $c['tabApps']) { 'Apps' } elseif ($sel -eq $c['tabMaint']) { 'Wartung' } else { 'QuickScript' }
+        Set-HUStateValue 'LastTab' $last
     } catch { Write-Verbose "[UIState] Erfassen: $_" }
     Save-HUUIState
 }
@@ -128,7 +145,34 @@ function Select-HUStartTab {
     $mode = 'QuickScript'
     try { if ($script:Settings.ui.PSObject.Properties['startTab'] -and "$($script:Settings.ui.startTab)") { $mode = "$($script:Settings.ui.startTab)" } } catch { }
     if ($mode -eq 'Last') { $mode = Get-HUStateValue 'LastTab' 'QuickScript' }
-    $script:Controls['tabMain'].SelectedItem = if ($mode -eq 'Extensions') { $script:Controls['tabExtensions'] } else { $script:Controls['tabQuickScript'] }
+    $tab = switch ($mode) { 'Extensions' { 'tabExtensions' } 'Apps' { 'tabApps' } 'Wartung' { 'tabMaint' } default { 'tabQuickScript' } }
+    $script:Controls['tabMain'].SelectedItem = $script:Controls[$tab]
+    Update-HULeftPanel
+}
+
+# Extension-Liste links nur dort zeigen, wo sie gebraucht wird (nicht in Apps/Wartung - mehr Platz)
+$script:LeftHidden = $false
+$script:LeftWidthSaved = 320.0
+function Update-HULeftPanel {
+    $c = $script:Controls
+    $sel = $c['tabMain'].SelectedItem
+    # Tenant-Leiste (Verbinden/Trennen) gilt nur fuer Extensions - Quick Script, Apps und Wartung waehlen Tenants selbst
+    $c['pnlTenantBar'].Visibility = $(if ($sel -eq $c['tabExtensions']) { 'Visible' } else { 'Collapsed' })
+    $hide = ($sel -eq $c['tabApps'] -or $sel -eq $c['tabMaint'])
+    if ($hide -eq $script:LeftHidden) { return }
+    if ($hide) {
+        if ($c['colLeft'].ActualWidth -ge 200) { $script:LeftWidthSaved = $c['colLeft'].ActualWidth }
+        $c['colLeft'].MinWidth = 0
+        $c['colLeft'].Width = [System.Windows.GridLength]::new(0)
+        $c['colSplit'].Width = [System.Windows.GridLength]::new(0)
+        $c['pnlLeft'].Visibility = 'Collapsed'; $c['splLeft'].Visibility = 'Collapsed'
+    } else {
+        $c['pnlLeft'].Visibility = 'Visible'; $c['splLeft'].Visibility = 'Visible'
+        $c['colSplit'].Width = [System.Windows.GridLength]::new(8)
+        $c['colLeft'].Width = [System.Windows.GridLength]::new([Math]::Max(200, $script:LeftWidthSaved))
+        $c['colLeft'].MinWidth = 200
+    }
+    $script:LeftHidden = $hide
 }
 
 # Unterfenster (z. B. Snippet-Verwaltung): Groesse/Position merken
