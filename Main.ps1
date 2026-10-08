@@ -65,7 +65,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 foreach ($f in @('Core-Async', 'Core-Update', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-                 'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-Support')) {
+                 'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-Support')) {
     $fp = Join-Path $script:AppRoot "Functions\$f.ps1"
     if (-not (Test-Path -LiteralPath $fp)) { Show-HUFatal "Datei fehlt: $fp`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     . $fp
@@ -129,6 +129,7 @@ Register-HUUpdateHandlers
 Register-HUAppHandlers
 Register-HUIntAppHandlers
 Register-HURemHandlers
+Register-HURintHandlers
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
 $script:Controls['btnSupport'].Add_Click({ Show-HUSupport })
 # Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
@@ -252,6 +253,18 @@ $script:Window.Add_ContentRendered({
                 if (-not (Invoke-HURemCheck)) { throw 'Wartung: Beispiel hat Pruef-Fehler' }
                 [void]$script:RemLib.Remove($script:RemCurrent); $script:RemCurrent = $null; Update-HURemList; Show-HURemForm $null
                 if (-not $script:Controls['rtbApps'].ContextMenu -or -not $script:Controls['rtbRem'].ContextMenu) { throw 'Rechtsklick-Menue Apps/Wartung fehlt' }
+                # Wartung "In Intune" mit vorgegebenen Daten
+                Set-HUStateValue 'rintTenants' @($k0); Update-HURintTenantChecks
+                $script:RintRaw[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'Temp aufraeumen'; Description = 'x'; Publisher = 'HU'; Id = 'r1'; RunAs = 'system'; RunAs32 = $false; Global = $false; Version = '1'; Modified = ''; HasRemediation = $true; AssignKnown = $true
+                            Assignments = @([pscustomobject]@{ Key = 'group|lehrer'; Kind = 'group'; GroupName = 'Lehrer'; Ziel = 'Lehrer'; Zeitplan = 'taeglich um 08:00'; Reparatur = 'ja'; Schedule = [pscustomobject]@{ Type = 'daily'; Interval = 1; Time = '08:00'; Date = '' } }) }); Error = ''; Time = Get-Date }
+                Set-HURemMode 'int'
+                if ($script:Controls['pnlRemIntRight'].Visibility -ne 'Visible' -or @($script:Controls['lstRint'].ItemsSource).Count -ne 1) { throw 'Wartung In Intune: Liste' }
+                $script:RintCurrent = $script:RintItems[0]; $script:RintDetail = @{ $k0 = [pscustomobject]@{ Tenant = $k0; Id = 'r1'; Name = 'Temp aufraeumen'; Description = 'x'; Publisher = 'HU'; RunAs = 'system'; RunAs32 = $false; Global = $false; Detection = "Write-Output 'ok'`nexit 0"; Remediation = ''; Assignments = @($script:RintRaw[$k0].Rows[0].Assignments); Summary = '' } }
+                Update-HURintAssignGrid
+                if (@($script:Controls['gridRintAssign'].ItemsSource).Count -ne 1) { throw 'Wartung In Intune: Zuweisungen' }
+                $n0 = $script:RemLib.Count; Copy-HURintToLib
+                if ($script:RemLib.Count -ne $n0 + 1 -or $script:RemCurrent.TargetGroup -ne 'Lehrer' -or $script:RemMode -ne 'lib') { throw 'Wartung: In Bibliothek uebernehmen' }
+                [void]$script:RemLib.Remove($script:RemCurrent); $script:RemCurrent = $null; $script:RintCurrent = $null; $script:RintDetail = @{}; Update-HURemList; Show-HURemForm $null
                 $steps += 'Wartung'
                 $script:Controls['tabMain'].SelectedItem = $script:Controls['tabQuickScript']
                 if ($script:LeftHidden -or $script:Controls['colLeft'].Width.Value -lt 200) { throw 'Extension-Liste kommt nicht zurueck' }
@@ -329,6 +342,7 @@ Initialize-HUQuickScript
 Initialize-HUApps
 Initialize-HUIntApps
 Initialize-HUMaint
+Initialize-HURint
 Restore-HUWindowState
 Select-HUStartTab
 Write-HULogOK "Bereit - $(@($script:Settings.tenants).Count) Tenant(s), $($script:ExtensionItems.Count) Extension(s)."

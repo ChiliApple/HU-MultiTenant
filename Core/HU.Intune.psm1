@@ -590,10 +590,10 @@ function Resolve-HUTargets {
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][object[]]$Targets)
     foreach ($t in $Targets) {
         $h = @{ Kind = "$($t.Kind)"; Intent = "$($t.Intent)"; GroupId = ''; Label = '' }
-        if ($h.Kind -eq 'group') {
+        if ($h.Kind -in 'group', 'exclude') {
             $g = Find-HUGroup -TenantKey $TenantKey -Settings $Settings -Name "$($t.GroupName)"
             if (-not $g) { throw "Gruppe '$($t.GroupName)' gibt es in diesem Tenant nicht" }
-            $h.GroupId = "$($g.id)"; $h.Label = "Gruppe '$($g.displayName)'"
+            $h.GroupId = "$($g.id)"; $h.Label = $(if ($h.Kind -eq 'exclude') { "Ausschluss '$($g.displayName)'" } else { "Gruppe '$($g.displayName)'" })
         } else { $h.Label = $(if ($h.Kind -eq 'allUsers') { 'Alle Benutzer' } else { 'Alle Geraete' }) }
         $h
     }
@@ -1212,6 +1212,8 @@ function Set-HURemediationAssignment {
     }
     foreach ($t in $Targets) {
         $tg = New-HUAssignmentTarget $t
+        # Ausschluss: kein Zeitplan
+        if ("$($t.Kind)" -eq 'exclude') { $list[(Get-HUTargetKey $tg)] = @{ target = $tg; runRemediationScript = $false; runSchedule = $null }; continue }
         $list[(Get-HUTargetKey $tg)] = @{ target = $tg; runRemediationScript = $RunRemediation; runSchedule = (New-HURunSchedule $Schedule) }
     }
     [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id/assign" -Method POST -Body @{ deviceHealthScriptAssignments = @($list.Values) })
@@ -1245,6 +1247,134 @@ function Start-HURemediationOnDevice {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$DeviceId, [Parameter(Mandatory)][string]$Id)
     [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/managedDevices/$DeviceId/initiateOnDemandProactiveRemediation" -Method POST -Body @{ scriptPolicyId = $Id })
+}
+
+# ============================================================================
+# Wartung "In Intune": vorhandene Wartungsskripte lesen, aendern, loeschen
+# ============================================================================
+function ConvertFrom-HUBase64Text([string]$B64) {
+    if (-not "$B64".Trim()) { return '' }
+    try { $b = [Convert]::FromBase64String("$B64") } catch { return '' }
+    if ($b.Length -ge 2 -and $b[0] -eq 0xFF -and $b[1] -eq 0xFE) { return [Text.Encoding]::Unicode.GetString($b, 2, $b.Length - 2) }
+    if ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) { return (New-Object System.Text.UTF8Encoding $false).GetString($b, 3, $b.Length - 3) }
+    return (New-Object System.Text.UTF8Encoding $false).GetString($b)
+}
+
+# runSchedule -> Felder (Type daily|hourly|once, Interval, Time HH:mm, Date TT.MM.JJJJ) und Text
+function ConvertFrom-HURunSchedule($S) {
+    $r = [ordered]@{ Type = 'daily'; Interval = 1; Time = '08:00'; Date = ''; Text = '' }
+    if (-not $S) { $r.Text = '(kein Zeitplan)'; return [pscustomobject]$r }
+    $type = "$($S.'@odata.type')"
+    $iv = 1; if ([int]::TryParse("$($S.interval)", [ref]$iv)) { $r.Interval = [Math]::Max(1, $iv) }
+    if ("$($S.time)" -match '^(\d{1,2}):(\d{2})') { $r.Time = '{0:00}:{1}' -f [int]$Matches[1], $Matches[2] }
+    $utc = $(if ($S.useUtc) { ' (UTC)' } else { '' })
+    if ($type -match 'Hourly') { $r.Type = 'hourly'; $r.Text = "alle $($r.Interval) Std." }
+    elseif ($type -match 'RunOnce') {
+        $r.Type = 'once'
+        if ("$($S.date)" -match '^(\d{4})-(\d{2})-(\d{2})') { $r.Date = "$($Matches[3]).$($Matches[2]).$($Matches[1])" }
+        $r.Text = "einmal am $($r.Date) um $($r.Time)$utc"
+    } else { $r.Text = "$(if ($r.Interval -gt 1) { "alle $($r.Interval) Tage" } else { 'taeglich' }) um $($r.Time)$utc" }
+    return [pscustomobject]$r
+}
+
+# Zuweisung eines Wartungsskripts -> lesbare Zeile; Key = Art|Gruppenname wie bei Apps
+function ConvertFrom-HURemAssignment($A, [hashtable]$Names = @{}) {
+    $b = ConvertFrom-HUAssignment ([pscustomobject]@{ target = $A.target; intent = ''; settings = $null }) $Names
+    $sc = ConvertFrom-HURunSchedule $A.runSchedule
+    return [pscustomobject]@{
+        Key = $b.Key; Kind = $b.Kind; GroupName = $b.GroupName; Ziel = $b.Ziel
+        Zeitplan = $(if ($b.Kind -eq 'exclude') { '' } else { $sc.Text }); Reparatur = $(if ($b.Kind -eq 'exclude') { '' } elseif ($A.runRemediationScript) { 'ja' } else { 'nein' })
+        Schedule = $sc
+    }
+}
+
+# Alle Wartungsskripte eines Tenants (mit Zuweisungen, wenn Intune $expand erlaubt)
+function Get-HUTenantRemediationList {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings)
+    $withAsg = $true
+    try { $all = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceManagement/deviceHealthScripts?$expand=assignments') }
+    catch {
+        if ("$($_.Exception.Message)" -match '403|Forbidden|Authorization') { throw }
+        $withAsg = $false
+        $all = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceManagement/deviceHealthScripts')
+    }
+    $names = @{}
+    if ($withAsg) {
+        $gids = @($all | ForEach-Object { @($_.assignments) } | Where-Object { $_ } | ForEach-Object { $_.target.groupId } | Where-Object { $_ })
+        if ($gids.Count) { $names = Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids $gids }
+    }
+    Write-HULog -Message "$($all.Count) Wartungsskript(e) gelesen" -Level 'INFO' -Tenant $TenantKey
+    foreach ($s in $all) {
+        [pscustomobject]@{
+            Name = "$($s.displayName)"; Description = "$($s.description)"; Publisher = "$($s.publisher)"; Id = "$($s.id)"
+            RunAs = $(if ("$($s.runAsAccount)" -eq 'user') { 'user' } else { 'system' }); RunAs32 = [bool]$s.runAs32Bit
+            Global = [bool]$s.isGlobalScript; Version = "$($s.version)"; Modified = "$($s.lastModifiedDateTime)"
+            HasRemediation = $(if ($s.PSObject.Properties['remediationScriptContent']) { [bool]"$($s.remediationScriptContent)".Trim() } else { $null })
+            AssignKnown = $withAsg
+            Assignments = @(if ($withAsg) { @($s.assignments) | Where-Object { $_ } | ForEach-Object { ConvertFrom-HURemAssignment $_ $names } })
+        }
+    }
+}
+
+# Skripte, Zuweisungen und Zusammenfassung eines Wartungsskripts
+function Get-HURemediationDetail {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Id)
+    $s = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id"
+    $asg = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id/assignments")
+    $names = Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids @($asg | ForEach-Object { $_.target.groupId })
+    $sum = ''
+    try {
+        $x = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id/runSummary"
+        if ($x) {
+            $err = [int]"0$($x.detectionScriptErrorDeviceCount)" + [int]"0$($x.remediationScriptErrorDeviceCount)"
+            $sum = "ohne Problem $([int]"0$($x.noIssueDetectedDeviceCount)") | Problem $([int]"0$($x.issueDetectedDeviceCount)") | behoben $([int]"0$($x.issueRemediatedDeviceCount)") | wieder aufgetreten $([int]"0$($x.issueReoccurredDeviceCount)") | Fehler $err | ausstehend $([int]"0$($x.detectionScriptPendingDeviceCount)")"
+            try { if ($x.lastScriptRunDateTime) { $sum += " | letzter Lauf $(([datetime]$x.lastScriptRunDateTime).ToLocalTime().ToString('dd.MM. HH:mm'))" } } catch { }
+        }
+    } catch { }
+    return [pscustomobject]@{
+        Tenant = $TenantKey; Id = $Id; Name = "$($s.displayName)"; Description = "$($s.description)"; Publisher = "$($s.publisher)"
+        RunAs = $(if ("$($s.runAsAccount)" -eq 'user') { 'user' } else { 'system' }); RunAs32 = [bool]$s.runAs32Bit; Global = [bool]$s.isGlobalScript
+        Detection = (ConvertFrom-HUBase64Text "$($s.detectionScriptContent)"); Remediation = (ConvertFrom-HUBase64Text "$($s.remediationScriptContent)")
+        Assignments = @($asg | ForEach-Object { ConvertFrom-HURemAssignment $_ $names }); Summary = $sum
+    }
+}
+
+# Zuweisungen entfernen, deren Key (Art|Gruppenname) in -Keys steht
+function Remove-HURemediationAssignments {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][string[]]$Keys)
+    $cur = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id/assignments")
+    $names = Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids @($cur | ForEach-Object { $_.target.groupId })
+    $keep = New-Object System.Collections.Generic.List[object]
+    $removed = 0
+    foreach ($a in $cur) {
+        if ($Keys -contains (ConvertFrom-HURemAssignment $a $names).Key) { $removed++; continue }
+        $keep.Add(@{ target = $a.target; runRemediationScript = [bool]$a.runRemediationScript; runSchedule = $a.runSchedule })
+    }
+    if ($removed) { [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id/assign" -Method POST -Body @{ deviceHealthScriptAssignments = @($keep.ToArray()) }) }
+    return $removed
+}
+
+# Felder aendern (nur die uebergebenen Schluessel: Name, Description, RunAs, RunAs32, Detection, Remediation)
+function Update-HURemediation {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][hashtable]$Values)
+    $body = @{ '@odata.type' = '#microsoft.graph.deviceHealthScript' }
+    if ($Values.ContainsKey('Name')) { $body.displayName = "$($Values.Name)" }
+    if ($Values.ContainsKey('Description')) { $body.description = "$($Values.Description)" }
+    if ($Values.ContainsKey('RunAs')) { $body.runAsAccount = $(if ("$($Values.RunAs)" -eq 'user') { 'user' } else { 'system' }) }
+    if ($Values.ContainsKey('RunAs32')) { $body.runAs32Bit = [bool]$Values.RunAs32 }
+    if ($Values.ContainsKey('Detection')) { $body.detectionScriptContent = (ConvertTo-HUBase64Utf8 "$($Values.Detection)") }
+    if ($Values.ContainsKey('Remediation')) { $body.remediationScriptContent = (ConvertTo-HUBase64Utf8 "$($Values.Remediation)") }
+    [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id" -Method PATCH -Body $body)
+}
+
+function Remove-HURemediation {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Id)
+    [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id" -Method DELETE)
 }
 
 # ============================================================================
@@ -1594,7 +1724,7 @@ Export-ModuleMember -Function @(
     'Get-HUAppKindFromType', 'Get-HUGroupNames', 'ConvertFrom-HUAssignment', 'Get-HUTenantAppList', 'Get-HUAppAssignmentRows', 'Remove-HUAppAssignments', 'Update-HUAppProperties',
     'Get-HUAppIconBytes', 'Get-HUAppRelationRows', 'Set-HUAppRelations', 'Remove-HUIntuneApp', 'Invoke-HUExportReport', 'Get-HUErrorText', 'ConvertTo-HUInstallStateText', 'Get-HUAppInstallStatus',
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
-    'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
+    'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'ConvertFrom-HUSandboxEntry',
     'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',

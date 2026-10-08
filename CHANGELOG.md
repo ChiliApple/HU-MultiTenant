@@ -7,6 +7,7 @@
   - Setup-Datei hinzufuegen oder auf die Liste ziehen: Name, Version, Befehle und Erkennung werden ausgelesen (MSI vollstaendig; EXE: Inno, NSIS, InstallShield, WiX, Advanced Installer, Squirrel mit stillem Schalter)
   - **Testinstallation in der Windows Sandbox**: installiert im Wegwerf-Windows, schlaegt Erkennung, Deinstallation (mit Schalter fuer stilles Entfernen, z. B. NSIS /S) und Symbol vor, testet die Deinstallation mit; das Ergebnis holt HU-MultiTenant vor das Sandbox-Fenster. Ist die Sandbox nicht aktiviert, aktiviert sie ein Knopf (Admin, Neustart)
   - Paket wird einmal gebaut und je Tenant hochgeladen; unveraenderte Pakete werden nicht erneut hochgeladen; neue Version aktualisiert dieselbe Intune-App
+  - **Updates**: neue Setup-Datei auf die Liste ziehen oder "Andere Datei ..." - wird als neue Version derselben App erkannt, auch wenn die Versionsnummer im Namen steht; beim Anlegen wird ein Name ohne Version vorgeschlagen
   - Ziel Gruppe (per Name je Tenant gesucht), Alle Geraete oder Alle Benutzer; Erforderlich/Verfuegbar/Deinstallieren, Frist, Hinweise; vorhandene Zuweisungen bleiben erhalten
   - optional **Pilotgruppe** und spaeter "Fuer alle freigeben"
   - Ziel **Keine Zuweisung** (nur hochladen/aktualisieren), auch bei Wartung
@@ -17,6 +18,7 @@
   - Inno-Setups werden fuer alle Benutzer installiert (/ALLUSERS); Inno-Deinstallation immer /VERYSILENT /SUPPRESSMSGBOXES, laufende App wird vorher beendet; Warnung, wenn ein Setup nur ins Benutzerprofil installiert; bestehende Eintraege werden beim Oeffnen angepasst
   - Installationsstatus mit Klartext (Installiert, Fehlgeschlagen, Nicht installiert, Ausstehend ...) statt Zahlencodes
   - Statusbericht: kurze 503-Fehler von Intune beim Warten werden abgefangen; Hinweis fuer 0x87D300C9; Sandbox meldet unsichtbare Setup-Hauptfenster (Inno) nicht mehr als Dialog
+  - Ausschluss-Gruppen bei Zuweisungen werden korrekt aufgeloest
   - In Intune: Abhaengigkeiten zeigen auch "Benoetigt von" / "Ersetzt durch"
   - Testinstallation zeigt bei Problemen die Protokolle (Befehlsausgabe, MSI-Protokoll, neue Log-Dateien, MSI-Ereignisse) direkt in der Ausgabe
   - **Abhaengigkeiten** (z. B. Treiber, Laufzeitumgebungen): aus der Bibliothek (werden mit hochgeladen, auch mehrstufig, Kreise werden erkannt) oder **bereits in Intune vorhandene Win32-Apps** (Auswahl mit Filter und "vorhanden in x von y Tenants", je Tenant per Name verknuepft); automatisch installieren oder nur pruefen
@@ -28,6 +30,7 @@
   - **Pruefen** ohne Ausfuehrung (exit 1, Neustart, Eingaben, PowerShell-7-Syntax, Benutzerpfade unter SYSTEM) und Pruefskript lokal testen
   - Verteilen mit Zeitplan (taeglich, stuendlich, einmal), optional Pilotgruppe; **Ergebnisse** je Geraet; **Jetzt auf Geraet ausfuehren**
   - 5 Beispiele (Speicherplatz, Zeitdienst, Windows Update, Neustart ueberfaellig, BitLocker)
+  - **In Intune**: alle vorhandenen Wartungsskripte der angehakten Tenants (auch von Hand angelegte und die von Microsoft), nach Namen zusammengefasst. Zusammenfassung (Problem, behoben, Fehler), Zuweisungen mit Zeitplan und Ausschluss ergaenzen/entfernen, Skripte und Eigenschaften aendern (mit Pruefung, abweichende Fassungen je Tenant werden angezeigt), Ergebnisse, Jetzt auf Geraet, **In Bibliothek uebernehmen**, Loeschen mit doppelter Rueckfrage
 - **Gruppen suchen** (Lupe neben Ziel- und Pilotgruppe): liest die Gruppen der angehakten Tenants, Filter, zeigt in welchen Tenants eine Gruppe fehlt
 - **Support** (Knopf oben): packt Protokolle, Testinstallationen, Einstellungen und App-Bibliothek anonymisiert (Tenants, Domaenen, Benutzer, IDs, IP-Adressen, Windows-Benutzer) in ein ZIP auf dem Desktop; E-Mail (klassisches Outlook mit Anhang, sonst Standard-Mailprogramm) oder GitHub-Issue im Browser (ohne Protokolle); Inhalt vorher ansehbar
 - In den Reitern Apps und Wartung ist die Extension-Liste links ausgeblendet (mehr Platz); Start-Reiter auch Apps oder Wartung

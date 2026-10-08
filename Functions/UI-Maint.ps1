@@ -20,6 +20,7 @@ $script:RemLib = New-Object System.Collections.Generic.List[object]
 $script:RemCurrent = $null
 $script:RemLoading = $false
 $script:RemLastResults = @()
+$script:RemLastResultsName = ''
 $script:RemPickBusy = $false
 
 function Get-HURemLibPath { return (Join-Path $script:AppRoot 'Config\remediations.json') }
@@ -451,9 +452,15 @@ function Start-HURemResults {
     $deps = @($r.Deployments | Where-Object { $_.ScriptId })
     $sel = @($deps | Where-Object { $checked -contains $_.Tenant }); if (-not $sel.Count) { $sel = $deps }
     $map = @{}; foreach ($d in $sel) { $map[$d.Tenant] = $d.ScriptId }
-    $script:RemJobId = $r.Id
-    Add-HURtbLine $script:Controls['rtbRem'] "=== Ergebnisse: $($r.Name) ===" '#4FC3F7'
-    [void](Start-HUJob -Name 'Rem' -Output $script:Controls['rtbRem'] -Vars @{ Map = $map } -Code {
+    Start-HURemResultsJob -Name $r.Name -Map $map -Rtb $script:Controls['rtbRem'] -JobName 'Rem'
+}
+
+# Ergebnisse je Geraet (Bibliothek und "In Intune"); Map = TenantKey -> Skript-ID
+function Start-HURemResultsJob([string]$Name, [hashtable]$Map, $Rtb, [string]$JobName) {
+    $script:RemResName = $Name
+    $script:RemResRtb = $Rtb
+    Add-HURtbLine $Rtb "=== Ergebnisse: $Name ===" '#4FC3F7'
+    [void](Start-HUJob -Name $JobName -Output $Rtb -Vars @{ Map = $Map } -Code {
             foreach ($tk in $Map.Keys) {
                 try {
                     $rows = @(Get-HURemediationRunStates -TenantKey $tk -Settings $Settings -Id $Map[$tk])
@@ -467,19 +474,24 @@ function Start-HURemResults {
             param($Result, $Errors)
             $rows = @($Result | Where-Object { $_ -and $_.PSObject.Properties['Geraet'] })
             $script:RemLastResults = $rows
-            Update-HURemButtons
-            if (-not $rows.Count) { Add-HURtbLine $script:Controls['rtbRem'] 'Noch keine Ergebnisse - die Geraete melden sich nach dem ersten geplanten Lauf.' '#FFB74D'; return }
+            $script:RemLastResultsName = $script:RemResName
+            Update-HURemButtons; Update-HURintButtons
+            if (-not $rows.Count) { Add-HURtbLine $script:RemResRtb 'Noch keine Ergebnisse - die Geraete melden sich nach dem ersten geplanten Lauf.' '#FFB74D'; return }
             $view = foreach ($x in $rows) { $o = [ordered]@{}; foreach ($p in $x.PSObject.Properties) { if ($p.Name -ne 'DeviceId') { $o[$p.Name] = $p.Value } }; $o.Tenant = Get-HUTenantDisplayName $x.Tenant; [pscustomobject]$o }
-            $rem = Get-HURemById $script:RemJobId
-            Show-HUQSTable -Title "Wartung $(if ($rem) { $rem.Name })" -Objects @($view) -FilePrefix 'Wartung'
+            Show-HUQSTable -Title "Wartung $($script:RemResName)" -Objects @($view) -FilePrefix 'Wartung'
         })
-    Update-HURemButtons
+    Update-HURemButtons; Update-HURintButtons
 }
 
 function Show-HURemRunNow {
     $r = $script:RemCurrent
     if (-not $r) { return }
-    $deps = @($r.Deployments | Where-Object { $_.ScriptId })
+    Show-HURemRunNowDialog -Name $r.Name -Deps @($r.Deployments | Where-Object { $_.ScriptId }) -Rtb $script:Controls['rtbRem'] -JobName 'Rem'
+}
+
+# Deps = Objekte mit Tenant und ScriptId
+function Show-HURemRunNowDialog([string]$Name, $Deps, $Rtb, [string]$JobName) {
+    $deps = @($Deps | Where-Object { $_ })
     if (-not $deps.Count) { return }
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -506,15 +518,17 @@ function Show-HURemRunNow {
     $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
     $w = $d.Window; $c = $d.C
-    $c.lblHint.Text = "'$($r.Name)' sofort ausfuehren (Pruefung und, wenn noetig, Reparatur). Das Geraet muss online sein; das Ergebnis erscheint nach ein paar Minuten unter 'Ergebnisse'."
+    $c.lblHint.Text = "'$Name' sofort ausfuehren (Pruefung und, wenn noetig, Reparatur). Das Geraet muss online sein; das Ergebnis erscheint nach ein paar Minuten unter 'Ergebnisse'."
     foreach ($dp in $deps) { $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = Get-HUTenantDisplayName $dp.Tenant; $it.Tag = $dp.Tenant; [void]$c.cmbTenant.Items.Add($it) }
     $c.cmbTenant.SelectedIndex = 0
+    # Ergebnisliste nur verwenden, wenn sie zu diesem Skript gehoert
+    $results = @(if ("$($script:RemLastResultsName)" -eq $Name) { $script:RemLastResults })
     $fill = {
         $c.cmbDevice.Items.Clear()
         $script:RemPickBusy = $true
         $tk = "$($c.cmbTenant.SelectedItem.Tag)"
         # zuerst Geraete mit Problem, dann der Rest
-        $list = @($script:RemLastResults | Where-Object { $_.Tenant -eq $tk } | Sort-Object @{ Expression = { $_.Pruefung -ne 'Problem gefunden' -and $_.Reparatur -notmatch 'fehl' } }, Geraet)
+        $list = @($results | Where-Object { $_.Tenant -eq $tk } | Sort-Object @{ Expression = { $_.Pruefung -ne 'Problem gefunden' -and $_.Reparatur -notmatch 'fehl' } }, Geraet)
         foreach ($e in $list) { [void]$c.cmbDevice.Items.Add("$($e.Geraet)$(if ($e.Pruefung -eq 'Problem gefunden' -or $e.Reparatur -match 'fehl') { "  ($($e.Pruefung) / $($e.Reparatur))" })") }
         $vis = $(if ($list.Count) { 'Visible' } else { 'Collapsed' })
         $c.cmbDevice.Visibility = $vis; $c.lblPick.Visibility = $vis
@@ -537,8 +551,8 @@ function Show-HURemRunNow {
     $tk = "$($c.cmbTenant.SelectedItem.Tag)"
     $names = @($c.txtDevice.Text -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $sid = (@($deps) | Where-Object { $_.Tenant -eq $tk } | Select-Object -First 1).ScriptId
-    Add-HURtbLine $script:Controls['rtbRem'] "=== Jetzt ausfuehren: $($r.Name) auf $($names -join ', ') ===" '#4FC3F7'
-    [void](Start-HUJob -Name 'Rem' -Output $script:Controls['rtbRem'] -Vars @{ Tk = $tk; Names = $names; Sid = $sid } -Code {
+    Add-HURtbLine $Rtb "=== Jetzt ausfuehren: $Name auf $($names -join ', ') ===" '#4FC3F7'
+    [void](Start-HUJob -Name $JobName -Output $Rtb -Vars @{ Tk = $tk; Names = $names; Sid = $sid } -Code {
             foreach ($n in $Names) {
                 try {
                     $devs = @(Find-HUManagedDevice -TenantKey $Tk -Settings $Settings -Name $n)
@@ -552,8 +566,8 @@ function Show-HURemRunNow {
                     Write-HULog -Message "${n}: $($_.Exception.Message)$hint" -Level 'ERROR' -Tenant $Tk
                 }
             }
-        } -OnDone { param($Result, $Errors) Update-HURemButtons })
-    Update-HURemButtons
+        } -OnDone { param($Result, $Errors) Update-HURemButtons; Update-HURintButtons })
+    Update-HURemButtons; Update-HURintButtons
 }
 
 # ----------------------------------------------------------------------------

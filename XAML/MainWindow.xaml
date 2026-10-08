@@ -789,6 +789,41 @@
 
                         <Border Grid.Column="0" Background="#252526" CornerRadius="4" Padding="8">
                             <DockPanel>
+                            <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="0,0,0,8">
+                                <Button x:Name="btnRemModeLib" Content="Bibliothek" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="0,0,2,0"
+                                        ToolTip="Eigene Wartungspakete: mit KI erstellen, pruefen, verteilen"/>
+                                <Button x:Name="btnRemModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                        ToolTip="Alle Wartungsskripte, die schon in Intune liegen: Zuweisungen, Skripte, Ergebnisse, Loeschen"/>
+                            </UniformGrid>
+                            <Grid>
+                            <DockPanel x:Name="pnlRemIntLeft" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Top" Text="Wartung in Intune" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="spRintTenants" Margin="0,0,0,4"/>
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                    <Button x:Name="btnRintLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
+                                    <ComboBox x:Name="cmbRintType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="96" Margin="4,0,0,0">
+                                        <ComboBoxItem Content="Alle" Tag="" IsSelected="True"/>
+                                        <ComboBoxItem Content="Eigene" Tag="own"/>
+                                        <ComboBoxItem Content="Microsoft" Tag="global"/>
+                                    </ComboBox>
+                                    <Grid>
+                                        <TextBox x:Name="txtRintFilter" Style="{StaticResource DarkTextBox}"/>
+                                        <TextBlock x:Name="lblRintFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                    </Grid>
+                                </DockPanel>
+                                <TextBlock DockPanel.Dock="Bottom" x:Name="lblRintState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                <ListBox x:Name="lstRint" Style="{StaticResource DarkListBox}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2">
+                                                <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlRemLibLeft">
                                 <TextBlock DockPanel.Dock="Top" Text="Wartungspakete" Style="{StaticResource SectionTitle}"/>
                                 <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                                     <Button x:Name="btnRemNew" Content="+ Neu" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"/>
@@ -807,6 +842,8 @@
                                     </ListBox.ItemTemplate>
                                 </ListBox>
                             </DockPanel>
+                            </Grid>
+                            </DockPanel>
                         </Border>
 
                         <GridSplitter Grid.Column="1" Width="6" Background="#3E3E42" Opacity="0.4" HorizontalAlignment="Center" ResizeBehavior="PreviousAndNext"/>
@@ -817,7 +854,98 @@
                                 <RowDefinition Height="6"/>
                                 <RowDefinition x:Name="rowRemLog" Height="*" MinHeight="60"/>
                             </Grid.RowDefinitions>
-                            <DockPanel Grid.Row="0">
+                            <Grid Grid.Row="0">
+                            <DockPanel x:Name="pnlRemIntRight" Visibility="Collapsed">
+                            <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                <Button x:Name="btnRintResults" Content="&#x1F4CA; Ergebnisse" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Ergebnis je Geraet: Problem gefunden, behoben, Fehler, Ausgabe"/>
+                                <Button x:Name="btnRintRunNow" Content="&#x25B6; Jetzt auf Geraet ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Sofort auf einem Geraet ausfuehren (Geraet muss online sein)"/>
+                                <Button x:Name="btnRintToLib" Content="In Bibliothek uebernehmen" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Skripte und Verteilung in die eigene Bibliothek holen (z. B. um sie mit KI zu ueberarbeiten)"/>
+                                <Button x:Name="btnRintReloadOne" Content="&#x21BB; Neu laden" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRintPortal" Content="Im Portal oeffnen" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRintDelete" Content="&#x1F5D1; Loeschen ..." Background="#B71C1C" Style="{StaticResource DarkButton}" FontSize="11" Margin="12,0,6,4"
+                                        ToolTip="Wartungsskript in den gewaehlten Tenants aus Intune loeschen (mit Rueckfrage)"/>
+                            </WrapPanel>
+                            <Border Background="#2D2D2D" CornerRadius="4" Padding="12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="pnlRintForm" IsEnabled="False">
+                                        <TextBlock x:Name="txtRintTitle" Text="Links ein Wartungsskript waehlen" Foreground="#E0E0E0" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="txtRintInfo" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="txtRintSummary" Foreground="#90CAF9" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+
+                                        <TextBlock Text="Zuweisungen" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                        <DataGrid x:Name="gridRintAssign" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                                  SelectionMode="Extended" MinHeight="40" MaxHeight="190">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="2*"/>
+                                                <DataGridTextColumn Header="Zeitplan" Binding="{Binding Zeitplan}" Width="170"/>
+                                                <DataGridTextColumn Header="Reparatur" Binding="{Binding Reparatur}" Width="75"/>
+                                                <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                        <WrapPanel Margin="0,6,0,0">
+                                            <ComboBox x:Name="cmbRintTarget" Style="{StaticResource DarkComboBox}" Width="140" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Gruppe" Tag="group" IsSelected="True"/>
+                                                <ComboBoxItem Content="Gruppe ausschliessen" Tag="exclude"/>
+                                                <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
+                                            </ComboBox>
+                                            <TextBox x:Name="txtRintGroup" Style="{StaticResource DarkTextBox}" Width="180" Margin="0,0,2,4" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                            <Button x:Name="btnRintGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,6,4"/>
+                                            <ComboBox x:Name="cmbRintSchedule" Style="{StaticResource DarkComboBox}" Width="100" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Taeglich" Tag="daily" IsSelected="True"/>
+                                                <ComboBoxItem Content="Stuendlich" Tag="hourly"/>
+                                                <ComboBoxItem Content="Einmal" Tag="once"/>
+                                            </ComboBox>
+                                            <TextBlock x:Name="lblRintInterval" Text="alle" Style="{StaticResource FieldLabel}" Margin="2,0,4,4"/>
+                                            <TextBox x:Name="txtRintInterval" Style="{StaticResource DarkTextBox}" Width="36" Text="1" Margin="0,0,4,4"/>
+                                            <TextBox x:Name="txtRintDate" Style="{StaticResource DarkTextBox}" Width="90" Margin="0,0,4,4" ToolTip="Datum TT.MM.JJJJ (nur bei Einmal)"/>
+                                            <TextBlock x:Name="lblRintTime" Text="um" Style="{StaticResource FieldLabel}" Margin="2,0,4,4"/>
+                                            <TextBox x:Name="txtRintTime" Style="{StaticResource DarkTextBox}" Width="54" Text="08:00" Margin="0,0,6,4"/>
+                                            <CheckBox x:Name="chkRintFix" Content="mit Reparatur" Style="{StaticResource DarkCheckBox}" IsChecked="True" VerticalAlignment="Center" Margin="0,0,6,4"
+                                                      ToolTip="Aus = nur pruefen und berichten"/>
+                                            <Button x:Name="btnRintAssignAdd" Content="+ Zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"
+                                                    ToolTip="Zuweisung ergaenzen bzw. aendern (gleiche Gruppe: Zeitplan wird ersetzt)"/>
+                                            <Button x:Name="btnRintAssignRemove" Content="Markierte entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4"/>
+                                        </WrapPanel>
+
+                                        <TextBlock Text="Skripte und Eigenschaften" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                        <TextBlock x:Name="lblRintScriptState" Foreground="#FFB74D" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                            <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Column="1" x:Name="txtRintName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Beschreibung" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtRintDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="2" Text="Ausfuehren als" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbRintRunAs" Style="{StaticResource DarkComboBox}" Width="170">
+                                                    <ComboBoxItem Content="System" Tag="system" IsSelected="True"/>
+                                                    <ComboBoxItem Content="Angemeldeter Benutzer" Tag="user"/>
+                                                </ComboBox>
+                                                <CheckBox x:Name="chkRint32" Content="32-Bit-PowerShell" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        <TextBlock Text="Pruefskript" Style="{StaticResource FieldLabel}" Margin="0,8,0,3"/>
+                                        <TextBox x:Name="txtRintDetect" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
+                                                 Height="140" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                                        <TextBlock Text="Reparaturskript (leer = nur pruefen)" Style="{StaticResource FieldLabel}" Margin="0,8,0,3"/>
+                                        <TextBox x:Name="txtRintFix" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
+                                                 Height="140" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                                        <WrapPanel Margin="0,6,0,0">
+                                            <Button x:Name="btnRintCheck" Content="&#x2714; Pruefen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
+                                                    ToolTip="Syntax, Exit-Codes und verbotene Befehle pruefen (ohne Ausfuehrung)"/>
+                                            <Button x:Name="btnRintSave" Content="&#x1F4BE; Aenderungen speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11"
+                                                    ToolTip="Geaenderte Felder in allen Tenants dieses Skripts speichern"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlRemLibRight">
                             <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
                                 <Button x:Name="btnRemSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
                                 <Button x:Name="btnRemDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"/>
@@ -927,6 +1055,7 @@
                                 </ScrollViewer>
                             </Border>
                             </DockPanel>
+                            </Grid>
 
                             <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
 

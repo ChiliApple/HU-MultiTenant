@@ -526,3 +526,19 @@ Describe 'Intune: Inno-Deinstallation (Greenshot-Fall)' {
         (Get-HUExeInstallerType -Path $PSCommandPath).Type | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe 'Wartung: vorhandene Skripte lesen' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'liest Zeitplaene, Zuweisungen, Skripttext und Status' {
+        (ConvertFrom-HURunSchedule ([pscustomobject]@{ '@odata.type' = '#microsoft.graph.deviceHealthScriptDailySchedule'; interval = 2; time = '07:30:00.0000000'; useUtc = $false })).Text | Should -Be 'alle 2 Tage um 07:30'
+        $o = ConvertFrom-HURunSchedule ([pscustomobject]@{ '@odata.type' = '#microsoft.graph.deviceHealthScriptRunOnceSchedule'; interval = 1; time = '7:05:00'; date = '2026-10-12'; useUtc = $false })
+        $o.Type | Should -Be 'once'; $o.Date | Should -Be '12.10.2026'; $o.Time | Should -Be '07:05'
+        (ConvertFrom-HURunSchedule ([pscustomobject]@{ '@odata.type' = '#microsoft.graph.deviceHealthScriptHourlySchedule'; interval = 4 })).Text | Should -Be 'alle 4 Std.'
+        $a = ConvertFrom-HURemAssignment ([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.exclusionGroupAssignmentTarget'; groupId = 'g1' }; runRemediationScript = $true; runSchedule = $null }) @{ g1 = 'Lehrer' }
+        $a.Key | Should -Be 'exclude|lehrer'; $a.Zeitplan | Should -Be ''
+        ConvertFrom-HUBase64Text ([Convert]::ToBase64String([byte[]](0xFF, 0xFE) + [Text.Encoding]::Unicode.GetBytes('exit 1'))) | Should -Be 'exit 1'
+        ConvertFrom-HUBase64Text (ConvertTo-HUBase64Utf8 "Write-Output 'Ä'") | Should -Be "Write-Output 'Ä'"
+        ConvertTo-HUInstallStateText '3' | Should -Be 'Nicht installiert'
+        ConvertTo-HUInstallStateText 'Installed' | Should -Be 'Installiert'
+    }
+}

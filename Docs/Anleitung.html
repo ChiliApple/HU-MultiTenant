@@ -213,7 +213,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <h3 id="apps-desktop">Ohne Desktop-Verknüpfung</h3>
   <p>Haken <i>Ohne Desktop-Verknüpfung</i>: ins Paket kommt ein kleines Skript (<code>HU-Install.ps1</code>), das das Setup startet und danach alle neu angelegten Verknüpfungen auf dem Desktop entfernt – funktioniert bei jedem Setup, auch ohne passenden Schalter. Die Testinstallation zeigt vorher, welche Verknüpfungen ein Setup anlegt.</p>
   <h3 id="apps-update">Neue Version</h3>
-  <p>Die neue Setup-Datei hinzufügen und bei <i>gibt es schon</i> <b>Ja</b> wählen: dieselbe Intune-App wird aktualisiert (neue Version, neue Erkennung, neues Paket). Unveränderte Pakete werden nicht erneut hochgeladen.</p>
+  <p>Die neue Setup-Datei auf die Liste ziehen (oder in der App <span class="ui">Andere Datei …</span>) und bei <i>gibt es schon</i> bzw. <i>sieht aus wie eine neue Version</i> <b>Ja</b> wählen: dieselbe Intune-App wird aktualisiert (neue Version, neue Erkennung, neues Paket), Zuweisungen bleiben. Versionsnummern im Namen werden dabei ignoriert; beim Anlegen schlägt HU-MultiTenant einen Namen ohne Version vor. Bei EXE-Setups mit Registry-Erkennung die Versionsprüfung einschalten, sonst gilt die alte Version als „installiert“. Unveränderte Pakete werden nicht erneut hochgeladen.</p>
   <h3 id="apps-pilot">Pilotgruppe (optional)</h3>
   <p>Haken <i>zuerst nur an Pilotgruppe</i>: die App geht erst an diese Gruppe. Passt alles, ergänzt <span class="ui">Für alle freigeben</span> das eigentliche Ziel.</p>
   <h3 id="apps-store">Store-Apps</h3>
@@ -239,7 +239,10 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="secrets">
-  <h2><span class="n">8</span>Secrets und Ablaufdatum</h2>
+    <h3 id="rem-intune">In Intune (vorhandene Wartungsskripte verwalten)</h3>
+  <p>Oben links <span class="ui">In Intune</span>: zeigt alle Wartungsskripte der angehakten Tenants – auch im Portal angelegte und die von Microsoft (nur lesen und zuweisen). Gleiche Namen werden über Tenants zusammengefasst. Rechts: Zusammenfassung (ohne Problem, Problem, behoben, Fehler), <b>Zuweisungen</b> mit Zeitplan und „mit Reparatur“ (auch Ausschluss), <b>Skripte und Eigenschaften</b> ändern (werden vor dem Speichern geprüft; weichen die Skripte zwischen Tenants ab, steht das darüber), <span class="ui">📊 Ergebnisse</span>, <span class="ui">▶ Jetzt auf Gerät</span>, <span class="ui">In Bibliothek übernehmen</span> (z. B. um ein Skript mit KI zu überarbeiten und neu zu verteilen) und <span class="ui r">Löschen</span> (doppelte Rückfrage).</p>
+
+<h2><span class="n">8</span>Secrets und Ablaufdatum</h2>
   <p>Neben dem Tenant steht, bis wann das Client Secret gültig ist. Gewarnt wird ab 30 Tagen (einstellbar): orange neben dem Tenant und in der Titelleiste, ab 7 Tagen rot.</p>
   <table>
     <tr><th>Quelle</th><th>Wie</th></tr>

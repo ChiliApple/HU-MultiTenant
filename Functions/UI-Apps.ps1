@@ -341,21 +341,45 @@ function Select-HUApp([string]$Id) {
 # ----------------------------------------------------------------------------
 # Hinzufuegen
 # ----------------------------------------------------------------------------
-function Add-HUAppFromFile([string]$Path) {
+# Name ohne Versionsnummer ("7-Zip 24.08 (x64)" -> "7-Zip (x64)"), fuer den Vergleich bei Updates
+function Get-HUAppBaseName([string]$Name) {
+    $n = "$Name" -replace '(?i)\s*[\(\[]?\s*v?(ersion\s*)?\d+(\.\d+){1,3}[a-z0-9\-\.]*\s*[\)\]]?', ' '
+    $n = ($n -replace '\s{2,}', ' ').Trim(' ', '-', '_', ',')
+    if (-not $n) { return "$Name".Trim() }
+    return $n
+}
+
+# -Target: als neue Version dieser Bibliotheks-App uebernehmen ("Andere Datei ...")
+function Add-HUAppFromFile([string]$Path, $Target = $null) {
     if ($Path -notmatch '(?i)\.(msi|exe)$') { Show-HUMessage "Nur .msi- und .exe-Dateien.`n`n$Path" -Icon Warning; return }
     try { $info = Get-HUSetupInfo -Path $Path } catch { Show-HUMessage "Datei nicht lesbar:`n$($_.Exception.Message)" -Icon Error; return }
     Save-HUAppForm
-    $existing = $script:AppLib | Where-Object { $_.Type -eq 'win32' -and $info.Name -and $_.Name -eq $info.Name } | Select-Object -First 1
     $a = $null
-    if ($existing) {
-        $ans = Confirm-HUYesNoCancel "'$($info.Name)' gibt es schon in der Bibliothek (v$($existing.Version)).`n`nJa = als neue Version dieser App uebernehmen (dieselbe Intune-App wird beim Hochladen aktualisiert)`nNein = als eigene App hinzufuegen"
-        if ($ans -eq 'Cancel') { return }
-        if ($ans -eq 'Yes') { $a = $existing }
+    if ($Target) {
+        $a = $Target
+        if ($info.Name -and (Get-HUAppBaseName $info.Name) -ne (Get-HUAppBaseName $a.Name) -and -not (Confirm-HU "Die Datei meldet sich als '$($info.Name)'.`n`nTrotzdem als neue Version von '$($a.Name)' uebernehmen?")) { return }
+    } else {
+        $existing = $script:AppLib | Where-Object { $_.Type -eq 'win32' -and $info.Name -and $_.Name -eq $info.Name } | Select-Object -First 1
+        $sameText = "'$($info.Name)' gibt es schon in der Bibliothek"
+        if (-not $existing -and $info.Name) {
+            # gleicher Name ohne Versionsnummer -> vermutlich ein Update
+            $base = Get-HUAppBaseName $info.Name
+            $existing = $script:AppLib | Where-Object { $_.Type -eq 'win32' -and (Get-HUAppBaseName $_.Name) -eq $base } | Select-Object -First 1
+            if ($existing) { $sameText = "'$($info.Name)' sieht aus wie eine neue Version von '$($existing.Name)'" }
+        }
+        if ($existing) {
+            $ans = Confirm-HUYesNoCancel "$sameText (v$($existing.Version)).`n`nJa = als neue Version dieser App uebernehmen (dieselbe Intune-App wird beim Hochladen aktualisiert, Name bleibt '$($existing.Name)')`nNein = als eigene App hinzufuegen"
+            if ($ans -eq 'Cancel') { return }
+            if ($ans -eq 'Yes') { $a = $existing }
+        }
     }
     $isNew = -not $a
     if ($isNew) {
         $a = ConvertTo-HUApp
         $a.Name = $info.Name; $a.Publisher = $info.Publisher
+        # Version im Namen -> spaetere Updates wuerden als eigene App gelten
+        $base = Get-HUAppBaseName $info.Name
+        if ($info.Name -and $base -ne $info.Name -and (Confirm-HU "Der Name enthaelt die Version:`n'$($info.Name)'`n`nOhne Version als '$base' anlegen? (empfohlen - dann landen spaetere Updates in derselben Intune-App; die Version steht trotzdem bei der App)")) { $a.Name = $base }
         $a.Tenants = @(Get-HUStateValue 'appTenants' @())
         $a.TargetGroup = "$(Get-HUStateValue 'appLastGroup' '')"
     }
@@ -1101,7 +1125,7 @@ function Register-HUAppHandlers {
             $dlg = New-Object Microsoft.Win32.OpenFileDialog
             $dlg.Filter = 'Setup (*.msi;*.exe)|*.msi;*.exe'
             $dlg.Title = 'Setup-Datei waehlen'
-            if ($dlg.ShowDialog($script:Window)) { Add-HUAppFromFile $dlg.FileName }
+            if ($dlg.ShowDialog($script:Window)) { Add-HUAppFromFile $dlg.FileName -Target $(if ($a.Type -eq 'win32') { $a } else { $null }) }
         })
     $c['btnAppBrowse'].Add_Click({
             $a = $script:AppCurrent
