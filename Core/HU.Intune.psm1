@@ -1059,8 +1059,9 @@ function Remove-HUIntuneApp {
 # ============================================================================
 function Invoke-HUExportReport {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$ReportName, [string]$Filter = '', [string[]]$Select = @(), [int]$MaxSeconds = 180)
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$ReportName, [string]$Filter = '', [string[]]$Select = @(), [int]$MaxSeconds = 180, [string]$Localization = '')
     $body = @{ reportName = $ReportName; format = 'csv' }
+    if ($Localization) { $body.localizationType = $Localization }
     if ($Filter) { $body.filter = $Filter }
     if ($Select.Count) { $body.select = $Select }
     $job = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceManagement/reports/exportJobs' -Method POST -Body $body
@@ -1098,17 +1099,46 @@ function Get-HUErrorText([string]$Hex) {
     return ''
 }
 
+function ConvertTo-HUInstallStateText([string]$State) {
+    # Zahlen laut Intune resultantAppState (unsicher, Fallback falls der Report keine Texte liefert)
+    $v = "$State".Trim()
+    $map = @{
+        '1' = 'Installiert'; 'installed' = 'Installiert'
+        '2' = 'Fehlgeschlagen'; 'failed' = 'Fehlgeschlagen'
+        '3' = 'Nicht installiert'; 'not installed' = 'Nicht installiert'; 'notinstalled' = 'Nicht installiert'
+        '4' = 'Deinstallation fehlgeschlagen'; 'uninstall failed' = 'Deinstallation fehlgeschlagen'; 'uninstallfailed' = 'Deinstallation fehlgeschlagen'
+        '5' = 'Installation ausstehend'; 'install pending' = 'Installation ausstehend'; 'pending install' = 'Installation ausstehend'; 'pendinginstall' = 'Installation ausstehend'
+        '99' = 'Unbekannt'; 'unknown' = 'Unbekannt'
+        '-1' = 'Nicht anwendbar'; 'not applicable' = 'Nicht anwendbar'; 'notapplicable' = 'Nicht anwendbar'
+    }
+    $k = $v.ToLower()
+    if ($map.ContainsKey($k)) { return $map[$k] }
+    return $v
+}
+
+function Get-HUReportValue($Row, [string]$Name) {
+    # bevorzugt die lokalisierte Spalte (<Name>_loc), sonst den Rohwert
+    $loc = $Row.PSObject.Properties["${Name}_loc"]
+    if ($loc -and "$($loc.Value)".Trim()) { return "$($loc.Value)" }
+    $p = $Row.PSObject.Properties[$Name]
+    if ($p) { return "$($p.Value)" }
+    return ''
+}
+
 function Get-HUAppInstallStatus {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId)
     $rows = Invoke-HUExportReport -TenantKey $TenantKey -Settings $Settings -ReportName 'DeviceInstallStatusByApp' -Filter "(ApplicationId eq '$AppId')" `
-        -Select @('DeviceName', 'UserPrincipalName', 'Platform', 'AppVersion', 'InstallState', 'InstallStateDetail', 'HexErrorCode', 'LastModifiedDateTime')
+        -Select @('DeviceName', 'UserPrincipalName', 'Platform', 'AppVersion', 'InstallState', 'InstallStateDetail', 'HexErrorCode', 'LastModifiedDateTime') `
+        -Localization 'LocalizedValuesAsAdditionalColumn'
     foreach ($r in $rows) {
+        $detail = Get-HUReportValue $r 'InstallStateDetail'
+        if ($detail -match '^-?\d+$' -and $detail -in @('0', '-1')) { $detail = '' }
         [pscustomobject][ordered]@{
             Geraet   = "$($r.DeviceName)"
             Benutzer = "$($r.UserPrincipalName)"
-            Status   = "$($r.InstallState)"
-            Detail   = "$($r.InstallStateDetail)"
+            Status   = (ConvertTo-HUInstallStateText (Get-HUReportValue $r 'InstallState'))
+            Detail   = $detail
             Version  = "$($r.AppVersion)"
             Fehler   = "$($r.HexErrorCode)"
             Hinweis  = (Get-HUErrorText "$($r.HexErrorCode)")
@@ -1538,7 +1568,7 @@ Export-ModuleMember -Function @(
     'Get-HUIntuneApp', 'New-HUWin32App', 'Update-HUWin32App', 'Publish-HUWin32Content', 'New-HUStoreApp',
     'Set-HUAppAssignment', 'Wait-HUAppPublished',
     'Get-HUAppKindFromType', 'Get-HUGroupNames', 'ConvertFrom-HUAssignment', 'Get-HUTenantAppList', 'Get-HUAppAssignmentRows', 'Remove-HUAppAssignments', 'Update-HUAppProperties',
-    'Get-HUAppIconBytes', 'Get-HUAppRelationRows', 'Set-HUAppRelations', 'Remove-HUIntuneApp', 'Invoke-HUExportReport', 'Get-HUErrorText', 'Get-HUAppInstallStatus',
+    'Get-HUAppIconBytes', 'Get-HUAppRelationRows', 'Set-HUAppRelations', 'Remove-HUIntuneApp', 'Invoke-HUExportReport', 'Get-HUErrorText', 'ConvertTo-HUInstallStateText', 'Get-HUAppInstallStatus',
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'ConvertFrom-HUSandboxEntry',

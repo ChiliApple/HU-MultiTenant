@@ -251,6 +251,11 @@ function Show-HUAppForm($App) {
         $c['chkAppWholeFolder'].IsChecked = [bool]$App.WholeFolder
         $c['chkAppNoDesktop'].IsChecked = [bool]$App.NoDesktop
         $c['txtAppInstall'].Text = "$($App.InstallCmd)"
+        # aeltere Eintraege (z. B. Inno mit /SILENT) gleich auf stille Deinstallation bringen
+        if ($App.UninstallCmd) {
+            $un = Add-HUSilentUninstall "$($App.UninstallCmd)" "$($App.InstallerType)"
+            if ($un -ne $App.UninstallCmd) { $App.UninstallCmd = $un }
+        }
         $c['txtAppUninstall'].Text = "$($App.UninstallCmd)"
         $c['txtAppInfo'].Text = $(if ($App.SetupPath -and -not (Test-Path -LiteralPath $App.SetupPath)) { 'Setup-Datei nicht gefunden - "Andere Datei ..." waehlen.' } else { '' })
         $script:AppDetType = $(if ("$($App.Detection.Type)") { "$($App.Detection.Type)" } else { 'registry' })
