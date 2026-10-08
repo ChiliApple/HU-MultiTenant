@@ -911,11 +911,19 @@ function Get-HUGroupNames {
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [string[]]$Ids)
     $map = @{}
     $ids = @($Ids | Where-Object { $_ } | Select-Object -Unique)
-    for ($i = 0; $i -lt $ids.Count; $i += 1000) {
-        $chunk = @($ids[$i..([Math]::Min($i + 999, $ids.Count - 1))])
-        $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/directoryObjects/getByIds' -Method POST -Body @{ ids = $chunk; types = @('group') } -V1
-        foreach ($g in @($r.value)) { $map["$($g.id)"] = "$($g.displayName)" }
-    }
+    if (-not $ids.Count) { return $map }
+    # getByIds braucht Directory.Read.All - mit Group.Read.All stattdessen die Gruppenliste lesen
+    try {
+        for ($i = 0; $i -lt $ids.Count; $i += 1000) {
+            $chunk = @($ids[$i..([Math]::Min($i + 999, $ids.Count - 1))])
+            $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/directoryObjects/getByIds' -Method POST -Body @{ ids = $chunk; types = @('group') } -V1
+            foreach ($g in @($r.value)) { $map["$($g.id)"] = "$($g.displayName)" }
+        }
+        return $map
+    } catch { }
+    try {
+        foreach ($g in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/groups?$select=id,displayName&$top=999' -V1)) { $map["$($g.id)"] = "$($g.displayName)" }
+    } catch { Write-HULog -Message "Gruppennamen nicht lesbar (Group.Read.All?) - es werden IDs angezeigt" -Level 'WARN' -Tenant $TenantKey }
     return $map
 }
 
