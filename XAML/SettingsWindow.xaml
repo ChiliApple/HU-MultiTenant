@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     HU-MultiTenant - Einstellungen: Allgemein | Tenants | Update.
     Gespeichert in Config\settings.json (Sicherung settings.json.bak) und Config\update.json.
 -->
@@ -79,6 +79,21 @@
                                 <TextBox x:Name="txtReports" Style="{StaticResource DarkTextBox}" FontSize="12"/>
                             </DockPanel>
                         </Grid>
+
+                        <TextBlock Text="Sperre" Style="{StaticResource SectionTitle}"/>
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="chkLockEnabled" Content="HU-MultiTenant sperren nach" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                            <TextBox x:Name="txtLockMinutes" Style="{StaticResource DarkTextBox}" Width="50" FontSize="12" Margin="8,0,8,0"/>
+                            <TextBlock Text="Minuten ohne Eingabe am PC" Style="{StaticResource FieldLabel}"/>
+                        </StackPanel>
+                        <CheckBox x:Name="chkLockOnStart" Content="Auch beim Start entsperren" Style="{StaticResource DarkCheckBox}" Margin="0,6,0,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="btnLockPin" Content="PIN festlegen ..." Style="{StaticResource ToolButton}" Margin="0,0,10,0"
+                                    ToolTip="Ersatz, wenn Windows Hello nicht verfuegbar ist - noetig zum Einschalten"/>
+                            <TextBlock x:Name="txtLockInfo" Style="{StaticResource HintText}" FontSize="11" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource HintText}" FontSize="11" Margin="0,8,0,16" TextWrapping="Wrap"
+                                   Text="Entsperren mit Windows Hello (Gesicht, Fingerabdruck, Windows-PIN) oder der PIN hier. Strg+L sperrt sofort. Schutz gegen schnelles Mitbenutzen - der eigentliche Schutz bleibt die Windows-Sperre."/>
 
                         <TextBlock Text="Client Secrets" Style="{StaticResource SectionTitle}"/>
                         <CheckBox x:Name="chkSecretCheckStart" Content="Ablaufdatum beim Start im Hintergrund pr&#xFC;fen (h&#xF6;chstens einmal am Tag)" Style="{StaticResource DarkCheckBox}"/>

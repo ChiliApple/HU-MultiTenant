@@ -68,6 +68,8 @@ Eigene Snippets: [SNIPPET-DEVELOPMENT.md](SNIPPET-DEVELOPMENT.md) · eigene Exte
 
 - Secrets nur DPAPI-verschlüsselt im Benutzerprofil, Tokens nur im Speicher, nie im Protokoll
 - `settings.json` enthält nur Tenant- und Anwendungs-IDs; Einstellungen, Snippets und Protokolle sind nicht im Repository
+- optionale Sperre nach Leerlauf, entsperren mit Windows Hello oder PIN
+- Not-Aus: alle lokal gespeicherten Secrets nach Rückfrage löschen und die App-Registrierungen zum Widerrufen öffnen
 - Updates werden nur installiert, wenn Prüfsummen und Signatur stimmen
 - automatische Tests bei jedem Push (Windows PowerShell 5.1)
 
