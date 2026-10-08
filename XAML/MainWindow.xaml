@@ -121,7 +121,7 @@
             <GridSplitter Grid.Column="1" Width="4" Background="#3E3E42" Opacity="0.5" HorizontalAlignment="Center"
                           VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext" Cursor="SizeWE"/>
 
-            <!-- RECHTS: Reiter Quick Script | Extensions -->
+            <!-- RECHTS: Reiter Quick Script | Extensions | Apps | Wartung -->
             <TabControl Grid.Column="2" x:Name="tabMain" Style="{StaticResource DarkTabControl}" Background="#1E1E1E">
 
                 <!-- ===== REITER: QUICK SCRIPT ===== -->
@@ -358,6 +358,388 @@
                                 </RichTextBox>
                             </DockPanel>
                         </Border>
+                    </Grid>
+                </TabItem>
+
+                <!-- ===== REITER: APPS ===== -->
+                <TabItem Header="&#x1F4E6; Apps" x:Name="tabApps" Style="{StaticResource DarkTabItem}">
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="250" MinWidth="180"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Bibliothek -->
+                        <Border Grid.Column="0" Background="#252526" CornerRadius="4" Padding="8">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="App-Bibliothek" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                    <Button x:Name="btnAppAdd" Content="+ MSI / EXE ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                            ToolTip="Setup-Datei waehlen - Name, Version, Befehle und Erkennung werden ausgelesen"/>
+                                    <Button x:Name="btnAppAddStore" Content="+ Store-App" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                            ToolTip="Microsoft Store App (neu) - nur die Store-ID, kein Paket"/>
+                                    <Button x:Name="btnAppRemove" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                            ToolTip="Nur aus der Bibliothek entfernen - in Intune bleibt die App bestehen"/>
+                                </WrapPanel>
+                                <TextBlock DockPanel.Dock="Bottom" Text="Setup-Datei auch per Ziehen &amp; Ablegen auf die Liste." Style="{StaticResource HintText}" Margin="0,6,0,0"/>
+                                <ListBox x:Name="lstApps" Style="{StaticResource DarkListBox}" AllowDrop="True">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2">
+                                                <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                        </Border>
+
+                        <GridSplitter Grid.Column="1" Width="6" Background="#3E3E42" Opacity="0.4" HorizontalAlignment="Center" ResizeBehavior="PreviousAndNext"/>
+
+                        <Grid Grid.Column="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="2*" MinHeight="160"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="6"/>
+                                <RowDefinition Height="*" MinHeight="60"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="#2D2D2D" CornerRadius="4" Padding="12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="pnlAppForm" IsEnabled="False">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtAppName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="2" x:Name="txtAppKind" Foreground="#4FC3F7" FontSize="10" FontWeight="Bold" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                            <TextBlock Grid.Row="1" Text="Hersteller" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtAppPublisher" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="2" Text="Version" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppVersion" Style="{StaticResource DarkTextBox}" Margin="0,2" Width="160" HorizontalAlignment="Left"/>
+                                            <TextBlock Grid.Row="3" Text="Beschreibung" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" x:Name="txtAppDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                        </Grid>
+
+                                        <!-- Win32 (MSI/EXE) -->
+                                        <StackPanel x:Name="pnlAppWin32" Margin="0,8,0,0">
+                                            <TextBlock Text="Installation" Style="{StaticResource SectionTitle}"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="130"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Text="Setup-Datei" Style="{StaticResource FieldLabel}"/>
+                                                <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,2">
+                                                    <Button x:Name="btnAppBrowse" DockPanel.Dock="Right" Content="Andere Datei ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"/>
+                                                    <TextBox x:Name="txtAppSetup" Style="{StaticResource DarkTextBox}" IsReadOnly="True"/>
+                                                </DockPanel>
+                                                <CheckBox Grid.Row="1" Grid.Column="1" x:Name="chkAppWholeFolder" Content="Ganzen Ordner der Setup-Datei mitpacken (bei Setups mit Zusatzdateien)"
+                                                          Style="{StaticResource DarkCheckBox}" Margin="0,2"/>
+                                                <TextBlock Grid.Row="2" Text="Installieren" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppInstall" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,2"/>
+                                                <TextBlock Grid.Row="3" Text="Deinstallieren" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox Grid.Row="3" Grid.Column="1" x:Name="txtAppUninstall" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,2"/>
+                                                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="txtAppInfo" Style="{StaticResource HintText}" Margin="0,2,0,0"/>
+                                            </Grid>
+
+                                            <TextBlock Text="Erkennung (woran Intune sieht, dass die App installiert ist)" Style="{StaticResource SectionTitle}" Margin="0,10,0,6"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="130"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Text="Art" Style="{StaticResource FieldLabel}"/>
+                                                <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbAppDetType" Style="{StaticResource DarkComboBox}" Width="260" HorizontalAlignment="Left" Margin="0,2">
+                                                    <ComboBoxItem Content="MSI-Produktcode" Tag="msi"/>
+                                                    <ComboBoxItem Content="Registry-Eintrag" Tag="registry"/>
+                                                    <ComboBoxItem Content="Datei oder Ordner" Tag="file"/>
+                                                    <ComboBoxItem Content="Skript" Tag="script"/>
+                                                </ComboBox>
+                                                <TextBlock Grid.Row="1" x:Name="lblAppDetA" Text="Produktcode" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtAppDetA" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,2"/>
+                                                <TextBlock Grid.Row="2" x:Name="lblAppDetB" Text="Wert" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppDetB" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,2"/>
+                                                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                    <CheckBox x:Name="chkAppDetVer" Content="Version mindestens" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                    <TextBox x:Name="txtAppDetVer" Style="{StaticResource DarkTextBox}" Width="120" Margin="6,0,16,0"/>
+                                                    <CheckBox x:Name="chkAppDet32" Content="32-Bit-Bereich (WOW6432Node / Program Files (x86))" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBox Grid.Row="4" Grid.Column="1" x:Name="txtAppDetScript" Style="{StaticResource DarkTextBox}" FontFamily="Consolas"
+                                                         AcceptsReturn="True" AcceptsTab="True" Height="110" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Margin="0,2" Visibility="Collapsed"/>
+                                            </Grid>
+                                            <Border Background="#252526" CornerRadius="4" Padding="8" Margin="0,8,0,0">
+                                                <StackPanel>
+                                                    <WrapPanel>
+                                                        <Button x:Name="btnAppSandbox" Content="&#x1F9EA; Testinstallation in der Windows Sandbox" Background="#6A1B9A" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,10,0"
+                                                                ToolTip="Installiert in einer Wegwerf-Sandbox und ermittelt Erkennung und Deinstallation - dein PC bleibt sauber"/>
+                                                        <CheckBox x:Name="chkAppSandboxUninstall" Content="Deinstallation mittesten" IsChecked="True" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                        <CheckBox x:Name="chkAppSandboxKeep" Content="Sandbox offen lassen" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                    </WrapPanel>
+                                                    <TextBlock x:Name="txtAppSandbox" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <!-- Store -->
+                                        <StackPanel x:Name="pnlAppStore" Margin="0,8,0,0" Visibility="Collapsed">
+                                            <TextBlock Text="Microsoft Store App (neu)" Style="{StaticResource SectionTitle}"/>
+                                            <DockPanel>
+                                                <TextBlock Text="Store-ID" Style="{StaticResource FieldLabel}" Width="122"/>
+                                                <Button x:Name="btnAppStoreOpen" DockPanel.Dock="Right" Content="apps.microsoft.com" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"
+                                                        ToolTip="App im Browser suchen - die ID steht in der Adresse (z. B. 9NKSQGP7F2NH)"/>
+                                                <TextBox x:Name="txtAppStoreId" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Width="200" HorizontalAlignment="Left"/>
+                                            </DockPanel>
+                                            <TextBlock Text="Store-Apps aktualisieren sich selbst; Intune braucht kein Paket. Nur Apps aus dem Microsoft Store (keine Win32-Store-Apps mit Lizenzpflicht)." Style="{StaticResource HintText}" Margin="130,4,0,0"/>
+                                        </StackPanel>
+
+                                        <DockPanel Margin="0,8,0,0">
+                                            <TextBlock Text="Ausfuehren als" Style="{StaticResource FieldLabel}" Width="122"/>
+                                            <ComboBox x:Name="cmbAppRunAs" Style="{StaticResource DarkComboBox}" Width="160" HorizontalAlignment="Left">
+                                                <ComboBoxItem Content="System (fuer alle)" Tag="system"/>
+                                                <ComboBoxItem Content="Benutzer" Tag="user"/>
+                                            </ComboBox>
+                                        </DockPanel>
+
+                                        <!-- Verteilen -->
+                                        <TextBlock Text="Verteilen" Style="{StaticResource SectionTitle}" Margin="0,12,0,6"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="Schulen" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,8,0"/>
+                                            <WrapPanel Grid.Row="0" Grid.Column="1" x:Name="spAppTenants" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Ziel" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbAppTarget" Style="{StaticResource DarkComboBox}" Width="150">
+                                                    <ComboBoxItem Content="Gruppe" Tag="group"/>
+                                                    <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                    <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
+                                                </ComboBox>
+                                                <TextBox x:Name="txtAppGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Schule gesucht"/>
+                                                <ComboBox x:Name="cmbAppIntent" Style="{StaticResource DarkComboBox}" Width="200" Margin="6,0,0,0">
+                                                    <ComboBoxItem Content="Erforderlich (installieren)" Tag="required"/>
+                                                    <ComboBoxItem Content="Verfuegbar (Unternehmensportal)" Tag="available"/>
+                                                    <ComboBoxItem Content="Deinstallieren" Tag="uninstall"/>
+                                                </ComboBox>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="2" Text="Pilot" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <CheckBox x:Name="chkAppPilot" Content="zuerst nur an Pilotgruppe:" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                <TextBox x:Name="txtAppPilot" Style="{StaticResource DarkTextBox}" Width="200" Margin="6,0,0,0"/>
+                                                <TextBlock Text="(spaeter &quot;Fuer alle freigeben&quot;)" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="3" Text="Frist / Hinweise" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <TextBox x:Name="txtAppDeadline" Style="{StaticResource DarkTextBox}" Width="110" ToolTip="Optional (nur bei Erforderlich): TT.MM.JJJJ oder TT.MM.JJJJ HH:mm - bis dahin muss installiert sein (ohne Uhrzeit 16:00)"/>
+                                                <ComboBox x:Name="cmbAppNotify" Style="{StaticResource DarkComboBox}" Width="200" Margin="6,0,0,0">
+                                                    <ComboBoxItem Content="Hinweise anzeigen" Tag="showAll"/>
+                                                    <ComboBoxItem Content="Nur Neustart-Hinweise" Tag="showReboot"/>
+                                                    <ComboBoxItem Content="Keine Hinweise" Tag="hideAll"/>
+                                                </ComboBox>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="4" Grid.Column="1" x:Name="txtAppTenantState" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+
+                            <WrapPanel Grid.Row="1" Margin="0,6,0,0">
+                                <Button x:Name="btnAppSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnAppDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"
+                                        ToolTip="Paket bauen (einmal), in jede gewaehlte Schule hochladen bzw. aktualisieren und zuweisen"/>
+                                <Button x:Name="btnAppRelease" Content="Fuer alle freigeben" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Nach dem Pilot: Zuweisung an das eigentliche Ziel ergaenzen"/>
+                                <Button x:Name="btnAppStatus" Content="&#x1F4CA; Status" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Installationsstatus je Geraet (Intune-Bericht, kann 1-2 Minuten dauern)"/>
+                                <Button x:Name="btnAppPackages" Content="Paket-Ordner" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                            </WrapPanel>
+
+                            <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
+
+                            <Border Grid.Row="3" Background="#2D2D2D" CornerRadius="4" Padding="8">
+                                <RichTextBox x:Name="rtbApps" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
+                                             VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6">
+                                    <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
+                                </RichTextBox>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+
+                <!-- ===== REITER: WARTUNG ===== -->
+                <TabItem Header="&#x1F6E0; Wartung" x:Name="tabMaint" Style="{StaticResource DarkTabItem}">
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="250" MinWidth="180"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="#252526" CornerRadius="4" Padding="8">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="Wartungspakete" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                    <Button x:Name="btnRemNew" Content="+ Neu" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"/>
+                                    <Button x:Name="btnRemExamples" Content="Beispiele ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"/>
+                                    <Button x:Name="btnRemRemove" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                            ToolTip="Nur aus der Liste entfernen - in Intune bleibt das Paket bestehen"/>
+                                </WrapPanel>
+                                <ListBox x:Name="lstRem" Style="{StaticResource DarkListBox}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2">
+                                                <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                        </Border>
+
+                        <GridSplitter Grid.Column="1" Width="6" Background="#3E3E42" Opacity="0.4" HorizontalAlignment="Center" ResizeBehavior="PreviousAndNext"/>
+
+                        <Grid Grid.Column="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="2*" MinHeight="160"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="6"/>
+                                <RowDefinition Height="*" MinHeight="60"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="#2D2D2D" CornerRadius="4" Padding="12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="pnlRemForm" IsEnabled="False">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtRemName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Beschreibung" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtRemDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                        </Grid>
+
+                                        <Border Background="#252526" CornerRadius="4" Padding="8" Margin="0,8,0,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Mit KI erstellen" Foreground="#CE93D8" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <DockPanel>
+                                                    <Button x:Name="btnRemAiCopy" DockPanel.Dock="Right" Content="Prompt kopieren" Background="#6A1B9A" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                                            ToolTip="Kopiert eine Anweisung mit allen Intune-Regeln - in ChatGPT/Claude/Copilot einfuegen"/>
+                                                    <TextBox x:Name="txtRemAiTask" Style="{StaticResource DarkTextBox}" ToolTip="In einem Satz: was soll geprueft und repariert werden?"/>
+                                                </DockPanel>
+                                                <DockPanel Margin="0,4,0,0">
+                                                    <Button x:Name="btnRemAiPaste" DockPanel.Dock="Left" Content="Antwort einfuegen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"
+                                                            ToolTip="Antwort der KI aus der Zwischenablage - wird automatisch in Pruef- und Reparaturskript aufgeteilt"/>
+                                                    <TextBlock Text="Beschreibe die Aufgabe, kopiere den Prompt in deine KI und fuege die Antwort hier ein." Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                </DockPanel>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <TextBlock Text="Pruefskript (exit 1 = Problem gefunden)" Style="{StaticResource SectionTitle}" Margin="0,10,0,4"/>
+                                        <TextBox x:Name="txtRemDetect" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
+                                                 Height="150" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                                        <TextBlock Text="Reparaturskript (leer = nur pruefen und berichten)" Style="{StaticResource SectionTitle}" Margin="0,10,0,4"/>
+                                        <TextBox x:Name="txtRemFix" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
+                                                 Height="150" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                                        <WrapPanel Margin="0,6,0,0">
+                                            <Button x:Name="btnRemCheck" Content="&#x2714; Pruefen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
+                                                    ToolTip="Syntax, Exit-Codes und verbotene Befehle pruefen (ohne Ausfuehrung)"/>
+                                            <Button x:Name="btnRemTestLocal" Content="Pruefskript hier ausfuehren" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
+                                                    ToolTip="Fuehrt nur das Pruefskript auf diesem PC aus (aendert nichts, wenn es korrekt geschrieben ist)"/>
+                                        </WrapPanel>
+
+                                        <TextBlock Text="Verteilen" Style="{StaticResource SectionTitle}" Margin="0,12,0,6"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="Schulen" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,8,0"/>
+                                            <WrapPanel Grid.Row="0" Grid.Column="1" x:Name="spRemTenants" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Ziel" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbRemTarget" Style="{StaticResource DarkComboBox}" Width="150">
+                                                    <ComboBoxItem Content="Gruppe" Tag="group"/>
+                                                    <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                </ComboBox>
+                                                <TextBox x:Name="txtRemGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Schule gesucht"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="2" Text="Pilot" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <CheckBox x:Name="chkRemPilot" Content="zuerst nur an Pilotgruppe:" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                <TextBox x:Name="txtRemPilot" Style="{StaticResource DarkTextBox}" Width="200" Margin="6,0,0,0"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="3" Text="Zeitplan" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbRemSchedule" Style="{StaticResource DarkComboBox}" Width="150">
+                                                    <ComboBoxItem Content="Taeglich" Tag="daily"/>
+                                                    <ComboBoxItem Content="Stuendlich" Tag="hourly"/>
+                                                    <ComboBoxItem Content="Einmal" Tag="once"/>
+                                                </ComboBox>
+                                                <TextBlock x:Name="lblRemInterval" Text="alle" Style="{StaticResource FieldLabel}" Margin="8,0,4,0"/>
+                                                <TextBox x:Name="txtRemInterval" Style="{StaticResource DarkTextBox}" Width="40" Text="1"/>
+                                                <TextBlock x:Name="lblRemTime" Text="um" Style="{StaticResource FieldLabel}" Margin="8,0,4,0"/>
+                                                <TextBox x:Name="txtRemTime" Style="{StaticResource DarkTextBox}" Width="60" Text="08:00"/>
+                                                <TextBox x:Name="txtRemDate" Style="{StaticResource DarkTextBox}" Width="100" Margin="6,0,0,0" ToolTip="Datum TT.MM.JJJJ (nur bei Einmal)"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="4" Text="Ausfuehren als" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                <ComboBox x:Name="cmbRemRunAs" Style="{StaticResource DarkComboBox}" Width="150">
+                                                    <ComboBoxItem Content="System" Tag="system"/>
+                                                    <ComboBoxItem Content="Angemeldeter Benutzer" Tag="user"/>
+                                                </ComboBox>
+                                                <CheckBox x:Name="chkRem32" Content="32-Bit-PowerShell" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="5" Grid.Column="1" x:Name="txtRemTenantState" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+
+                            <WrapPanel Grid.Row="1" Margin="0,6,0,0">
+                                <Button x:Name="btnRemSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRemDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRemRelease" Content="Fuer alle freigeben" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRemResults" Content="&#x1F4CA; Ergebnisse" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Ergebnis je Geraet: Problem gefunden, behoben, Fehler, Ausgabe"/>
+                                <Button x:Name="btnRemRunNow" Content="&#x25B6; Jetzt auf Geraet ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Sofort auf einem Geraet ausfuehren (Geraet muss online sein)"/>
+                            </WrapPanel>
+
+                            <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
+
+                            <Border Grid.Row="3" Background="#2D2D2D" CornerRadius="4" Padding="8">
+                                <RichTextBox x:Name="rtbRem" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
+                                             VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6">
+                                    <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
+                                </RichTextBox>
+                            </Border>
+                        </Grid>
                     </Grid>
                 </TabItem>
             </TabControl>

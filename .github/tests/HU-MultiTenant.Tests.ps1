@@ -291,3 +291,100 @@ Describe 'Graph-Batch (Invoke-GraphBatchGet)' {
         $r.Count | Should -Be 2
     }
 }
+
+Describe 'Intune: Apps und Wartung (HU.Intune)' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+    }
+    It 'MSI-Erkennung mit Mindestversion' {
+        $r = ConvertTo-HUDetectionRule ([pscustomobject]@{ Type = 'msi'; ProductCode = '{11111111-2222-3333-4444-555555555555}'; Version = '1.2.3'; VersionCheck = $true })
+        $r['@odata.type'] | Should -Be '#microsoft.graph.win32LobAppProductCodeRule'
+        $r.productVersionOperator | Should -Be 'greaterThanOrEqual'
+        $r.productVersion | Should -Be '1.2.3'
+    }
+    It 'Registry-Erkennung ohne Wert = vorhanden' {
+        $r = ConvertTo-HUDetectionRule ([pscustomobject]@{ Type = 'registry'; KeyPath = 'HKEY_LOCAL_MACHINE\SOFTWARE\X'; ValueName = ''; Check32 = $true })
+        $r.operationType | Should -Be 'exists'
+        $r.check32BitOn64System | Should -BeTrue
+    }
+    It 'ungueltige Erkennung wird abgelehnt' {
+        { ConvertTo-HUDetectionRule ([pscustomobject]@{ Type = 'msi'; ProductCode = 'abc' }) } | Should -Throw
+        { ConvertTo-HUDetectionRule ([pscustomobject]@{ Type = 'file'; Path = 'C:\X' }) } | Should -Throw
+    }
+    It 'Win32-Payload: Pflichtfelder, Kontext, MSI-Info' {
+        $def = [pscustomobject]@{ Name = 'Test'; Publisher = ''; Description = ''; Version = '1.0'; SetupFile = 'a.msi'; InstallCmd = 'msiexec /i "a.msi" /qn'; UninstallCmd = 'msiexec /x {11111111-2222-3333-4444-555555555555} /qn'
+            RunAs = 'user'; Kind = 'msi'; UpgradeCode = ''; Detection = [pscustomobject]@{ Type = 'msi'; ProductCode = '{11111111-2222-3333-4444-555555555555}' } }
+        $p = ConvertTo-HUWin32Payload $def 'a.intunewin'
+        $p.fileName | Should -Be 'a.intunewin'
+        $p.installExperience.runAsAccount | Should -Be 'user'
+        $p.installExperience.deviceRestartBehavior | Should -Be 'suppress'
+        $p.publisher | Should -Be '-'
+        $p.msiInformation.productCode | Should -Be '{11111111-2222-3333-4444-555555555555}'
+        @($p.rules).Count | Should -Be 1
+        $def.UninstallCmd = ''
+        { ConvertTo-HUWin32Payload $def } | Should -Throw
+    }
+    It 'Zeitplan taeglich / stuendlich / einmal' {
+        $d = New-HURunSchedule @{ Type = 'daily'; Interval = 2; Time = '7:30' }
+        $d['@odata.type'] | Should -Be '#microsoft.graph.deviceHealthScriptDailySchedule'
+        $d.time | Should -Be '07:30:00.0000000'
+        $d.interval | Should -Be 2
+        (New-HURunSchedule @{ Type = 'hourly'; Interval = 50 }).interval | Should -Be 23
+        (New-HURunSchedule @{ Type = 'once'; Time = '08:00'; Date = '2026-11-02' }).date | Should -Be '2026-11-02'
+    }
+    It 'Remediation-Payload: Base64 UTF-8 ohne BOM' {
+        $p = ConvertTo-HURemediationPayload ([pscustomobject]@{ Name = 'X'; Description = ''; Detection = "Write-Output 'ä'; exit 0"; Remediation = ''; RunAs = 'system'; RunAs32 = $false })
+        $bytes = [Convert]::FromBase64String($p.detectionScriptContent)
+        $bytes[0] | Should -Not -Be 0xEF
+        [Text.Encoding]::UTF8.GetString($bytes) | Should -Match 'ä'
+        $p.runAsAccount | Should -Be 'system'
+    }
+    It 'Skriptpruefung findet typische Fehler' {
+        $r = @(Test-HURemediationScript -Code "Write-Output 'x'`nRestart-Computer`nexit 0" -Kind detection)
+        @($r | Where-Object { $_.Stufe -eq 'Fehler' }).Count | Should -Be 2
+        $ok = @(Test-HURemediationScript -Code "if (1) { Write-Output 'p'; exit 1 }`nWrite-Output 'ok'; exit 0" -Kind detection)
+        @($ok | Where-Object { $_.Stufe -in 'Fehler', 'Warnung' }).Count | Should -Be 0
+        @(Test-HURemediationScript -Code 'Set-ItemProperty HKCU:\X -Name a -Value 1' -Kind remediation -RunAs system | Where-Object { $_.Stufe -eq 'Warnung' }).Count | Should -BeGreaterThan 0
+    }
+    It 'KI-Antwort wird aufgeteilt (Codebloecke und Ueberschriften)' {
+        $t = "Hier:`n``````powershell`nexit 1`n```````n``````powershell`nexit 0`n``````"
+        $s = Split-HUAiAnswer $t
+        $s.Detection | Should -Be 'exit 1'
+        $s.Remediation | Should -Be 'exit 0'
+        $s2 = Split-HUAiAnswer "### Pruefskript`nA`n### Reparaturskript`nB"
+        $s2.Detection | Should -Be 'A'
+        $s2.Remediation | Should -Be 'B'
+        (Get-HUAiPrompt -Task 'Test') | Should -Match '### Pruefskript'
+    }
+    It 'Sandbox-Ergebnis -> Erkennung und Deinstallation' {
+        $msi = ConvertFrom-HUSandboxEntry ([pscustomobject]@{ Key = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{11111111-2222-3333-4444-555555555555}'; DisplayName = 'A'; DisplayVersion = '2.0'; UninstallString = 'MsiExec.exe /I{11111111-2222-3333-4444-555555555555}'; QuietUninstallString = '' })
+        $msi.Detection.Type | Should -Be 'msi'
+        $msi.UninstallCmd | Should -Be 'msiexec /x {11111111-2222-3333-4444-555555555555} /qn /norestart'
+        $reg = ConvertFrom-HUSandboxEntry ([pscustomobject]@{ Key = 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Foo_is1'; DisplayName = 'Foo'; DisplayVersion = '1.5'; UninstallString = 'x'; QuietUninstallString = '"C:\Foo\unins000.exe" /SILENT' })
+        $reg.Detection.Type | Should -Be 'registry'
+        $reg.Detection.Check32 | Should -BeTrue
+        $reg.Detection.KeyPath | Should -Not -Match 'WOW6432Node'
+        $reg.UninstallCmd | Should -Match 'unins000'
+        $best = Select-HUSandboxEntry -Entries @([pscustomobject]@{ DisplayName = 'Microsoft Visual C++ 2015 Redistributable'; UninstallString = 'x' }, [pscustomobject]@{ DisplayName = 'Foo Editor'; UninstallString = 'y' }) -AppName 'Foo Editor 3'
+        $best.DisplayName | Should -Be 'Foo Editor'
+    }
+    It 'Store-ID erkennen' {
+        Get-HUStoreIdFromText 'https://apps.microsoft.com/detail/9nksqgp7f2nh?hl=de-at' | Should -Be '9NKSQGP7F2NH'
+        Get-HUStoreIdFromText 'XP89DCGQ3K6VLD' | Should -Be 'XP89DCGQ3K6VLD'
+        Test-HUStoreId 'ABC' | Should -BeFalse
+    }
+    It 'Quellordner wird nur bei Aenderung neu kopiert' {
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("hu-src-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path "$tmp\in" -Force | Out-Null
+        Set-Content -LiteralPath "$tmp\in\setup.exe" -Value 'x'
+        Set-Content -LiteralPath "$tmp\in\config.ini" -Value 'y'
+        $a = Sync-HUAppSource -SetupPath "$tmp\in\setup.exe" -WholeFolder $true -Destination "$tmp\out"
+        $a.Copied | Should -BeTrue
+        @(Get-ChildItem "$tmp\out").Count | Should -Be 2
+        (Sync-HUAppSource -SetupPath "$tmp\in\setup.exe" -WholeFolder $true -Destination "$tmp\out").Copied | Should -BeFalse
+        $b = Sync-HUAppSource -SetupPath "$tmp\in\setup.exe" -WholeFolder $false -Destination "$tmp\out"
+        $b.Copied | Should -BeTrue
+        @(Get-ChildItem "$tmp\out").Count | Should -Be 1
+        Remove-Item -LiteralPath $tmp -Recurse -Force
+    }
+}

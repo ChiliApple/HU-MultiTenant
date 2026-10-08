@@ -1,5 +1,23 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.0 (2026-10-08)
+
+### Neu
+- **Reiter Apps**: MSI, EXE und Microsoft-Store-Apps (neu) an mehrere Tenants verteilen
+  - Setup-Datei hinzufuegen oder auf die Liste ziehen: Name, Version, Befehle und Erkennung werden ausgelesen (MSI vollstaendig; EXE: Inno, NSIS, InstallShield, WiX, Advanced Installer, Squirrel mit stillem Schalter)
+  - **Testinstallation in der Windows Sandbox**: installiert im Wegwerf-Windows, schlaegt Erkennung und Deinstallation vor, testet die Deinstallation mit. Ist die Sandbox nicht aktiviert, aktiviert sie ein Knopf (Admin, Neustart)
+  - Paket wird einmal gebaut und je Tenant hochgeladen; unveraenderte Pakete werden nicht erneut hochgeladen; neue Version aktualisiert dieselbe Intune-App
+  - Ziel Gruppe (per Name je Tenant gesucht), Alle Geraete oder Alle Benutzer; Erforderlich/Verfuegbar/Deinstallieren, Frist, Hinweise; vorhandene Zuweisungen bleiben erhalten
+  - optional **Pilotgruppe** und spaeter "Fuer alle freigeben"
+  - **Status** je Geraet mit Fehlertext, Filter und Export
+  - Paketier-Werkzeug von Microsoft wird beim ersten Hochladen nach Rueckfrage geladen und auf die Microsoft-Signatur geprueft
+- **Reiter Wartung**: Intune Remediations (Pruef- und Reparaturskript)
+  - **Mit KI erstellen**: Prompt mit allen Intune-Regeln kopieren, Antwort einfuegen - wird automatisch aufgeteilt
+  - **Pruefen** ohne Ausfuehrung (exit 1, Neustart, Eingaben, PowerShell-7-Syntax, Benutzerpfade unter SYSTEM) und Pruefskript lokal testen
+  - Verteilen mit Zeitplan (taeglich, stuendlich, einmal), optional Pilotgruppe; **Ergebnisse** je Geraet; **Jetzt auf Geraet ausfuehren**
+  - 5 Beispiele (Speicherplatz, Zeitdienst, Windows Update, Neustart ueberfaellig, BitLocker)
+- Neue Berechtigungen (nur fuer die neuen Reiter): DeviceManagementApps.ReadWrite.All, DeviceManagementScripts.ReadWrite.All, Group.Read.All, fuer "Jetzt ausfuehren" DeviceManagementManagedDevices.PrivilegedOperations.All
+
 ## v2.0.2 (2026-10-08)
 
 ### Geaendert

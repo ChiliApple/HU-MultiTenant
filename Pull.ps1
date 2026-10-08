@@ -23,7 +23,7 @@
 
     -WaitPid <PID>: wird vom Update-Knopf im Tool uebergeben. Pull wartet, bis das Tool beendet ist (max. 60 s).
 
-    Lokale Daten bleiben unangetastet: Config\settings.json, Config\quick-snippets.json, Config\update.json, Logs\, Reports\,
+    Lokale Daten bleiben unangetastet: Config\settings.json, Config\quick-snippets.json, Config\apps.json, Config\remediations.json, Config\update.json, Logs\, Reports\,
     HU-MultiTenant.exe, eigene Extensions (Dateien, die es im Repository nicht gibt). Secrets liegen ohnehin in %APPDATA%.
     Token (nur fuer private Repos): Umgebungsvariable HU_GITHUB_TOKEN oder Config\GitHubToken_<DOMAIN>_<USER>.xml (DPAPI).
 .NOTES

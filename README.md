@@ -1,7 +1,7 @@
 ﻿<h1 align="center"><img src="Assets/logo64.png" width="44" alt="" align="absmiddle"/> HU-MultiTenant</h1>
 
 <p align="center"><b>Microsoft 365 und Intune für mehrere Tenants – aus einer Oberfläche</b><br>
-Ad-hoc-PowerShell im Tenant-Kontext mit Snippet-Bibliothek, fertige Reports als Extensions, Secret-Ablauf im Blick.<br>
+Ad-hoc-PowerShell im Tenant-Kontext mit Snippet-Bibliothek, fertige Reports als Extensions, App-Verteilung und Wartungsskripte, Secret-Ablauf im Blick.<br>
 Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit mehreren M365-Tenants.</p>
 
 <p align="center">
@@ -31,6 +31,8 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
 | **Quick Script** | PowerShell direkt im Tenant – Token und Graph-Funktionen sind schon da. Auf mehreren Tenants nacheinander, Eingabefelder per `# @param`, Ergebnis als Tabelle mit CSV-/Excel-Export, Verlauf je Lauf |
 | **Snippets** | eigene Skript-Bibliothek mit Beschreibung, Kategorien, Favoriten, Suche (auch im Code), Import/Export; 12 Beispiele dabei |
 | **Extensions** | fertige Reports und Aktionen mit Parametern, Dry-Run und Excel-Report (Liste unten) |
+| **Apps** | MSI, EXE und Store-Apps an mehrere Tenants verteilen: Setup hineinziehen, Testinstallation in der Windows Sandbox ermittelt Erkennung und Deinstallation, Pilotgruppe optional, Installationsstatus je Gerät |
+| **Wartung** | Intune Remediations mit KI erstellen (Prompt kopieren, Antwort einfügen), automatisch prüfen, mit Zeitplan verteilen, Ergebnisse je Gerät, sofort auf einem Gerät ausführen |
 | **Secrets** | DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf |
 | **Update** | Kanal Stabil/Test, jede Datei per SHA-256 geprüft, nur signierte Releases |
 

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "remediations": [
+    {
+      "Name": "Speicherplatz knapp - Temp leeren",
+      "Description": "Unter 10 GB frei: Windows-Temp und Delivery-Optimization-Cache leeren",
+      "AiTask": "Pruefe, ob auf C: weniger als 10 GB frei sind, und leere dann Windows-Temp und den Delivery-Optimization-Cache.",
+      "Detection": "try {\n    $free = [math]::Round((Get-PSDrive -Name C).Free / 1GB, 1)\n    if ($free -lt 10) { Write-Output \"Nur $free GB frei\"; exit 1 }\n    Write-Output \"$free GB frei\"\n    exit 0\n} catch { Write-Output \"Fehler: $($_.Exception.Message)\"; exit 0 }\n",
+      "Remediation": "try {\n    $before = (Get-PSDrive -Name C).Free\n    Get-ChildItem -Path \"$env:windir\\Temp\" -Recurse -Force -ErrorAction SilentlyContinue |\n        Where-Object { -not $_.PSIsContainer -and $_.LastWriteTime -lt (Get-Date).AddDays(-7) } |\n        Remove-Item -Force -ErrorAction SilentlyContinue\n    try { Delete-DeliveryOptimizationCache -Force -ErrorAction Stop } catch { }\n    $gain = [math]::Round(((Get-PSDrive -Name C).Free - $before) / 1GB, 1)\n    $free = [math]::Round((Get-PSDrive -Name C).Free / 1GB, 1)\n    Write-Output \"$gain GB freigegeben, jetzt $free GB frei\"\n    exit 0\n} catch { Write-Output \"Fehler: $($_.Exception.Message)\"; exit 1 }\n",
+      "RunAs": "system",
+      "RunAs32": false,
+      "ScheduleType": "daily",
+      "Interval": 1,
+      "Time": "08:00"
+    },
+    {
+      "Name": "Zeitdienst laeuft nicht",
+      "Description": "Windows-Zeitdienst automatisch starten und Uhrzeit synchronisieren (falsche Uhrzeit = Anmeldefehler)",
+      "AiTask": "Pruefe, ob der Windows-Zeitdienst (W32Time) laeuft und automatisch startet; wenn nicht, einstellen, starten und Zeit synchronisieren.",
+      "Detection": "$s = Get-Service -Name W32Time -ErrorAction SilentlyContinue\nif (-not $s) { Write-Output 'W32Time fehlt'; exit 0 }\n$mode = (Get-CimInstance Win32_Service -Filter \"Name='W32Time'\").StartMode\nif ($s.Status -ne 'Running' -or $mode -ne 'Auto') { Write-Output \"W32Time: $($s.Status), Start $mode\"; exit 1 }\nWrite-Output 'W32Time laeuft'\nexit 0\n",
+      "Remediation": "try {\n    Set-Service -Name W32Time -StartupType Automatic\n    Start-Service -Name W32Time\n    & w32tm.exe /resync /force | Out-Null\n    Write-Output 'W32Time gestartet und synchronisiert'\n    exit 0\n} catch { Write-Output \"Fehler: $($_.Exception.Message)\"; exit 1 }\n",
+      "RunAs": "system",
+      "RunAs32": false,
+      "ScheduleType": "daily",
+      "Interval": 1,
+      "Time": "08:00"
+    },
+    {
+      "Name": "Windows Update deaktiviert",
+      "Description": "Windows-Update-Dienst wieder aktivieren, falls er abgeschaltet wurde",
+      "AiTask": "Pruefe, ob der Dienst wuauserv deaktiviert ist; wenn ja, Starttyp auf Manuell setzen.",
+      "Detection": "$mode = (Get-CimInstance Win32_Service -Filter \"Name='wuauserv'\").StartMode\nif ($mode -eq 'Disabled') { Write-Output 'Windows Update ist deaktiviert'; exit 1 }\nWrite-Output \"Windows Update: $mode\"\nexit 0\n",
+      "Remediation": "try {\n    Set-Service -Name wuauserv -StartupType Manual\n    Write-Output 'Windows Update wieder aktiviert (Manuell)'\n    exit 0\n} catch { Write-Output \"Fehler: $($_.Exception.Message)\"; exit 1 }\n",
+      "RunAs": "system",
+      "RunAs32": false,
+      "ScheduleType": "daily",
+      "Interval": 1,
+      "Time": "08:00"
+    },
+    {
+      "Name": "Neustart ueberfaellig (nur melden)",
+      "Description": "Meldet Geraete, die seit mehr als 14 Tagen nicht neu gestartet wurden - ohne Reparatur",
+      "AiTask": "Melde Geraete, die seit mehr als 14 Tagen nicht neu gestartet wurden (nur pruefen, keine Reparatur).",
+      "Detection": "$boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime\n$days = [int]((Get-Date) - $boot).TotalDays\nif ($days -gt 14) { Write-Output \"Letzter Neustart vor $days Tagen ($($boot.ToString('dd.MM.yyyy')))\"; exit 1 }\nWrite-Output \"Letzter Neustart vor $days Tagen\"\nexit 0\n",
+      "Remediation": "",
+      "RunAs": "system",
+      "RunAs32": false,
+      "ScheduleType": "daily",
+      "Interval": 1,
+      "Time": "08:00"
+    },
+    {
+      "Name": "BitLocker-Status (nur melden)",
+      "Description": "Meldet Geraete, auf denen C: nicht mit BitLocker geschuetzt ist",
+      "AiTask": "Melde, ob Laufwerk C: mit BitLocker geschuetzt ist (nur pruefen).",
+      "Detection": "try {\n    $v = Get-BitLockerVolume -MountPoint 'C:' -ErrorAction Stop\n    if ($v.ProtectionStatus -ne 'On') { Write-Output \"BitLocker C: $($v.ProtectionStatus), $($v.VolumeStatus)\"; exit 1 }\n    Write-Output \"BitLocker C: an ($($v.EncryptionMethod))\"\n    exit 0\n} catch { Write-Output \"Nicht lesbar: $($_.Exception.Message)\"; exit 0 }\n",
+      "Remediation": "",
+      "RunAs": "system",
+      "RunAs32": false,
+      "ScheduleType": "daily",
+      "Interval": 1,
+      "Time": "08:00"
+    }
+  ]
+}
