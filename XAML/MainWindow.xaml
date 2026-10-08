@@ -400,12 +400,22 @@
 
                         <Grid Grid.Column="2">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="2*" MinHeight="160"/>
-                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="2*" MinHeight="200"/>
                                 <RowDefinition Height="6"/>
                                 <RowDefinition Height="*" MinHeight="60"/>
                             </Grid.RowDefinitions>
-                            <Border Grid.Row="0" Background="#2D2D2D" CornerRadius="4" Padding="12">
+                            <DockPanel Grid.Row="0">
+                            <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                <Button x:Name="btnAppSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnAppDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"
+                                        ToolTip="Paket bauen (einmal), in jeden gewaehlten Tenant hochladen bzw. aktualisieren und zuweisen"/>
+                                <Button x:Name="btnAppRelease" Content="Fuer alle freigeben" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Nach dem Pilot: Zuweisung an das eigentliche Ziel ergaenzen"/>
+                                <Button x:Name="btnAppStatus" Content="&#x1F4CA; Status" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Installationsstatus je Geraet (Intune-Bericht, kann 1-2 Minuten dauern)"/>
+                                <Button x:Name="btnAppPackages" Content="Paket-Ordner" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                            </WrapPanel>
+                            <Border Background="#2D2D2D" CornerRadius="4" Padding="12">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <StackPanel x:Name="pnlAppForm" IsEnabled="False">
                                         <Grid>
@@ -605,21 +615,11 @@
                                     </StackPanel>
                                 </ScrollViewer>
                             </Border>
+                            </DockPanel>
 
-                            <WrapPanel Grid.Row="1" Margin="0,6,0,0">
-                                <Button x:Name="btnAppSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
-                                <Button x:Name="btnAppDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"
-                                        ToolTip="Paket bauen (einmal), in jeden gewaehlten Tenant hochladen bzw. aktualisieren und zuweisen"/>
-                                <Button x:Name="btnAppRelease" Content="Fuer alle freigeben" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
-                                        ToolTip="Nach dem Pilot: Zuweisung an das eigentliche Ziel ergaenzen"/>
-                                <Button x:Name="btnAppStatus" Content="&#x1F4CA; Status" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
-                                        ToolTip="Installationsstatus je Geraet (Intune-Bericht, kann 1-2 Minuten dauern)"/>
-                                <Button x:Name="btnAppPackages" Content="Paket-Ordner" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
-                            </WrapPanel>
+                            <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
 
-                            <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
-
-                            <Border Grid.Row="3" Background="#2D2D2D" CornerRadius="4" Padding="8">
+                            <Border Grid.Row="2" Background="#2D2D2D" CornerRadius="4" Padding="8">
                                 <RichTextBox x:Name="rtbApps" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
                                              VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6">
                                     <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
@@ -664,12 +664,21 @@
 
                         <Grid Grid.Column="2">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="2*" MinHeight="160"/>
-                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="2*" MinHeight="200"/>
                                 <RowDefinition Height="6"/>
                                 <RowDefinition Height="*" MinHeight="60"/>
                             </Grid.RowDefinitions>
-                            <Border Grid.Row="0" Background="#2D2D2D" CornerRadius="4" Padding="12">
+                            <DockPanel Grid.Row="0">
+                            <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                <Button x:Name="btnRemSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRemDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRemRelease" Content="Fuer alle freigeben" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnRemResults" Content="&#x1F4CA; Ergebnisse" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Ergebnis je Geraet: Problem gefunden, behoben, Fehler, Ausgabe"/>
+                                <Button x:Name="btnRemRunNow" Content="&#x25B6; Jetzt auf Geraet ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Sofort auf einem Geraet ausfuehren (Geraet muss online sein)"/>
+                            </WrapPanel>
+                            <Border Background="#2D2D2D" CornerRadius="4" Padding="12">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <StackPanel x:Name="pnlRemForm" IsEnabled="False">
                                         <Grid>
@@ -767,20 +776,11 @@
                                     </StackPanel>
                                 </ScrollViewer>
                             </Border>
+                            </DockPanel>
 
-                            <WrapPanel Grid.Row="1" Margin="0,6,0,0">
-                                <Button x:Name="btnRemSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
-                                <Button x:Name="btnRemDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"/>
-                                <Button x:Name="btnRemRelease" Content="Fuer alle freigeben" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
-                                <Button x:Name="btnRemResults" Content="&#x1F4CA; Ergebnisse" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
-                                        ToolTip="Ergebnis je Geraet: Problem gefunden, behoben, Fehler, Ausgabe"/>
-                                <Button x:Name="btnRemRunNow" Content="&#x25B6; Jetzt auf Geraet ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
-                                        ToolTip="Sofort auf einem Geraet ausfuehren (Geraet muss online sein)"/>
-                            </WrapPanel>
+                            <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
 
-                            <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
-
-                            <Border Grid.Row="3" Background="#2D2D2D" CornerRadius="4" Padding="8">
+                            <Border Grid.Row="2" Background="#2D2D2D" CornerRadius="4" Padding="8">
                                 <RichTextBox x:Name="rtbRem" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
                                              VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6">
                                     <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
