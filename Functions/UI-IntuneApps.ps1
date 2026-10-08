@@ -135,9 +135,10 @@ function Update-HUIntList {
         $vers = @($rows | ForEach-Object { $_.Version } | Where-Object { $_ } | Select-Object -Unique)
         $assigned = @($rows | Where-Object { @($_.Assignments).Count -or $_.IsAssigned }).Count
         $sub = "$($it.Typ)$(if ($vers.Count) { " | v$($vers -join '/')" })"
-        if ($keys.Count -gt 1) { $sub += " | $($it.Per.Count) von $($keys.Count)" }
+        $pr = Get-HUIntPresenceText @($it.Per.Keys) $keys
+        if ($pr.Short) { $sub += " | $($pr.Short)" }
         $sub += $(if ($assigned) { ' | zugewiesen' } else { ' | nicht zugewiesen' })
-        [pscustomobject]@{ Title = $it.Name; Sub = $sub; Key = $it.Key }
+        [pscustomobject]@{ Title = $it.Name; Sub = $sub; Key = $it.Key; Tip = $(if ($pr.Tip) { $pr.Tip } else { $null }) }
     }
     $sel = if ($script:IntCurrent) { $script:IntCurrent.Key } else { '' }
     $c['lstIntApps'].ItemsSource = @($items)
@@ -153,6 +154,16 @@ function Update-HUIntList {
         $n = $script:IntItems | Where-Object { $_.Key -eq $script:IntCurrent.Key } | Select-Object -First 1
         if ($n) { $script:IntCurrent = $n; Show-HUIntApp -KeepRel } else { $script:IntCurrent = $null; Show-HUIntApp }
     }
+}
+
+# "nur: A" bzw. "fehlt: B" fuer die Liste, ausfuehrlich fuer den Tooltip
+function Get-HUIntPresenceText([string[]]$Have, [string[]]$All) {
+    if ($All.Count -le 1) { return @{ Short = ''; Tip = '' } }
+    $miss = @($All | Where-Object { $Have -notcontains $_ })
+    $hn = @($Have | ForEach-Object { Get-HUTenantDisplayName $_ }); $mn = @($miss | ForEach-Object { Get-HUTenantDisplayName $_ })
+    $tip = "vorhanden: $($hn -join ', ')$(if ($mn.Count) { "`nfehlt: $($mn -join ', ')" })"
+    $short = if (-not $miss.Count) { "alle $($All.Count)" } elseif ($hn.Count -le $mn.Count) { "nur: $($hn -join ', ')" } else { "fehlt: $($mn -join ', ')" }
+    return @{ Short = $short; Tip = $tip }
 }
 
 # ----------------------------------------------------------------------------

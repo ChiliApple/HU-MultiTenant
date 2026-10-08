@@ -35,6 +35,7 @@
 - **Gruppen suchen** (Lupe neben Ziel- und Pilotgruppe): liest die Gruppen der angehakten Tenants, Filter, zeigt in welchen Tenants eine Gruppe fehlt
 - **Support** (Knopf oben): packt Protokolle, Testinstallationen, Einstellungen und App-Bibliothek anonymisiert (Tenants, Domaenen, Benutzer, IDs, IP-Adressen, Windows-Benutzer) in ein ZIP auf dem Desktop; E-Mail (klassisches Outlook mit Anhang, sonst Standard-Mailprogramm) oder GitHub-Issue im Browser (ohne Protokolle); Inhalt vorher ansehbar
 - In den Reitern Apps und Wartung ist die Extension-Liste links ausgeblendet (mehr Platz); Start-Reiter auch Apps oder Wartung
+- In Intune (Apps und Wartung): Liste zeigt, in welchen Tenants etwas fehlt ("nur: ..." / "fehlt: ...", Tooltip mit allen); Wartung filtert "Nicht ueberall"
 - Tenant-Leiste (Verbinden/Trennen) nur noch im Reiter Extensions; Klick auf eine Extension in der linken Liste wechselt zum Reiter Extensions
 - Neue Berechtigungen (nur fuer die neuen Reiter): DeviceManagementApps.ReadWrite.All, DeviceManagementScripts.ReadWrite.All, Group.Read.All, fuer "Jetzt ausfuehren" DeviceManagementManagedDevices.PrivilegedOperations.All
 

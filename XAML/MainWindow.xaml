@@ -424,7 +424,7 @@
                                 <ListBox x:Name="lstIntApps" Style="{StaticResource DarkListBox}">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <StackPanel Margin="0,2">
+                                            <StackPanel Margin="0,2" ToolTip="{Binding Tip}">
                                                 <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10"/>
                                             </StackPanel>
@@ -805,6 +805,7 @@
                                         <ComboBoxItem Content="Alle" Tag="" IsSelected="True"/>
                                         <ComboBoxItem Content="Eigene" Tag="own"/>
                                         <ComboBoxItem Content="Microsoft" Tag="global"/>
+                                        <ComboBoxItem Content="Nicht ueberall" Tag="partial" ToolTip="Nur Skripte, die in einem der angehakten Tenants fehlen"/>
                                     </ComboBox>
                                     <Grid>
                                         <TextBox x:Name="txtRintFilter" Style="{StaticResource DarkTextBox}"/>
@@ -815,7 +816,7 @@
                                 <ListBox x:Name="lstRint" Style="{StaticResource DarkListBox}">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <StackPanel Margin="0,2">
+                                            <StackPanel Margin="0,2" ToolTip="{Binding Tip}">
                                                 <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis"/>
                                             </StackPanel>

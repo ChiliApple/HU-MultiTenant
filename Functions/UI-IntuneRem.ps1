@@ -123,11 +123,13 @@ function Update-HURintList {
         if ($f -and $it.Name -notlike "*$f*") { continue }
         if ($kind -eq 'own' -and $it.Global) { continue }
         if ($kind -eq 'global' -and -not $it.Global) { continue }
+        if ($kind -eq 'partial' -and $it.Per.Count -ge $keys.Count) { continue }
         $rows = @($it.Per.Values)
         $sub = $(if ($it.Global) { 'Microsoft' } else { "$(@($rows)[0].Publisher)" })
-        if ($keys.Count -gt 1) { $sub += " | $($it.Per.Count) von $($keys.Count)" }
+        $pr = Get-HUIntPresenceText @($it.Per.Keys) $keys
+        if ($pr.Short) { $sub += " | $($pr.Short)" }
         if (@($rows | Where-Object { $_.AssignKnown }).Count) { $sub += $(if (@($rows | Where-Object { @($_.Assignments).Count }).Count) { ' | zugewiesen' } else { ' | nicht zugewiesen' }) }
-        [pscustomobject]@{ Title = $it.Name; Sub = $sub.Trim(' ', '|'); Key = $it.Key }
+        [pscustomobject]@{ Title = $it.Name; Sub = $sub.Trim(' ', '|'); Key = $it.Key; Tip = $(if ($pr.Tip) { $pr.Tip } else { $null }) }
     }
     $sel = if ($script:RintCurrent) { $script:RintCurrent.Key } else { '' }
     $c['lstRint'].ItemsSource = @($items)
