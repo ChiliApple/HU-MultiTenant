@@ -1,5 +1,10 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.2 (in Arbeit)
+
+### Behoben
+- App-Symbol: liefert ein Programm beim Auslesen nur Bildrauschen (z. B. nach der Testinstallation), wird es nicht mehr uebernommen - das vorhandene Symbol bleibt
+
 ## v2.1.1 (2026-10-08)
 
 ### Verbessert

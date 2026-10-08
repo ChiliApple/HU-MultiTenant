@@ -647,6 +647,32 @@ function Split-HUIconLocation([string]$Text) {
     return [pscustomobject]@{ Path = [Environment]::ExpandEnvironmentVariables($t.Trim().Trim('"')); Index = $idx }
 }
 
+# $true, wenn das Bild nach Rauschen aussieht: mittlerer Farbsprung zwischen Nachbarpixeln (deckende Pixel) sehr hoch.
+# Echte Symbole liegen bei ca. 5-30, Rauschen bei 200+ (Summe der RGB-Differenzen, max. 765).
+function Test-HUIconNoise($Bitmap) {
+    $w = $Bitmap.Width; $h = $Bitmap.Height
+    if ($w -lt 2) { return $false }
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $w, $h)
+    $data = $Bitmap.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    try {
+        $bytes = New-Object byte[] ($data.Stride * $h)
+        [Runtime.InteropServices.Marshal]::Copy($data.Scan0, $bytes, 0, $bytes.Length)
+    } finally { $Bitmap.UnlockBits($data) }
+    $sum = 0; $n = 0
+    $step = [Math]::Max(1, [int]($h / 64))
+    for ($y = 0; $y -lt $h; $y += $step) {
+        $row = $y * $data.Stride
+        for ($x = 0; $x -lt $w - 1; $x++) {
+            $i = $row + 4 * $x
+            if ($bytes[$i + 3] -lt 128 -or $bytes[$i + 7] -lt 128) { continue }
+            $sum += [Math]::Abs($bytes[$i] - $bytes[$i + 4]) + [Math]::Abs($bytes[$i + 1] - $bytes[$i + 5]) + [Math]::Abs($bytes[$i + 2] - $bytes[$i + 6])
+            $n++
+        }
+    }
+    if ($n -lt 20) { return $false }
+    return (($sum / $n) -gt 120)
+}
+
 function ConvertTo-HUIconPng {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$OutFile, [int]$Index = 0, [int]$MaxSize = 256)
@@ -684,6 +710,8 @@ function ConvertTo-HUIconPng {
             $g.Clear([System.Drawing.Color]::Transparent)
             $g.DrawImage($bmp, 0, 0, $nw, $nh)
         } finally { $g.Dispose() }
+        # manche Programme liefern beim Auslesen nur Bildrauschen -> nicht uebernehmen (vorhandenes Symbol bleibt)
+        if (Test-HUIconNoise $out) { $out.Dispose(); throw 'Symbol unbrauchbar (nur Bildrauschen) - bitte ein Bild oder die Setup-Datei waehlen' }
         $dir = Split-Path $OutFile -Parent
         if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         $tmp = "$OutFile.tmp"
