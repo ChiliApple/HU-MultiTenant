@@ -292,13 +292,13 @@ function Start-HURintDetail {
 # ----------------------------------------------------------------------------
 # Aktionen (alle Tenants des gewaehlten Skripts)
 # ----------------------------------------------------------------------------
-function Start-HURintAction([string]$Title, [scriptblock]$Code, [hashtable]$Vars = @{}) {
+function Start-HURintAction([string]$Title, [scriptblock]$Code, [hashtable]$Vars = @{}, [string[]]$Only = @()) {
     $it = $script:RintCurrent
     if (-not $it) { return }
     if (Test-HUJobRunning 'RintAct') { Show-HUMessage 'Es laeuft bereits eine Aktion - bitte warten.' -Icon Warning; return }
-    $per = @{}; foreach ($k in $it.Per.Keys) { $per[$k] = $it.Per[$k].Id }
+    $per = @{}; foreach ($k in $it.Per.Keys) { if (-not $Only.Count -or $Only -contains $k) { $per[$k] = $it.Per[$k].Id } }
     $Vars.Per = $per; $Vars.ScriptName = $it.Name
-    $script:RintActKeys = @($it.Per.Keys)
+    $script:RintActKeys = @($per.Keys)
     Add-HURtbLine $script:Controls['rtbRem'] "=== $Title`: $($it.Name) ===" '#4FC3F7'
     [void](Start-HUJob -Name 'RintAct' -Output $script:Controls['rtbRem'] -Vars $Vars -Code $Code -OnDone {
             param($Result, $Errors)
@@ -405,20 +405,28 @@ function Save-HURintChanges {
 function Remove-HURintScript {
     $it = $script:RintCurrent
     if (-not $it -or $it.Global) { return }
-    $assigned = @($it.Per.Keys | Where-Object { ($script:RintDetail.ContainsKey($_) -and @($script:RintDetail[$_].Assignments).Count) -or @($it.Per[$_].Assignments).Count })
-    $msg = "'$($it.Name)' aus Intune LOESCHEN?`n`nTenants: $(@($it.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')"
+    $isAsg = { param($k) ($script:RintDetail.ContainsKey($k) -and @($script:RintDetail[$k].Assignments).Count) -or @($it.Per[$k].Assignments).Count }
+    $keys = @($it.Per.Keys)
+    # mehrere Tenants: gezielt auswaehlen, in welchen geloescht wird (nichts vorausgewaehlt)
+    if ($keys.Count -gt 1) {
+        $notes = @{}; foreach ($k in $keys) { $notes[$k] = $(if (& $isAsg $k) { 'zugewiesen' } else { '' }) }
+        $keys = @(Show-HUTenantChoice -Title 'Loeschen' -Text "'$($it.Name)' gibt es in $($keys.Count) Tenants. In welchen loeschen?" -Keys $keys -Notes $notes -OkText 'Loeschen ...')
+        if (-not $keys.Count) { return }
+    }
+    $assigned = @($keys | Where-Object { & $isAsg $_ })
+    $msg = "'$($it.Name)' aus Intune LOESCHEN?`n`nTenants: $(@($keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')"
     if ($assigned.Count) { $msg += "`n`nACHTUNG: in $($assigned.Count) Tenant(s) noch zugewiesen - die Geraete fuehren es dann nicht mehr aus." }
     $msg += "`n`nDas kann nicht rueckgaengig gemacht werden (die Ergebnisse gehen verloren)."
     if (-not (Confirm-HU $msg 'Loeschen' -Warning)) { return }
-    if (-not (Confirm-HU "Wirklich loeschen: '$($it.Name)' in $($it.Per.Count) Tenant(s)?" 'Loeschen' -Warning)) { return }
-    Start-HURintAction 'Loeschen' -Code {
+    if (-not (Confirm-HU "Wirklich loeschen: '$($it.Name)' in $($keys.Count) Tenant(s)?" 'Loeschen' -Warning)) { return }
+    $allGone = ($keys.Count -eq $it.Per.Count)
+    Start-HURintAction 'Loeschen' -Only $keys -Code {
         foreach ($k in $Per.Keys) {
             try { Remove-HURemediation -TenantKey $k -Settings $Settings -Id $Per[$k]; Write-HULog -Message "'$ScriptName' geloescht" -Level 'OK' -Tenant $k }
             catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $k }
         }
     }
-    $script:RintCurrent = $null
-    Show-HURint
+    if ($allGone) { $script:RintCurrent = $null; Show-HURint }
 }
 
 function Start-HURintResults {

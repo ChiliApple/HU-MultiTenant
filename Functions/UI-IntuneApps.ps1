@@ -291,13 +291,13 @@ function Start-HUIntDetail {
 # ----------------------------------------------------------------------------
 # Aktionen (alle Tenants der gewaehlten App)
 # ----------------------------------------------------------------------------
-function Start-HUIntAction([string]$Title, [scriptblock]$Code, [hashtable]$Vars = @{}) {
+function Start-HUIntAction([string]$Title, [scriptblock]$Code, [hashtable]$Vars = @{}, [string[]]$Only = @()) {
     $it = $script:IntCurrent
     if (-not $it) { return }
     if (Test-HUJobRunning 'IntAct') { Show-HUMessage 'Es laeuft bereits eine Aktion - bitte warten.' -Icon Warning; return }
-    $per = @{}; foreach ($k in $it.Per.Keys) { $per[$k] = $it.Per[$k].Id }
+    $per = @{}; foreach ($k in $it.Per.Keys) { if (-not $Only.Count -or $Only -contains $k) { $per[$k] = $it.Per[$k].Id } }
     $Vars.Per = $per; $Vars.OType = $it.OType; $Vars.Kind = $it.Kind; $Vars.AppName = $it.Name
-    $script:IntActKeys = @($it.Per.Keys)
+    $script:IntActKeys = @($per.Keys)
     Add-HURtbLine $script:Controls['rtbApps'] "=== $Title`: $($it.Name) ===" '#4FC3F7'
     [void](Start-HUJob -Name 'IntAct' -Output $script:Controls['rtbApps'] -Vars $Vars -Code $Code -OnDone {
             param($Result, $Errors)
@@ -404,16 +404,69 @@ function Save-HUIntProperties {
     }
 }
 
+# Auswahl der Tenants fuer eine Aktion (z. B. Loeschen); Notes = TenantKey -> Zusatztext. Rueckgabe: gewaehlte Keys
+function Show-HUTenantChoice([string]$Title, [string]$Text, [string[]]$Keys, [hashtable]$Notes = @{}, [string]$OkText = 'Weiter') {
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="440" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <StackPanel Margin="18">
+        <TextBlock x:Name="lblText" Foreground="#E0E0E0" TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <StackPanel x:Name="spTenants" Margin="0,0,0,6"/>
+        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+            <Button x:Name="btnAll" Content="alle" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,0"/>
+            <Button x:Name="btnNone" Content="keine" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="btnOk" Width="110" Background="#B71C1C" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+            <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" IsDefault="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
+'@
+    $theme = Get-HUXaml 'Theme'
+    $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+    $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
+    $w = $d.Window; $c = $d.C
+    $w.Title = $Title; $c.lblText.Text = $Text; $c.btnOk.Content = $OkText
+    foreach ($k in $Keys) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Content = "$(Get-HUTenantDisplayName $k)$(if ($Notes.ContainsKey($k) -and $Notes[$k]) { "  ($($Notes[$k]))" })"
+        $cb.Tag = $k; $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.Margin = [System.Windows.Thickness]::new(0, 2, 0, 2)
+        [void]$c.spTenants.Children.Add($cb)
+    }
+    $c.btnAll.Add_Click({ foreach ($cb in $c.spTenants.Children) { $cb.IsChecked = $true } })
+    $c.btnNone.Add_Click({ foreach ($cb in $c.spTenants.Children) { $cb.IsChecked = $false } })
+    $state = @{ Sel = @() }
+    $c.btnOk.Add_Click({
+            $state.Sel = @($c.spTenants.Children | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+            if (-not $state.Sel.Count) { Show-HUMessage 'Bitte mindestens einen Tenant anhaken.' -Icon Warning -Owner $w; return }
+            $w.Close()
+        })
+    [void]$w.ShowDialog()
+    return @($state.Sel)
+}
+
 function Remove-HUIntApp {
     $it = $script:IntCurrent
-    $assigned = @($it.Per.Values | Where-Object { @($_.Assignments).Count })
-    $msg = "'$($it.Name)' ($($it.Typ)) aus Intune LOESCHEN?`n`nTenants: $(@($it.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')"
+    $keys = @($it.Per.Keys)
+    # mehrere Tenants: gezielt auswaehlen, in welchen geloescht wird (nichts vorausgewaehlt)
+    if ($keys.Count -gt 1) {
+        $notes = @{}; foreach ($k in $keys) { $notes[$k] = $(if (@($it.Per[$k].Assignments).Count) { 'zugewiesen' } else { '' }) }
+        $keys = @(Show-HUTenantChoice -Title 'Loeschen' -Text "'$($it.Name)' gibt es in $($keys.Count) Tenants. In welchen loeschen?" -Keys $keys -Notes $notes -OkText 'Loeschen ...')
+        if (-not $keys.Count) { return }
+    }
+    $assigned = @($keys | Where-Object { @($it.Per[$_].Assignments).Count })
+    $msg = "'$($it.Name)' ($($it.Typ)) aus Intune LOESCHEN?`n`nTenants: $(@($keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')"
     if ($assigned.Count) { $msg += "`n`nACHTUNG: in $($assigned.Count) Tenant(s) noch zugewiesen - die App wird dann nicht mehr verteilt (bereits installierte bleiben installiert)." }
     if (@($script:IntRelRows).Count) { $msg += "`n`nDie App hat Abhaengigkeiten/Ersetzungen - Intune loescht erst, wenn sie entfernt sind." }
     $msg += "`n`nDas kann nicht rueckgaengig gemacht werden."
     if (-not (Confirm-HU $msg 'Loeschen' -Warning)) { return }
-    if (-not (Confirm-HU "Wirklich loeschen: '$($it.Name)' in $($it.Per.Count) Tenant(s)?" 'Loeschen' -Warning)) { return }
-    Start-HUIntAction 'Loeschen' -Code {
+    if (-not (Confirm-HU "Wirklich loeschen: '$($it.Name)' in $($keys.Count) Tenant(s)?" 'Loeschen' -Warning)) { return }
+    $allGone = ($keys.Count -eq $it.Per.Count)
+    Start-HUIntAction 'Loeschen' -Only $keys -Code {
         foreach ($k in $Per.Keys) {
             try { Remove-HUIntuneApp -TenantKey $k -Settings $Settings -AppId $Per[$k]; Write-HULog -Message "'$AppName' geloescht" -Level 'OK' -Tenant $k }
             catch {
@@ -423,9 +476,8 @@ function Remove-HUIntApp {
             }
         }
     }
-    # nach dem Loeschen bleibt die Liste ohne Auswahl
-    $script:IntCurrent = $null
-    Show-HUIntApp
+    # ueberall geloescht -> ohne Auswahl; sonst bleibt die App (in den anderen Tenants) gewaehlt
+    if ($allGone) { $script:IntCurrent = $null; Show-HUIntApp }
 }
 
 function Start-HUIntStatus {
