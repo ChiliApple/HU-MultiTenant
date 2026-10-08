@@ -1,6 +1,6 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.1.1 (in Arbeit)
+## v2.1.1 (2026-10-08)
 
 ### Verbessert
 - In Intune (Apps und Wartung): Details laden je Tenant gleichzeitig, jeder Tenant erscheint, sobald er da ist
