@@ -58,7 +58,12 @@ function Invoke-HUGraphRaw {
         $p.Body = [Text.Encoding]::UTF8.GetBytes($json)
         $p.ContentType = 'application/json; charset=utf-8'
     }
-    try { return (Invoke-RestMethod @p) }
+    try {
+        $res = Invoke-RestMethod @p
+        # PS 5.1: grosse Antworten (> 2 MB) liefert Invoke-RestMethod als Text statt als Objekt
+        if ($res -is [string] -and $res.TrimStart().StartsWith('{')) { $res = $res | ConvertFrom-Json }
+        return $res
+    }
     catch {
         $code = $null; $msg = $_.Exception.Message
         if ($_.Exception.Response) {
@@ -950,6 +955,7 @@ function Get-HUTenantAppList {
     $win = @($all | Where-Object { $script:WinAppTypes.ContainsKey(("$($_.'@odata.type')" -replace '^#?microsoft\.graph\.', '')) })
     $gids = @($win | ForEach-Object { @($_.assignments) } | ForEach-Object { $_.target.groupId } | Where-Object { $_ })
     $names = if ($gids.Count) { Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids $gids } else { @{} }
+    Write-HULog -Message "$($all.Count) App(s) gelesen, davon $($win.Count) fuer Windows" -Level 'INFO' -Tenant $TenantKey
     foreach ($a in $win) {
         $t = ("$($a.'@odata.type')" -replace '^#?microsoft\.graph\.', '')
         [pscustomobject]@{
