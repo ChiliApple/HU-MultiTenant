@@ -196,11 +196,11 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 
 <section id="apps">
   <h2><span class="n">6</span>Apps verteilen</h2>
-  <p>Programme (MSI, EXE) und Microsoft-Store-Apps an eine oder mehrere Schulen verteilen – das Paket wird einmal gebaut und in jede gewählte Schule hochgeladen.</p>
+  <p>Programme (MSI, EXE) und Microsoft-Store-Apps an einen oder mehrere Tenants verteilen – das Paket wird einmal gebaut und in jeden gewählten Tenant hochgeladen.</p>
   <ol class="steps">
     <li><span class="ui">+ Setup-Datei</span> (oder die Datei auf die Liste ziehen). Name, Version, Hersteller, Installations- und Deinstallationsbefehl und die Erkennung werden ausgelesen – bei MSI vollständig, bei EXE der Installer-Typ mit stillem Schalter (Inno, NSIS, InstallShield, WiX, Advanced Installer, Squirrel).</li>
     <li><span class="ui m">🧪 Testinstallation in der Windows Sandbox</span> – das Setup läuft in einem Wegwerf-Windows, dein PC bleibt sauber. Danach schlägt das Tool Erkennung und Deinstallation vor (<i>Übernehmen?</i>). Mit <i>Deinstallation mittesten</i> wird auch der Deinstallationsbefehl geprüft.</li>
-    <li>Schulen anhaken, Ziel wählen (Gruppe – wird in jeder Schule per Name gesucht –, Alle Geräte oder Alle Benutzer) und <i>Erforderlich</i>, <i>Verfügbar</i> (Unternehmensportal) oder <i>Deinstallieren</i>.</li>
+    <li>Tenants anhaken, Ziel wählen (Gruppe – wird in jedem Tenant per Name gesucht –, Alle Geräte oder Alle Benutzer) und <i>Erforderlich</i>, <i>Verfügbar</i> (Unternehmensportal) oder <i>Deinstallieren</i>.</li>
     <li><span class="ui b">⬆ Hochladen &amp; zuweisen</span>. Fortschritt erscheint unten; die Geräte holen die App beim nächsten Sync.</li>
     <li><span class="ui">📊 Status</span> zeigt je Gerät, ob die Installation geklappt hat – mit Fehlertext und Export (der Intune-Bericht braucht nach dem Zuweisen oft 1–2 Stunden).</li>
   </ol>
@@ -225,11 +225,11 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <li><span class="ui">+ Neu</span> oder <span class="ui">Beispiele …</span> (fünf fertige Pakete).</li>
     <li><b>Mit KI erstellen</b>: Aufgabe in einem Satz beschreiben → <span class="ui m">Prompt kopieren</span> → in ChatGPT, Claude oder Copilot einfügen → Antwort kopieren → <span class="ui">Antwort einfügen</span>. Die Antwort wird automatisch in Prüf- und Reparaturskript aufgeteilt; der Prompt enthält alle Intune-Regeln.</li>
     <li><span class="ui">✔ Prüfen</span> findet typische Fehler (fehlendes <code>exit 1</code>, Neustart, Eingaben, PowerShell-7-Syntax, Benutzerpfade unter SYSTEM). <span class="ui">Prüfskript hier ausführen</span> testet nur das Prüfskript auf deinem PC.</li>
-    <li>Schulen, Ziel, Zeitplan (täglich, stündlich, einmal) und Kontext wählen → <span class="ui b">⬆ Hochladen &amp; zuweisen</span> (optional zuerst Pilotgruppe, später <span class="ui">Für alle freigeben</span>).</li>
+    <li>Tenants, Ziel, Zeitplan (täglich, stündlich, einmal) und Kontext wählen → <span class="ui b">⬆ Hochladen &amp; zuweisen</span> (optional zuerst Pilotgruppe, später <span class="ui">Für alle freigeben</span>).</li>
     <li><span class="ui">📊 Ergebnisse</span>: je Gerät <i>kein Problem</i>, <i>Problem gefunden</i>, <i>behoben</i>, Fehler und die Ausgabe des Skripts – mit Export.</li>
     <li><span class="ui">▶ Jetzt auf Gerät …</span> startet das Paket sofort auf einem oder mehreren Geräten (müssen online sein; Geräte aus den Ergebnissen mit Problem stehen oben).</li>
   </ol>
-  <div class="note warn"><b class="h">Lizenz und Berechtigungen</b>Remediations brauchen Windows Enterprise/Education E3/A3 (oder höher) und einmal je Schule im Intune Admin Center: <i>Mandantenverwaltung › Connectors und Token › Windows-Datenverarbeitung › Windows-Lizenzüberprüfung</i> einschalten. Berechtigungen: <code>DeviceManagementScripts.ReadWrite.All</code>, <code>Group.Read.All</code>; für <i>Jetzt auf Gerät</i> zusätzlich <code>DeviceManagementManagedDevices.PrivilegedOperations.All</code>.</div>
+  <div class="note warn"><b class="h">Lizenz und Berechtigungen</b>Remediations brauchen Windows Enterprise/Education E3/A3 (oder höher) und einmal je Tenant im Intune Admin Center: <i>Mandantenverwaltung › Connectors und Token › Windows-Datenverarbeitung › Windows-Lizenzüberprüfung</i> einschalten. Berechtigungen: <code>DeviceManagementScripts.ReadWrite.All</code>, <code>Group.Read.All</code>; für <i>Jetzt auf Gerät</i> zusätzlich <code>DeviceManagementManagedDevices.PrivilegedOperations.All</code>.</div>
 </section>
 
 <section id="secrets">
@@ -268,7 +268,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><td><code>Config\settings.json</code></td><td>Tenants und Einstellungen (Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>Config\quick-snippets.json</code></td><td>Snippets (Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>Config\update.json</code></td><td>Update-Kanal, Signaturpflicht</td></tr>
-    <tr><td><code>Config\apps.json</code> · <code>Config\remediations.json</code></td><td>Apps- und Wartungs-Bibliothek mit Verteilstand je Schule (Sicherung <code>.bak</code>)</td></tr>
+    <tr><td><code>Config\apps.json</code> · <code>Config\remediations.json</code></td><td>Apps- und Wartungs-Bibliothek mit Verteilstand je Tenant (Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>Config\app-icons\</code></td><td>App-Symbole (PNG je App)</td></tr>
     <tr><td><code>%LOCALAPPDATA%\HU-MultiTenant\Packages\</code></td><td>gebaute App-Pakete und Sandbox-Tests (Knopf <span class="ui">Paket-Ordner</span>; liegt bewusst nicht in OneDrive)</td></tr>
     <tr><td><code>Tools\IntuneWinAppUtil.exe</code></td><td>Paketier-Werkzeug von Microsoft (wird beim ersten Hochladen geladen)</td></tr>

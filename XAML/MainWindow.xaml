@@ -538,7 +538,7 @@
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
-                                            <TextBlock Grid.Row="0" Text="Schulen" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,8,0"/>
+                                            <TextBlock Grid.Row="0" Text="Tenants" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,8,0"/>
                                             <WrapPanel Grid.Row="0" Grid.Column="1" x:Name="spAppTenants" Margin="0,2"/>
                                             <TextBlock Grid.Row="1" Text="Ziel" Style="{StaticResource FieldLabel}"/>
                                             <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
@@ -547,7 +547,7 @@
                                                     <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
                                                     <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
                                                 </ComboBox>
-                                                <TextBox x:Name="txtAppGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Schule gesucht"/>
+                                                <TextBox x:Name="txtAppGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Tenant gesucht"/>
                                                 <ComboBox x:Name="cmbAppIntent" Style="{StaticResource DarkComboBox}" Width="200" Margin="6,0,0,0">
                                                     <ComboBoxItem Content="Erforderlich (installieren)" Tag="required"/>
                                                     <ComboBoxItem Content="Verfuegbar (Unternehmensportal)" Tag="available"/>
@@ -578,7 +578,7 @@
                             <WrapPanel Grid.Row="1" Margin="0,6,0,0">
                                 <Button x:Name="btnAppSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
                                 <Button x:Name="btnAppDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"
-                                        ToolTip="Paket bauen (einmal), in jede gewaehlte Schule hochladen bzw. aktualisieren und zuweisen"/>
+                                        ToolTip="Paket bauen (einmal), in jeden gewaehlten Tenant hochladen bzw. aktualisieren und zuweisen"/>
                                 <Button x:Name="btnAppRelease" Content="Fuer alle freigeben" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
                                         ToolTip="Nach dem Pilot: Zuweisung an das eigentliche Ziel ergaenzen"/>
                                 <Button x:Name="btnAppStatus" Content="&#x1F4CA; Status" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
@@ -693,7 +693,7 @@
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
-                                            <TextBlock Grid.Row="0" Text="Schulen" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,8,0"/>
+                                            <TextBlock Grid.Row="0" Text="Tenants" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,8,0"/>
                                             <WrapPanel Grid.Row="0" Grid.Column="1" x:Name="spRemTenants" Margin="0,2"/>
                                             <TextBlock Grid.Row="1" Text="Ziel" Style="{StaticResource FieldLabel}"/>
                                             <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
@@ -701,7 +701,7 @@
                                                     <ComboBoxItem Content="Gruppe" Tag="group"/>
                                                     <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
                                                 </ComboBox>
-                                                <TextBox x:Name="txtRemGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Schule gesucht"/>
+                                                <TextBox x:Name="txtRemGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Tenant gesucht"/>
                                             </StackPanel>
                                             <TextBlock Grid.Row="2" Text="Pilot" Style="{StaticResource FieldLabel}"/>
                                             <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">

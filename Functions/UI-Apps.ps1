@@ -1,12 +1,12 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Reiter "Apps": Win32-Apps (MSI/EXE) und Microsoft-Store-Apps an mehrere Schulen verteilen.
+    Reiter "Apps": Win32-Apps (MSI/EXE) und Microsoft-Store-Apps an mehrere Tenants verteilen.
 .DESCRIPTION
     Ablauf fuer Menschen:
       1. Setup-Datei hinzufuegen (Knopf oder auf die Liste ziehen) - Name, Version, Befehle, Erkennung werden ausgelesen.
       2. Testinstallation in der Windows Sandbox - ermittelt Erkennung und Deinstallation, der eigene PC bleibt sauber.
-      3. Schulen und Ziel waehlen, "Hochladen & zuweisen" - Paket wird einmal gebaut und in jede Schule hochgeladen.
+      3. Tenants und Ziel waehlen, "Hochladen & zuweisen" - Paket wird einmal gebaut und in jeden Tenant hochgeladen.
          Optional zuerst nur an eine Pilotgruppe, spaeter "Fuer alle freigeben".
       4. "Status" zeigt je Geraet, ob die Installation geklappt hat.
     Bibliothek: Config\apps.json (lokal, nicht im Repository). Pakete/Sandbox: %LOCALAPPDATA%\HU-MultiTenant.
@@ -129,7 +129,7 @@ function Update-HUAppList([string]$SelectId = '') {
     $items = foreach ($a in ($script:AppLib | Sort-Object Name)) {
         $dep = @($a.Deployments | Where-Object { $_.AppId })
         $sub = "$(Get-HUAppKindText $a)$(if ($a.Version) { " | v$($a.Version)" })"
-        if ($dep.Count) { $sub += " | $($dep.Count) Schule(n)$(if (@($dep | Where-Object { $_.Stage -eq 'pilot' }).Count) { ', Pilot' })" }
+        if ($dep.Count) { $sub += " | $($dep.Count) Tenant(s)$(if (@($dep | Where-Object { $_.Stage -eq 'pilot' }).Count) { ', Pilot' })" }
         [pscustomobject]@{ Title = $(if ($a.Name) { $a.Name } else { '(ohne Name)' }); Sub = $sub; Id = $a.Id }
     }
     $script:AppLoading = $true
@@ -227,6 +227,8 @@ function Show-HUAppForm($App) {
         if (-not $App) {
             foreach ($n in 'txtAppName', 'txtAppPublisher', 'txtAppVersion', 'txtAppDesc', 'txtAppSetup', 'txtAppInstall', 'txtAppUninstall', 'txtAppDetA', 'txtAppDetB', 'txtAppDetVer', 'txtAppStoreId', 'txtAppGroup', 'txtAppPilot', 'txtAppDeadline') { $c[$n].Text = '' }
             $c['txtAppKind'].Text = ''; $c['txtAppInfo'].Text = ''; $c['txtAppSandbox'].Text = ''
+            foreach ($p in @(@('cmbAppTarget', 'group'), @('cmbAppIntent', 'required'), @('cmbAppNotify', 'showAll'), @('cmbAppRunAs', 'system'), @('cmbAppDetType', 'msi'))) { [void](Select-HUComboTag $c[$p[0]] $p[1]) }
+            Set-HUCheckedTenants $c['spAppTenants'] @()
             $c['txtAppTenantState'].Text = 'Links eine App waehlen oder mit "+ Setup-Datei" hinzufuegen (auch per Ziehen auf die Liste).'
             Update-HUAppIconView
             Update-HUAppButtons
@@ -415,7 +417,7 @@ function Remove-HUAppCurrent {
     if (-not $a) { return }
     $deps = @($a.Deployments | Where-Object { $_.AppId })
     $msg = "'$($a.Name)' aus der Bibliothek entfernen?"
-    if ($deps.Count) { $msg += "`n`nIn Intune bleibt die App in $($deps.Count) Schule(n) bestehen (dort bei Bedarf loeschen)." }
+    if ($deps.Count) { $msg += "`n`nIn Intune bleibt die App in $($deps.Count) Tenant(s) bestehen (dort bei Bedarf loeschen)." }
     if (-not (Confirm-HU $msg -Warning)) { return }
     [void]$script:AppLib.Remove($a)
     Remove-Item -LiteralPath (Get-HUAppIconPath $a) -Force -ErrorAction SilentlyContinue
@@ -448,7 +450,7 @@ function ConvertTo-HUDeadline([string]$Text) {
 function Test-HUAppReady($App, [switch]$Release) {
     $err = New-Object System.Collections.Generic.List[string]
     if (-not $App.Name) { $err.Add('Name fehlt.') }
-    if (-not @($App.Tenants).Count) { $err.Add('Keine Schule angehakt.') }
+    if (-not @($App.Tenants).Count) { $err.Add('Kein Tenant angehakt.') }
     if ($App.TargetKind -eq 'group' -and -not $App.TargetGroup) { $err.Add('Zielgruppe fehlt (oder Ziel "Alle Geraete"/"Alle Benutzer" waehlen).') }
     if ($App.Pilot -and -not $Release -and -not $App.PilotGroup) { $err.Add('Pilotgruppe fehlt.') }
     try { [void](ConvertTo-HUDeadline $App.Deadline) } catch { $err.Add($_.Exception.Message) }
@@ -503,7 +505,7 @@ $script:AppDeployCode = {
             $existing = if ($appId) { Get-HUIntuneApp -TenantKey $tk -Settings $Settings -AppId $appId } else { $null }
             if ($appId -and -not $existing) { Write-HULog -Message 'Frueher hochgeladene App gibt es in Intune nicht mehr - wird neu angelegt' -Level 'WARN' -Tenant $tk; $appId = '' }
             if ($Release) {
-                if (-not $existing) { throw 'App in dieser Schule nicht gefunden - zuerst hochladen' }
+                if (-not $existing) { throw 'App in diesem Tenant nicht gefunden - zuerst hochladen' }
                 $r.AppId = $appId; $r.Signature = "$($dep.Signature)"
             } elseif ($Def.Type -eq 'store') {
                 if (-not $existing) {
@@ -556,7 +558,7 @@ function Start-HUAppDeploy([switch]$Release) {
     $tenants = @($a.Tenants)
     if ($Release) { $tenants = @($a.Deployments | Where-Object { $_.Stage -eq 'pilot' -and $_.AppId } | ForEach-Object { $_.Tenant }) }
     $err = @(Test-HUAppReady $a -Release:$Release)
-    if ($Release -and $tenants.Count) { $err = @($err | Where-Object { $_ -ne 'Keine Schule angehakt.' }) }
+    if ($Release -and $tenants.Count) { $err = @($err | Where-Object { $_ -ne 'Kein Tenant angehakt.' }) }
     if ($err.Count) { Show-HUMessage ("Bitte zuerst ergaenzen:`n`n- " + ($err -join "`n- ")) 'Apps' -Icon Warning; return }
 
     $download = $false
@@ -567,7 +569,7 @@ function Start-HUAppDeploy([switch]$Release) {
     $names = @($tenants | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', '
     $what = if ($Release) { "Freigeben fuer: $(Get-HUAppTargetText $a -Main)" } else { "Ziel: $(Get-HUAppTargetText $a)" }
     $dl = ConvertTo-HUDeadline $a.Deadline
-    $msg = "$($a.Name)$(if ($a.Version) { " v$($a.Version)" })`n`nSchulen: $names`n$what$(if ($dl) { "`nFrist: $($dl.ToString('dd.MM.yyyy HH:mm'))" })"
+    $msg = "$($a.Name)$(if ($a.Version) { " v$($a.Version)" })`n`nTenants: $names`n$what$(if ($dl) { "`nFrist: $($dl.ToString('dd.MM.yyyy HH:mm'))" })"
     if (-not $Release -and $a.Type -eq 'win32' -and -not $a.SandboxNote) { $msg += "`n`nHinweis: noch keine Testinstallation in der Sandbox." }
     if (-not $Release -and -not (Test-Path -LiteralPath (Get-HUAppIconPath $a))) { $msg += "`nHinweis: ohne Symbol (im Unternehmensportal erscheint ein Platzhalter)." }
     if (-not (Confirm-HU "$msg`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
@@ -611,7 +613,7 @@ function Complete-HUAppDeploy($Result) {
         if ($script:AppCurrent -and $script:AppCurrent.Id -eq $a.Id) { $script:Controls['txtAppTenantState'].Text = Get-HUDeploymentText $a.Deployments }
     }
     $col = if ($failN) { '#FFB74D' } else { '#81C784' }
-    Add-HURtbLine $script:Controls['rtbApps'] "Ergebnis: $okN Schule(n) ok$(if ($failN) { ", $failN mit Fehler" })$(if ($okN -and -not $script:AppJobRelease) { ' - Geraete holen die App beim naechsten Sync (meist innerhalb 1 Stunde).' })" $col
+    Add-HURtbLine $script:Controls['rtbApps'] "Ergebnis: $okN Tenant(s) ok$(if ($failN) { ", $failN mit Fehler" })$(if ($okN -and -not $script:AppJobRelease) { ' - Geraete holen die App beim naechsten Sync (meist innerhalb 1 Stunde).' })" $col
     Update-HUAppButtons
 }
 
@@ -635,7 +637,7 @@ function Start-HUAppStatus {
                     $rows = @(Get-HUAppInstallStatus -TenantKey $tk -Settings $Settings -AppId $Map[$tk])
                     $grp = @($rows | Group-Object Status | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ', '
                     Write-HULog -Message "$($rows.Count) Geraet(e)$(if ($grp) { ": $grp" })" -Level 'OK' -Tenant $tk
-                    foreach ($r in $rows) { $o = [ordered]@{ Schule = $tk }; foreach ($p in $r.PSObject.Properties) { $o[$p.Name] = $p.Value }; [pscustomobject]$o }
+                    foreach ($r in $rows) { $o = [ordered]@{ Tenant = $tk }; foreach ($p in $r.PSObject.Properties) { $o[$p.Name] = $p.Value }; [pscustomobject]$o }
                 } catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $tk }
             }
         } -OnDone {
@@ -644,7 +646,7 @@ function Start-HUAppStatus {
             Update-HUAppButtons
             $app = Get-HUAppById $script:AppJobApp
             if (-not $rows.Count) { Add-HURtbLine $script:Controls['rtbApps'] 'Noch keine Geraetedaten - Intune braucht nach dem Zuweisen oft 1-2 Stunden fuer den ersten Bericht.' '#FFB74D'; return }
-            foreach ($r in $rows) { $r.Schule = Get-HUTenantDisplayName $r.Schule }
+            foreach ($r in $rows) { $r.Tenant = Get-HUTenantDisplayName $r.Tenant }
             Show-HUQSTable -Title "Status $(if ($app) { $app.Name })" -Objects $rows -FilePrefix 'App-Status'
         })
     Update-HUAppButtons

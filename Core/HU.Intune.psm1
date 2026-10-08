@@ -498,7 +498,7 @@ function Sync-HUAppSource {
     $files = if ($WholeFolder) { @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force) } else { @($setup) }
     $sum = 0L
     $lines = foreach ($f in $files) { $sum += $f.Length; '{0}|{1}|{2}' -f $f.FullName.Substring($dir.Length), $f.Length, $f.LastWriteTimeUtc.Ticks }
-    if ($sum -gt 8GB) { throw 'Quelle groesser als 8 GB - Intune erlaubt hoechstens 30 GB, aber das ist fuer Schulnetze unrealistisch. Ordner pruefen.' }
+    if ($sum -gt 8GB) { throw 'Quelle groesser als 8 GB - Intune erlaubt hoechstens 30 GB, aber das ist fuer die meisten Netze unrealistisch. Ordner pruefen.' }
     $sha = [Security.Cryptography.SHA256]::Create()
     $sig = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(($lines -join "`n"))))).Replace('-', '')
     $sigFile = "$Destination.sig"

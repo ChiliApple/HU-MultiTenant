@@ -7,7 +7,7 @@
       1. "+ Neu" oder "Beispiele ..." - Aufgabe in einem Satz beschreiben, "Prompt kopieren", in die KI einfuegen,
          Antwort kopieren und "Antwort einfuegen" (wird in Pruef- und Reparaturskript aufgeteilt).
       2. "Pruefen" findet typische Fehler (exit 1 fehlt, Neustart, Eingaben, PowerShell-7-Syntax ...).
-      3. Schulen, Ziel und Zeitplan waehlen, "Hochladen & zuweisen" (optional zuerst Pilotgruppe).
+      3. Tenants, Ziel und Zeitplan waehlen, "Hochladen & zuweisen" (optional zuerst Pilotgruppe).
       4. "Ergebnisse" zeigt je Geraet: Problem gefunden, behoben, Fehler, Ausgabe. "Jetzt auf Geraet ..." startet sofort.
     Bibliothek: Config\remediations.json (lokal). Beispiele: Config\remediations.example.json.
     Lizenz: Remediations brauchen Windows Enterprise/Education E3/A3 o. ae. und einmalig im Intune Admin Center
@@ -72,7 +72,7 @@ function Update-HURemList([string]$SelectId = '') {
     $items = foreach ($r in ($script:RemLib | Sort-Object Name)) {
         $dep = @($r.Deployments | Where-Object { $_.ScriptId })
         $sub = if ("$($r.Remediation)".Trim()) { 'Pruefen + Reparieren' } else { 'Nur pruefen' }
-        if ($dep.Count) { $sub += " | $($dep.Count) Schule(n)$(if (@($dep | Where-Object { $_.Stage -eq 'pilot' }).Count) { ', Pilot' })" }
+        if ($dep.Count) { $sub += " | $($dep.Count) Tenant(s)$(if (@($dep | Where-Object { $_.Stage -eq 'pilot' }).Count) { ', Pilot' })" }
         [pscustomobject]@{ Title = $(if ($r.Name) { $r.Name } else { '(ohne Name)' }); Sub = $sub; Id = $r.Id }
     }
     $script:RemLoading = $true
@@ -143,6 +143,8 @@ function Show-HURemForm($Rem) {
         if (-not $Rem) {
             foreach ($n in 'txtRemName', 'txtRemDesc', 'txtRemAiTask', 'txtRemDetect', 'txtRemFix', 'txtRemGroup', 'txtRemPilot', 'txtRemDate') { $c[$n].Text = '' }
             $c['txtRemTenantState'].Text = 'Links ein Wartungspaket waehlen, "+ Neu" oder "Beispiele ..." anklicken.'
+            foreach ($p in @(@('cmbRemTarget', 'group'), @('cmbRemSchedule', 'daily'), @('cmbRemRunAs', 'system'))) { [void](Select-HUComboTag $c[$p[0]] $p[1]) }
+            Set-HUCheckedTenants $c['spRemTenants'] @()
             return
         }
         $c['txtRemName'].Text = "$($Rem.Name)"
@@ -229,7 +231,7 @@ function Show-HURemExamplesMenu {
         $mi.Header = "$($e.Name)"
         $mi.ToolTip = "$($e.Description)"
         $mi.Tag = $e
-        $mi.Add_Click({ Add-HURem $this.Tag; Add-HURtbLine $script:Controls['rtbRem'] "Beispiel uebernommen: $($this.Tag.Name) - Schulen, Ziel und Zeitplan waehlen." '#81C784' })
+        $mi.Add_Click({ Add-HURem $this.Tag; Add-HURtbLine $script:Controls['rtbRem'] "Beispiel uebernommen: $($this.Tag.Name) - Tenants, Ziel und Zeitplan waehlen." '#81C784' })
         [void]$menu.Items.Add($mi)
     }
     $menu.PlacementTarget = $btn
@@ -242,7 +244,7 @@ function Remove-HURemCurrent {
     if (-not $r) { return }
     $deps = @($r.Deployments | Where-Object { $_.ScriptId })
     $msg = "'$($r.Name)' aus der Liste entfernen?"
-    if ($deps.Count) { $msg += "`n`nIn Intune bleibt das Paket in $($deps.Count) Schule(n) bestehen (Geraete > Skripts und Wartungen)." }
+    if ($deps.Count) { $msg += "`n`nIn Intune bleibt das Paket in $($deps.Count) Tenant(s) bestehen (Geraete > Skripts und Wartungen)." }
     if (-not (Confirm-HU $msg -Warning)) { return }
     [void]$script:RemLib.Remove($r)
     $script:RemCurrent = $null
@@ -357,7 +359,7 @@ $script:RemDeployCode = {
             Write-HULog -Message "--- $tk ---" -Level 'INFO' -Tenant $tk
             $sid = if ($Deployments.ContainsKey($tk)) { "$($Deployments[$tk])" } else { '' }
             if ($Release) {
-                if (-not $sid) { throw 'In dieser Schule noch nicht hochgeladen' }
+                if (-not $sid) { throw 'In diesem Tenant noch nicht hochgeladen' }
                 [void](Invoke-HUIntuneGraph -TenantKey $tk -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$sid")
             } else {
                 $new = Publish-HURemediation -TenantKey $tk -Settings $Settings -Def $Def -Id $sid
@@ -389,7 +391,7 @@ function Start-HURemDeploy([switch]$Release) {
     $tenants = if ($Release) { @($r.Deployments | Where-Object { $_.Stage -eq 'pilot' -and $_.ScriptId } | ForEach-Object { $_.Tenant }) } else { @($r.Tenants) }
     $err = New-Object System.Collections.Generic.List[string]
     if (-not $r.Name) { $err.Add('Name fehlt.') }
-    if (-not $tenants.Count) { $err.Add('Keine Schule angehakt.') }
+    if (-not $tenants.Count) { $err.Add('Kein Tenant angehakt.') }
     if ($r.TargetKind -eq 'group' -and -not $r.TargetGroup) { $err.Add('Zielgruppe fehlt (oder "Alle Geraete" waehlen).') }
     if ($r.Pilot -and -not $Release -and -not $r.PilotGroup) { $err.Add('Pilotgruppe fehlt.') }
     $sched = $null
@@ -401,7 +403,7 @@ function Start-HURemDeploy([switch]$Release) {
     $tText = if ($r.Pilot -and -not $Release) { "Pilotgruppe '$($r.PilotGroup)'" } elseif ($r.TargetKind -eq 'allDevices') { 'Alle Geraete' } else { "Gruppe '$($r.TargetGroup)'" }
     $names = @($tenants | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', '
     $mode = if ("$($r.Remediation)".Trim()) { 'pruefen und reparieren' } else { 'nur pruefen und berichten' }
-    if (-not (Confirm-HU "$($r.Name)`n`nSchulen: $names`nZiel: $tText`nZeitplan: $(Get-HURemScheduleText $r)`nModus: $mode, als $(if ($r.RunAs -eq 'user') { 'Benutzer' } else { 'System' })`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
+    if (-not (Confirm-HU "$($r.Name)`n`nTenants: $names`nZiel: $tText`nZeitplan: $(Get-HURemScheduleText $r)`nModus: $mode, als $(if ($r.RunAs -eq 'user') { 'Benutzer' } else { 'System' })`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
 
     Set-HUStateValue 'remTenants' @($r.Tenants)
     if ($r.TargetGroup) { Set-HUStateValue 'remLastGroup' $r.TargetGroup }
@@ -433,7 +435,7 @@ function Complete-HURemDeploy($Result) {
         Update-HURemList $r.Id
         if ($script:RemCurrent -and $script:RemCurrent.Id -eq $r.Id) { $script:Controls['txtRemTenantState'].Text = Get-HURemDeploymentText $r.Deployments }
     }
-    Add-HURtbLine $script:Controls['rtbRem'] "Ergebnis: $okN Schule(n) ok$(if ($failN) { ", $failN mit Fehler" })$(if ($okN) { ' - erste Ergebnisse nach dem naechsten Lauf auf den Geraeten (Ergebnisse).' })" $(if ($failN) { '#FFB74D' } else { '#81C784' })
+    Add-HURtbLine $script:Controls['rtbRem'] "Ergebnis: $okN Tenant(s) ok$(if ($failN) { ", $failN mit Fehler" })$(if ($okN) { ' - erste Ergebnisse nach dem naechsten Lauf auf den Geraeten (Ergebnisse).' })" $(if ($failN) { '#FFB74D' } else { '#81C784' })
     Update-HURemButtons
 }
 
@@ -453,7 +455,7 @@ function Start-HURemResults {
                     $grp = @($rows | Group-Object Pruefung | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ', '
                     $fixed = @($rows | Where-Object { $_.Reparatur -eq 'behoben' }).Count
                     Write-HULog -Message "$($rows.Count) Geraet(e)$(if ($grp) { ": $grp" })$(if ($fixed) { ", behoben=$fixed" })" -Level 'OK' -Tenant $tk
-                    foreach ($x in $rows) { $o = [ordered]@{ Schule = $tk }; foreach ($p in $x.PSObject.Properties) { $o[$p.Name] = $p.Value }; [pscustomobject]$o }
+                    foreach ($x in $rows) { $o = [ordered]@{ Tenant = $tk }; foreach ($p in $x.PSObject.Properties) { $o[$p.Name] = $p.Value }; [pscustomobject]$o }
                 } catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $tk }
             }
         } -OnDone {
@@ -462,7 +464,7 @@ function Start-HURemResults {
             $script:RemLastResults = $rows
             Update-HURemButtons
             if (-not $rows.Count) { Add-HURtbLine $script:Controls['rtbRem'] 'Noch keine Ergebnisse - die Geraete melden sich nach dem ersten geplanten Lauf.' '#FFB74D'; return }
-            $view = foreach ($x in $rows) { $o = [ordered]@{}; foreach ($p in $x.PSObject.Properties) { if ($p.Name -ne 'DeviceId') { $o[$p.Name] = $p.Value } }; $o.Schule = Get-HUTenantDisplayName $x.Schule; [pscustomobject]$o }
+            $view = foreach ($x in $rows) { $o = [ordered]@{}; foreach ($p in $x.PSObject.Properties) { if ($p.Name -ne 'DeviceId') { $o[$p.Name] = $p.Value } }; $o.Tenant = Get-HUTenantDisplayName $x.Tenant; [pscustomobject]$o }
             $rem = Get-HURemById $script:RemJobId
             Show-HUQSTable -Title "Wartung $(if ($rem) { $rem.Name })" -Objects @($view) -FilePrefix 'Wartung'
         })
@@ -482,7 +484,7 @@ function Show-HURemRunNow {
     </Window.Resources>
     <StackPanel Margin="18">
         <TextBlock x:Name="lblHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
-        <TextBlock Text="Schule" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
+        <TextBlock Text="Tenant" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
         <ComboBox x:Name="cmbTenant" Style="{StaticResource DarkComboBox}"/>
         <TextBlock Text="Geraetename(n), mit Komma getrennt" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
         <TextBox x:Name="txtDevice" Style="{StaticResource DarkTextBox}"/>
@@ -507,7 +509,7 @@ function Show-HURemRunNow {
         $script:RemPickBusy = $true
         $tk = "$($c.cmbTenant.SelectedItem.Tag)"
         # zuerst Geraete mit Problem, dann der Rest
-        $list = @($script:RemLastResults | Where-Object { $_.Schule -eq $tk } | Sort-Object @{ Expression = { $_.Pruefung -ne 'Problem gefunden' -and $_.Reparatur -notmatch 'fehl' } }, Geraet)
+        $list = @($script:RemLastResults | Where-Object { $_.Tenant -eq $tk } | Sort-Object @{ Expression = { $_.Pruefung -ne 'Problem gefunden' -and $_.Reparatur -notmatch 'fehl' } }, Geraet)
         foreach ($e in $list) { [void]$c.cmbDevice.Items.Add("$($e.Geraet)$(if ($e.Pruefung -eq 'Problem gefunden' -or $e.Reparatur -match 'fehl') { "  ($($e.Pruefung) / $($e.Reparatur))" })") }
         $vis = $(if ($list.Count) { 'Visible' } else { 'Collapsed' })
         $c.cmbDevice.Visibility = $vis; $c.lblPick.Visibility = $vis
