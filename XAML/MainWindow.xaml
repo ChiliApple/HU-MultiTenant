@@ -35,7 +35,7 @@
                                Margin="0,0,14,0" Cursor="Hand" Visibility="Collapsed"
                                ToolTip="Klick: Einstellungen &#x2192; Tenants"/>
                     <TextBlock x:Name="txtPermissionStatus" Foreground="#4CAF50" VerticalAlignment="Center" Margin="0,0,12,0" FontSize="11"/>
-                    <Button x:Name="btnPanic" Content="&#x26D4;" Style="{StaticResource ToolButton}" Width="32" Margin="0,0,10,0" Foreground="#E57373"
+                    <Button x:Name="btnPanic" Content="&#x26D4;" Style="{StaticResource ToolButton}" Padding="8,5" Margin="0,0,10,0" Foreground="#E57373"
                             ToolTip="Not-Aus: alle gespeicherten Secrets loeschen und beenden (mit Rueckfrage)"/>
                     <Button x:Name="btnSetupGuide" Content="&#x1F6E0; Berechtigungen" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
                             ToolTip="Benoetigte Graph-Berechtigungen der gewaehlten Extension pruefen und einrichten"/>
