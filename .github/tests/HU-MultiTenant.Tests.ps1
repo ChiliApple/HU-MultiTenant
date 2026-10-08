@@ -515,3 +515,14 @@ Describe 'Support: Anonymisieren' {
         $t | Should -Match '1d747393-\*\*\*\*'
     }
 }
+
+Describe 'Intune: Inno-Deinstallation (Greenshot-Fall)' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It '/SILENT wird zu /VERYSILENT, laufende App wird vorher beendet, kein doppeltes Anhaengen' {
+        $e = ConvertFrom-HUSandboxEntry ([pscustomobject]@{ Key = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Greenshot_is1'; DisplayName = 'Greenshot'; DisplayVersion = '1.3'
+                UninstallString = '"C:\Program Files\Greenshot\unins000.exe"'; QuietUninstallString = '"C:\Program Files\Greenshot\unins000.exe" /SILENT'; DisplayIcon = 'C:\Program Files\Greenshot\Greenshot.exe' }) 'Inno Setup'
+        $e.UninstallCmd | Should -Be 'cmd.exe /c "taskkill /f /im "Greenshot.exe" >nul 2>&1 & "C:\Program Files\Greenshot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART"'
+        Add-HUSilentUninstall $e.UninstallCmd 'Inno Setup' | Should -Be $e.UninstallCmd
+        (Get-HUExeInstallerType -Path $PSCommandPath).Type | Should -Not -BeNullOrEmpty
+    }
+}

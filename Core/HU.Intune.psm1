@@ -193,7 +193,7 @@ function Get-HUExeInstallerType {
     } finally { $fs.Dispose() }
     $txt = [System.Text.Encoding]::GetEncoding(28591).GetString($buf)
     $types = @(
-        @{ Type = 'Inno Setup'; Pattern = 'Inno Setup'; Silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' }
+        @{ Type = 'Inno Setup'; Pattern = 'Inno Setup'; Silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /ALLUSERS' }
         @{ Type = 'NSIS'; Pattern = 'Nullsoft'; Silent = '/S' }
         @{ Type = 'WiX Burn'; Pattern = '.wixburn'; Silent = '/quiet /norestart' }
         @{ Type = 'InstallShield'; Pattern = 'InstallShield'; Silent = '/s /v"/qn REBOOT=ReallySuppress"' }
@@ -1479,11 +1479,14 @@ function Start-HUSandboxTest {
 # Deinstallationsbefehl ohne Stummschaltung -> passenden Schalter ergaenzen (NSIS /S, Inno /VERYSILENT ...)
 function Add-HUSilentUninstall([string]$Cmd, [string]$InstallerType = '') {
     $c = "$Cmd".Trim()
-    if (-not $c -or $c -match '(?i)msiexec') { return $c }
-    if ($c -match '(?i)(^|\s)(/S|/silent|/verysilent|/quiet|/qn|--silent|-s)(\s|$)') { return $c }
+    if (-not $c -or $c -match '(?i)msiexec|^cmd(\.exe)?\s+/c\s|^powershell') { return $c }
+    $inno = $c -match '(?i)unins\d{3}\.exe'
+    if (-not $inno -and $c -match '(?i)(^|\s)(/S|/silent|/verysilent|/quiet|/qn|--silent|-s)(\s|$)') { return $c }
     if ($c.StartsWith('"')) { $exe = $c.Substring(1, $c.IndexOf('"', 1) - 1); $rest = $c.Substring($c.IndexOf('"', 1) + 1).Trim() }
     else { $m = [regex]::Match($c, '(?i)^(.+?\.exe)(.*)$'); if (-not $m.Success) { return $c }; $exe = $m.Groups[1].Value.Trim(); $rest = $m.Groups[2].Value.Trim() }
     $leaf = ($exe -split '[\\/]')[-1]
+    # Inno-Deinstaller: /SILENT zeigt Fortschritt und Rueckfragen -> immer /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+    if ($inno) { $rest = ($rest -replace '(?i)(^|\s)/(VERY)?SILENT\b|(^|\s)/SUPPRESSMSGBOXES\b|(^|\s)/NORESTART\b', ' ').Trim() }
     $sw = ''
     if ($leaf -match '(?i)^unins\d{3}\.exe$' -or $InstallerType -eq 'Inno Setup') { $sw = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' }
     elseif ($InstallerType -eq 'NSIS' -or $leaf -match '(?i)^(uninst|uninstall|uninstaller)\.exe$') { $sw = '/S' }
@@ -1496,10 +1499,13 @@ function ConvertFrom-HUSandboxEntry($Entry, [string]$InstallerType = '') {
     $is32 = $key -match '\\WOW6432Node\\'
     $kp = ($key -replace '^HKEY_CURRENT_USER', 'HKEY_CURRENT_USER') -replace '\\WOW6432Node\\', '\'
     $un = "$($Entry.QuietUninstallString)"
-    if (-not $un) {
-        $un = "$($Entry.UninstallString)"
-        if ($un -match '(?i)msiexec(\.exe)?\s+/[ix]\s*(\{[0-9A-F-]{36}\})') { $un = "msiexec /x $($Matches[2]) /qn /norestart" }
-        else { $un = Add-HUSilentUninstall $un $InstallerType }
+    if (-not $un) { $un = "$($Entry.UninstallString)" }
+    if ($un -match '(?i)msiexec(\.exe)?\s+/[ix]\s*(\{[0-9A-F-]{36}\})') { $un = "msiexec /x $($Matches[2]) /qn /norestart" }
+    elseif ($un) {
+        $un = Add-HUSilentUninstall $un $InstallerType
+        # laufende App vorher beenden (sonst fragt der Deinstaller nach) - Programmname aus DisplayIcon
+        $ico = if ($Entry.PSObject.Properties['DisplayIcon']) { (("$($Entry.DisplayIcon)" -replace ',\s*-?\d+\s*$', '').Trim().Trim('"') -split '[\\/]')[-1] } else { '' }
+        if ($ico -match '(?i)^[^"&|<>]+\.exe$' -and $ico -notmatch '(?i)^unins|uninst') { $un = "cmd.exe /c `"taskkill /f /im `"$ico`" >nul 2>&1 & $un`"" }
     }
     $pc = ''
     if ((Split-Path $key -Leaf) -match '^\{[0-9A-Fa-f-]{36}\}$') { $pc = Split-Path $key -Leaf }

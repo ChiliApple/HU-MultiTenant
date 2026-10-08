@@ -889,6 +889,16 @@ function Start-HUAppSandbox {
     if (-not $a.SetupPath -or -not (Test-Path -LiteralPath $a.SetupPath)) { Show-HUMessage 'Setup-Datei nicht gefunden.' -Icon Warning; return }
     if (-not $a.InstallCmd) { Show-HUMessage 'Installationsbefehl fehlt.' -Icon Warning; return }
     if (-not (Test-HUSandboxAvailable)) { Show-HUSandboxSetup; return }
+    # Inno-Setups: fuer alle Benutzer installieren (sonst landet die App im Benutzerprofil)
+    if ($a.InstallerType -eq 'Inno Setup' -and $a.InstallCmd -notmatch '(?i)/(ALLUSERS|CURRENTUSER)\b') {
+        $a.InstallCmd = "$($a.InstallCmd) /ALLUSERS"; $script:Controls['txtAppInstall'].Text = $a.InstallCmd
+        Add-HURtbLine $script:Controls['rtbApps'] 'Installationsbefehl um /ALLUSERS ergaenzt (Installation fuer alle Benutzer statt im Benutzerprofil).' '#90CAF9'
+    }
+    # Deinstallationsbefehl aus einem Benutzerprofil (frueherer Test) passt nicht -> neu ermitteln lassen
+    if ($a.UninstallCmd -match '(?i)\\Users\\WDAGUtilityAccount\\') {
+        $a.UninstallCmd = ''; $script:Controls['txtAppUninstall'].Text = ''
+        Add-HURtbLine $script:Controls['rtbApps'] 'Deinstallationsbefehl zeigte ins Sandbox-Benutzerprofil - wird neu ermittelt (danach noch einmal testen, um die Deinstallation zu pruefen).' '#FFB74D'
+    }
     # Deinstallationsbefehl ohne Stummschaltung -> vor dem Test ergaenzen (sonst haengt er unter Intune)
     $fixed = Add-HUSilentUninstall $a.UninstallCmd $a.InstallerType
     if ($fixed -ne $a.UninstallCmd) {
@@ -994,6 +1004,9 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     $removed = @($Res.WrapperLog | Where-Object { $_ -match 'Verknuepfung entfernt|Nicht entfernt' } | ForEach-Object { ($_ -replace '^\S+ \S+ ', '') })
     if ($removed.Count) { foreach ($x in $removed) { $lines.Add($x) } }
     elseif ($a.NoDesktop) { $lines.Add('Desktop-Verknuepfung: Setup hat keine angelegt') }
+    if (@($entries | Where-Object { "$($_.Key)" -match '^HKEY_CURRENT_USER' -or "$($_.InstallLocation)$($_.UninstallString)" -match '(?i)\\Users\\' }).Count) {
+        $lines.Add("ACHTUNG: installiert nur ins Benutzerprofil - unter Intune als 'System' landet es nicht beim Benutzer. Schalter fuer 'alle Benutzer' verwenden (Inno: /ALLUSERS, MSI: ALLUSERS=1) oder 'Ausfuehren als: Benutzer'.")
+    }
     $lines.Add("Neue Programme in 'Apps & Features': $($entries.Count)$(if ($entries.Count) { ' - ' + (@($entries | Select-Object -First 4 | ForEach-Object { "$($_.DisplayName) $($_.DisplayVersion)".Trim() }) -join '; ') })")
     if ($Res.UninstallTested) {
         $winU = @($Res.UninstallWindows | Where-Object { $_ })
