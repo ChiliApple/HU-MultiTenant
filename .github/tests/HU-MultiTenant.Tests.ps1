@@ -438,3 +438,22 @@ Describe 'Intune: stille Deinstallation' {
         $e.UninstallCmd | Should -Match '/S$'
     }
 }
+
+Describe 'Intune: Abhaengigkeiten' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'ersetzt Abhaengigkeiten, behaelt Ersetzungen (Supersedence)' {
+        $ex = @(
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.mobileAppSupersedence'; targetType = 'child'; targetId = 'old'; supersedenceType = 'update' }
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.mobileAppDependency'; targetType = 'child'; targetId = 'gone'; dependencyType = 'autoInstall' }
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.mobileAppDependency'; targetType = 'parent'; targetId = 'parentApp'; dependencyType = 'autoInstall' }
+        )
+        $b = Get-HUDependencyBody -Existing $ex -DependencyIds @('drv', 'rt', 'drv') -AutoInstall $true
+        $r = @($b.relationships)
+        $r.Count | Should -Be 3
+        @($r | Where-Object { $_['@odata.type'] -match 'Supersedence' }).Count | Should -Be 1
+        @($r | Where-Object { $_.targetId -eq 'gone' }).Count | Should -Be 0
+        @($r | Where-Object { $_['@odata.type'] -match 'Dependency' } | ForEach-Object { $_.dependencyType } | Select-Object -Unique) | Should -Be 'autoInstall'
+        (@((Get-HUDependencyBody -Existing @() -DependencyIds @('x') -AutoInstall $false).relationships)[0]).dependencyType | Should -Be 'detect'
+        ((Get-HUDependencyBody -Existing @() -DependencyIds @()) | ConvertTo-Json -Compress) | Should -Be '{"relationships":[]}'
+    }
+}

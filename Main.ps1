@@ -214,7 +214,17 @@ $script:Window.Add_ContentRendered({
                 if ($tw.Detection.Type -ne 'file' -or $tw.Detection.FileName -ne 'x.exe') { throw 'Apps: Erkennung wird nicht uebernommen' }
                 if (-not (Set-HUAppIcon $tw "$env:windir\System32\notepad.exe" -Quiet) -or -not $script:Controls['imgAppIcon'].Source) { throw 'Apps: Symbol wird nicht uebernommen' }
                 Remove-Item -LiteralPath (Get-HUAppIconPath $tw) -Force -ErrorAction SilentlyContinue
-                [void]$script:AppLib.Remove($ta); [void]$script:AppLib.Remove($tw); $script:AppCurrent = $null; Update-HUAppList; Show-HUAppForm $null
+                # Abhaengigkeiten: Reihenfolge (tiefste zuerst) und Kreis-Erkennung
+                $td1 = ConvertTo-HUApp; $td1.Name = 'Smoke-Treiber'; $td2 = ConvertTo-HUApp; $td2.Name = 'Smoke-Runtime'; $td2.Dependencies = @($td1.Id)
+                $script:AppLib.Add($td1); $script:AppLib.Add($td2); $tw.Dependencies = @($td2.Id)
+                $o = Get-HUAppDepOrder $tw
+                if (@($o.Order).Count -ne 2 -or $o.Order[0].Id -ne $td1.Id -or @($o.Errors).Count) { throw 'Abhaengigkeiten: Reihenfolge' }
+                $td1.Dependencies = @($tw.Id)
+                if (-not @((Get-HUAppDepOrder $tw).Errors).Count) { throw 'Abhaengigkeiten: Kreis nicht erkannt' }
+                Show-HUAppForm $tw
+                if (@($script:Controls['lstAppDeps'].ItemsSource).Count -ne 1) { throw 'Abhaengigkeiten: Liste' }
+                foreach ($x in $ta, $tw, $td1, $td2) { [void]$script:AppLib.Remove($x) }
+                $script:AppCurrent = $null; Update-HUAppList; Show-HUAppForm $null
                 $k0 = "$(@($script:Settings.tenants)[0].key)"
                 $script:GroupCache[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'Lehrer'; Typ = 'Sicherheit'; Id = '1' }, [pscustomobject]@{ Name = 'Pilot-Geraete'; Typ = 'Sicherheit (dynamisch)'; Id = '2' }); Error = ''; Time = Get-Date }
                 if (@(Get-HUGroupPickRows -Keys @($k0) -Filter 'pilot').Count -ne 1) { throw 'Gruppenfilter' }

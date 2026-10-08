@@ -206,6 +206,8 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   </ol>
   <h3 id="apps-icon">Symbol im Unternehmensportal</h3>
   <p>Rechts neben Name und Hersteller: <span class="ui">Symbol …</span> nimmt ein Bild (PNG, JPG), eine ICO-Datei oder eine EXE – es wird als PNG mit höchstens 256 px gespeichert und beim Hochladen gesetzt. Automatisch: bei EXE-Setups aus der Setup-Datei, nach der Testinstallation aus der installierten App (wird beim Übernehmen mit vorgeschlagen), bei Store-Apps aus dem Microsoft Store. Ein geändertes Symbol wird beim nächsten <span class="ui b">⬆ Hochladen &amp; zuweisen</span> übernommen.</p>
+  <h3 id="apps-deps">Abhängigkeiten (Treiber, Laufzeitumgebungen)</h3>
+  <p>Braucht eine App vorher etwas anderes – einen Treiber, .NET, VC++-Runtime –, die Abhängigkeit zuerst selbst als App hinzufügen und in der Sandbox testen. Dann bei der eigentlichen App unter <i>Abhängigkeiten</i> <span class="ui">+ Hinzufügen …</span>. Beim Hochladen werden die Abhängigkeiten mit hochgeladen (ohne eigene Zuweisung) und in Intune verknüpft; mit <i>automatisch mitinstallieren</i> installiert Intune sie vor der App. Abhängigkeiten können selbst Abhängigkeiten haben. Store-Apps können keine Abhängigkeit sein (Vorgabe von Intune).</p>
   <h3 id="apps-update">Neue Version</h3>
   <p>Die neue Setup-Datei hinzufügen und bei <i>gibt es schon</i> <b>Ja</b> wählen: dieselbe Intune-App wird aktualisiert (neue Version, neue Erkennung, neues Paket). Unveränderte Pakete werden nicht erneut hochgeladen.</p>
   <h3 id="apps-pilot">Pilotgruppe (optional)</h3>

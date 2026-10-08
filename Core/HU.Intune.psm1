@@ -678,6 +678,68 @@ function Save-HUStoreAppIcon([string]$StoreId, [string]$OutFile) {
 }
 
 # ============================================================================
+# Win32-App je Tenant anlegen/aktualisieren und Inhalt hochladen; Abhaengigkeiten setzen
+# ============================================================================
+# Bibliotheks-Eintrag -> Def fuer ConvertTo-HUWin32Payload
+function New-HUWin32Def($Def) {
+    return [pscustomobject]@{
+        Name = $Def.Name; Publisher = $Def.Publisher; Description = $Def.Description; Version = $Def.Version
+        SetupFile = ("$($Def.SetupPath)" -split '[\\/]')[-1]; InstallCmd = $Def.InstallCmd; UninstallCmd = $Def.UninstallCmd
+        RunAs = $Def.RunAs; Kind = $Def.Kind; UpgradeCode = $Def.UpgradeCode; Detection = $Def.Detection; Restart = 'suppress'
+        IconFile = $(if ($Def.PSObject.Properties['IconFile']) { "$($Def.IconFile)" } else { '' })
+    }
+}
+
+# Liefert @{ AppId; Signature }. Laedt nur hoch, wenn neu, Paket geaendert oder noch kein Inhalt.
+function Publish-HUWin32App {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)]$Def, [Parameter(Mandatory)]$Package,
+        [string]$AppId = '', [string]$LastSignature = '')
+    $w32 = New-HUWin32Def $Def
+    $existing = if ($AppId) { Get-HUIntuneApp -TenantKey $TenantKey -Settings $Settings -AppId $AppId } else { $null }
+    if ($AppId -and -not $existing) { Write-HULog -Message "$($Def.Name): frueher hochgeladene App gibt es in Intune nicht mehr - wird neu angelegt" -Level 'WARN' -Tenant $TenantKey; $AppId = '' }
+    if ($existing) {
+        Update-HUWin32App -TenantKey $TenantKey -Settings $Settings -AppId $AppId -Def $w32 -IntuneWinName $Package.IntuneWinName
+        Write-HULog -Message "$($Def.Name): aktualisiert (v$($Def.Version))" -Level 'OK' -Tenant $TenantKey
+    } else {
+        $new = New-HUWin32App -TenantKey $TenantKey -Settings $Settings -Def $w32 -IntuneWinName $Package.IntuneWinName
+        $AppId = "$($new.id)"
+        Write-HULog -Message "$($Def.Name): angelegt (v$($Def.Version))" -Level 'OK' -Tenant $TenantKey
+    }
+    $res = [pscustomobject]@{ AppId = $AppId; Signature = '' }
+    if (-not $existing -or $LastSignature -ne "$($Package.Signature)" -or -not "$($existing.committedContentVersion)") {
+        Write-HULog -Message ("{0}: lade Paket hoch ({1:N1} MB) ..." -f $Def.Name, ($Package.EncryptedSize / 1MB)) -Level 'INFO' -Tenant $TenantKey
+        [void](Publish-HUWin32Content -TenantKey $TenantKey -Settings $Settings -AppId $AppId -Package $Package)
+        Write-HULog -Message "$($Def.Name): Paket hochgeladen" -Level 'OK' -Tenant $TenantKey
+    } else { Write-HULog -Message "$($Def.Name): Paket unveraendert - kein erneuter Upload" -Level 'INFO' -Tenant $TenantKey }
+    $res.Signature = "$($Package.Signature)"
+    return $res
+}
+
+# Abhaengigkeiten einer Win32-App setzen. "updateRelationships" ersetzt alle Beziehungen -
+# vorhandene Ersetzungen (Supersedence) bleiben erhalten, Abhaengigkeiten werden durch die Liste ersetzt.
+function Get-HUDependencyBody([object[]]$Existing, [string[]]$DependencyIds, [bool]$AutoInstall = $true) {
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($r in @($Existing)) {
+        if (-not $r -or "$($r.targetType)" -ne 'child' -or "$($r.'@odata.type')" -notmatch 'Supersedence') { continue }
+        $list.Add(@{ '@odata.type' = '#microsoft.graph.mobileAppSupersedence'; targetId = "$($r.targetId)"; supersedenceType = "$($r.supersedenceType)" })
+    }
+    foreach ($id in @($DependencyIds | Where-Object { $_ } | Select-Object -Unique)) {
+        $list.Add(@{ '@odata.type' = '#microsoft.graph.mobileAppDependency'; targetId = "$id"; dependencyType = $(if ($AutoInstall) { 'autoInstall' } else { 'detect' }) })
+    }
+    return @{ relationships = @($list.ToArray()) }
+}
+
+function Set-HUAppDependencies {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId, [string[]]$DependencyIds = @(), [bool]$AutoInstall = $true)
+    $rel = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/relationships")
+    $body = Get-HUDependencyBody -Existing $rel -DependencyIds $DependencyIds -AutoInstall $AutoInstall
+    [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/updateRelationships" -Method POST -Body $body)
+    return @($DependencyIds).Count
+}
+
+# ============================================================================
 # Microsoft Store App (neu) = winGetApp (beta)
 # ============================================================================
 function New-HUStoreApp {
@@ -1171,5 +1233,6 @@ Export-ModuleMember -Function @(
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'ConvertFrom-HUSandboxEntry',
     'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )
