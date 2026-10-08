@@ -416,3 +416,12 @@ Describe 'Intune: App-Symbol' {
         Remove-Item -LiteralPath $tmp -Recurse -Force
     }
 }
+
+Describe 'Intune: Gruppen' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'nur zuweisbare Gruppen, Typ lesbar' {
+        (ConvertTo-HUGroupRow ([pscustomobject]@{ id = '1'; displayName = 'A'; groupTypes = @(); securityEnabled = $true })).Typ | Should -Be 'Sicherheit'
+        (ConvertTo-HUGroupRow ([pscustomobject]@{ id = '2'; displayName = 'B'; groupTypes = @('Unified', 'DynamicMembership'); securityEnabled = $false })).Typ | Should -Be 'Microsoft 365 (dynamisch)'
+        ConvertTo-HUGroupRow ([pscustomobject]@{ id = '3'; displayName = 'Verteiler'; groupTypes = @(); securityEnabled = $false; mailEnabled = $true }) | Should -BeNullOrEmpty
+    }
+}

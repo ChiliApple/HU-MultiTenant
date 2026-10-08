@@ -273,6 +273,7 @@ function Update-HUAppTargetUi {
     $c = $script:Controls
     $c['txtAppGroup'].IsEnabled = ((Get-HUComboTag $c['cmbAppTarget']) -eq 'group')
     $c['txtAppPilot'].IsEnabled = [bool]$c['chkAppPilot'].IsChecked
+    $c['btnAppGroupPick'].IsEnabled = $c['txtAppGroup'].IsEnabled
 }
 
 function Update-HUAppButtons {
@@ -879,6 +880,16 @@ function Register-HUAppHandlers {
             if ($dlg.ShowDialog($script:Window)) { Add-HUAppFromFile $dlg.FileName }
         })
     $c['btnAppAddStore'].Add_Click({ Add-HUAppStore })
+    $c['btnAppGroupPick'].Add_Click({
+            $c = $script:Controls
+            $n = Show-HUGroupPicker -TenantKeys @(Get-HUCheckedTenants $c['spAppTenants']) -Current $c['txtAppGroup'].Text.Trim() -Title 'Zielgruppe waehlen'
+            if ($n) { [void](Select-HUComboTag $c['cmbAppTarget'] 'group'); $c['txtAppGroup'].Text = $n; Update-HUAppTargetUi }
+        })
+    $c['btnAppPilotPick'].Add_Click({
+            $c = $script:Controls
+            $n = Show-HUGroupPicker -TenantKeys @(Get-HUCheckedTenants $c['spAppTenants']) -Current $c['txtAppPilot'].Text.Trim() -Title 'Pilotgruppe waehlen'
+            if ($n) { $c['chkAppPilot'].IsChecked = $true; $c['txtAppPilot'].Text = $n; Update-HUAppTargetUi }
+        })
     $c['btnAppIcon'].Add_Click({
             $a = $script:AppCurrent
             if (-not $a) { return }

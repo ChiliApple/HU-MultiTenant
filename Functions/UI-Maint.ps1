@@ -117,6 +117,7 @@ function Update-HURemScheduleUi {
     $c['lblRemTime'].Text = $(if ($t -eq 'once') { 'am' } else { $(if ($t -eq 'hourly') { '' } else { 'Tag(e) um' }) })
     $c['txtRemDate'].Visibility = $(if ($t -eq 'once') { 'Visible' } else { 'Collapsed' })
     $c['txtRemGroup'].IsEnabled = ((Get-HUComboTag $c['cmbRemTarget']) -eq 'group')
+    $c['btnRemGroupPick'].IsEnabled = $c['txtRemGroup'].IsEnabled
     $c['txtRemPilot'].IsEnabled = [bool]$c['chkRemPilot'].IsChecked
 }
 
@@ -562,6 +563,16 @@ function Register-HURemHandlers {
             if ($it) { Select-HURem $it.Id }
         })
     $c['btnRemNew'].Add_Click({ Add-HURem })
+    $c['btnRemGroupPick'].Add_Click({
+            $c = $script:Controls
+            $n = Show-HUGroupPicker -TenantKeys @(Get-HUCheckedTenants $c['spRemTenants']) -Current $c['txtRemGroup'].Text.Trim() -Title 'Zielgruppe waehlen'
+            if ($n) { [void](Select-HUComboTag $c['cmbRemTarget'] 'group'); $c['txtRemGroup'].Text = $n; Update-HURemScheduleUi }
+        })
+    $c['btnRemPilotPick'].Add_Click({
+            $c = $script:Controls
+            $n = Show-HUGroupPicker -TenantKeys @(Get-HUCheckedTenants $c['spRemTenants']) -Current $c['txtRemPilot'].Text.Trim() -Title 'Pilotgruppe waehlen'
+            if ($n) { $c['chkRemPilot'].IsChecked = $true; $c['txtRemPilot'].Text = $n; Update-HURemScheduleUi }
+        })
     $c['btnRemExamples'].Add_Click({ Show-HURemExamplesMenu })
     $c['btnRemRemove'].Add_Click({ Remove-HURemCurrent })
     $c['btnRemAiCopy'].Add_Click({ Save-HURemForm; Copy-HURemPrompt })

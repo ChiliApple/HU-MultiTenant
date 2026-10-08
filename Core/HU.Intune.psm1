@@ -101,6 +101,23 @@ function Find-HUGroup {
     return (@($r.value) | Select-Object -First 1)
 }
 
+# Gruppen eines Tenants, die Intune zuweisen kann (Sicherheits- und Microsoft-365-Gruppen)
+function ConvertTo-HUGroupRow($G) {
+    $types = @($G.groupTypes)
+    $unified = $types -contains 'Unified'
+    if (-not $unified -and -not $G.securityEnabled) { return $null }
+    $t = if ($unified) { 'Microsoft 365' } else { 'Sicherheit' }
+    if ($types -contains 'DynamicMembership') { $t += ' (dynamisch)' }
+    return [pscustomobject]@{ Name = "$($G.displayName)"; Typ = $t; Id = "$($G.id)" }
+}
+
+function Get-HUTenantGroups {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings)
+    $all = Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/groups?$select=id,displayName,groupTypes,securityEnabled,mailEnabled&$top=999' -V1
+    foreach ($g in $all) { $r = ConvertTo-HUGroupRow $g; if ($r -and $r.Name) { $r } }
+}
+
 function Find-HUManagedDevice {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Name)
@@ -1123,7 +1140,7 @@ function Select-HUSandboxEntry([object[]]$Entries, [string]$AppName = '') {
 }
 
 Export-ModuleMember -Function @(
-    'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice',
+    'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups',
     'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo',
     'Get-HUIntuneWinAppUtil', 'New-HUIntuneWinPackage',
     'Get-HUDefaultReturnCodes', 'ConvertTo-HUDetectionRule', 'ConvertTo-HUWin32Payload',

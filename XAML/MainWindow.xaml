@@ -548,6 +548,7 @@
                                                     <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
                                                 </ComboBox>
                                                 <TextBox x:Name="txtAppGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                                <Button x:Name="btnAppGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>
                                                 <ComboBox x:Name="cmbAppIntent" Style="{StaticResource DarkComboBox}" Width="200" Margin="6,0,0,0">
                                                     <ComboBoxItem Content="Erforderlich (installieren)" Tag="required"/>
                                                     <ComboBoxItem Content="Verfuegbar (Unternehmensportal)" Tag="available"/>
@@ -558,6 +559,7 @@
                                             <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
                                                 <CheckBox x:Name="chkAppPilot" Content="zuerst nur an Pilotgruppe:" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
                                                 <TextBox x:Name="txtAppPilot" Style="{StaticResource DarkTextBox}" Width="200" Margin="6,0,0,0"/>
+                                                <Button x:Name="btnAppPilotPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>
                                                 <TextBlock Text="(spaeter &quot;Fuer alle freigeben&quot;)" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
                                             </StackPanel>
                                             <TextBlock Grid.Row="3" Text="Frist / Hinweise" Style="{StaticResource FieldLabel}"/>
@@ -702,11 +704,13 @@
                                                     <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
                                                 </ComboBox>
                                                 <TextBox x:Name="txtRemGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                                <Button x:Name="btnRemGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>
                                             </StackPanel>
                                             <TextBlock Grid.Row="2" Text="Pilot" Style="{StaticResource FieldLabel}"/>
                                             <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
                                                 <CheckBox x:Name="chkRemPilot" Content="zuerst nur an Pilotgruppe:" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
                                                 <TextBox x:Name="txtRemPilot" Style="{StaticResource DarkTextBox}" Width="200" Margin="6,0,0,0"/>
+                                                <Button x:Name="btnRemPilotPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>
                                             </StackPanel>
                                             <TextBlock Grid.Row="3" Text="Zeitplan" Style="{StaticResource FieldLabel}"/>
                                             <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
