@@ -155,6 +155,7 @@ function Update-HUAppTenantChecks {
         $cb.Margin = [System.Windows.Thickness]::new(0, 2, 14, 2)
         [void]$sp.Children.Add($cb)
     }
+    if (@($script:Settings.tenants).Count -gt 1) { Add-HUTenantAllToggle $sp $null }
 }
 
 function Get-HUCheckedTenants($Panel) { return @($Panel.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and $_.IsChecked } | ForEach-Object { "$($_.Tag)" }) }
