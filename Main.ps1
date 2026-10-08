@@ -65,7 +65,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 foreach ($f in @('Core-Async', 'Core-Update', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-                 'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-Maint')) {
+                 'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint')) {
     $fp = Join-Path $script:AppRoot "Functions\$f.ps1"
     if (-not (Test-Path -LiteralPath $fp)) { Show-HUFatal "Datei fehlt: $fp`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     . $fp
@@ -127,6 +127,7 @@ Register-HUQuickScriptHandlers
 Register-HUExtensionHandlers
 Register-HUUpdateHandlers
 Register-HUAppHandlers
+Register-HUIntAppHandlers
 Register-HURemHandlers
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
 # Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
@@ -232,6 +233,15 @@ $script:Window.Add_ContentRendered({
                 $script:W32Cache[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'VC++ 2015-2022 x64'; Version = '14.40'; Publisher = 'Microsoft'; Id = 'a'; Modified = '' }); Error = ''; Time = Get-Date }
                 if (@(Get-HUPickRows -Kind 'win32' -Keys @($k0) -Filter 'microsoft').Count -ne 1) { throw 'App-Filter (Hersteller)' }
                 [void](Show-HUTenantPicker -Kind 'win32' -Multi -TenantKeys @($k0) -Title 'Test')
+                # Ansicht "In Intune" mit vorgegebenen Daten
+                Set-HUStateValue 'intTenants' @($k0); Update-HUIntTenantChecks
+                $script:IntRaw[$k0] = @{ Rows = @([pscustomobject]@{ Name = 'Next-Exam-Student'; Typ = 'Win32'; OType = 'win32LobApp'; Kind = 'win32'; Version = '2.1'; Publisher = 'X'; Description = ''; Id = 'id1'; Modified = ''; State = 'published'
+                            Assignments = @([pscustomobject]@{ Key = 'group|schueler'; Kind = 'group'; GroupId = 'g'; GroupName = 'Schueler'; Ziel = 'Schueler'; Intent = 'required'; Notify = 'showAll'; Deadline = '' }) }); Error = ''; Time = Get-Date }
+                Set-HUAppMode 'int'
+                if ($script:Controls['pnlAppIntRight'].Visibility -ne 'Visible' -or @($script:Controls['lstIntApps'].ItemsSource).Count -ne 1) { throw 'In Intune: Liste' }
+                $script:Controls['lstIntApps'].SelectedIndex = 0
+                if (@($script:Controls['gridIntAssign'].ItemsSource).Count -ne 1) { throw 'In Intune: Zuweisungen' }
+                Set-HUAppMode 'lib'
                 $steps += 'Apps'
                 # Reiter Wartung: Beispiel uebernehmen und pruefen
                 $script:Controls['tabMain'].SelectedItem = $script:Controls['tabMaint']
@@ -312,6 +322,7 @@ Update-TenantDropdown
 Load-Extensions
 Initialize-HUQuickScript
 Initialize-HUApps
+Initialize-HUIntApps
 Initialize-HUMaint
 Restore-HUWindowState
 Select-HUStartTab

@@ -78,14 +78,14 @@ function ConvertTo-HUApp($Src = $null) {
         Detection = (New-HUAppDetection); StoreId = ''
         TargetKind = 'group'; TargetGroup = ''; Intent = 'required'; Pilot = $false; PilotGroup = ''; Deadline = ''; Notify = 'showAll'
         Tenants = @(); Deployments = @(); SandboxNote = ''; Created = (Get-Date -Format 'yyyy-MM-dd HH:mm'); Modified = ''
-        Dependencies = @(); IntuneDeps = @(); DepAuto = $true; DepsManaged = $false
+        Dependencies = @(); IntuneDeps = @(); DepAuto = $true; DepsManaged = $false; NoDesktop = $false
     }
     if ($Src) {
         foreach ($p in $a.PSObject.Properties.Name) { if ($Src.PSObject.Properties[$p] -and $null -ne $Src.$p) { $a.$p = $Src.$p } }
         $a.Detection = New-HUAppDetection $Src.Detection
         $a.Tenants = @($a.Tenants | Where-Object { $_ } | ForEach-Object { "$_" })
         $a.Deployments = @($a.Deployments | Where-Object { $_ } | ForEach-Object { [pscustomobject][ordered]@{ Tenant = "$($_.Tenant)"; AppId = "$($_.AppId)"; Version = "$($_.Version)"; Signature = "$($_.Signature)"; Stage = "$($_.Stage)"; Time = "$($_.Time)" } })
-        $a.WholeFolder = [bool]$a.WholeFolder; $a.Pilot = [bool]$a.Pilot
+        $a.WholeFolder = [bool]$a.WholeFolder; $a.Pilot = [bool]$a.Pilot; $a.NoDesktop = [bool]$a.NoDesktop
         $a.Dependencies = @($a.Dependencies | Where-Object { $_ } | ForEach-Object { "$_" })
         $a.IntuneDeps = @($a.IntuneDeps | Where-Object { $_ } | ForEach-Object { "$_" })
         $a.DepAuto = [bool]$a.DepAuto; $a.DepsManaged = [bool]$a.DepsManaged
@@ -249,6 +249,7 @@ function Show-HUAppForm($App) {
         $c['txtAppDesc'].Text = "$($App.Description)"
         $c['txtAppSetup'].Text = "$($App.SetupPath)"
         $c['chkAppWholeFolder'].IsChecked = [bool]$App.WholeFolder
+        $c['chkAppNoDesktop'].IsChecked = [bool]$App.NoDesktop
         $c['txtAppInstall'].Text = "$($App.InstallCmd)"
         $c['txtAppUninstall'].Text = "$($App.UninstallCmd)"
         $c['txtAppInfo'].Text = $(if ($App.SetupPath -and -not (Test-Path -LiteralPath $App.SetupPath)) { 'Setup-Datei nicht gefunden - "Andere Datei ..." waehlen.' } else { '' })
@@ -308,6 +309,7 @@ function Save-HUAppForm {
     $a.Version = $c['txtAppVersion'].Text.Trim()
     $a.Description = $c['txtAppDesc'].Text.Trim()
     $a.WholeFolder = [bool]$c['chkAppWholeFolder'].IsChecked
+    $a.NoDesktop = [bool]$c['chkAppNoDesktop'].IsChecked
     $a.InstallCmd = $c['txtAppInstall'].Text.Trim()
     $a.UninstallCmd = $c['txtAppUninstall'].Text.Trim()
     Write-HUAppDetFields
@@ -547,7 +549,7 @@ $script:AppDeployCode = {
         foreach ($d in $Order) {
             if ($d.Type -ne 'win32') { continue }
             Write-HULog -Message "Paket: $($d.Name)" -Level 'INFO'
-            $pkgs[$d.Id] = Get-HUAppPackage -ToolPath $tool -AppId $d.Id -SetupPath $d.SetupPath -WholeFolder ([bool]$d.WholeFolder)
+            $pkgs[$d.Id] = Get-HUAppPackage -ToolPath $tool -AppId $d.Id -SetupPath $d.SetupPath -WholeFolder ([bool]$d.WholeFolder) -Extra (Get-HUInstallPlan $d).Extra
         }
     }
     foreach ($tk in $Tenants) {
@@ -901,12 +903,12 @@ function Start-HUAppSandbox {
     Add-HURtbLine $rtb "=== Testinstallation: $($a.Name) ===" '#CE93D8'
     $c['txtAppSandbox'].Text = 'Sandbox wird vorbereitet ...'
     [void](Start-HUJob -Name 'AppSandbox' -Output $rtb -Vars @{
-            Id = $a.Id; SetupPath = $a.SetupPath; WholeFolder = [bool]$a.WholeFolder; InstallCmd = $a.InstallCmd; UninstallCmd = $a.UninstallCmd
+            Id = $a.Id; SetupPath = $a.SetupPath; WholeFolder = [bool]$a.WholeFolder; Plan = (Get-HUInstallPlan $a -Sandbox); UninstallCmd = $a.UninstallCmd
             TestUn = $testUn; KeepOpen = [bool]$c['chkAppSandboxKeep'].IsChecked
         } -Code {
-            $src = Sync-HUAppSource -SetupPath $SetupPath -WholeFolder $WholeFolder -Destination (Join-Path (Get-HUWorkPath "Packages\$Id") 'src')
+            $src = Sync-HUAppSource -SetupPath $SetupPath -WholeFolder $WholeFolder -Destination (Join-Path (Get-HUWorkPath "Packages\$Id") 'src') -Extra $Plan.Extra
             if ($src.Copied) { Write-HULog -Message 'Setup in den lokalen Arbeitsordner kopiert' -Level 'INFO' }
-            $res = Start-HUSandboxTest -SourceFolder $src.Folder -WorkFolder (Join-Path (Get-HUWorkPath 'Sandbox') $Id) -InstallCmd $InstallCmd -UninstallCmd $UninstallCmd -TestUninstall:$TestUn -KeepOpen:$KeepOpen
+            $res = Start-HUSandboxTest -SourceFolder $src.Folder -WorkFolder (Join-Path (Get-HUWorkPath 'Sandbox') $Id) -InstallCmd $Plan.Cmd -UninstallCmd $UninstallCmd -TestUninstall:$TestUn -KeepOpen:$KeepOpen
             Write-HULog -Message 'Windows Sandbox gestartet - die Installation laeuft dort sichtbar im eigenen Fenster.' -Level 'OK'
             $res
         } -OnDone {
@@ -987,6 +989,9 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     $warn = $false
     if ($winI.Count) { $warn = $true; $lines.Add("ACHTUNG: Setup zeigte ein Fenster ($($winI -join '; ')) - unter Intune wuerde die Installation haengen. Schalter fuer stille Installation pruefen.") }
     $entries = @($Res.NewEntries | Where-Object { $_ })
+    $links = @($Res.DesktopLinks | Where-Object { $_ })
+    if ($links.Count) { $lines.Add("Desktop-Verknuepfung(en): $($links -join ', ')$(if (-not $a.NoDesktop) { "  -> 'Ohne Desktop-Verknuepfung' anhaken, wenn unerwuenscht" })") }
+    elseif ($a.NoDesktop) { $lines.Add('Desktop-Verknuepfung: keine (wird entfernt)') }
     $lines.Add("Neue Programme in 'Apps & Features': $($entries.Count)$(if ($entries.Count) { ' - ' + (@($entries | Select-Object -First 4 | ForEach-Object { "$($_.DisplayName) $($_.DisplayVersion)".Trim() }) -join '; ') })")
     if ($Res.UninstallTested) {
         $winU = @($Res.UninstallWindows | Where-Object { $_ })
@@ -995,6 +1000,16 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
         $lines.Add("Deinstallation: $(if ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
     } elseif (-not $TestUn) { $lines.Add('Deinstallation nicht getestet.') }
     foreach ($l in $lines) { Add-HURtbLine $rtb $l $(if ($l -match '^ACHTUNG|nicht still|noch vorhanden') { '#FFB74D' } elseif ($ok) { '#CCCCCC' } else { '#FFB74D' }) }
+    # Protokolle bei Problemen direkt anzeigen (vollstaendig im Ordner logs)
+    $logDir = Join-Path (Join-Path (Get-HUWorkPath 'Sandbox') $AppId) 'logs'
+    $badUn = $Res.UninstallTested -and -not ($Res.UninstallRemoved -and -not @($Res.UninstallWindows | Where-Object { $_ }).Count)
+    foreach ($x in @(@{ Show = (-not $ok -or @($Res.InstallWindows | Where-Object { $_ }).Count -or "$($Res.Error)"); Text = "$($Res.InstallLog)"; Title = 'Protokoll Installation' }, @{ Show = $badUn; Text = "$($Res.UninstallLog)"; Title = 'Protokoll Deinstallation' })) {
+        if (-not $x.Show) { continue }
+        Add-HURtbLine $rtb "--- $($x.Title) ---" '#4FC3F7'
+        if ($x.Text.Trim()) { foreach ($ln in ($x.Text -split "`r?`n")) { Add-HURtbLine $rtb $ln $(if ($ln -match '^\[') { '#90CAF9' } elseif ($ln -match '(?i)error|fehler|return value 3|failed') { '#FF8A80' } else { '#9E9E9E' }) } }
+        else { Add-HURtbLine $rtb '(keine Protokolldaten - das Setup schreibt kein Log; ggf. Log-Schalter im Befehl ergaenzen)' '#9E9E9E' }
+    }
+    if (Test-Path -LiteralPath $logDir) { Add-HURtbLine $rtb "Alle Protokolle: $logDir" '#666666' }
     $a.SandboxNote = "Sandbox $(Get-Date -Format 'dd.MM. HH:mm'): " + ($lines -join ' | ')
 
     # Vorschlag fuer Erkennung und Deinstallation

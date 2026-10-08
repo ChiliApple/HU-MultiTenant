@@ -48,7 +48,7 @@ $script:AppRoot = $root
 . (Join-Path $root 'Functions\UI-Common.ps1')
 $script:Win = @{}
 foreach ($pair in @(
-        @{ X = 'MainWindow'; Code = @('Main.ps1', 'Functions\UI-Tenants.ps1', 'Functions\UI-QuickScript.ps1', 'Functions\UI-State.ps1', 'Functions\UI-Extensions.ps1', 'Functions\UI-Snippets.ps1', 'Functions\UI-Update.ps1', 'Functions\UI-QSParams.ps1', 'Functions\UI-QSTable.ps1', 'Functions\UI-QSHistory.ps1', 'Functions\UI-Apps.ps1', 'Functions\UI-Maint.ps1'); Pattern = "(?:\`$script:Controls|\`$c)\['([A-Za-z0-9_]+)'\]" }
+        @{ X = 'MainWindow'; Code = @('Main.ps1', 'Functions\UI-Tenants.ps1', 'Functions\UI-QuickScript.ps1', 'Functions\UI-State.ps1', 'Functions\UI-Extensions.ps1', 'Functions\UI-Snippets.ps1', 'Functions\UI-Update.ps1', 'Functions\UI-QSParams.ps1', 'Functions\UI-QSTable.ps1', 'Functions\UI-QSHistory.ps1', 'Functions\UI-Apps.ps1', 'Functions\UI-IntuneApps.ps1', 'Functions\UI-Maint.ps1'); Pattern = "(?:\`$script:Controls|\`$c)\['([A-Za-z0-9_]+)'\]" }
         @{ X = 'SettingsWindow'; Code = @('Functions\UI-Settings.ps1'); Pattern = '\$c\.([A-Za-z][A-Za-z0-9_]*)' }
         @{ X = 'SnippetManager'; Code = @('Functions\UI-Snippets.ps1'); Pattern = '\$c\.([A-Za-z][A-Za-z0-9_]*)' }
         @{ X = 'PermissionsWindow'; Code = @('Functions\UI-Permissions.ps1'); Pattern = '\$c\.([A-Za-z][A-Za-z0-9_]*)' }

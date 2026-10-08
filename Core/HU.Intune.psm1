@@ -530,13 +530,14 @@ function Get-HUWorkPath([string]$Sub = '') {
 # unveraendert -> nichts kopieren. Liefert @{ Folder; SetupFile; Signature }.
 function Sync-HUAppSource {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$SetupPath, [bool]$WholeFolder = $false, [Parameter(Mandatory)][string]$Destination)
+    param([Parameter(Mandatory)][string]$SetupPath, [bool]$WholeFolder = $false, [Parameter(Mandatory)][string]$Destination, [hashtable]$Extra = @{})
     if (-not (Test-Path -LiteralPath $SetupPath)) { throw "Setup-Datei nicht gefunden: $SetupPath" }
     $setup = Get-Item -LiteralPath $SetupPath
     $dir = $setup.DirectoryName
     $files = if ($WholeFolder) { @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force) } else { @($setup) }
     $sum = 0L
-    $lines = foreach ($f in $files) { $sum += $f.Length; '{0}|{1}|{2}' -f $f.FullName.Substring($dir.Length), $f.Length, $f.LastWriteTimeUtc.Ticks }
+    $lines = @(foreach ($f in $files) { $sum += $f.Length; '{0}|{1}|{2}' -f $f.FullName.Substring($dir.Length), $f.Length, $f.LastWriteTimeUtc.Ticks })
+    foreach ($k in @($Extra.Keys | Sort-Object)) { $lines += "extra|$k|$($Extra[$k])" }
     if ($sum -gt 8GB) { throw 'Quelle groesser als 8 GB - Intune erlaubt hoechstens 30 GB, aber das ist fuer die meisten Netze unrealistisch. Ordner pruefen.' }
     $sha = [Security.Cryptography.SHA256]::Create()
     $sig = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(($lines -join "`n"))))).Replace('-', '')
@@ -544,10 +545,12 @@ function Sync-HUAppSource {
     if ((Test-Path -LiteralPath $Destination) -and (Test-Path -LiteralPath $sigFile) -and (Get-Content -LiteralPath $sigFile -Raw).Trim() -eq $sig) {
         return [pscustomobject]@{ Folder = $Destination; SetupFile = $setup.Name; Signature = $sig; Copied = $false }
     }
+    $writeExtra = { foreach ($k in $Extra.Keys) { [IO.File]::WriteAllText((Join-Path $Destination $k), "$($Extra[$k])", (New-Object System.Text.UTF8Encoding $true)) } }
     if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
     New-Item -ItemType Directory -Path $Destination -Force | Out-Null
     if ($WholeFolder) { Copy-Item -Path (Join-Path $dir '*') -Destination $Destination -Recurse -Force }
     else { Copy-Item -LiteralPath $setup.FullName -Destination $Destination -Force }
+    & $writeExtra
     Set-Content -LiteralPath $sigFile -Value $sig -Encoding ASCII
     return [pscustomobject]@{ Folder = $Destination; SetupFile = $setup.Name; Signature = $sig; Copied = $true }
 }
@@ -555,9 +558,9 @@ function Sync-HUAppSource {
 # Paket bauen oder aus dem Zwischenspeicher nehmen (gleiche Quelle -> gleiches Paket)
 function Get-HUAppPackage {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$ToolPath, [Parameter(Mandatory)][string]$AppId, [Parameter(Mandatory)][string]$SetupPath, [bool]$WholeFolder = $false)
+    param([Parameter(Mandatory)][string]$ToolPath, [Parameter(Mandatory)][string]$AppId, [Parameter(Mandatory)][string]$SetupPath, [bool]$WholeFolder = $false, [hashtable]$Extra = @{})
     $root = Get-HUWorkPath "Packages\$AppId"
-    $src = Sync-HUAppSource -SetupPath $SetupPath -WholeFolder $WholeFolder -Destination (Join-Path $root 'src')
+    $src = Sync-HUAppSource -SetupPath $SetupPath -WholeFolder $WholeFolder -Destination (Join-Path $root 'src') -Extra $Extra
     $info = Join-Path $root 'package.json'
     if (-not $src.Copied -and (Test-Path -LiteralPath $info)) {
         $p = Get-Content -LiteralPath $info -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -702,11 +705,33 @@ function Save-HUStoreAppIcon([string]$StoreId, [string]$OutFile) {
 # ============================================================================
 # Win32-App je Tenant anlegen/aktualisieren und Inhalt hochladen; Abhaengigkeiten setzen
 # ============================================================================
+# Huelle um den Installationsbefehl: neue Desktop-Verknuepfungen (Allgemeiner und eigener Desktop) danach entfernen.
+# Liegt als HU-Install.ps1 im Paket; der Exitcode des Setups bleibt erhalten.
+function New-HUInstallWrapper([string]$Cmd) {
+    $c = "$Cmd".Replace("'", "''")
+    return @"
+# HU-MultiTenant: Installation ohne neue Desktop-Verknuepfungen
+`$dirs = @("`$env:PUBLIC\Desktop", [Environment]::GetFolderPath('Desktop'))
+`$before = @(Get-ChildItem -Path `$dirs -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object { `$_.FullName })
+`$p = Start-Process -FilePath "`$env:ComSpec" -ArgumentList '/c', ('"' + '$c' + '"') -WorkingDirectory `$PSScriptRoot -WindowStyle Hidden -Wait -PassThru
+Get-ChildItem -Path `$dirs -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { `$before -notcontains `$_.FullName } | Remove-Item -Force -ErrorAction SilentlyContinue
+exit `$p.ExitCode
+"@
+}
+
+# Befehl, den Intune (bzw. die Sandbox) ausfuehrt, und Zusatzdateien fuer das Paket
+function Get-HUInstallPlan($Def, [switch]$Sandbox) {
+    $no = $Def.PSObject.Properties['NoDesktop'] -and [bool]$Def.NoDesktop
+    if (-not $no) { return [pscustomobject]@{ Cmd = "$($Def.InstallCmd)"; Extra = @{} } }
+    $ps = if ($Sandbox) { 'powershell.exe' } else { '%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe' }
+    return [pscustomobject]@{ Cmd = "$ps -NoProfile -ExecutionPolicy Bypass -File .\HU-Install.ps1"; Extra = @{ 'HU-Install.ps1' = (New-HUInstallWrapper "$($Def.InstallCmd)") } }
+}
+
 # Bibliotheks-Eintrag -> Def fuer ConvertTo-HUWin32Payload
 function New-HUWin32Def($Def) {
     return [pscustomobject]@{
         Name = $Def.Name; Publisher = $Def.Publisher; Description = $Def.Description; Version = $Def.Version
-        SetupFile = ("$($Def.SetupPath)" -split '[\\/]')[-1]; InstallCmd = $Def.InstallCmd; UninstallCmd = $Def.UninstallCmd
+        SetupFile = ("$($Def.SetupPath)" -split '[\\/]')[-1]; InstallCmd = (Get-HUInstallPlan $Def).Cmd; UninstallCmd = $Def.UninstallCmd
         RunAs = $Def.RunAs; Kind = $Def.Kind; UpgradeCode = $Def.UpgradeCode; Detection = $Def.Detection; Restart = 'suppress'
         IconFile = $(if ($Def.PSObject.Properties['IconFile']) { "$($Def.IconFile)" } else { '' })
     }
@@ -794,6 +819,7 @@ function New-HUAssignmentTarget($Target) {
     switch ("$($Target.Kind)") {
         'allDevices' { return @{ '@odata.type' = '#microsoft.graph.allDevicesAssignmentTarget' } }
         'allUsers' { return @{ '@odata.type' = '#microsoft.graph.allLicensedUsersAssignmentTarget' } }
+        'exclude' { return @{ '@odata.type' = '#microsoft.graph.exclusionGroupAssignmentTarget'; groupId = "$($Target.GroupId)" } }
         default { return @{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = "$($Target.GroupId)" } }
     }
 }
@@ -816,7 +842,7 @@ function Set-HUAppAssignment {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId,
-        [ValidateSet('win32', 'winget')][string]$AppKind = 'win32',
+        [ValidateSet('win32', 'winget', 'other')][string]$AppKind = 'win32',
         [Parameter(Mandatory)][object[]]$Targets,
         [ValidateSet('showAll', 'showReboot', 'hideAll')][string]$Notifications = 'showAll',
         $Deadline = $null
@@ -836,12 +862,158 @@ function Set-HUAppAssignment {
         if ($Deadline -and "$($t.Intent)" -eq 'required') {
             $its = @{ '@odata.type' = '#microsoft.graph.mobileAppInstallTimeSettings'; useLocalTime = $true; startDateTime = $null; deadlineDateTime = ([datetime]$Deadline).ToString('s') }
         }
-        $st = @{ '@odata.type' = $setType; notifications = $Notifications; installTimeSettings = $its; restartSettings = $null }
-        if ($AppKind -eq 'win32') { $st.deliveryOptimizationPriority = 'notConfigured' }
-        $list[(Get-HUTargetKey $tg)] = @{ '@odata.type' = '#microsoft.graph.mobileAppAssignment'; intent = "$($t.Intent)"; target = $tg; settings = $st }
+        $st = $null
+        if ($AppKind -ne 'other' -and "$($t.Kind)" -ne 'exclude') {
+            $st = @{ '@odata.type' = $setType; notifications = $Notifications; installTimeSettings = $its; restartSettings = $null }
+            if ($AppKind -eq 'win32') { $st.deliveryOptimizationPriority = 'notConfigured' }
+        }
+        $h = @{ '@odata.type' = '#microsoft.graph.mobileAppAssignment'; intent = "$($t.Intent)"; target = $tg }
+        if ($st) { $h.settings = $st }
+        $list[(Get-HUTargetKey $tg)] = $h
     }
     [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/assign" -Method POST -Body @{ mobileAppAssignments = @($list.Values) })
     return $list.Count
+}
+
+# ============================================================================
+# Vorhandene Apps in Intune verwalten (Liste, Zuweisungen, Eigenschaften, Beziehungen, Loeschen)
+# ============================================================================
+$script:WinAppTypes = @{
+    'win32LobApp' = 'Win32'; 'winGetApp' = 'Store (neu)'; 'windowsMobileMSI' = 'MSI (LOB)'; 'officeSuiteApp' = 'Microsoft 365 Apps'
+    'windowsMicrosoftEdgeApp' = 'Microsoft Edge'; 'windowsUniversalAppX' = 'MSIX/AppX'; 'windowsWebApp' = 'Weblink'; 'webApp' = 'Weblink'
+    'microsoftStoreForBusinessApp' = 'Store (alt)'; 'windowsStoreApp' = 'Store (alt)'; 'win32CatalogApp' = 'Win32 (Katalog)'
+}
+
+function Get-HUAppKindFromType([string]$OdataType) {
+    $t = ($OdataType -replace '^#?microsoft\.graph\.', '')
+    if ($t -in 'win32LobApp', 'win32CatalogApp') { return 'win32' }
+    if ($t -eq 'winGetApp') { return 'winget' }
+    return 'other'
+}
+
+# Gruppen-IDs -> Namen (ein Aufruf je 1000 IDs)
+function Get-HUGroupNames {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [string[]]$Ids)
+    $map = @{}
+    $ids = @($Ids | Where-Object { $_ } | Select-Object -Unique)
+    for ($i = 0; $i -lt $ids.Count; $i += 1000) {
+        $chunk = @($ids[$i..([Math]::Min($i + 999, $ids.Count - 1))])
+        $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/directoryObjects/getByIds' -Method POST -Body @{ ids = $chunk; types = @('group') } -V1
+        foreach ($g in @($r.value)) { $map["$($g.id)"] = "$($g.displayName)" }
+    }
+    return $map
+}
+
+# Zuweisung -> lesbare Zeile; Key = Art|Gruppenname (gleich ueber Tenants hinweg)
+function ConvertFrom-HUAssignment($A, [hashtable]$Names = @{}) {
+    $t = $A.target
+    $type = "$($t.'@odata.type')"
+    $kind = if ($type -match 'exclusionGroup') { 'exclude' } elseif ($type -match 'allDevices') { 'allDevices' } elseif ($type -match 'allLicensedUsers') { 'allUsers' } else { 'group' }
+    $gn = if ($t.groupId) { $(if ($Names.ContainsKey("$($t.groupId)")) { $Names["$($t.groupId)"] } else { "(Gruppe $($t.groupId))" }) } else { '' }
+    $label = switch ($kind) { 'allDevices' { 'Alle Geraete' } 'allUsers' { 'Alle Benutzer' } 'exclude' { "Ausschluss: $gn" } default { $gn } }
+    $dl = ''
+    try { if ($A.settings.installTimeSettings.deadlineDateTime) { $dl = ([datetime]$A.settings.installTimeSettings.deadlineDateTime).ToString('dd.MM.yyyy HH:mm') } } catch { }
+    return [pscustomobject]@{
+        Key = "$kind|$($gn.ToLower())"; Kind = $kind; GroupId = "$($t.groupId)"; GroupName = $gn; Ziel = $label
+        Intent = "$($A.intent)"; Notify = $(if ($A.settings) { "$($A.settings.notifications)" } else { '' }); Deadline = $dl
+    }
+}
+
+# Alle Windows-Apps eines Tenants mit Zuweisungen (Gruppennamen aufgeloest)
+function Get-HUTenantAppList {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings)
+    $all = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceAppManagement/mobileApps?$expand=assignments')
+    $win = @($all | Where-Object { $script:WinAppTypes.ContainsKey(("$($_.'@odata.type')" -replace '^#?microsoft\.graph\.', '')) })
+    $gids = @($win | ForEach-Object { @($_.assignments) } | ForEach-Object { $_.target.groupId } | Where-Object { $_ })
+    $names = if ($gids.Count) { Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids $gids } else { @{} }
+    foreach ($a in $win) {
+        $t = ("$($a.'@odata.type')" -replace '^#?microsoft\.graph\.', '')
+        [pscustomobject]@{
+            Name = "$($a.displayName)"; Typ = $script:WinAppTypes[$t]; OType = $t; Kind = (Get-HUAppKindFromType $t)
+            Version = "$($a.displayVersion)"; Publisher = "$($a.publisher)"; Description = "$($a.description)"; Id = "$($a.id)"
+            Modified = "$($a.lastModifiedDateTime)"; State = "$($a.publishingState)"
+            Assignments = @(@($a.assignments) | Where-Object { $_ } | ForEach-Object { ConvertFrom-HUAssignment $_ $names })
+        }
+    }
+}
+
+# Zuweisungen entfernen, deren Key (Art|Gruppenname) in -Keys steht
+function Remove-HUAppAssignments {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId, [Parameter(Mandatory)][string[]]$Keys)
+    $cur = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/assignments")
+    $names = Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids @($cur | ForEach-Object { $_.target.groupId })
+    $keep = New-Object System.Collections.Generic.List[object]
+    $removed = 0
+    foreach ($a in $cur) {
+        if ($Keys -contains (ConvertFrom-HUAssignment $a $names).Key) { $removed++; continue }
+        $h = @{ '@odata.type' = '#microsoft.graph.mobileAppAssignment'; intent = "$($a.intent)"; target = $a.target }
+        if ($a.settings) { $h.settings = $a.settings }
+        $keep.Add($h)
+    }
+    if ($removed) { [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/assign" -Method POST -Body @{ mobileAppAssignments = @($keep.ToArray()) }) }
+    return $removed
+}
+
+# Name, Beschreibung, Hersteller, Symbol aendern (leere Werte bleiben unveraendert)
+function Update-HUAppProperties {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId, [Parameter(Mandatory)][string]$OType,
+        [string]$Name = '', [string]$Description = '', [string]$Publisher = '', [string]$IconFile = '')
+    $b = @{ '@odata.type' = "#microsoft.graph.$OType" }
+    if ($Name) { $b.displayName = $Name }
+    if ($Description) { $b.description = $Description }
+    if ($Publisher) { $b.publisher = $Publisher }
+    if ($IconFile) { $ic = Get-HUIconContent $IconFile; if ($ic) { $b.largeIcon = $ic } }
+    if ($b.Count -le 1) { return }
+    [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId" -Method PATCH -Body $b)
+}
+
+function Get-HUAppIconBytes {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId)
+    $a = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId"
+    if ($a.largeIcon -and $a.largeIcon.value) { return [Convert]::FromBase64String("$($a.largeIcon.value)") }
+    return $null
+}
+
+# Beziehungen, bei denen die App die Quelle ist (Abhaengigkeiten, Ersetzungen)
+function Get-HUAppRelationRows {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId)
+    foreach ($r in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/relationships")) {
+        if ("$($r.targetType)" -ne 'child') { continue }
+        $isDep = "$($r.'@odata.type')" -match 'Dependency'
+        [pscustomobject]@{
+            Art = $(if ($isDep) { 'Abhaengigkeit' } else { 'Ersetzt' }); TargetId = "$($r.targetId)"; App = "$($r.targetDisplayName)"; Version = "$($r.targetDisplayVersion)"
+            Typ = $(if ($isDep) { $(if ($r.dependencyType -eq 'detect') { 'nur pruefen' } else { 'automatisch installieren' }) } else { $(if ($r.supersedenceType -eq 'replace') { 'ersetzen (alte deinstallieren)' } else { 'aktualisieren' }) })
+            Raw = $(if ($isDep) { @{ '@odata.type' = '#microsoft.graph.mobileAppDependency'; targetId = "$($r.targetId)"; dependencyType = "$($r.dependencyType)" } } else { @{ '@odata.type' = '#microsoft.graph.mobileAppSupersedence'; targetId = "$($r.targetId)"; supersedenceType = "$($r.supersedenceType)" } })
+            Key = "$(if ($isDep) { 'dep' } else { 'sup' })|$("$($r.targetDisplayName)".ToLower())"
+        }
+    }
+}
+
+# Beziehungen aendern: -Add @(@{ Art = 'dep'|'sup'; TargetId; Type = 'autoInstall'|'detect'|'update'|'replace' }), -RemoveKeys 'dep|name'
+function Set-HUAppRelations {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId, [object[]]$Add = @(), [string[]]$RemoveKeys = @())
+    $rows = @(Get-HUAppRelationRows -TenantKey $TenantKey -Settings $Settings -AppId $AppId)
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($r in $rows) { if ($RemoveKeys -notcontains $r.Key -and -not @($Add | Where-Object { $_.TargetId -eq $r.TargetId }).Count) { $list.Add($r.Raw) } }
+    foreach ($a in @($Add)) {
+        if ($a.Art -eq 'sup') { $list.Add(@{ '@odata.type' = '#microsoft.graph.mobileAppSupersedence'; targetId = "$($a.TargetId)"; supersedenceType = $(if ($a.Type -eq 'replace') { 'replace' } else { 'update' }) }) }
+        else { $list.Add(@{ '@odata.type' = '#microsoft.graph.mobileAppDependency'; targetId = "$($a.TargetId)"; dependencyType = $(if ($a.Type -eq 'detect') { 'detect' } else { 'autoInstall' }) }) }
+    }
+    [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/updateRelationships" -Method POST -Body @{ relationships = @($list.ToArray()) })
+    return $list.Count
+}
+
+function Remove-HUIntuneApp {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId)
+    [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId" -Method DELETE)
 }
 
 # ============================================================================
@@ -1100,7 +1272,7 @@ function Enable-HUSandbox {
 $script:SandboxScript = @'
 $ErrorActionPreference = 'Continue'
 $cfg = Get-Content -LiteralPath 'C:\HUTest\config.json' -Raw | ConvertFrom-Json
-$result = [ordered]@{ ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @() }
+$result = [ordered]@{ ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @(); InstallLog = ''; UninstallLog = ''; DesktopLinks = @() }
 function Get-Snap {
     $l = @()
     foreach ($p in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall') {
@@ -1115,9 +1287,13 @@ function Get-Snap {
 }
 function Get-Dirs { @(Get-ChildItem $env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:ProgramData" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
 $script:Windows = @()
-# Befehl ausfuehren; sichtbare Fenster neuer Prozesse merken (unter Intune wuerde ein Dialog haengen)
-function Invoke-Cmd([string]$Line, [int]$Minutes) {
-    Set-Content -LiteralPath 'C:\HUInstall\__run.cmd' -Value "@echo off`r`n$Line`r`nexit /b %errorlevel%" -Encoding Default
+# Befehl ausfuehren; Ausgabe nach C:\HUTest\logs\<Tag>-ausgabe.txt, bei msiexec ein ausfuehrliches MSI-Protokoll.
+# Sichtbare Fenster neuer Prozesse merken (unter Intune wuerde ein Dialog haengen).
+function Invoke-Cmd([string]$Line, [int]$Minutes, [string]$Tag = 'install') {
+    New-Item -ItemType Directory -Path 'C:\HUTest\logs' -Force | Out-Null
+    $run = $Line
+    if ($run -match '(?i)\bmsiexec(\.exe)?\b' -and $run -notmatch '(?i)\s/l[\*a-z+!]*\s') { $run += " /l*v `"C:\HUTest\logs\$Tag-msi.log`"" }
+    Set-Content -LiteralPath 'C:\HUInstall\__run.cmd' -Value "@echo off`r`n$run > `"C:\HUTest\logs\$Tag-ausgabe.txt`" 2>&1`r`nexit /b %errorlevel%" -Encoding Default
     $base = @(Get-Process | ForEach-Object { $_.Id })
     $seen = @{}
     $p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'C:\HUInstall\__run.cmd' -WorkingDirectory 'C:\HUInstall' -PassThru -WindowStyle Hidden
@@ -1132,15 +1308,43 @@ function Invoke-Cmd([string]$Line, [int]$Minutes) {
     $script:Windows = @($seen.Keys)
     return $p.ExitCode
 }
+
+# Protokolle seit $Since einsammeln: Befehlsausgabe, MSI-Protokoll (Fehlerzeilen), neue Log-Dateien in TEMP, MSI-Ereignisse
+function Get-LogText([datetime]$Since, [string]$Tag) {
+    $parts = New-Object System.Collections.Generic.List[string]
+    $out = "C:\HUTest\logs\$Tag-ausgabe.txt"
+    if ((Test-Path $out) -and (Get-Item $out).Length) { $parts.Add("[Ausgabe des Befehls]`r`n" + ((Get-Content $out -Tail 40) -join "`r`n")) }
+    $msi = "C:\HUTest\logs\$Tag-msi.log"
+    if (Test-Path $msi) {
+        $all = @(Get-Content $msi -ErrorAction SilentlyContinue)
+        $hits = @($all | Select-String -Pattern 'Return value 3|Fehler \d{4}|Error \d{4}|error code|CustomAction .* returned actual error' | Select-Object -First 15 | ForEach-Object { $_.Line })
+        $parts.Add("[MSI-Protokoll $Tag-msi.log - Fehlerzeilen]`r`n" + $(if ($hits.Count) { $hits -join "`r`n" } else { '(keine Fehlerzeilen)' }) + "`r`n...`r`n" + (($all | Select-Object -Last 15) -join "`r`n"))
+    }
+    $logs = @(Get-ChildItem -Path $env:TEMP, "$env:windir\Temp" -Recurse -File -Include *.log, *.txt -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $Since -and $_.Length -lt 20MB -and $_.FullName -notmatch '\\HUTest\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 3)
+    foreach ($l in $logs) {
+        try { Copy-Item -LiteralPath $l.FullName -Destination "C:\HUTest\logs\$Tag-$($l.Name)" -Force } catch { }
+        $parts.Add("[$($l.FullName)]`r`n" + ((Get-Content -LiteralPath $l.FullName -Tail 30 -ErrorAction SilentlyContinue) -join "`r`n"))
+    }
+    $ev = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'MsiInstaller'; StartTime = $Since } -MaxEvents 8 -ErrorAction SilentlyContinue)
+    if ($ev.Count) { $parts.Add("[Ereignisanzeige MsiInstaller]`r`n" + (@($ev | ForEach-Object { "$($_.TimeCreated.ToString('HH:mm:ss')) $($_.Id): $(($_.Message -replace '\s+', ' ').Trim())" }) -join "`r`n")) }
+    $t = $parts -join "`r`n`r`n"
+    if ($t.Length -gt 12000) { $t = $t.Substring(0, 12000) + "`r`n... (gekuerzt - vollstaendig im Ordner logs)" }
+    return $t
+}
 try {
     Write-Host 'HU-MultiTenant Testinstallation' -ForegroundColor Cyan
     New-Item -ItemType Directory -Path 'C:\HUInstall' -Force | Out-Null
     Copy-Item -Path 'C:\HUSource\*' -Destination 'C:\HUInstall' -Recurse -Force
     $before = @(Get-Snap); $dirsBefore = Get-Dirs
+    $lnkDirs = @("$env:PUBLIC\Desktop", [Environment]::GetFolderPath('Desktop'))
+    $lnkBefore = @(Get-ChildItem -Path $lnkDirs -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
     Write-Host "Installiere: $($cfg.Install)" -ForegroundColor Yellow
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $result.ExitCode = Invoke-Cmd $cfg.Install 30
+    $t0 = Get-Date
+    $result.ExitCode = Invoke-Cmd $cfg.Install 30 'install'
     $result.InstallWindows = @($script:Windows)
+    $result.InstallLog = Get-LogText $t0 'install'
     $result.Seconds = [Math]::Round($sw.Elapsed.TotalSeconds, 1)
     $keys = @($before | ForEach-Object { $_.Key })
     $after = @(Get-Snap)
@@ -1170,11 +1374,13 @@ try {
         }
     } catch { }
     $result.NewFolders = @(Get-Dirs | Where-Object { $dirsBefore -notcontains $_ })
+    $result.DesktopLinks = @(Get-ChildItem -Path $lnkDirs -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $lnkBefore -notcontains $_.FullName } | ForEach-Object { $_.Name })
     Write-Host "Exitcode $($result.ExitCode), neue Eintraege: $(@($result.NewEntries).Count)" -ForegroundColor Green
     if ($cfg.TestUninstall -and "$($cfg.Uninstall)".Trim()) {
         Write-Host "Deinstalliere: $($cfg.Uninstall)" -ForegroundColor Yellow
         $result.UninstallTested = $true
-        $result.UninstallExitCode = Invoke-Cmd $cfg.Uninstall 15
+        $t1 = Get-Date
+        $result.UninstallExitCode = Invoke-Cmd $cfg.Uninstall 15 'uninstall'
         $result.UninstallWindows = @($script:Windows)
         # manche Deinstaller (NSIS) starten eine Kopie und kehren sofort zurueck -> bis 2 Minuten auf das Entfernen warten
         for ($i = 0; $i -lt 40; $i++) {
@@ -1183,6 +1389,7 @@ try {
             if ($result.UninstallRemoved) { break }
             Start-Sleep -Seconds 3
         }
+        $result.UninstallLog = Get-LogText $t1 'uninstall'
     }
 } catch { $result.Error = $_.Exception.Message }
 $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'C:\HUTest\result.json' -Encoding UTF8
@@ -1280,11 +1487,13 @@ Export-ModuleMember -Function @(
     'Get-HUIntuneWinAppUtil', 'New-HUIntuneWinPackage',
     'Get-HUDefaultReturnCodes', 'ConvertTo-HUDetectionRule', 'ConvertTo-HUWin32Payload',
     'Get-HUIntuneApp', 'New-HUWin32App', 'Update-HUWin32App', 'Publish-HUWin32Content', 'New-HUStoreApp',
-    'Set-HUAppAssignment', 'Wait-HUAppPublished', 'Invoke-HUExportReport', 'Get-HUErrorText', 'Get-HUAppInstallStatus',
+    'Set-HUAppAssignment', 'Wait-HUAppPublished',
+    'Get-HUAppKindFromType', 'Get-HUGroupNames', 'ConvertFrom-HUAssignment', 'Get-HUTenantAppList', 'Remove-HUAppAssignments', 'Update-HUAppProperties',
+    'Get-HUAppIconBytes', 'Get-HUAppRelationRows', 'Set-HUAppRelations', 'Remove-HUIntuneApp', 'Invoke-HUExportReport', 'Get-HUErrorText', 'Get-HUAppInstallStatus',
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'ConvertFrom-HUSandboxEntry',
     'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
-    'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
+    'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

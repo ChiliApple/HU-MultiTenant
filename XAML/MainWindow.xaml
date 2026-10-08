@@ -370,9 +370,17 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- Bibliothek -->
+                        <!-- Bibliothek | In Intune -->
                         <Border Grid.Column="0" Background="#252526" CornerRadius="4" Padding="8">
                             <DockPanel>
+                            <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="0,0,0,8">
+                                <Button x:Name="btnAppModeLib" Content="Bibliothek" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="0,0,2,0"
+                                        ToolTip="Eigene Apps: Setup-Dateien und Store-Apps, die HU-MultiTenant paketiert und hochlaedt"/>
+                                <Button x:Name="btnAppModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                        ToolTip="Alle Windows-Apps, die schon in Intune liegen: Zuweisungen, Eigenschaften, Abhaengigkeiten, Status, Loeschen"/>
+                            </UniformGrid>
+                            <Grid>
+                            <DockPanel x:Name="pnlAppLibLeft">
                                 <TextBlock DockPanel.Dock="Top" Text="App-Bibliothek" Style="{StaticResource SectionTitle}"/>
                                 <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                                     <Button x:Name="btnAppAdd" Content="+ MSI / EXE ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
@@ -394,6 +402,36 @@
                                     </ListBox.ItemTemplate>
                                 </ListBox>
                             </DockPanel>
+                            <DockPanel x:Name="pnlAppIntLeft" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Top" Text="Apps in Intune" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="spIntTenants" Margin="0,0,0,4"/>
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                    <Button x:Name="btnIntLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
+                                    <ComboBox x:Name="cmbIntType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="86" Margin="4,0,0,0">
+                                        <ComboBoxItem Content="Alle" Tag="" IsSelected="True"/>
+                                        <ComboBoxItem Content="Win32" Tag="win32"/>
+                                        <ComboBoxItem Content="Store" Tag="winget"/>
+                                        <ComboBoxItem Content="Sonstige" Tag="other"/>
+                                    </ComboBox>
+                                    <Grid>
+                                        <TextBox x:Name="txtIntFilter" Style="{StaticResource DarkTextBox}"/>
+                                        <TextBlock x:Name="lblIntFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                    </Grid>
+                                </DockPanel>
+                                <TextBlock DockPanel.Dock="Bottom" x:Name="lblIntState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                <ListBox x:Name="lstIntApps" Style="{StaticResource DarkListBox}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2">
+                                                <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                            </Grid>
+                            </DockPanel>
                         </Border>
 
                         <GridSplitter Grid.Column="1" Width="6" Background="#3E3E42" Opacity="0.4" HorizontalAlignment="Center" ResizeBehavior="PreviousAndNext"/>
@@ -404,7 +442,8 @@
                                 <RowDefinition Height="6"/>
                                 <RowDefinition Height="*" MinHeight="60"/>
                             </Grid.RowDefinitions>
-                            <DockPanel Grid.Row="0">
+                            <Grid Grid.Row="0">
+                            <DockPanel x:Name="pnlAppLibRight">
                             <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
                                 <Button x:Name="btnAppSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
                                 <Button x:Name="btnAppDeploy" Content="&#x2B06; Hochladen &amp; zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="12" Margin="0,0,6,4"
@@ -468,8 +507,12 @@
                                                     <Button x:Name="btnAppBrowse" DockPanel.Dock="Right" Content="Andere Datei ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"/>
                                                     <TextBox x:Name="txtAppSetup" Style="{StaticResource DarkTextBox}" IsReadOnly="True"/>
                                                 </DockPanel>
-                                                <CheckBox Grid.Row="1" Grid.Column="1" x:Name="chkAppWholeFolder" Content="Ganzen Ordner der Setup-Datei mitpacken (bei Setups mit Zusatzdateien)"
-                                                          Style="{StaticResource DarkCheckBox}" Margin="0,2"/>
+                                                <WrapPanel Grid.Row="1" Grid.Column="1">
+                                                    <CheckBox x:Name="chkAppWholeFolder" Content="Ganzen Ordner mitpacken" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"
+                                                              ToolTip="Bei Setups mit Zusatzdateien (Transform .mst, Konfiguration, CAB)"/>
+                                                    <CheckBox x:Name="chkAppNoDesktop" Content="Ohne Desktop-Verknuepfung" Style="{StaticResource DarkCheckBox}" Margin="0,2"
+                                                              ToolTip="Neue Verknuepfungen auf dem Desktop werden nach der Installation entfernt (HU-Install.ps1 im Paket) - klappt bei jedem Setup"/>
+                                                </WrapPanel>
                                                 <TextBlock Grid.Row="2" Text="Installieren" Style="{StaticResource FieldLabel}"/>
                                                 <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppInstall" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,2"/>
                                                 <TextBlock Grid.Row="3" Text="Deinstallieren" Style="{StaticResource FieldLabel}"/>
@@ -617,6 +660,109 @@
                                 </ScrollViewer>
                             </Border>
                             </DockPanel>
+                            <DockPanel x:Name="pnlAppIntRight" Visibility="Collapsed">
+                            <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                <Button x:Name="btnIntStatus" Content="&#x1F4CA; Status" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                        ToolTip="Installationsstatus je Geraet (Intune-Bericht, kann 1-2 Minuten dauern)"/>
+                                <Button x:Name="btnIntReloadOne" Content="&#x21BB; Neu laden" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnIntPortal" Content="Im Portal oeffnen" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                <Button x:Name="btnIntDelete" Content="&#x1F5D1; Loeschen ..." Background="#B71C1C" Style="{StaticResource DarkButton}" FontSize="11" Margin="12,0,6,4"
+                                        ToolTip="App in den gewaehlten Tenants aus Intune loeschen (mit Rueckfrage)"/>
+                            </WrapPanel>
+                            <Border Background="#2D2D2D" CornerRadius="4" Padding="12">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="pnlIntForm" IsEnabled="False">
+                                        <DockPanel>
+                                            <Border DockPanel.Dock="Left" Width="56" Height="56" Background="#252526" CornerRadius="4" Margin="0,0,12,0">
+                                                <Image x:Name="imgIntIcon" Width="48" Height="48" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                            </Border>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock x:Name="txtIntTitle" Text="Links eine App waehlen" Foreground="#E0E0E0" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock x:Name="txtIntInfo" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </DockPanel>
+
+                                        <TextBlock Text="Zuweisungen" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                        <DataGrid x:Name="gridIntAssign" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                                  SelectionMode="Extended" MinHeight="40" MaxHeight="190">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="2*"/>
+                                                <DataGridTextColumn Header="Absicht" Binding="{Binding Absicht}" Width="120"/>
+                                                <DataGridTextColumn Header="Hinweise" Binding="{Binding Hinweise}" Width="110"/>
+                                                <DataGridTextColumn Header="Frist" Binding="{Binding Frist}" Width="110"/>
+                                                <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                        <WrapPanel Margin="0,6,0,0">
+                                            <ComboBox x:Name="cmbIntTarget" Style="{StaticResource DarkComboBox}" Width="140" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Gruppe" Tag="group" IsSelected="True"/>
+                                                <ComboBoxItem Content="Gruppe ausschliessen" Tag="exclude"/>
+                                                <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
+                                            </ComboBox>
+                                            <TextBox x:Name="txtIntGroup" Style="{StaticResource DarkTextBox}" Width="190" Margin="0,0,2,4" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                            <Button x:Name="btnIntGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,4,4"/>
+                                            <ComboBox x:Name="cmbIntIntent" Style="{StaticResource DarkComboBox}" Width="170" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Erforderlich" Tag="required" IsSelected="True"/>
+                                                <ComboBoxItem Content="Verfuegbar (Portal)" Tag="available"/>
+                                                <ComboBoxItem Content="Deinstallieren" Tag="uninstall"/>
+                                            </ComboBox>
+                                            <ComboBox x:Name="cmbIntNotify" Style="{StaticResource DarkComboBox}" Width="150" Margin="0,0,4,4">
+                                                <ComboBoxItem Content="Hinweise anzeigen" Tag="showAll" IsSelected="True"/>
+                                                <ComboBoxItem Content="Nur Neustart" Tag="showReboot"/>
+                                                <ComboBoxItem Content="Keine Hinweise" Tag="hideAll"/>
+                                            </ComboBox>
+                                            <TextBox x:Name="txtIntDeadline" Style="{StaticResource DarkTextBox}" Width="100" Margin="0,0,4,4" ToolTip="Frist (optional, nur Erforderlich): TT.MM.JJJJ [HH:mm]"/>
+                                            <Button x:Name="btnIntAssignAdd" Content="+ Zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"
+                                                    ToolTip="Zuweisung ergaenzen bzw. aendern (gleiche Gruppe: Absicht/Hinweise werden ersetzt)"/>
+                                            <Button x:Name="btnIntAssignRemove" Content="Markierte entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4"/>
+                                        </WrapPanel>
+
+                                        <StackPanel x:Name="pnlIntRel">
+                                            <TextBlock Text="Abhaengigkeiten und Ersetzungen" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                            <DataGrid x:Name="gridIntRel" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                                      SelectionMode="Extended" MinHeight="40" MaxHeight="160">
+                                                <DataGrid.Columns>
+                                                    <DataGridTextColumn Header="Art" Binding="{Binding Art}" Width="110"/>
+                                                    <DataGridTextColumn Header="App" Binding="{Binding App}" Width="2*"/>
+                                                    <DataGridTextColumn Header="Verhalten" Binding="{Binding Typ}" Width="170"/>
+                                                    <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                            <WrapPanel Margin="0,6,0,0">
+                                                <ComboBox x:Name="cmbIntRelKind" Style="{StaticResource DarkComboBox}" Width="250" Margin="0,0,4,4">
+                                                    <ComboBoxItem Content="Abhaengigkeit - automatisch installieren" Tag="dep|autoInstall" IsSelected="True"/>
+                                                    <ComboBoxItem Content="Abhaengigkeit - nur pruefen" Tag="dep|detect"/>
+                                                    <ComboBoxItem Content="Ersetzt - aktualisieren" Tag="sup|update"/>
+                                                    <ComboBoxItem Content="Ersetzt - alte deinstallieren" Tag="sup|replace"/>
+                                                </ComboBox>
+                                                <Button x:Name="btnIntRelAdd" Content="+ App waehlen ..." Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"/>
+                                                <Button x:Name="btnIntRelRemove" Content="Markierte entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4"/>
+                                            </WrapPanel>
+                                        </StackPanel>
+
+                                        <TextBlock Text="Eigenschaften" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                            <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Column="1" x:Name="txtIntName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="1" Text="Hersteller" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtIntPublisher" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="2" Text="Beschreibung" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,6,8,0"/>
+                                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtIntDesc" Style="{StaticResource DarkTextBox}" Margin="0,2" AcceptsReturn="True" TextWrapping="Wrap" Height="54" VerticalScrollBarVisibility="Auto"/>
+                                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
+                                                <Button x:Name="btnIntIcon" Content="Symbol ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,0"
+                                                        ToolTip="Neues Symbol (Bild, ICO, EXE) - wird mit 'Eigenschaften speichern' gesetzt"/>
+                                                <TextBlock x:Name="lblIntIcon" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                                <Button x:Name="btnIntPropSave" Content="&#x1F4BE; Eigenschaften speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                            </DockPanel>
+                            </Grid>
 
                             <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center" Background="#4CAF50" Opacity="0.4" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
 

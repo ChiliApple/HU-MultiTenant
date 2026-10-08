@@ -12,6 +12,9 @@
   - Ziel **Keine Zuweisung** (nur hochladen/aktualisieren), auch bei Wartung
   - Zuweisen wartet, bis Intune die App fertig verarbeitet hat; voruebergehende Serverfehler (500) werden wiederholt
   - **Status** je Geraet mit Fehlertext, Filter und Export
+  - **In Intune**: alle vorhandenen Windows-Apps der angehakten Tenants (Win32, Store, MSI, Microsoft 365, Edge, Weblinks); bei mehreren Tenants nach Namen zusammengefasst. Zuweisungen (Gruppe, Ausschluss, Alle Geraete/Benutzer, Absicht, Hinweise, Frist) ergaenzen und entfernen, Abhaengigkeiten und Ersetzungen, Name/Hersteller/Beschreibung/Symbol, Status je Geraet, im Portal oeffnen, Loeschen mit doppelter Rueckfrage
+  - **Ohne Desktop-Verknuepfung**: neue Desktop-Verknuepfungen werden nach der Installation entfernt (HU-Install.ps1 im Paket); die Testinstallation zeigt, welche Verknuepfungen ein Setup anlegt
+  - Testinstallation zeigt bei Problemen die Protokolle (Befehlsausgabe, MSI-Protokoll, neue Log-Dateien, MSI-Ereignisse) direkt in der Ausgabe
   - **Abhaengigkeiten** (z. B. Treiber, Laufzeitumgebungen): aus der Bibliothek (werden mit hochgeladen, auch mehrstufig, Kreise werden erkannt) oder **bereits in Intune vorhandene Win32-Apps** (Auswahl mit Filter und "vorhanden in x von y Tenants", je Tenant per Name verknuepft); automatisch installieren oder nur pruefen
   - Testinstallation erkennt sichtbare Fenster (Setup/Deinstallation nicht still) und ergaenzt fehlende Schalter fuer stilles Deinstallieren vor dem Test
   - **Symbol fuer das Unternehmensportal**: aus Bild, ICO oder EXE (wird auf PNG max. 256 px gebracht); automatisch aus der Setup-EXE, aus der installierten App (Testinstallation) bzw. bei Store-Apps aus dem Microsoft Store

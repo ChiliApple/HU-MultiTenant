@@ -457,3 +457,27 @@ Describe 'Intune: Abhaengigkeiten' {
         ((Get-HUDependencyBody -Existing @() -DependencyIds @()) | ConvertTo-Json -Compress) | Should -Be '{"relationships":[]}'
     }
 }
+
+Describe 'Intune: vorhandene Apps und Installationshuelle' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'Zuweisung wird lesbar und ueber Tenants vergleichbar' {
+        $a = [pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'g1' }; settings = [pscustomobject]@{ notifications = 'hideAll'; installTimeSettings = $null } }
+        $r = ConvertFrom-HUAssignment $a @{ g1 = 'Schueler' }
+        $r.Key | Should -Be 'group|schueler'
+        $r.Ziel | Should -Be 'Schueler'
+        $r.Notify | Should -Be 'hideAll'
+        $x = ConvertFrom-HUAssignment ([pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.exclusionGroupAssignmentTarget'; groupId = 'g1' } }) @{ g1 = 'Lehrer' }
+        $x.Ziel | Should -Be 'Ausschluss: Lehrer'
+        (ConvertFrom-HUAssignment ([pscustomobject]@{ intent = 'available'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allLicensedUsersAssignmentTarget' } })).Kind | Should -Be 'allUsers'
+        Get-HUAppKindFromType '#microsoft.graph.winGetApp' | Should -Be 'winget'
+        Get-HUAppKindFromType 'officeSuiteApp' | Should -Be 'other'
+    }
+    It 'ohne Desktop-Verknuepfung: Huelle und Befehl' {
+        $p = Get-HUInstallPlan ([pscustomobject]@{ InstallCmd = '"vlc.exe" /S'; NoDesktop = $true })
+        $p.Cmd | Should -Match 'Sysnative.*HU-Install\.ps1'
+        $p.Extra['HU-Install.ps1'] | Should -Match 'exit \$p\.ExitCode'
+        $e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($p.Extra['HU-Install.ps1'], [ref]$null, [ref]$e); @($e).Count | Should -Be 0
+        (Get-HUInstallPlan ([pscustomobject]@{ InstallCmd = 'a.exe'; NoDesktop = $true }) -Sandbox).Cmd | Should -Match '^powershell\.exe'
+        (Get-HUInstallPlan ([pscustomobject]@{ InstallCmd = 'a.exe /S'; NoDesktop = $false })).Cmd | Should -Be 'a.exe /S'
+    }
+}
