@@ -1398,6 +1398,7 @@ function Test-HURemediationScript {
         @{ P = '(?im)\b(Read-Host|Out-GridView|Pause)\b|\[Console\]::ReadKey'; L = 'Fehler'; T = 'Keine Eingaben/Fenster - das Skript laeuft unbeaufsichtigt.' }
         @{ P = '(?im)\?\?|\?\.\w'; L = 'Warnung'; T = 'Moeglicherweise PowerShell-7-Syntax (?? / ?.) - Intune nutzt Windows PowerShell 5.1.' }
         @{ P = '(?im)\bInvoke-Expression\b|\biex\b'; L = 'Warnung'; T = 'Invoke-Expression vermeiden.' }
+        @{ P = '[A-Za-z0-9_.\-]{3}\dQ~[A-Za-z0-9_.\-~]{30,}|(?im)\$\w*secret\w*\s*=\s*["''][^"'']{16,}'; L = 'Warnung'; T = 'Enthaelt offenbar ein App-Secret im Klartext - liegt auf jedem Geraet lesbar (Intune-Cache, Protokolle). Besser ohne Secret loesen oder ein Zertifikat/eine eigene App mit minimalen Rechten verwenden.' }
     )
     foreach ($r in $rx) { if ($Code -match $r.P) { & $add $r.L "${name}: $($r.T)" } }
     if ($Kind -eq 'detection') {

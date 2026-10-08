@@ -30,6 +30,7 @@
   - **Mit KI erstellen**: Prompt mit allen Intune-Regeln kopieren, Antwort einfuegen - wird automatisch aufgeteilt
   - **Pruefen** ohne Ausfuehrung (exit 1, Neustart, Eingaben, PowerShell-7-Syntax, Benutzerpfade unter SYSTEM) und Pruefskript lokal testen
   - Verteilen mit Zeitplan (taeglich, stuendlich, einmal), optional Pilotgruppe; **Ergebnisse** je Geraet; **Jetzt auf Geraet ausfuehren**
+  - Pruefung warnt bei App-Secrets im Klartext; In Intune: abweichende Skripte je Tenant werden nur ueberschrieben, wenn die Skripte geaendert wurden (mit Rueckfrage), Kopieren warnt bei Tenant-/App-IDs im Skript
   - 5 Beispiele (Speicherplatz, Zeitdienst, Windows Update, Neustart ueberfaellig, BitLocker)
   - **In Intune**: alle vorhandenen Wartungsskripte der angehakten Tenants (auch von Hand angelegte und die von Microsoft), nach Namen zusammengefasst. Zusammenfassung (Problem, behoben, Fehler), Zuweisungen mit Zeitplan und Ausschluss ergaenzen/entfernen, Skripte und Eigenschaften aendern (mit Pruefung, abweichende Fassungen je Tenant werden angezeigt), Ergebnisse, Jetzt auf Geraet, **In Bibliothek uebernehmen**, **In andere Tenants kopieren** (Skripte, Hersteller, Ausfuehren als und auf Wunsch die Zuweisungen; Gruppen per Name), Loeschen mit doppelter Rueckfrage
 - **Gruppen suchen** (Lupe neben Ziel- und Pilotgruppe): liest die Gruppen der angehakten Tenants, Filter, zeigt in welchen Tenants eine Gruppe fehlt

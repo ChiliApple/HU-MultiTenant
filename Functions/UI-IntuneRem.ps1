@@ -282,7 +282,7 @@ function Start-HURintDetail {
             $state = @()
             if ($script:RintCurrent.Global) { $state += 'Skript von Microsoft - Inhalt kann nicht geaendert werden.' }
             if (-not "$($d0.Detection)".Trim() -and -not $script:RintCurrent.Global) { $state += 'Pruefskript leer oder nicht lesbar.' }
-            if ($diff.Count) { $state += "Skripte unterscheiden sich in: $(@($diff | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') - angezeigt wird $(Get-HUTenantDisplayName $keys[0]); Speichern setzt ueberall diese Fassung." }
+            if ($diff.Count) { $state += "Skripte unterscheiden sich in: $(@($diff | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') - angezeigt wird $(Get-HUTenantDisplayName $keys[0]). Werden die Skripte geaendert und gespeichert, bekommen alle Tenants diese Fassung (Name/Beschreibung allein aendert sie nicht)." }
             $c['lblRintScriptState'].Text = ($state -join ' ')
             Update-HURintAssignGrid
             Update-HURintButtons
@@ -370,10 +370,16 @@ function Save-HURintChanges {
     if ($desc -ne "$($d0.Description)".Trim()) { $v.Description = $desc }
     $ra = Get-HUComboTag $c['cmbRintRunAs']; if ($ra -ne $d0.RunAs) { $v.RunAs = $ra }
     $r32 = [bool]$c['chkRint32'].IsChecked; if ($r32 -ne [bool]$d0.RunAs32) { $v.RunAs32 = $r32 }
-    # Skripte: auch speichern, wenn sie sich zwischen den Tenants unterscheiden (dann ueberall diese Fassung)
+    # Skripte nur speichern, wenn sie im Editor geaendert wurden - sonst bleiben abweichende Fassungen je Tenant
+    # (z. B. tenant-eigene IDs im Skript) unangetastet
     $det = $c['txtRintDetect'].Text; $fix = $c['txtRintFix'].Text
-    $differs = @($script:RintDetail.Values | Where-Object { $_.Detection -ne $det -or $_.Remediation -ne $fix }).Count
-    if ($differs) { $v.Detection = $det; $v.Remediation = $fix }
+    $differs = 0
+    if ($det -ne $d0.Detection -or $fix -ne $d0.Remediation) {
+        $v.Detection = $det; $v.Remediation = $fix
+        $differs = @($script:RintDetail.Values | Where-Object { $_.Detection -ne $det -or $_.Remediation -ne $fix }).Count
+        $other = @($script:RintDetail.Values | Where-Object { $_.Tenant -ne $d0.Tenant -and ($_.Detection -ne $d0.Detection -or $_.Remediation -ne $d0.Remediation) })
+        if ($other.Count -and -not (Confirm-HU "Die Skripte sind in $(@($other | ForEach-Object { Get-HUTenantDisplayName $_.Tenant }) -join ', ') anders als in $(Get-HUTenantDisplayName $d0.Tenant).`n`nBeim Speichern bekommen ALLE Tenants die Fassung aus dem Editor - tenant-eigene Werte (z. B. Tenant-ID) gehen dort verloren.`n`nTrotzdem fortfahren?" 'Wartung' -Warning)) { return }
+    }
     if (-not $v.Count) { Show-HUMessage 'Nichts geaendert.' -Icon Info; return }
     if ($v.ContainsKey('Detection')) {
         $rtb = $c['rtbRem']
@@ -500,6 +506,7 @@ function Copy-HURintToTenants {
     $d0 = $script:RintDetail[$src]
     if (-not $d0) { $d0 = @($script:RintDetail.Values)[0]; $src = $d0.Tenant }
     $c.lblHint.Text = "'$($it.Name)' wird mit Pruef- und Reparaturskript aus $(Get-HUTenantDisplayName $src) angelegt. Gibt es im Ziel schon ein Skript mit diesem Namen, wird der Tenant uebersprungen."
+    if ("$($d0.Detection)`n$($d0.Remediation)" -match '(?i)tenant.?id|client.?id|secret|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}') { $c.lblHint.Text += "`n`nACHTUNG: Das Skript enthaelt Tenant-/App-IDs oder ein Secret - im Ziel-Tenant passen diese Werte vermutlich nicht. Nach dem Kopieren dort anpassen." }
     foreach ($t in $cand) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"; $cb.Tag = "$($t.key)"
