@@ -1002,7 +1002,14 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     $lines.Add("Installation: $codeText nach $($Res.Seconds) s")
     $winI = @($Res.InstallWindows | Where-Object { $_ })
     $warn = $false
-    if ($winI.Count) { $warn = $true; $lines.Add("ACHTUNG: Setup zeigte ein Fenster ($($winI -join '; ')) - unter Intune wuerde die Installation haengen. Schalter fuer stille Installation pruefen.") }
+    if ($winI.Count) {
+        if ($ok) {
+            # Setup ist ohne Eingabe fertig geworden -> Fenster hat nicht blockiert (z. B. Webseite nach der Installation)
+            $lines.Add("Info: waehrend der Installation war ein Fenster offen ($($winI -join '; ')), das Setup lief aber ohne Eingabe durch - unkritisch.")
+        } else {
+            $warn = $true; $lines.Add("ACHTUNG: Setup zeigte ein Fenster ($($winI -join '; ')) - unter Intune wuerde die Installation haengen. Schalter fuer stille Installation pruefen.")
+        }
+    }
     $entries = @($Res.NewEntries | Where-Object { $_ })
     $links = @($Res.DesktopLinks | Where-Object { $_ })
     if ($links.Count) { $lines.Add("Desktop-Verknuepfung(en): $($links -join ', ')$(if (-not $a.NoDesktop) { "  -> 'Ohne Desktop-Verknuepfung' anhaken, wenn unerwuenscht" })") }
