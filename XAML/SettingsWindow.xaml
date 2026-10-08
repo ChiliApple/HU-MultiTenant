@@ -1,0 +1,213 @@
+<!--
+    HU-MultiTenant - Einstellungen: Allgemein | Tenants | Update.
+    Gespeichert in Config\settings.json (Sicherung settings.json.bak) und Config\update.json.
+-->
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Einstellungen"
+    Width="940" Height="680" MinWidth="760" MinHeight="520"
+    WindowStartupLocation="CenterOwner"
+    Background="#1E1E1E"
+    UseLayoutRounding="True"
+    ShowInTaskbar="False"
+    ResizeMode="CanResizeWithGrip">
+
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+
+    <DockPanel Margin="12">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <TextBlock x:Name="txtSettingsInfo" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btnSave" Content="Speichern" Width="110" Background="#4CAF50" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+                <Button x:Name="btnCancel" Content="Abbrechen" Width="110" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+            </StackPanel>
+        </DockPanel>
+
+        <TabControl x:Name="tabSettings" Style="{StaticResource DarkTabControl}">
+
+            <!-- ================= ALLGEMEIN ================= -->
+            <TabItem Header="Allgemein" x:Name="tabGeneral" Style="{StaticResource DarkTabItem}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="4,12,4,4">
+                        <TextBlock Text="Verkn&#xFC;pfung" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Style="{StaticResource HintText}" FontSize="11" Margin="0,0,0,8"
+                                   Text="Legt HU-MultiTenant.exe im Programmordner an (eigenes Logo, kein Konsolenfenster, an die Taskleiste anheftbar) und eine Verkn&#xFC;pfung darauf."/>
+                        <WrapPanel Margin="0,0,0,4">
+                            <Button x:Name="btnShortcutDesktop" Content="&#x1F5A5; Desktop-Verkn&#xFC;pfung" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,6"/>
+                            <Button x:Name="btnShortcutStart" Content="&#x2630; Startmen&#xFC;-Eintrag" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,6"/>
+                            <Button x:Name="btnShortcutAll" Content="Desktop f&#xFC;r alle Benutzer" Style="{StaticResource ToolButton}" Margin="0,0,8,6"
+                                    ToolTip="Oeffentlicher Desktop - braucht Administratorrechte"/>
+                            <Button x:Name="btnLauncher" Content="Starter neu erstellen" Style="{StaticResource ToolButton}" Margin="0,0,8,6"/>
+                        </WrapPanel>
+                        <TextBlock x:Name="txtShortcutInfo" Style="{StaticResource HintText}" FontSize="11" Margin="0,0,0,16"/>
+
+                        <TextBlock Text="Start und Darstellung" Style="{StaticResource SectionTitle}"/>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="Reiter beim Start" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbStartTab" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3">
+                                <ComboBoxItem Content="Quick Script" Tag="QuickScript"/>
+                                <ComboBoxItem Content="Extensions" Tag="Extensions"/>
+                                <ComboBoxItem Content="Zuletzt verwendeter Reiter" Tag="Last"/>
+                            </ComboBox>
+                            <TextBlock Grid.Row="1" Text="Oberfl&#xE4;chengr&#xF6;&#xDF;e" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="cmbScale" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
+                                      ToolTip="Auch im Hauptfenster: Strg + Mausrad, Strg + 0 = 100 %"/>
+                            <TextBlock Grid.Row="2" Text="Protokoll-Stufe" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox Grid.Row="2" Grid.Column="1" x:Name="cmbLogLevel" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3">
+                                <ComboBoxItem Content="Debug (alles)" Tag="Debug"/>
+                                <ComboBoxItem Content="Info (Standard)" Tag="Info"/>
+                                <ComboBoxItem Content="Warnungen und Fehler" Tag="Warn"/>
+                            </ComboBox>
+                            <TextBlock Grid.Row="3" Text="Reports-Ordner" Style="{StaticResource FieldLabel}"/>
+                            <DockPanel Grid.Row="3" Grid.Column="1" Margin="0,3">
+                                <Button x:Name="btnReportsBrowse" DockPanel.Dock="Right" Content="..." Style="{StaticResource ToolButton}" Width="34" Margin="6,0,0,0"/>
+                                <TextBox x:Name="txtReports" Style="{StaticResource DarkTextBox}" FontSize="12"/>
+                            </DockPanel>
+                        </Grid>
+
+                        <TextBlock Text="Client Secrets" Style="{StaticResource SectionTitle}"/>
+                        <CheckBox x:Name="chkSecretCheckStart" Content="Ablaufdatum beim Start im Hintergrund pr&#xFC;fen (h&#xF6;chstens einmal am Tag)" Style="{StaticResource DarkCheckBox}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Text="Warnen ab" Style="{StaticResource FieldLabel}"/>
+                            <TextBox x:Name="txtWarnDays" Style="{StaticResource DarkTextBox}" Width="60" FontSize="12"/>
+                            <TextBlock Text="Tagen vor Ablauf" Style="{StaticResource FieldLabel}" Margin="8,0,0,0"/>
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource HintText}" FontSize="11" Margin="0,8,0,0"
+                                   Text="Das Ablaufdatum wird &#xFC;ber Graph gelesen - die App-Registrierung braucht dafuer die Anwendungsberechtigung Application.Read.All. Ohne diese Berechtigung kann das Datum je Tenant manuell eingetragen werden (Reiter Tenants)."/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ================= TENANTS ================= -->
+            <TabItem Header="Tenants" x:Name="tabTenants" Style="{StaticResource DarkTabItem}">
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="300"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <DockPanel Grid.Column="0">
+                        <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                            <Button x:Name="btnTenantAdd" Content="+ Neu" Style="{StaticResource ToolButton}" Margin="0,0,4,4"/>
+                            <Button x:Name="btnTenantRemove" Content="Entfernen" Style="{StaticResource ToolButton}" Foreground="#EF9A9A" Margin="0,0,4,4"/>
+                            <Button x:Name="btnTenantUp" Content="&#x25B2;" Style="{StaticResource ToolButton}" Width="30" Margin="0,0,4,4"/>
+                            <Button x:Name="btnTenantDown" Content="&#x25BC;" Style="{StaticResource ToolButton}" Width="30" Margin="0,0,4,4"/>
+                        </WrapPanel>
+                        <Button x:Name="btnCheckAllSecrets" DockPanel.Dock="Bottom" Content="&#x1F511; Alle Secrets pr&#xFC;fen" Background="#3E3E42"
+                                Style="{StaticResource DarkButton}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
+                        <ListBox x:Name="lstTenants" Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10"/>
+                                        <TextBlock Text="{Binding Secret}" Foreground="{Binding SecretColor}" FontSize="10"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+
+                    <Border Grid.Column="2" Background="#252526" CornerRadius="4" Padding="12">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="pnlTenant">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="170"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="Anzeigename" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="tDisplay" Style="{StaticResource DarkTextBox}" Margin="0,3"/>
+                                    <TextBlock Grid.Row="1" Text="Schl&#xFC;ssel (kurz, eindeutig)" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="tKey" Style="{StaticResource DarkTextBox}" Margin="0,3"
+                                             ToolTip="z. B. Schule-1 - wird in Extensions/Snippets als $TenantKey verwendet"/>
+                                    <TextBlock Grid.Row="2" Text="Verzeichnis-ID (Tenant-ID)" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="tTenantId" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,3"/>
+                                    <TextBlock Grid.Row="3" Text="Anwendungs-ID (Client-ID)" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="tAppId" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,3"/>
+                                    <TextBlock Grid.Row="4" Text="Dom&#xE4;ne" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox Grid.Row="4" Grid.Column="1" x:Name="tDomain" Style="{StaticResource DarkTextBox}" Margin="0,3"/>
+                                    <TextBlock Grid.Row="5" Text="Credential-Name" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox Grid.Row="5" Grid.Column="1" x:Name="tCredName" Style="{StaticResource DarkTextBox}" Margin="0,3"
+                                             ToolTip="Dateiname des gespeicherten Secrets in %APPDATA%\HU-MultiTenant (leer = HU-&lt;Schluessel&gt;)"/>
+                                    <TextBlock Grid.Row="6" Text="AD-Schema" Style="{StaticResource FieldLabel}"/>
+                                    <ComboBox Grid.Row="6" Grid.Column="1" x:Name="tSchema" Width="200" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
+                                              ToolTip="VirtualSchool: Rolle = jobTitle, Klasse = department. iPack: Rolle = faxNumber, Klasse = officeLocation">
+                                        <ComboBoxItem Content="VirtualSchool"/>
+                                        <ComboBoxItem Content="iPack"/>
+                                    </ComboBox>
+                                    <TextBlock Grid.Row="7" Text="Secret g&#xFC;ltig bis (manuell)" Style="{StaticResource FieldLabel}"/>
+                                    <StackPanel Grid.Row="7" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                                        <TextBox x:Name="tExpires" Style="{StaticResource DarkTextBox}" Width="120" ToolTip="TT.MM.JJJJ - nur noetig ohne Application.Read.All"/>
+                                        <TextBlock x:Name="tSecretState" Foreground="#858585" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Row="8" Text="Gesch&#xFC;tzte App-IDs" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox Grid.Row="8" Grid.Column="1" x:Name="tProtected" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,3"
+                                             ToolTip="Komma-getrennt. Extensions mit Schreibaktionen (z. B. Enterprise-App-Inventur) fassen diese Apps nie an. Die eigene App-ID ist immer geschuetzt."/>
+                                    <TextBlock Grid.Row="9" Text="Notizen" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox Grid.Row="9" Grid.Column="1" x:Name="tNotes" Style="{StaticResource DarkTextBox}" Margin="0,3" TextWrapping="Wrap" MinHeight="40"/>
+                                </Grid>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <CheckBox x:Name="tPrimary" Content="Standard-Tenant" Style="{StaticResource DarkCheckBox}" Margin="0,0,20,0"/>
+                                    <CheckBox x:Name="tPersist" Content="Secret dauerhaft speichern" Style="{StaticResource DarkCheckBox}"
+                                              ToolTip="Aus: Secret wird beim Beenden geloescht"/>
+                                </WrapPanel>
+                                <WrapPanel Margin="0,12,0,0">
+                                    <Button x:Name="btnSecretSet" Content="&#x1F510; Secret eingeben ..." Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,6"/>
+                                    <Button x:Name="btnTenantTest" Content="Verbindung + Secret pr&#xFC;fen" Background="#3E3E42" Style="{StaticResource DarkButton}" Margin="0,0,8,6"/>
+                                    <Button x:Name="btnSecretDelete" Content="Gespeichertes Secret l&#xF6;schen" Style="{StaticResource ToolButton}" Foreground="#EF9A9A" Margin="0,0,8,6"/>
+                                    <Button x:Name="btnOpenApp" Content="App im Entra Admin Center" Style="{StaticResource ToolButton}" Margin="0,0,8,6"/>
+                                </WrapPanel>
+                                <TextBlock x:Name="tTestResult" Foreground="#858585" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ================= UPDATE ================= -->
+            <TabItem Header="Update" x:Name="tabUpdate" Style="{StaticResource DarkTabItem}">
+                <StackPanel Margin="4,12,4,4">
+                    <TextBlock Text="Update-Kanal" Style="{StaticResource SectionTitle}"/>
+                    <ComboBox x:Name="cmbChannel" Width="300" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,0,0,6">
+                        <ComboBoxItem Content="Stabil (freigegebene Versionen)" Tag="Stable"/>
+                        <ComboBoxItem Content="Test (auch Vorab-Versionen)" Tag="Test"/>
+                    </ComboBox>
+                    <CheckBox x:Name="chkRequireSig" Content="Nur signierte Updates installieren (empfohlen)" Style="{StaticResource DarkCheckBox}"/>
+                    <CheckBox x:Name="chkCheckOnStart" Content="Beim Start nach Updates suchen" Style="{StaticResource DarkCheckBox}"/>
+                    <TextBlock x:Name="txtUpdateInfo" Style="{StaticResource HintText}" FontSize="11" Margin="0,12,0,12"/>
+                    <WrapPanel>
+                        <Button x:Name="btnCheckNow" Content="Jetzt pr&#xFC;fen" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,6"/>
+                        <Button x:Name="btnOtherVersion" Content="Andere Version / Vorversion ..." Style="{StaticResource ToolButton}" Margin="0,0,8,6"/>
+                    </WrapPanel>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

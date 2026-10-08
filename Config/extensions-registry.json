@@ -1,0 +1,189 @@
+{
+  "permissionsRegistry": {
+    "DeviceManagementManagedDevices.Read.All": {
+      "description": "Intune: Alle Geräte lesen (Name, Status, Owner, Sync-Datum, Model, OS-Version)",
+      "risk": "Low",
+      "category": "Device Management",
+      "usedBy": [
+        "Device-StaleSyncMonitor.ps1"
+      ],
+      "setupInstructions": "Azure AD > App Registrations > [App] > API permissions > +Add permission > Microsoft Graph > Application permissions > DeviceManagementManagedDevices.Read.All"
+    },
+    "DeviceManagementManagedDevices.ReadWrite.All": {
+      "description": "Intune: Geräte schreiben (Sync triggern, wipe, retire, remote actions)",
+      "risk": "High",
+      "category": "Device Management",
+      "usedBy": [],
+      "setupInstructions": "WARNUNG: Kritische Permission. Nur geben wenn absolut nötig."
+    },
+    "DeviceManagementConfiguration.Read.All": {
+      "description": "Intune: Policies, Compliance Rules, Update Rings lesen",
+      "risk": "Low",
+      "category": "Policy Management",
+      "usedBy": [],
+      "setupInstructions": "Azure AD > App Registrations > [App] > API permissions > +Add permission > Microsoft Graph > Application permissions > DeviceManagementConfiguration.Read.All"
+    },
+    "Group.ReadWrite.All": {
+      "description": "Entra ID: Gruppen erstellen, lesen, aktualisieren, loeschen",
+      "risk": "High",
+      "category": "Identity",
+      "usedBy": [],
+      "setupInstructions": "WARNUNG: Kritische Permission. Erlaubt Gruppenverwaltung. Azure AD > App Registrations > [App] > API permissions > +Add permission > Microsoft Graph > Application permissions > Group.ReadWrite.All"
+    },
+    "DeviceManagementConfiguration.ReadWrite.All": {
+      "description": "Intune: Policies erstellen, lesen, aktualisieren, loeschen (Settings Catalog, OMA-URI, EDR)",
+      "risk": "High",
+      "category": "Policy Management",
+      "usedBy": [],
+      "setupInstructions": "WARNUNG: Kritische Permission. Erlaubt Policy-Verwaltung. Azure AD > App Registrations > [App] > API permissions > +Add permission > Microsoft Graph > Application permissions > DeviceManagementConfiguration.ReadWrite.All"
+    },
+    "DeviceManagementServiceConfig.ReadWrite.All": {
+      "description": "Intune: Defender Connector, Service-Konfiguration lesen und schreiben",
+      "risk": "High",
+      "category": "Service Configuration",
+      "usedBy": [],
+      "setupInstructions": "WARNUNG: Kritische Permission. Azure AD > App Registrations > [App] > API permissions > +Add permission > Microsoft Graph > Application permissions > DeviceManagementServiceConfig.ReadWrite.All"
+    },
+    "SecurityEvent.Read.All": {
+      "description": "Microsoft Defender: Threats, Vulnerabilities, Alerts lesen",
+      "risk": "Medium",
+      "category": "Security",
+      "usedBy": [],
+      "setupInstructions": "Setzt MDE (Microsoft Defender für Endpoint) voraus. Nur relevant wenn Threat-Management aktiv."
+    },
+    "User.Read.All": {
+      "description": "Entra ID: Alle User-Profile lesen (displayName, UPN, signInActivity etc.)",
+      "risk": "Low",
+      "category": "Identity",
+      "usedBy": [
+        "Device-StaleSyncMonitor.ps1"
+      ],
+      "setupInstructions": "Azure AD > App Registrations > [App] > API permissions > +Add permission > Microsoft Graph > Application permissions > User.Read.All"
+    },
+    "AuditLog.Read.All": {
+      "description": "Entra ID: Sign-In-Logs und signInActivity Property auf User-Objekten lesen",
+      "risk": "Medium",
+      "category": "Identity",
+      "usedBy": [
+        "Device-StaleSyncMonitor.ps1"
+      ],
+      "setupInstructions": "Azure AD > App Registrations > [App] > API permissions > +Add permission > Microsoft Graph > Application permissions > AuditLog.Read.All. Erforderlich fuer signInActivity auf User-Objekten."
+    },
+    "Application.Read.All": {
+      "description": "Entra ID: App-Registrierungen und Enterprise-Apps lesen (auch Ablaufdatum der Client Secrets)",
+      "risk": "Low",
+      "category": "Identity",
+      "usedBy": [
+        "Security-EnterpriseAppInventory.ps1"
+      ],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufuegen > Microsoft Graph > Anwendungsberechtigungen > Application.Read.All > Administratorzustimmung erteilen"
+    },
+    "Directory.Read.All": {
+      "description": "Entra ID: Verzeichnisobjekte lesen (Besitzer, Consents, Rollen)",
+      "risk": "Medium",
+      "category": "Identity",
+      "usedBy": [
+        "Security-EnterpriseAppInventory.ps1"
+      ],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Microsoft Graph > Anwendungsberechtigungen > Directory.Read.All > Administratorzustimmung erteilen"
+    },
+    "Organization.Read.All": {
+      "description": "Tenant-Informationen lesen (Name, Domänen, Lizenzen)",
+      "risk": "Low",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Organization.Read.All > Administratorzustimmung erteilen"
+    },
+    "DeviceManagementServiceConfig.Read.All": {
+      "description": "Intune-Dienstkonfiguration lesen (Autopilot, Enrollment)",
+      "risk": "Low",
+      "category": "Device Management",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > DeviceManagementServiceConfig.Read.All > Administratorzustimmung erteilen"
+    },
+    "DeviceManagementManagedDevices.PrivilegedOperations.All": {
+      "description": "Intune-Geräteaktionen ausführen (Sync, Neustart, Wipe, Retire)",
+      "risk": "High",
+      "category": "Device Management",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > DeviceManagementManagedDevices.PrivilegedOperations.All > Administratorzustimmung erteilen"
+    },
+    "SecurityEvents.Read.All": {
+      "description": "Sicherheitswarnungen lesen (Microsoft Graph Security)",
+      "risk": "Low",
+      "category": "Security",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > SecurityEvents.Read.All > Administratorzustimmung erteilen"
+    },
+    "Group.Read.All": {
+      "description": "Gruppen und Gruppeneigenschaften lesen",
+      "risk": "Low",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Group.Read.All > Administratorzustimmung erteilen"
+    },
+    "GroupMember.Read.All": {
+      "description": "Gruppenmitgliedschaften lesen",
+      "risk": "Low",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > GroupMember.Read.All > Administratorzustimmung erteilen"
+    },
+    "Policy.Read.All": {
+      "description": "Richtlinien lesen (Conditional Access, Authentifizierung)",
+      "risk": "Low",
+      "category": "Security",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Policy.Read.All > Administratorzustimmung erteilen"
+    },
+    "UserAuthenticationMethod.Read.All": {
+      "description": "Authentifizierungsmethoden der Benutzer lesen (MFA-Status)",
+      "risk": "Medium",
+      "category": "Security",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > UserAuthenticationMethod.Read.All > Administratorzustimmung erteilen"
+    },
+    "Reports.Read.All": {
+      "description": "Nutzungs- und Registrierungsberichte lesen",
+      "risk": "Low",
+      "category": "Reports",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Reports.Read.All > Administratorzustimmung erteilen"
+    },
+    "MailboxSettings.Read": {
+      "description": "Postfacheinstellungen lesen (Weiterleitungen, Abwesenheit)",
+      "risk": "Medium",
+      "category": "Mail",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > MailboxSettings.Read > Administratorzustimmung erteilen"
+    },
+    "Application.ReadWrite.All": {
+      "description": "App-Registrierungen und Enterprise-Apps ändern (Secrets, Besitzer, Deaktivieren)",
+      "risk": "High",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Application.ReadWrite.All > Administratorzustimmung erteilen"
+    },
+    "User.ReadWrite.All": {
+      "description": "Benutzer anlegen und ändern",
+      "risk": "High",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > User.ReadWrite.All > Administratorzustimmung erteilen"
+    },
+    "Directory.ReadWrite.All": {
+      "description": "Verzeichnis ändern (Benutzer, Gruppen, Geräte)",
+      "risk": "High",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Directory.ReadWrite.All > Administratorzustimmung erteilen"
+    }
+  },
+  "categoriesMapping": {
+    "Device": "Device-",
+    "Policy": "Policy-",
+    "User": "User-",
+    "Security": "Security-",
+    "Common": "Common-"
+  }
+}

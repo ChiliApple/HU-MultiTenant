@@ -1,0 +1,287 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HU-MultiTenant – Anleitung</title>
+<style>
+:root{
+  --bg:#eff1f5;--panel:#ffffff;--panel2:#e6e9ef;--text:#4c4f69;--sub:#6c6f85;--line:#ccd0da;
+  --blue:#1e66f5;--green:#40a02b;--peach:#fe640b;--red:#d20f39;--mauve:#8839ef;--teal:#179299;--yellow:#df8e1d;
+  --accent:#b9a88a;--shadow:0 2px 10px rgba(76,79,105,.08);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11111b;--panel:#1e1e2e;--panel2:#181825;--text:#cdd6f4;--sub:#a6adc8;--line:#313244;
+  --blue:#89b4fa;--green:#a6e3a1;--peach:#fab387;--red:#f38ba8;--mauve:#cba6f7;--teal:#94e2d5;--yellow:#f9e2af;--shadow:0 2px 12px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  --bg:#11111b;--panel:#1e1e2e;--panel2:#181825;--text:#cdd6f4;--sub:#a6adc8;--line:#313244;
+  --blue:#89b4fa;--green:#a6e3a1;--peach:#fab387;--red:#f38ba8;--mauve:#cba6f7;--teal:#94e2d5;--yellow:#f9e2af;--shadow:0 2px 12px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:84px}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:14px;padding:10px 20px;background:var(--panel);border-bottom:2px solid var(--accent);box-shadow:var(--shadow)}
+header img{width:44px;height:44px}
+header .t{font-size:22px;font-weight:700;line-height:1.1}
+header .s{font-size:12px;color:var(--sub)}
+header .sp{flex:1}
+#q{width:260px;max-width:40vw;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit}
+.tbtn{padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;font:inherit}
+.wrap{display:grid;grid-template-columns:270px 1fr;max-width:1400px;margin:0 auto}
+nav{position:sticky;top:66px;align-self:start;height:calc(100vh - 66px);overflow:auto;padding:18px 10px 40px 18px;border-right:1px solid var(--line)}
+nav a{display:block;padding:4px 10px;border-radius:6px;color:var(--text);font-size:14px}
+nav a:hover{background:var(--panel2);text-decoration:none}
+nav a.l2{padding-left:24px;font-size:13px;color:var(--sub)}
+nav a.act{background:var(--panel2);color:var(--blue);font-weight:600}
+main{padding:24px 36px 80px;min-width:0}
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 28px;margin:0 0 22px;box-shadow:var(--shadow)}
+h1{font-size:28px;margin:0 0 6px}
+h2{font-size:22px;margin:0 0 12px}
+h2 .n{display:inline-grid;place-items:center;width:32px;height:32px;margin-right:10px;vertical-align:2px;border-radius:50%;background:var(--accent);color:#1e1e2e;font-size:15px}
+h3{font-size:17px;margin:22px 0 8px;color:var(--blue)}
+p{margin:8px 0}
+.lead{color:var(--sub);font-size:16px}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{background:var(--panel2);font-weight:600}
+tr:hover td{background:color-mix(in srgb,var(--panel2) 55%,transparent)}
+.ui{display:inline-block;padding:0 8px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);font-size:13px;font-weight:600;white-space:nowrap}
+.ui.g{border-color:var(--green);color:var(--green)}.ui.r{border-color:var(--red);color:var(--red)}.ui.b{border-color:var(--blue);color:var(--blue)}
+.ui.p{border-color:var(--peach);color:var(--peach)}.ui.m{border-color:var(--mauve);color:var(--mauve)}.ui.t{border-color:var(--teal);color:var(--teal)}
+kbd{padding:1px 7px;border-radius:5px;border:1px solid var(--line);border-bottom-width:2px;background:var(--panel2);font:12px Consolas,monospace}
+code{font:13px Consolas,monospace;background:var(--panel2);padding:1px 5px;border-radius:4px}
+.note{border-left:4px solid var(--blue);background:var(--panel2);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+.note.tip{border-color:var(--green)}.note.warn{border-color:var(--peach)}.note.stop{border-color:var(--red)}
+.note b.h{display:block;margin-bottom:2px}
+.steps{counter-reset:s;list-style:none;padding:0;margin:12px 0}
+.steps>li{counter-increment:s;position:relative;padding:4px 0 10px 46px;min-height:36px}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:32px;height:32px;border-radius:50%;background:var(--blue);color:var(--panel);display:grid;place-items:center;font-weight:700}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin:12px 0}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.card b{display:block;margin-bottom:4px}
+.card.g{border-top:4px solid var(--green)}.card.b{border-top:4px solid var(--blue)}.card.p{border-top:4px solid var(--peach)}.card.m{border-top:4px solid var(--mauve)}.card.t{border-top:4px solid var(--teal)}.card.r{border-top:4px solid var(--red)}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0}
+.flow span{padding:8px 14px;border-radius:20px;background:var(--panel2);border:1px solid var(--line);font-weight:600;font-size:14px}
+.flow i{color:var(--sub);font-style:normal}
+.hide{display:none!important}
+figure{margin:14px 0}figure img{max-width:100%;border-radius:10px;border:1px solid var(--line);box-shadow:var(--shadow);cursor:zoom-in}figure figcaption{color:var(--sub);font-size:13px;margin-top:4px}
+mark{background:var(--yellow);color:#1e1e2e;border-radius:3px}
+footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}nav{display:none}main{padding:16px}section{padding:18px 16px}#q{width:150px}}
+@media print{header,nav,#q,.tbtn{display:none!important}.wrap{display:block}section{box-shadow:none;break-inside:avoid-page}body{background:#fff;color:#000}}
+</style>
+</head>
+<body>
+<header>
+  <img src="data:image/png;base64,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" alt="">
+  <div><div class="t">HU-MultiTenant</div><div class="s">Microsoft 365 / Intune für mehrere Tenants · Anleitung</div></div>
+  <div class="sp"></div>
+  <input id="q" type="search" placeholder="Suchen … (z. B. Snippet, Secret, Update)">
+  <button class="tbtn" id="theme" title="Hell / Dunkel">◐</button>
+  <button class="tbtn" onclick="window.print()" title="Drucken / PDF">⎙</button>
+</header>
+<div class="wrap">
+<nav id="toc"></nav>
+<main>
+
+<section id="start">
+  <h1>HU-MultiTenant</h1>
+  <p class="lead">Microsoft 365 und Intune für mehrere Tenants aus einer Oberfläche: PowerShell im Tenant-Kontext mit eigener Snippet-Bibliothek, fertige Reports als Extensions und das Ablaufdatum der Client Secrets im Blick.</p>
+  <div class="cards">
+    <div class="card g"><b>⚡ Quick Script</b>Eigene Skripte gegen einen Tenant ausführen – Token, Tenant und Graph-Funktionen sind schon da.</div>
+    <div class="card b"><b>📚 Snippets</b>Skript-Bibliothek mit Kurzbeschreibung, Suche, Import und Export.</div>
+    <div class="card p"><b>🧩 Extensions</b>Reports und Aktionen mit Parametern, Dry-Run und Excel-Ausgabe.</div>
+    <div class="card m"><b>🔑 Secrets</b>DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf.</div>
+  </div>
+  <div class="flow"><span>Einstellungen › Tenants</span><i>→</i><span>Secret eingeben</span><i>→</i><span>Snippet wählen</span><i>→</i><span>Strg + Enter</span></div>
+</section>
+
+<section id="einrichten">
+  <h2><span class="n">1</span>Einrichten</h2>
+  <div class="note"><b class="h">Voraussetzung</b>Je Tenant eine App-Registrierung mit Client Secret und den nötigen Graph-Berechtigungen – Schritt für Schritt in <code>INSTALL.md</code> im Programmordner.</div>
+  <h3 id="tenant">Tenant anlegen</h3>
+  <ol class="steps">
+    <li><span class="ui">⚙ Einstellungen</span> › Reiter <b>Tenants</b> › <span class="ui">+ Neu</span></li>
+    <li>Anzeigename, Schlüssel (kurz, eindeutig, z. B. <code>Schule-1</code> – so heißt der Tenant in Skripten als <code>$TenantKey</code>), Tenant-ID, Anwendungs-ID, Domäne.</li>
+    <li><span class="ui b">🔐 Secret eingeben …</span> – Wert einfügen. Gespeichert DPAPI-verschlüsselt in <code>%APPDATA%\HU-MultiTenant\</code>, nur für deinen Windows-Benutzer auf diesem PC lesbar.</li>
+    <li><span class="ui">Verbindung + Secret prüfen</span> – zeigt Anmeldung, Anzahl Berechtigungen und das Ablaufdatum.</li>
+    <li><span class="ui g">Speichern</span></li>
+  </ol>
+  <table>
+    <tr><th>Feld</th><th>Bedeutung</th></tr>
+    <tr><td>AD-Schema</td><td><b>VirtualSchool</b>: Rolle = <code>jobTitle</code>, Klasse = <code>department</code> · <b>iPack</b>: Rolle = <code>faxNumber</code>, Klasse = <code>officeLocation</code> (für Benutzer-Reports)</td></tr>
+    <tr><td>Secret gültig bis</td><td>nur nötig, wenn die App kein <code>Application.Read.All</code> hat</td></tr>
+    <tr><td>Geschützte App-IDs</td><td>Apps, die schreibende Extensions (z. B. Enterprise-App-Inventur) nie anfassen. Die eigenen App-IDs aller Tenants sind immer geschützt.</td></tr>
+    <tr><td>Standard-Tenant</td><td>wird beim allerersten Start vorgewählt</td></tr>
+    <tr><td>Secret dauerhaft speichern</td><td>aus: das Secret wird beim Beenden gelöscht (geteilte PCs)</td></tr>
+  </table>
+  <h3 id="verkn">Verknüpfung</h3>
+  <p><span class="ui">⚙ Einstellungen</span> › <b>Allgemein</b> › <span class="ui b">Desktop-Verknüpfung</span> oder <span class="ui b">Startmenü-Eintrag</span>. Dabei entsteht <code>HU-MultiTenant.exe</code> im Programmordner: eigenes Logo, kein Konsolenfenster, an die Taskleiste anheftbar. Ohne Administratorrechte.</p>
+</section>
+
+<section id="oberflaeche">
+  <h2><span class="n">2</span>Oberfläche</h2>
+  <table>
+    <tr><th>Bereich</th><th>Inhalt</th></tr>
+    <tr><td>Titelleiste</td><td>Version, Warnung bei bald ablaufenden Secrets (Klick öffnet die Tenants), <span class="ui">🛠 Berechtigungen</span>, <span class="ui">⚙ Einstellungen</span>, <span class="ui">?</span> Anleitung, <span class="ui">Update</span></td></tr>
+    <tr><td>Tenant-Leiste</td><td>Tenant für die Extensions, Status (● grün = verbunden, gelb = Berechtigungen fehlen, rot = Fehler), Secret-Ablauf, <span class="ui b">Verbinden</span> / <span class="ui r">Trennen</span></td></tr>
+    <tr><td>links</td><td>Extensions mit Suche, ↻ lädt neu (eigene Extensions ohne Neustart)</td></tr>
+    <tr><td>rechts</td><td>Reiter <b>⚡ Quick Script</b> (Start-Reiter) und <b>🧩 Extensions</b></td></tr>
+  </table>
+  <div class="note tip"><b class="h">Bleibt gespeichert</b>Fensterposition und -größe (auch maximiert), Breite der Extension-Liste, Aufteilung Editor/Ausgabe und Details/Protokoll, Schriftgröße im Editor, letzter Tenant, letztes Snippet, Oberflächengröße. <kbd>Strg</kbd> + Mausrad skaliert die Oberfläche, <kbd>Strg</kbd>+<kbd>0</kbd> = 100 %.</div>
+</section>
+
+<section id="qs">
+  <h2><span class="n">3</span>Quick Script</h2>
+  <p>Eigene PowerShell-Skripte direkt gegen einen Tenant – in einem eigenen Runspace, die Oberfläche bleibt bedienbar.</p>
+  <ol class="steps">
+    <li>Tenant oben im Reiter wählen (eigene Auswahl, unabhängig von den Extensions).</li>
+    <li>Snippet wählen oder Skript in den Editor schreiben.</li>
+    <li><kbd>Strg</kbd>+<kbd>Enter</kbd> – verbindet bei Bedarf automatisch und führt aus. Ausgabe erscheint Zeile für Zeile, <kbd>Esc</kbd> bricht ab. Alle Tasten: <a href="#tasten">Tastenkürzel</a>.</li>
+  </ol>
+  <h3 id="qs-vars">Eigene Snippets schreiben</h3>
+  <p>Im Skript stehen <code>$Token</code>, <code>$TenantKey</code> und die Graph-Funktionen schon bereit. Alles zum Schreiben – Funktionen, Regeln, Parameter, Vorlagen – steht in <code>SNIPPET-DEVELOPMENT.md</code> im Programmordner (online: <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/SNIPPET-DEVELOPMENT.md">GitHub</a>).</p>
+  <h3 id="qs-multi">Mehrere Tenants</h3>
+  <p><span class="ui">Mehrere ▾</span> öffnet eine Liste mit Haken. Ab zwei Haken läuft das Skript nacheinander je Tenant – <code>$Token</code> und <code>$TenantKey</code> gelten jeweils für den laufenden Tenant. Ausgegebene Objekte bekommen die Spalte <i>Tenant</i>, ein Fehler bricht nur diesen Tenant ab. <span class="ui">Keine</span> schaltet zurück auf die Einzelauswahl.</p>
+  <h3 id="qs-param">Parameter</h3>
+  <p>Enthält ein Snippet Zeilen wie <code># @param Tage|int|Ohne Sync seit Tagen|30</code>, erscheinen über dem Editor Eingabefelder. Die Werte bleiben je Snippet gemerkt, solange das Programm läuft.</p>
+  <div class="note warn"><b class="h">Echter Lauf</b>Ist ein Haken <code>DryRun</code>, <code>WhatIf</code>, <code>Probelauf</code> o. ä. aus, fragt das Tool vor dem Start nach. Setzt der Code die Variable selbst (<code>$DryRun = …</code>), wirkt das Feld nicht – das steht dann in der Ausgabe.</div>
+  <h3 id="qs-tabelle">Tabelle und Export</h3>
+  <p>Gibt das Skript Objekte aus (<code>[pscustomobject]</code>, <code>Select-Object</code>), wird <span class="ui">📊 Tabelle</span> aktiv: Filter über alle Spalten, <span class="ui">CSV …</span> (Semikolon, UTF-8), <span class="ui">Excel …</span> (benötigt das Modul ImportExcel) und Kopieren für Excel.</p>
+  <h3 id="qs-verlauf">Verlauf</h3>
+  <p><span class="ui">🕒 Verlauf</span> zeigt alle Läufe mit Zeit, Snippet, Tenants, Dauer und Ergebnis. Doppelklick öffnet das komplette Protokoll (<code>Logs\QuickScript\</code>, aufbewahrt wie das Tagesprotokoll, Standard 30 Tage).</p>
+  <p><code>Write-Host -ForegroundColor</code> erscheint farbig, <code>Write-Warning</code> orange, Fehler rot mit Zeilennummer. <span class="ui">Ausgabe kopieren</span> legt die ganze Ausgabe in die Zwischenablage. <b>Rechtsklick</b> in die Ausgabe (auch im Protokoll der Extensions): Kopieren, Alles kopieren, Ausgabe leeren.</p>
+</section>
+
+<section id="snippets">
+  <h2><span class="n">4</span>Snippets</h2>
+  <p>Die Auswahl oben im Reiter lädt ein Snippet sofort. Darunter stehen Name und <b>Kurzbeschreibung</b>; ein oranger Punkt ● bedeutet ungespeicherte Änderungen – beim Wechseln und Beenden fragt das Tool nach.</p>
+  <table>
+    <tr><th>Knopf</th><th>Wirkung</th></tr>
+    <tr><td><span class="ui">Neu</span></td><td>leerer Editor</td></tr>
+    <tr><td><span class="ui g">💾 Speichern</span></td><td>aktuelles Snippet überschreiben (neues: Name + Beschreibung)</td></tr>
+    <tr><td><span class="ui">Speichern unter …</span></td><td>als neues Snippet mit eigenem Namen und Beschreibung</td></tr>
+    <tr><td><span class="ui m">📚 Verwalten …</span></td><td>Bibliothek im eigenen Fenster</td></tr>
+  </table>
+  <h3 id="snip-verw">Verwalten</h3>
+  <ul>
+    <li><b>Favoriten</b>: auf den Stern ☆ in der Zeile klicken (oder <span class="ui">★ Favorit</span> für alle markierten). Favoriten stehen in der Auswahl im Quick Script ganz oben; <i>nur Favoriten</i> filtert die Liste. Im Quick Script schaltet der Stern vor dem Namen das geladene Snippet um.</li>
+    <li><b>Suche</b> in Name, Beschreibung und Code</li>
+    <li>Eintrag markieren → Name / Kurzbeschreibung ändern → <span class="ui g">Änderung übernehmen</span>; rechts die Code-Vorschau</li>
+    <li><span class="ui">▲</span> <span class="ui">▼</span> Reihenfolge, <span class="ui">A-Z</span>, <span class="ui">Neueste zuerst</span>, <span class="ui">Duplizieren</span>, <span class="ui r">🗑 Löschen</span> (mehrere mit <kbd>Strg</kbd>/<kbd>Umschalt</kbd>)</li>
+    <li><span class="ui">Exportieren …</span> markierte (oder alle) als JSON, <span class="ui">Importieren …</span> fügt hinzu – gleiche Namen: ersetzen oder als Kopie</li>
+    <li><b>Kategorien</b>: Feld <i>Kategorie</i> (oder vorhandene wählen) → übernehmen, gilt für alle markierten. Die Liste ist nach Kategorien gruppiert und filterbar.</li>
+    <li><span class="ui">Beispiele</span> lädt 12 fertige Snippets (Kategorie <i>Beispiele</i>) – vorhandene gleichen Namens bleiben unangetastet.</li>
+    <li><span class="ui">Verlauf</span> zeigt die Läufe des markierten Snippets; darunter steht <i>Zuletzt ausgeführt</i>.</li>
+    <li>Doppelklick oder <span class="ui g">▶ Im Editor öffnen</span> lädt das Snippet</li>
+  </ul>
+</section>
+
+<section id="ext">
+  <h2><span class="n">5</span>Extensions</h2>
+  <ol class="steps">
+    <li>Tenant in der Tenant-Leiste wählen.</li>
+    <li>Extension links wählen – rechts stehen Beschreibung, benötigte Berechtigungen und Parameter.</li>
+    <li>Optional <b>DRY-RUN</b> (nur Vorschau, bei Extensions, die das unterstützen).</li>
+    <li><span class="ui g">▶ STARTEN</span> – läuft im Hintergrund, Fortschritt im Protokoll. Reports landen in <code>Reports\HU-Reports_JJJJ-MM-TT\</code> (Knopf <span class="ui">Reports</span>).</li>
+  </ol>
+  <p>Kennzeichen in der Liste: <b>DRY-RUN</b> = Vorschau möglich, <b>BATCH</b> = für mehrere Tenants geeignet, <b>SCHREIBT</b> = verändert den Tenant (vor dem Start zusätzliche Rückfrage).</p>
+  <h3 id="ext-perm">Berechtigungen</h3>
+  <p><span class="ui">🛠 Berechtigungen</span> zeigt je Tenant, welche Graph-Anwendungsberechtigungen erteilt sind – mit Risiko, Beschreibung und welche Extension sie nutzt. Ist eine Extension gewählt, steht oben, ob ihre Berechtigungen vorhanden sind. <span class="ui">Alle Tenants vergleichen</span> zeigt alles in einer Tabelle. Verbinden ist dafür nicht nötig. Nach einer Änderung in Entra (Administratorzustimmung) <span class="ui">↻ Neu lesen</span>.</p>
+  <h3 id="ext-own">Eigene Extensions</h3>
+  <p>Vorlage <code>Extensions\Template.ps1</code> kopieren, Kopf ausfüllen (<code>.REQUIRED_PERMISSIONS</code>, <code>.PARAM</code>, <code>.DRY_RUN_CAPABLE</code>, <code>.MODE</code>, <code>.RUNTIME</code>) und ↻ drücken. Details: <code>EXTENSION-DEVELOPMENT.md</code>. Eigene Extensions bleiben bei Updates erhalten.</p>
+</section>
+
+<section id="secrets">
+  <h2><span class="n">6</span>Secrets und Ablaufdatum</h2>
+  <p>Neben dem Tenant steht, bis wann das Client Secret gültig ist. Gewarnt wird ab 30 Tagen (einstellbar): orange neben dem Tenant und in der Titelleiste, ab 7 Tagen rot.</p>
+  <table>
+    <tr><th>Quelle</th><th>Wie</th></tr>
+    <tr><td>Graph</td><td>beim Verbinden und beim Start (im Hintergrund, höchstens einmal am Tag). Das verwendete Secret wird an seinen ersten 3 Zeichen erkannt – hat die App mehrere Secrets, zählt genau das gespeicherte. Braucht <code>Application.Read.All</code>.</td></tr>
+    <tr><td>manuell</td><td>Einstellungen › Tenants › <i>Secret gültig bis</i> – wenn die Berechtigung fehlt</td></tr>
+  </table>
+  <h3 id="secret-neu">Secret erneuern</h3>
+  <ol class="steps">
+    <li>Entra: neuen geheimen Clientschlüssel anlegen (Knopf <span class="ui">Entra Admin Center</span> im Secret-Dialog öffnet die richtige Seite).</li>
+    <li>Einstellungen › Tenants › <span class="ui b">🔐 Secret eingeben …</span> – neuen Wert einfügen.</li>
+    <li><span class="ui">Verbindung + Secret prüfen</span> – neues Datum wird angezeigt. Altes Secret in Entra löschen.</li>
+  </ol>
+  <div class="note stop"><b class="h">Abgelaufen</b>Mit abgelaufenem Secret gibt es keinen Token – Verbinden meldet „Kein Token – Secret prüfen“.</div>
+</section>
+
+<section id="update">
+  <h2><span class="n">7</span>Update</h2>
+  <p>Beim Start wird im Hintergrund nach Updates gesucht; bei einer neuen Version wird <span class="ui">Update</span> gold. Klick: HU-MultiTenant schließt sich, <code>Pull.ps1</code> lädt alle Dateien, prüft jede gegen die SHA-256-Liste und die Signatur des Herausgebers und ersetzt erst dann. Danach startet das Tool neu.</p>
+  <table>
+    <tr><th>Rechtsklick auf Update</th><th>Wirkung</th></tr>
+    <tr><td>Andere Version / Vorversion …</td><td>Liste aller Releases mit Kanal, Prüfsumme, Signatur</td></tr>
+    <tr><td>Update-Einstellungen</td><td>Kanal <b>Stabil</b> (Standard) / <b>Test</b>, nur signierte Updates</td></tr>
+    <tr><td>Info</td><td>Version, Kanal, Prüfung der installierten Version</td></tr>
+  </table>
+  <p>Erhalten bleiben <code>Config\settings.json</code>, <code>Config\quick-snippets.json</code>, <code>Config\update.json</code>, <code>Logs\</code>, <code>Reports\</code>, eigene Extensions und <code>HU-MultiTenant.exe</code>.</p>
+</section>
+
+<section id="dateien">
+  <h2><span class="n">8</span>Dateien</h2>
+  <table>
+    <tr><th>Pfad</th><th>Inhalt</th></tr>
+    <tr><td><code>Config\settings.json</code></td><td>Tenants und Einstellungen (Sicherung <code>.bak</code>)</td></tr>
+    <tr><td><code>Config\quick-snippets.json</code></td><td>Snippets (Sicherung <code>.bak</code>)</td></tr>
+    <tr><td><code>Config\update.json</code></td><td>Update-Kanal, Signaturpflicht</td></tr>
+    <tr><td><code>%APPDATA%\HU-MultiTenant\*.cred</code></td><td>Client Secrets (DPAPI)</td></tr>
+    <tr><td><code>%APPDATA%\HU-MultiTenant\ui-state.json</code></td><td>Fenster und letzte Auswahl</td></tr>
+    <tr><td><code>%APPDATA%\HU-MultiTenant\secret-expiry.json</code></td><td>zuletzt gelesene Ablaufdaten</td></tr>
+    <tr><td><code>Config\quick-snippets.example.json</code></td><td>Beispiel-Snippets</td></tr>
+    <tr><td><code>Logs\QuickScript\</code></td><td>Verlauf (<code>verlauf.jsonl</code>) und Protokoll je Lauf</td></tr>
+    <tr><td><code>Logs\</code> · <code>Reports\</code></td><td>Tagesprotokoll · Reports</td></tr>
+  </table>
+</section>
+
+<section id="tasten">
+  <h2><span class="n">9</span>Tastenkürzel</h2>
+  <table>
+    <tr><th>Taste</th><th>Wirkung</th></tr>
+    <tr><td><kbd>F1</kbd></td><td>diese Anleitung</td></tr>
+    <tr><td><kbd>Strg</kbd> + Mausrad · <kbd>Strg</kbd>+<kbd>0</kbd></td><td>Oberfläche größer/kleiner · 100 %</td></tr>
+    <tr><td><kbd>Strg</kbd>+<kbd>Enter</kbd> · <kbd>F5</kbd></td><td>Quick Script ausführen</td></tr>
+    <tr><td><kbd>F8</kbd></td><td>nur die Markierung ausführen</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Quick Script abbrechen</td></tr>
+    <tr><td><kbd>Strg</kbd>+<kbd>S</kbd> · <kbd>Strg</kbd>+<kbd>N</kbd></td><td>Snippet speichern · neu</td></tr>
+    <tr><td><kbd>Strg</kbd> + Mausrad im Editor</td><td>Schriftgröße des Editors</td></tr>
+  </table>
+</section>
+
+<footer>HU-MultiTenant · Nutzungslizenz siehe LICENSE · Diese Anleitung wird mit jedem Update aktualisiert</footer>
+
+</main>
+</div>
+<script>
+(function(){
+  var toc=document.getElementById('toc'),secs=[].slice.call(document.querySelectorAll('main section'));
+  secs.forEach(function(s){
+    var h=s.querySelector('h2,h1');var a=document.createElement('a');a.href='#'+s.id;a.textContent=h.textContent.replace(/^\d+/,'').trim();a.dataset.s=s.id;toc.appendChild(a);
+    [].slice.call(s.querySelectorAll('h3[id]')).forEach(function(h3){var b=document.createElement('a');b.href='#'+h3.id;b.className='l2';b.textContent=h3.textContent;toc.appendChild(b);});
+  });
+  var links=[].slice.call(toc.querySelectorAll('a[data-s]'));
+  function spy(){var cur=secs[0].id;secs.forEach(function(s){if(s.getBoundingClientRect().top<120)cur=s.id;});links.forEach(function(l){l.classList.toggle('act',l.dataset.s===cur);});}
+  window.addEventListener('scroll',spy,{passive:true});spy();
+  var root=document.documentElement,tb=document.getElementById('theme');
+  try{var t=localStorage.getItem('humt-theme');if(t)root.setAttribute('data-theme',t);}catch(e){}
+  tb.onclick=function(){var dark=root.getAttribute('data-theme')?root.getAttribute('data-theme')==='dark':matchMedia('(prefers-color-scheme: dark)').matches;var n=dark?'light':'dark';root.setAttribute('data-theme',n);try{localStorage.setItem('humt-theme',n);}catch(e){}};
+  var q=document.getElementById('q'),orig=secs.map(function(s){return s.innerHTML;});
+  q.addEventListener('input',function(){
+    var v=q.value.trim().toLowerCase();
+    secs.forEach(function(s,i){
+      s.innerHTML=orig[i];
+      if(!v){s.classList.remove('hide');return;}
+      var hit=s.textContent.toLowerCase().indexOf(v)>=0;s.classList.toggle('hide',!hit);
+      if(hit){var w=document.createTreeWalker(s,NodeFilter.SHOW_TEXT,null,false),n,list=[];while(n=w.nextNode())if(n.nodeValue.toLowerCase().indexOf(v)>=0)list.push(n);
+        list.forEach(function(n){var i2=n.nodeValue.toLowerCase().indexOf(v);var m=document.createElement('mark');var r=n.splitText(i2);r.splitText(v.length);m.textContent=r.nodeValue;r.parentNode.replaceChild(m,r);});}
+    });
+  });
+})();
+</script>
+</body>
+</html>

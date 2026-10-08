@@ -1,0 +1,138 @@
+﻿<!--
+    HU-MultiTenant - Snippet-Verwaltung (Quick Script).
+    Liste mit Name + Kurzbeschreibung, Suche, Bearbeiten, Reihenfolge, Duplizieren, Loeschen, Import/Export.
+-->
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Snippets verwalten"
+    Width="980" Height="640" MinWidth="700" MinHeight="420"
+    WindowStartupLocation="CenterOwner"
+    Background="#1E1E1E"
+    UseLayoutRounding="True"
+    ShowInTaskbar="False"
+    ResizeMode="CanResizeWithGrip">
+
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+
+    <DockPanel Margin="12">
+
+        <!-- Fuss: Aktionen -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                <Button x:Name="btnImport" Content="Importieren ..." Style="{StaticResource ToolButton}" Margin="0,0,6,0"
+                        ToolTip="Snippets aus einer JSON-Datei hinzufuegen (gleiche Namen: Rueckfrage)"/>
+                <Button x:Name="btnExport" Content="Exportieren ..." Style="{StaticResource ToolButton}" Margin="0,0,6,0"
+                        ToolTip="Markierte Snippets (oder alle) als JSON-Datei speichern - zum Weitergeben oder Sichern"/>
+                <Button x:Name="btnExamples" Content="Beispiele ..." Style="{StaticResource ToolButton}" Margin="0,0,6,0"
+                        ToolTip="Mitgelieferte Beispiel-Snippets hinzufuegen (Kategorie Beispiele)"/>
+                <Button x:Name="btnHistory" Content="&#x1F552; Verlauf" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
+                        ToolTip="Fruehere Laeufe des markierten Snippets"/>
+                <TextBlock x:Name="txtCount" Foreground="#858585" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btnLoad" Content="&#x25B6; Im Editor &#xF6;ffnen" Background="#4CAF50" Style="{StaticResource DarkButton}"
+                        Margin="0,0,8,0" IsDefault="True" ToolTip="Doppelklick auf einen Eintrag hat dieselbe Wirkung"/>
+                <Button x:Name="btnClose" Content="Schlie&#xDF;en" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+            </StackPanel>
+        </DockPanel>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="colList" Width="1.1*" MinWidth="260"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*" MinWidth="280"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Liste -->
+            <DockPanel Grid.Column="0">
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <TextBox x:Name="txtFilter" Style="{StaticResource DarkTextBox}" FontSize="12"/>
+                    <TextBlock x:Name="txtFilterHint" Text="Suchen in Name, Beschreibung und Code ..." Foreground="#666666" FontSize="12"
+                               Margin="9,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                </Grid>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <CheckBox x:Name="chkOnlyFav" Content="&#x2605; nur Favoriten" Style="{StaticResource DarkCheckBox}" Margin="2,0,12,0" VerticalAlignment="Center"
+                              ToolTip="Favoriten stehen in der Auswahl im Quick Script ganz oben"/>
+                    <ComboBox x:Name="cmbCatFilter" Style="{StaticResource DarkComboBox}" FontSize="11" ToolTip="Nur eine Kategorie anzeigen"/>
+                </DockPanel>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button x:Name="btnUp" Content="&#x25B2;" Style="{StaticResource ToolButton}" Width="34" Margin="0,0,4,0" ToolTip="Nach oben"/>
+                    <Button x:Name="btnDown" Content="&#x25BC;" Style="{StaticResource ToolButton}" Width="34" Margin="0,0,10,0" ToolTip="Nach unten"/>
+                    <Button x:Name="btnSortName" Content="A-Z" Style="{StaticResource ToolButton}" Margin="0,0,4,0" ToolTip="Alle nach Namen sortieren"/>
+                    <Button x:Name="btnSortDate" Content="Neueste zuerst" Style="{StaticResource ToolButton}" Margin="0,0,10,0" ToolTip="Alle nach Aenderungsdatum sortieren"/>
+                    <Button x:Name="btnFav" Content="&#x2605; Favorit" Style="{StaticResource ToolButton}" Foreground="#FFC107" Margin="0,0,4,0"
+                            ToolTip="Markierte Snippets als Favorit setzen / entfernen (oder auf den Stern in der Zeile klicken)"/>
+                    <Button x:Name="btnDuplicate" Content="Duplizieren" Style="{StaticResource ToolButton}" Margin="0,0,4,0"/>
+                    <Button x:Name="btnDelete" Content="&#x1F5D1; L&#xF6;schen" Style="{StaticResource ToolButton}" Foreground="#EF9A9A"/>
+                </StackPanel>
+                <ListBox x:Name="lstSnippets" Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                         SelectionMode="Extended">
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <Border Background="#2D2D30" Padding="6,3" Margin="0,4,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Name}" Foreground="#4FC3F7" FontWeight="Bold" FontSize="11"/>
+                                            <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}" Foreground="#858585" FontSize="11"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding Star}" Foreground="{Binding StarColor}" Tag="star" FontSize="16"
+                                           Width="22" Cursor="Hand" VerticalAlignment="Center" Margin="0,0,6,0" Background="Transparent"
+                                           ToolTip="Favorit an/aus"/>
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding ModifiedShort}" Foreground="#666666" FontSize="10"
+                                           VerticalAlignment="Top" Margin="8,1,0,0"/>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" Foreground="#E0E0E0" FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding DescLine}" Foreground="#9E9E9E" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <GridSplitter Grid.Column="1" Width="4" Background="#3E3E42" Opacity="0.5" HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext"/>
+
+            <!-- Details -->
+            <Border Grid.Column="2" Background="#252526" CornerRadius="4" Padding="12">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Text="Name" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
+                        <TextBox x:Name="txtName" Style="{StaticResource DarkTextBox}" FontSize="12"/>
+                        <TextBlock Text="Kategorie" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
+                        <DockPanel>
+                            <ComboBox x:Name="cmbCategoryPick" DockPanel.Dock="Right" Width="150" Margin="6,0,0,0" Style="{StaticResource DarkComboBox}" FontSize="11"
+                                      ToolTip="Vorhandene Kategorie uebernehmen"/>
+                            <TextBox x:Name="txtCategory" Style="{StaticResource DarkTextBox}" FontSize="12" MaxLength="60"
+                                     ToolTip="z. B. Intune, Benutzer, Offboarding - leer = ohne Kategorie. Bei mehreren markierten: fuer alle"/>
+                        </DockPanel>
+                        <TextBlock Text="Kurzbeschreibung" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
+                        <TextBox x:Name="txtDesc" Style="{StaticResource DarkTextBox}" FontSize="12" TextWrapping="Wrap" MaxLength="300"
+                                 MinHeight="44" VerticalScrollBarVisibility="Auto"/>
+                        <DockPanel Margin="0,8,0,0">
+                            <Button x:Name="btnApply" DockPanel.Dock="Right" Content="&#xC4;nderung &#xFC;bernehmen" Background="#388E3C"
+                                    Style="{StaticResource DarkButton}" FontSize="11" IsEnabled="False"/>
+                            <TextBlock x:Name="txtMeta" Foreground="#666666" FontSize="10" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                        </DockPanel>
+                        <TextBlock Text="Code (Vorschau)" Style="{StaticResource FieldLabel}" Margin="0,12,0,3"/>
+                    </StackPanel>
+                    <TextBox x:Name="txtCode" Background="#1E1E1E" Foreground="#BDBDBD" FontFamily="Consolas" FontSize="11"
+                             IsReadOnly="True" BorderBrush="#3E3E42" Padding="6" TextWrapping="NoWrap"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

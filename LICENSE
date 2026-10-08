@@ -1,0 +1,99 @@
+HU-MultiTenant - Nutzungslizenz
+
+Copyright (c) 2026 Die Urheber von HU-MultiTenant. Alle Rechte vorbehalten.
+
+1. Erlaubte Nutzung
+   Die Software "HU-MultiTenant" (Programmcode, Oberflaeche, Dokumentation, Grafiken)
+   darf kostenlos heruntergeladen, installiert und ausgefuehrt werden - von
+   Privatpersonen, Schulen, Behoerden, Vereinen und Unternehmen. Kopien fuer
+   den eigenen Einsatz (z.B. auf USB-Laufwerken, Servern oder Freigaben der
+   eigenen Organisation) sind erlaubt.
+
+2. Eigene Einstellungen, Extensions und Snippets
+   Ausdruecklich erlaubt sind:
+   a) das Anpassen der Konfigurationsdateien im Ordner "Config" (z.B.
+      settings.json, quick-snippets.json, update.json) ueber das Programm
+      oder einen Editor,
+   b) eigene Extensions (neue Dateien im Ordner "Extensions", z.B. auf
+      Basis von Extensions\Template.ps1) und eigene Quick-Script-Snippets
+      zu erstellen, zu verwenden und weiterzugeben. Sie gehoeren ihren
+      Autoren und fallen nicht unter Punkt 3.
+
+3. Nicht erlaubt (ohne vorherige schriftliche Zustimmung der Urheber)
+   a) den Programmcode oder die Dokumentation zu veraendern, zu bearbeiten,
+      zu uebersetzen oder Teile davon in andere Software zu uebernehmen,
+   b) veraenderte Fassungen zu verwenden oder weiterzugeben,
+   c) die Software zu verkaufen, zu vermieten oder gegen Entgelt als Teil
+      eines Produkts oder einer Dienstleistung anzubieten,
+   d) die Software ausserhalb des offiziellen Repositorys zu veroeffentlichen
+      (Weitergabe innerhalb der eigenen Organisation ist erlaubt),
+   e) Urheber-, Lizenz- oder Versionshinweise zu entfernen oder zu aendern.
+
+4. GitHub
+   Das Ansehen und Forken des Repositorys im Rahmen der Nutzungsbedingungen
+   von GitHub bleibt unberuehrt. Ein Fork berechtigt nicht zu den unter
+   Punkt 3 genannten Handlungen.
+
+5. Gewaehrleistung und Haftung
+   Die Software wird "wie besehen" ohne jede Gewaehrleistung bereitgestellt.
+   Die Urheber haften - soweit gesetzlich zulaessig - nicht fuer Schaeden,
+   Datenverlust oder Folgeschaeden aus der Nutzung - insbesondere nicht fuer
+   Aenderungen an Microsoft-365-Tenants durch Extensions oder Skripte.
+   Schreibende Aktionen vorher mit DRY-RUN pruefen.
+
+6. Schlussbestimmungen
+   Es gilt oesterreichisches Recht. Ist eine Bestimmung unwirksam, bleiben
+   die uebrigen Bestimmungen gueltig.
+
+
+------------------------------------------------------------------------------
+ENGLISH VERSION (convenience translation - in case of doubt the German
+version above prevails)
+------------------------------------------------------------------------------
+
+HU-MultiTenant - License for Use
+
+Copyright (c) 2026 The authors of HU-MultiTenant. All rights reserved.
+
+1. Permitted use
+   The software "HU-MultiTenant" (program code, user interface, documentation,
+   graphics) may be downloaded, installed and run free of charge - by
+   private individuals, schools, public authorities, associations and
+   companies. Copies for your own use (e.g. on USB drives, servers or
+   shares of your own organization) are permitted.
+
+2. Own settings, extensions and snippets
+   The following is expressly permitted:
+   a) adjusting the configuration files in the "Config" folder (e.g.
+      settings.json, quick-snippets.json, update.json) through the program
+      or a text editor,
+   b) creating, using and sharing your own extensions (new files in the
+      "Extensions" folder, e.g. based on Extensions\Template.ps1) and your
+      own Quick Script snippets. They belong to their authors and are not
+      covered by section 3.
+
+3. Not permitted (without prior written consent of the authors)
+   a) to modify, adapt or translate the program code or the documentation,
+      or to incorporate any part of it into other software,
+   b) to use or distribute modified versions,
+   c) to sell or rent the software, or to offer it for a fee as part of a
+      product or service,
+   d) to publish the software outside the official repository
+      (distribution within your own organization is permitted),
+   e) to remove or alter copyright, license or version notices.
+
+4. GitHub
+   Viewing and forking the repository within the GitHub Terms of Service
+   remains unaffected. A fork does not grant any of the rights listed
+   under section 3.
+
+5. Warranty and liability
+   The software is provided "as is", without warranty of any kind. To the
+   extent permitted by law, the authors are not liable for any damage,
+   data loss or consequential damage arising from its use - in particular
+   not for changes made to Microsoft 365 tenants by extensions or scripts.
+   Check write actions with DRY-RUN first.
+
+6. Final provisions
+   This license is governed by Austrian law. Should any provision be
+   invalid, the remaining provisions shall remain in effect.

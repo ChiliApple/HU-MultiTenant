@@ -1,0 +1,45 @@
+# === LOKALE DATEN (nie committen) ===
+Config/settings.json
+Config/settings.json.bak
+Config/quick-snippets.json
+Config/quick-snippets.json.bak
+Config/ui-state.json
+Config/update.json
+Config/installed.json
+Config/GitHubToken_*.xml
+*.tmp
+*.pulltmp
+
+# === LAUFZEIT ===
+Logs/
+Reports/
+Templates/
+HU-MultiTenant.exe
+HU-MultiTenant.exe.*.old
+
+# === ALTE VERTEILUNG / ARBEITSDATEIEN ===
+HU-MultiTenant-Distribution/
+HU-MultiTenant-Distribution*/
+*.zip
+PROJEKTDOKUMENTATION.md
+_tmp*/
+.claude/
+CLAUDE.md
+*.skill
+Get-GitHubPat.ps1
+Set-GitHubPat.ps1
+Test-GitHubPat.ps1
+Get-RepoUpdateInfo.ps1
+Remove-DeadToken.ps1
+QS-*.ps1
+
+# === WINDOWS ===
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# === EDITOR ===
+.vscode/
+*.code-workspace
+*.psd1.bak
+*.psm1.bak

@@ -1,0 +1,79 @@
+{
+    "_hinweis": "Vorlage. Am einfachsten Tenants im Programm anlegen: Einstellungen > Tenants. Beim ersten Start wird automatisch eine leere settings.json erzeugt.",
+    "app": {
+        "name": "HU-MultiTenant",
+        "uiLanguage": "de-DE"
+    },
+    "credentials": {
+        "primaryStorage": "CredentialManager",
+        "fallbackStorage": "DPAPI",
+        "allowInteractive": true,
+        "tokenCacheTTL": 3000,
+        "credentialNamePrefix": "HU-"
+    },
+    "tenants": [
+        {
+            "key": "Schule-1",
+            "displayName": "Meine Schule 1",
+            "tenantId": "<TENANT-ID-AUS-AZURE-PORTAL>",
+            "appId": "<APP-ID-AUS-AZURE-PORTAL>",
+            "domain": "meine-schule.at",
+            "credentialName": "HU-SCHULE1",
+            "isPrimary": true,
+            "adSchema": "VirtualSchool",
+            "tags": [
+                "Standort",
+                "Schultyp"
+            ],
+            "notes": "",
+            "persistCredential": true,
+            "secretExpires": "",
+            "protectedAppIds": []
+        },
+        {
+            "key": "Schule-2",
+            "displayName": "Meine Schule 2",
+            "tenantId": "<TENANT-ID-AUS-AZURE-PORTAL>",
+            "appId": "<APP-ID-AUS-AZURE-PORTAL>",
+            "domain": "meine-schule2.at",
+            "credentialName": "HU-SCHULE2",
+            "isPrimary": false,
+            "adSchema": "VirtualSchool",
+            "tags": [
+                "Standort",
+                "Schultyp"
+            ],
+            "notes": "",
+            "persistCredential": true,
+            "secretExpires": "",
+            "protectedAppIds": []
+        }
+    ],
+    "extensions": {
+        "allowAutoLoad": true,
+        "searchPaths": [
+            "./Extensions"
+        ],
+        "disabled": [],
+        "autoRefreshInterval": 30000
+    },
+    "logging": {
+        "file": "./Logs/HU-MultiTenant_{date}.log",
+        "maxFileSize": 10485760,
+        "retentionDays": 30,
+        "logLevel": "Info"
+    },
+    "reporting": {
+        "outputPath": "./Reports",
+        "autoVersioning": true,
+        "defaultFormat": "xlsx",
+        "openAfterExport": false
+    },
+    "ui": {
+        "startTab": "QuickScript",
+        "secretWarnDays": 30,
+        "checkSecretsOnStart": true,
+        "checkUpdatesOnStart": true,
+        "maxLogLines": 500
+    }
+}

@@ -1,0 +1,112 @@
+{
+  "snippets": [
+    {
+      "name": "Tenant-Uebersicht",
+      "category": "Beispiele",
+      "description": "Name, Domaenen, Lizenzen und Geraeteanzahl des Tenants (geht auch fuer mehrere Tenants)",
+      "code": "# Tenant-Uebersicht\n# Berechtigungen: Organization.Read.All, DeviceManagementManagedDevices.Read.All\n$org  = (Invoke-GraphRequest -Token $Token -Endpoint '/organization?$select=displayName,verifiedDomains,createdDateTime').value[0]\n$skus = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/subscribedSkus?$select=skuPartNumber,consumedUnits,prepaidUnits')\n$dev  = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices?$select=id,operatingSystem')\n\nWrite-Host \"$($org.displayName)\" -ForegroundColor Cyan\nWrite-Host (\"  Domaenen: \" + (@($org.verifiedDomains | ForEach-Object { $_.name }) -join ', '))\nWrite-Host \"  Intune-Geraete: $($dev.Count)\"\n\n[pscustomobject]@{\n    Tenant        = $TenantKey\n    Name          = $org.displayName\n    Domaene       = (@($org.verifiedDomains | Where-Object { $_.isDefault }) | Select-Object -First 1).name\n    Geraete       = $dev.Count\n    Windows       = @($dev | Where-Object { $_.operatingSystem -eq 'Windows' }).Count\n    iOS           = @($dev | Where-Object { $_.operatingSystem -eq 'iOS' }).Count\n    Android       = @($dev | Where-Object { $_.operatingSystem -eq 'Android' }).Count\n    Lizenzen      = ($skus | Measure-Object -Property consumedUnits -Sum).Sum\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Geraete ohne Sync",
+      "category": "Beispiele",
+      "description": "Intune-Geraete, die sich seit X Tagen nicht gemeldet haben - Tabelle mit Benutzer und letztem Sync",
+      "code": "# Intune-Geraete ohne Synchronisierung seit X Tagen\n# Berechtigungen: DeviceManagementManagedDevices.Read.All\n# @param Tage|int|Ohne Sync seit Tagen|30\n# @param NurWindows|bool|Nur Windows|false\n\n$grenze = (Get-Date).AddDays(-$Tage)\n$dev = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices?$select=deviceName,operatingSystem,osVersion,lastSyncDateTime,userPrincipalName,complianceState,serialNumber,model')\nif ($NurWindows) { $dev = @($dev | Where-Object { $_.operatingSystem -eq 'Windows' }) }\n$alt = @($dev | Where-Object { [datetime]$_.lastSyncDateTime -lt $grenze } | Sort-Object { [datetime]$_.lastSyncDateTime })\nWrite-Host \"$($alt.Count) von $($dev.Count) Geraeten seit mehr als $Tage Tagen ohne Sync\" -ForegroundColor Yellow\n\nforeach ($d in $alt) {\n    [pscustomobject]@{\n        Geraet      = $d.deviceName\n        Benutzer    = $d.userPrincipalName\n        LetzterSync = ([datetime]$d.lastSyncDateTime).ToLocalTime()\n        Tage        = [int]((Get-Date) - [datetime]$d.lastSyncDateTime).TotalDays\n        System      = \"$($d.operatingSystem) $($d.osVersion)\"\n        Modell      = $d.model\n        Seriennr    = $d.serialNumber\n        Compliance  = $d.complianceState\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Nicht konforme Geraete",
+      "category": "Beispiele",
+      "description": "Geraete mit Compliance-Status 'noncompliant' oder 'inGracePeriod' samt Benutzer",
+      "code": "# Nicht konforme Geraete\n# Berechtigungen: DeviceManagementManagedDevices.Read.All\n$all = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices?$select=deviceName,userPrincipalName,complianceState,operatingSystem,osVersion,lastSyncDateTime')\n$dev = @($all | Where-Object { $_.complianceState -in 'noncompliant', 'inGracePeriod' })\nWrite-Host \"$($dev.Count) Geraete nicht konform\" -ForegroundColor $(if ($dev.Count) { 'Yellow' } else { 'Green' })\nforeach ($d in $dev) {\n    [pscustomobject]@{\n        Geraet = $d.deviceName; Benutzer = $d.userPrincipalName; Status = $d.complianceState\n        System = \"$($d.operatingSystem) $($d.osVersion)\"; LetzterSync = ([datetime]$d.lastSyncDateTime).ToLocalTime()\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Inaktive Benutzer",
+      "category": "Beispiele",
+      "description": "Aktivierte Benutzer ohne Anmeldung seit X Tagen (signInActivity, Entra ID P1)",
+      "code": "# Inaktive Benutzer\n# Berechtigungen: User.Read.All, AuditLog.Read.All (signInActivity braucht Entra ID P1)\n# @param Tage|int|Keine Anmeldung seit Tagen|90\n# @param NurLizenziert|bool|Nur Benutzer mit Lizenz|true\n\n$grenze = (Get-Date).AddDays(-$Tage)\n$users = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/users?$select=displayName,userPrincipalName,accountEnabled,createdDateTime,signInActivity,assignedLicenses,jobTitle,department')\n$users = @($users | Where-Object { $_.accountEnabled })\nif ($NurLizenziert) { $users = @($users | Where-Object { @($_.assignedLicenses).Count -gt 0 }) }\n\nforeach ($u in $users) {\n    $last = $null\n    if ($u.signInActivity -and $u.signInActivity.lastSignInDateTime) { $last = [datetime]$u.signInActivity.lastSignInDateTime }\n    if ($last -and $last -ge $grenze) { continue }\n    if (-not $last -and [datetime]$u.createdDateTime -ge $grenze) { continue }   # neu angelegt\n    [pscustomobject]@{\n        Name           = $u.displayName\n        UPN            = $u.userPrincipalName\n        LetzteAnmeldung = $(if ($last) { $last.ToLocalTime() } else { 'nie' })\n        Erstellt       = ([datetime]$u.createdDateTime).ToLocalTime()\n        Rolle          = $u.jobTitle\n        Klasse         = $u.department\n        Lizenzen       = @($u.assignedLicenses).Count\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Lizenzen",
+      "category": "Beispiele",
+      "description": "Gekaufte und verwendete Lizenzen je Produkt (SKU)",
+      "code": "# Lizenzuebersicht\n# Berechtigungen: Organization.Read.All\n$skus = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/subscribedSkus')\nforeach ($s in $skus | Sort-Object skuPartNumber) {\n    $gesamt = [int]$s.prepaidUnits.enabled\n    [pscustomobject]@{\n        Produkt  = $s.skuPartNumber\n        Gesamt   = $gesamt\n        Verwendet = [int]$s.consumedUnits\n        Frei     = $gesamt - [int]$s.consumedUnits\n        Gesperrt = [int]$s.prepaidUnits.suspended\n        Status   = $s.capabilityStatus\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "MFA-Registrierung",
+      "category": "Beispiele",
+      "description": "Wer hat MFA registriert, welche Methoden - optional nur Administratoren",
+      "code": "# MFA-Registrierung\n# Berechtigungen: AuditLog.Read.All (Bericht userRegistrationDetails, Entra ID P1)\n# @param NurOhneMfa|bool|Nur Benutzer OHNE MFA|true\n# @param NurAdmins|bool|Nur Administratoren|false\n\n$r = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/reports/authenticationMethods/userRegistrationDetails')\nif ($NurOhneMfa) { $r = @($r | Where-Object { -not $_.isMfaRegistered }) }\nif ($NurAdmins)  { $r = @($r | Where-Object { $_.isAdmin }) }\nWrite-Host \"$($r.Count) Eintraege\" -ForegroundColor Cyan\nforeach ($x in $r) {\n    [pscustomobject]@{\n        UPN = $x.userPrincipalName; Name = $x.userDisplayName; Admin = $x.isAdmin\n        MfaRegistriert = $x.isMfaRegistered; MfaFaehig = $x.isMfaCapable\n        Methoden = (@($x.methodsRegistered) -join ', '); Standard = $x.defaultMfaMethod\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Gast-Konten",
+      "category": "Beispiele",
+      "description": "Alle Gastbenutzer mit Einladungsstatus und Erstelldatum",
+      "code": "# Gast-Konten\n# Berechtigungen: User.Read.All\n$g = @(Invoke-GraphRequestAll -Token $Token -Endpoint \"/users?`$filter=userType eq 'Guest'&`$select=displayName,mail,userPrincipalName,createdDateTime,externalUserState\")\nWrite-Host \"$($g.Count) Gaeste\" -ForegroundColor Cyan\nforeach ($u in $g) {\n    [pscustomobject]@{\n        Name = $u.displayName; Mail = $u.mail; Status = $u.externalUserState\n        Erstellt = ([datetime]$u.createdDateTime).ToLocalTime()\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Autopilot-Geraete",
+      "category": "Beispiele",
+      "description": "Autopilot-Geraete mit Group Tag, Modell und Registrierungsstatus",
+      "code": "# Autopilot-Geraete\n# Berechtigungen: DeviceManagementServiceConfig.Read.All\n# @param GroupTag|string|Nur dieser Group Tag (leer = alle)|\n\n$ap = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/windowsAutopilotDeviceIdentities')\nif ($GroupTag) { $ap = @($ap | Where-Object { $_.groupTag -eq $GroupTag }) }\nWrite-Host \"$($ap.Count) Autopilot-Geraete\" -ForegroundColor Cyan\nforeach ($a in $ap) {\n    [pscustomobject]@{\n        Seriennr = $a.serialNumber; GroupTag = $a.groupTag; Hersteller = $a.manufacturer; Modell = $a.model\n        Status = $a.enrollmentState\n        ZuletztGemeldet = $(if ($a.lastContactedDateTime -and ([datetime]$a.lastContactedDateTime).Year -gt 2000) { ([datetime]$a.lastContactedDateTime).ToLocalTime() } else { '' })\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Ablaufende App-Secrets",
+      "category": "Beispiele",
+      "description": "App-Registrierungen, deren Secrets oder Zertifikate in X Tagen ablaufen (oder abgelaufen sind)",
+      "code": "# Ablaufende Secrets und Zertifikate von App-Registrierungen\n# Berechtigungen: Application.Read.All\n# @param Tage|int|Ablauf innerhalb von Tagen|60\n\n$grenze = (Get-Date).AddDays($Tage)\n$apps = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/applications?$select=displayName,appId,passwordCredentials,keyCredentials')\nforeach ($a in $apps) {\n    $creds = @($a.passwordCredentials | ForEach-Object { @{ Art = 'Secret'; Name = $_.displayName; Ende = $_.endDateTime } }) +\n             @($a.keyCredentials | ForEach-Object { @{ Art = 'Zertifikat'; Name = $_.displayName; Ende = $_.endDateTime } })\n    foreach ($c in $creds) {\n        if (-not $c.Ende) { continue }\n        $ende = ([datetime]$c.Ende).ToLocalTime()\n        if ($ende -gt $grenze) { continue }\n        [pscustomobject]@{\n            App = $a.displayName; AppId = $a.appId; Art = $c.Art; Bezeichnung = $c.Name\n            GueltigBis = $ende; Tage = [int]($ende - (Get-Date)).TotalDays\n        }\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Geraet synchronisieren",
+      "category": "Beispiele",
+      "description": "Sync-Befehl an ein oder mehrere Intune-Geraete (Name, Komma-getrennt) - Standard nur Vorschau",
+      "code": "# Intune-Geraete synchronisieren\n# Berechtigungen: DeviceManagementManagedDevices.Read.All, DeviceManagementManagedDevices.PrivilegedOperations.All\n# @param Geraete|string|Geraetenamen (Komma-getrennt)|\n# @param DryRun|bool|Nur anzeigen (DryRun)|true\n\n$namen = @(\"$Geraete\" -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })\nif (-not $namen.Count) { Write-Warning 'Bitte oben im Feld Geraetenamen eintragen.'; return }\nforeach ($n in $namen) {\n    $d = @(Invoke-GraphRequestAll -Token $Token -Endpoint \"/deviceManagement/managedDevices?`$filter=deviceName eq '$($n -replace \"'\", \"''\")'&`$select=id,deviceName,lastSyncDateTime\")\n    if (-not $d.Count) { Write-Warning \"$n : nicht gefunden\"; continue }\n    foreach ($x in $d) {\n        if ($DryRun) { Write-Host \"[DryRun] wuerde synchronisieren: $($x.deviceName) (letzter Sync $([datetime]$x.lastSyncDateTime))\" -ForegroundColor Yellow; continue }\n        $r = Invoke-GraphRequestWithRetry -Token $Token -Method POST -Endpoint \"/deviceManagement/managedDevices/$($x.id)/syncDevice\"\n        if ($r -and $r.PSObject.Properties['IsError'] -and $r.IsError) { Write-Host \"$($x.deviceName): Fehler $($r.StatusCode) $($r.ErrorMessage)\" -ForegroundColor Red }\n        else { Write-Host \"$($x.deviceName): Sync gesendet\" -ForegroundColor Green }\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Gruppenmitglieder",
+      "category": "Beispiele",
+      "description": "Mitglieder einer Gruppe (Name oder Teil davon) - Benutzer und Geraete",
+      "code": "# Mitglieder einer Gruppe\n# Berechtigungen: Group.Read.All (oder GroupMember.Read.All), User.Read.All\n# @param Gruppe|string|Gruppenname (Anfang)|\n\nif (-not $Gruppe) { Write-Warning 'Bitte oben den Gruppennamen eintragen.'; return }\n$g = @(Invoke-GraphRequestAll -Token $Token -Endpoint \"/groups?`$filter=startswith(displayName,'$($Gruppe -replace \"'\", \"''\")')&`$select=id,displayName\")\nif (-not $g.Count) { Write-Warning \"Keine Gruppe beginnt mit '$Gruppe'\"; return }\nforeach ($grp in $g) {\n    $m = @(Invoke-GraphRequestAll -Token $Token -Endpoint \"/groups/$($grp.id)/members?`$select=displayName,userPrincipalName,deviceId\")\n    Write-Host \"$($grp.displayName): $($m.Count) Mitglieder\" -ForegroundColor Cyan\n    foreach ($x in $m) {\n        [pscustomobject]@{\n            Gruppe = $grp.displayName\n            Typ    = (\"$($x.'@odata.type')\" -replace '#microsoft.graph.', '')\n            Name   = $x.displayName\n            UPN    = $x.userPrincipalName\n        }\n    }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    },
+    {
+      "name": "Vorlage",
+      "category": "Beispiele",
+      "description": "Leere Vorlage mit Parametern, Ausgabe als Tabelle und Fehlerbehandlung",
+      "code": "# Kurzbeschreibung: was macht das Skript?\n# Berechtigungen: ...\n# @param DryRun|bool|Nur anzeigen (DryRun)|true\n# @param Tage|int|Zeitraum in Tagen|30\n#\n# Verfuegbar: $Token, $TenantKey, $Settings, Get-HUToken, Invoke-GraphRequest, Invoke-GraphRequestAll,\n#             Invoke-GraphRequestWithRetry - und die Parameter oben als Variablen ($DryRun, $Tage).\n# Objekte ([pscustomobject]) erscheinen im Knopf \"Tabelle\" (Filter, CSV, Excel).\n# Mehrere Tenants: oben \"Mehrere\" - das Skript laeuft je Tenant einmal.\n\n$daten = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/users?$select=id,displayName,userPrincipalName&$top=999')\nWrite-Host \"$($daten.Count) Eintraege in $TenantKey\" -ForegroundColor Cyan\n\nforeach ($d in $daten | Select-Object -First 20) {\n    if ($DryRun) {\n        # nur anzeigen\n    } else {\n        # hier aendern - z. B. Invoke-GraphRequestWithRetry -Token $Token -Method PATCH -Endpoint \"/users/$($d.id)\" -Body @{ ... }\n    }\n    [pscustomobject]@{ Name = $d.displayName; UPN = $d.userPrincipalName }\n}\n",
+      "created": "2026-10-07 10:00:00",
+      "modified": "2026-10-07 10:00:00",
+      "favorite": false
+    }
+  ]
+}
