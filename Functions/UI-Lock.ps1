@@ -38,6 +38,72 @@ public static uint IdleMilliseconds() {
 '@
 }
 
+# Windows Hello ueber IUserConsentVerifierInterop (ab Windows 11): Dialog gehoert zum eigenen Fenster
+# und erscheint mittig darueber. Direkte vtable-Aufrufe, damit nichts an PS 5.1 WinRT-Projektion haengt.
+function Initialize-HUHelloInterop {
+    if ('HUTools.HelloInterop' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace HUTools {
+public static class HelloInterop {
+    [DllImport("combase.dll")] static extern int WindowsCreateString([MarshalAs(UnmanagedType.LPWStr)] string s, uint len, out IntPtr h);
+    [DllImport("combase.dll")] static extern int WindowsDeleteString(IntPtr h);
+    [DllImport("combase.dll")] static extern int RoGetActivationFactory(IntPtr classId, ref Guid iid, out IntPtr factory);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] delegate int ReqFn(IntPtr self, IntPtr hwnd, IntPtr msg, ref Guid riid, out IntPtr op);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] delegate int GetIntFn(IntPtr self, out int v);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] delegate int VoidFn(IntPtr self);
+    static Guid IidInterop = new Guid("39E050C3-4E74-441A-8DC0-B81104DF949C");
+    static Guid IidOp = new Guid("fd596ffd-2318-558f-9dbe-d21df43764a5");   // IAsyncOperation<UserConsentVerificationResult>
+    static Guid IidInfo = new Guid("00000036-0000-0000-C000-000000000046"); // IAsyncInfo
+    static Delegate Slot(IntPtr obj, int i, Type t) {
+        IntPtr vt = Marshal.ReadIntPtr(obj);
+        return Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(vt, i * IntPtr.Size), t);
+    }
+    public static IntPtr Start(IntPtr hwnd, string message) {
+        string cls = "Windows.Security.Credentials.UI.UserConsentVerifier";
+        IntPtr hCls, hMsg, fac, op;
+        Marshal.ThrowExceptionForHR(WindowsCreateString(cls, (uint)cls.Length, out hCls));
+        try {
+            Marshal.ThrowExceptionForHR(RoGetActivationFactory(hCls, ref IidInterop, out fac));
+        } finally { WindowsDeleteString(hCls); }
+        try {
+            Marshal.ThrowExceptionForHR(WindowsCreateString(message, (uint)message.Length, out hMsg));
+            try {
+                ReqFn f = (ReqFn)Slot(fac, 6, typeof(ReqFn));
+                Marshal.ThrowExceptionForHR(f(fac, hwnd, hMsg, ref IidOp, out op));
+            } finally { WindowsDeleteString(hMsg); }
+        } finally { Marshal.Release(fac); }
+        return op;
+    }
+    static int InfoInt(IntPtr op, int slot) {
+        IntPtr info;
+        Marshal.ThrowExceptionForHR(Marshal.QueryInterface(op, ref IidInfo, out info));
+        try { int v; Marshal.ThrowExceptionForHR(((GetIntFn)Slot(info, slot, typeof(GetIntFn)))(info, out v)); return v; }
+        finally { Marshal.Release(info); }
+    }
+    // 0 Started, 1 Completed, 2 Canceled, 3 Error
+    public static int Status(IntPtr op) { return InfoInt(op, 7); }
+    public static int ErrorCode(IntPtr op) { return InfoInt(op, 8); }
+    // UserConsentVerificationResult: 0 Verified ... 6 Canceled
+    public static int Result(IntPtr op) {
+        int v; Marshal.ThrowExceptionForHR(((GetIntFn)Slot(op, 8, typeof(GetIntFn)))(op, out v)); return v;
+    }
+    public static void Free(IntPtr op) {
+        if (op == IntPtr.Zero) return;
+        try {
+            IntPtr info;
+            if (Marshal.QueryInterface(op, ref IidInfo, out info) == 0) {
+                try { ((VoidFn)Slot(info, 10, typeof(VoidFn)))(info); } finally { Marshal.Release(info); }
+            }
+        } catch { }
+        Marshal.Release(op);
+    }
+}
+}
+'@
+}
+
 function Get-HULockConfig {
     $u = $script:Settings.ui
     $m = 10; [void][int]::TryParse("$(Get-HUProp $u 'lockMinutes' 10)", [ref]$m)
@@ -145,7 +211,39 @@ $script:HelloCode = {
     } catch { return "Fehler: $($_.Exception.Message)" }
 }
 
-function Start-HUHelloVerify([scriptblock]$OnDone) {
+function Start-HUHelloVerify([scriptblock]$OnDone, [IntPtr]$Hwnd = [IntPtr]::Zero) {
+    # Bevorzugt: Dialog ans eigene Fenster gebunden (Windows 11). Faellt bei Fehler auf den alten Weg zurueck.
+    if ($Hwnd -ne [IntPtr]::Zero) {
+        $op = [IntPtr]::Zero
+        try { Initialize-HUHelloInterop; $op = [HUTools.HelloInterop]::Start($Hwnd, 'HU-MultiTenant entsperren') } catch { $op = [IntPtr]::Zero }
+        if ($op -ne [IntPtr]::Zero) {
+            $t = [System.Windows.Threading.DispatcherTimer]::new()
+            $t.Interval = [TimeSpan]::FromMilliseconds(250)
+            $t.Tag = @{ Op = $op; OnDone = $OnDone }
+            $t.Add_Tick({
+                    $s = $this.Tag
+                    $res = $null
+                    try {
+                        $st = [HUTools.HelloInterop]::Status($s.Op)
+                        if ($st -eq 0) { return }
+                        $res = switch ($st) {
+                            1 {
+                                $r = [HUTools.HelloInterop]::Result($s.Op)
+                                $n = @('Verified', 'DeviceNotPresent', 'NotConfiguredForUser', 'DisabledByPolicy', 'DeviceBusy', 'RetriesExhausted', 'Canceled')[$r]
+                                if ($r -in 1, 2, 3) { "nicht verfuegbar ($n)" } else { "$n" }
+                            }
+                            2 { 'Canceled' }
+                            default { 'Fehler 0x{0:X8}' -f [HUTools.HelloInterop]::ErrorCode($s.Op) }
+                        }
+                    } catch { $res = "Fehler: $($_.Exception.Message)" }
+                    $this.Stop()
+                    try { [HUTools.HelloInterop]::Free($s.Op) } catch { }
+                    & $s.OnDone $res
+                })
+            $t.Start()
+            return
+        }
+    }
     $rs = [runspacefactory]::CreateRunspace(); $rs.Open()
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript($script:HelloCode)
@@ -228,7 +326,9 @@ function Show-HULockDialog([switch]$AtStart) {
     $hello = {
         if ($state.Busy) { return }
         $state.Busy = $true; $c.btnHello.IsEnabled = $false; $c.lblMsg.Text = 'Windows Hello ...'
-        Start-HUHelloVerify -OnDone {
+        $hw = [IntPtr]::Zero
+        try { $hw = ([System.Windows.Interop.WindowInteropHelper]::new($w)).Handle } catch { }
+        Start-HUHelloVerify -Hwnd $hw -OnDone {
             param($r)
             $state.Busy = $false; $c.btnHello.IsEnabled = $true
             if ($r -eq 'Verified') { & $unlock; return }
@@ -256,17 +356,49 @@ function Show-HULockDialog([switch]$AtStart) {
     }
 }
 
-# Leerlauf pruefen (alle 15 s)
+# Leerlauf pruefen (alle 5 s)
+# Letzte Eingabe (Maus/Tastatur) in irgendeinem Fenster dieser App - Arbeit in anderen Programmen zaehlt nicht
+function Initialize-HUAppIdle {
+    if ('HUTools.AppIdle' -as [type]) { return }
+    $refs = @([System.Windows.Window].Assembly.Location, [System.Windows.UIElement].Assembly.Location, [System.Windows.DependencyObject].Assembly.Location, 'System.Xaml')
+    Add-Type -ReferencedAssemblies $refs -TypeDefinition @'
+using System;
+using System.Windows;
+using System.Windows.Input;
+namespace HUTools {
+public static class AppIdle {
+    static long last = DateTime.UtcNow.Ticks;
+    static bool hooked;
+    static void Touch(object s, RoutedEventArgs e) { last = DateTime.UtcNow.Ticks; }
+    public static void Hook() {
+        if (hooked) return;
+        hooked = true;
+        RoutedEventHandler h = new RoutedEventHandler(Touch);
+        EventManager.RegisterClassHandler(typeof(Window), UIElement.PreviewMouseDownEvent, h, true);
+        EventManager.RegisterClassHandler(typeof(Window), UIElement.PreviewMouseMoveEvent, h, true);
+        EventManager.RegisterClassHandler(typeof(Window), UIElement.PreviewMouseWheelEvent, h, true);
+        EventManager.RegisterClassHandler(typeof(Window), UIElement.PreviewKeyDownEvent, h, true);
+        last = DateTime.UtcNow.Ticks;
+    }
+    public static void Reset() { last = DateTime.UtcNow.Ticks; }
+    public static double IdleMilliseconds() { return TimeSpan.FromTicks(DateTime.UtcNow.Ticks - last).TotalMilliseconds; }
+}
+}
+'@
+}
+
 function Start-HULockTimer {
     Initialize-HULockNative
+    Initialize-HUAppIdle
+    [HUTools.AppIdle]::Hook()
     if ($script:LockTimer) { $script:LockTimer.Stop() }
     $script:LockTimer = [System.Windows.Threading.DispatcherTimer]::new()
-    $script:LockTimer.Interval = [TimeSpan]::FromSeconds(15)
+    $script:LockTimer.Interval = [TimeSpan]::FromSeconds(5)
     $script:LockTimer.Add_Tick({
             if ($script:LockActive) { return }
             $cfg = Get-HULockConfig
             if (-not $cfg.Enabled) { return }
-            if ([HUTools.LockNative]::IdleMilliseconds() -ge [uint32]($cfg.Minutes * 60000)) { Lock-HUApp }
+            if ([HUTools.AppIdle]::IdleMilliseconds() -ge ($cfg.Minutes * 60000)) { Lock-HUApp; [HUTools.AppIdle]::Reset() }
         })
     $script:LockTimer.Start()
 }
