@@ -106,7 +106,7 @@ public static class HelloInterop {
 
 function Get-HULockConfig {
     $u = $script:Settings.ui
-    $m = 10; [void][int]::TryParse("$(Get-HUProp $u 'lockMinutes' 10)", [ref]$m)
+    $m = 3; [void][int]::TryParse("$(Get-HUProp $u 'lockMinutes' 3)", [ref]$m)
     return [pscustomobject]@{
         Enabled = [bool](Get-HUProp $u 'lockEnabled' $false)
         Minutes = [Math]::Max(1, [Math]::Min(240, $m))

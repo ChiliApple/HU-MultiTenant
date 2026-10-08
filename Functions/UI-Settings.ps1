@@ -332,7 +332,7 @@ function Show-HUSettingsDialog {
         if ($c.chkLockEnabled.IsChecked) {
             if (-not [int]::TryParse($c.txtLockMinutes.Text.Trim(), [ref]$lm) -or $lm -lt 1 -or $lm -gt 240) { $c.tabSettings.SelectedItem = $c.tabGeneral; Show-HUMessage 'Sperre: Minuten als Zahl zwischen 1 und 240.' -Icon Warning -Owner $w; return }
             if (-not (Test-HULockPinSet)) { $c.tabSettings.SelectedItem = $c.tabGeneral; Show-HUMessage 'Fuer die Sperre bitte zuerst eine PIN festlegen (Ersatz, falls Windows Hello nicht geht).' -Icon Warning -Owner $w; return }
-        } else { [void][int]::TryParse($c.txtLockMinutes.Text.Trim(), [ref]$lm); if ($lm -lt 1) { $lm = 10 } }
+        } else { [void][int]::TryParse($c.txtLockMinutes.Text.Trim(), [ref]$lm); if ($lm -lt 1) { $lm = 3 } }
         $wd = 0
         if (-not [int]::TryParse($c.txtWarnDays.Text.Trim(), [ref]$wd) -or $wd -lt 1 -or $wd -gt 365) { $c.tabSettings.SelectedItem = $c.tabGeneral; Show-HUMessage 'Warnschwelle: Zahl zwischen 1 und 365.' -Icon Warning -Owner $w; return }
 
