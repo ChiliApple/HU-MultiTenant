@@ -291,7 +291,7 @@ function Show-HULockDialog([switch]$AtStart) {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="HU-MultiTenant gesperrt" Width="400" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
-        WindowStyle="None" AllowsTransparency="False" Background="#1E1E1E" BorderBrush="#3E3E42" BorderThickness="1" ShowInTaskbar="False">
+        WindowStyle="None" AllowsTransparency="True" Opacity="0" Background="#1E1E1E" BorderBrush="#3E3E42" BorderThickness="1" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -322,6 +322,8 @@ function Show-HULockDialog([switch]$AtStart) {
     $hasPin = Test-HULockPinSet
     if (-not $hasPin) { $c.lblPin.Visibility = 'Collapsed'; $c.pnlPin.Visibility = 'Collapsed' }
     $state = @{ Unlocked = $false; Exit = $false; Busy = $false }
+    # Fenster bleibt unsichtbar, solange Windows Hello laeuft - erst bei Abbruch/Fehler erscheint die PIN-Eingabe
+    $reveal = { if ($w.Opacity -lt 1) { $w.Opacity = 1; if ($c.pnlPin.Visibility -eq 'Visible') { [void]$c.pw.Focus() } else { [void]$c.btnHello.Focus() } } }
     $unlock = { $state.Unlocked = $true; $script:LockFails = 0; $w.Close() }
     $hello = {
         if ($state.Busy) { return }
@@ -332,6 +334,7 @@ function Show-HULockDialog([switch]$AtStart) {
             param($r)
             $state.Busy = $false; $c.btnHello.IsEnabled = $true
             if ($r -eq 'Verified') { & $unlock; return }
+            & $reveal
             $c.lblMsg.Text = $(if ($r -match '^nicht verfuegbar') { "Windows Hello ist $r$(if ($hasPin) { ' - bitte die PIN verwenden.' } else { ' - in den Einstellungen eine PIN festlegen.' })" } elseif ($r -eq 'Canceled') { 'Abgebrochen.' } else { "Nicht entsperrt: $r" })
         }
     }
@@ -347,7 +350,11 @@ function Show-HULockDialog([switch]$AtStart) {
     $c.lnkExit.Add_Click({ $state.Exit = $true; $w.Close() })
     # Schliessen nur durch Entsperren oder "beenden"
     $w.Add_Closing({ param($s, $e) if (-not ($state.Unlocked -or $state.Exit)) { $e.Cancel = $true } })
-    $w.Add_ContentRendered({ if ($c.pnlPin.Visibility -eq 'Visible') { $c.pw.Focus() } else { $c.btnHello.Focus() }; & $hello })
+    $w.Add_ContentRendered({
+            & $hello
+            # Sicherheitsnetz: falls Hello haengt, nach 30 s trotzdem anzeigen
+            Invoke-HUDelayed -Seconds 30 -Do { if (-not ($state.Unlocked -or $state.Exit)) { & $reveal } }
+        })
     [void]$w.ShowDialog()
     if ($state.Exit) {
         $script:LockActive = $false
