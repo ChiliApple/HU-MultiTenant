@@ -22,7 +22,13 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
   <a href="LICENSE">Lizenz</a>
 </p>
 
-<p align="center"><img src="Docs/screenshot.png" width="900" alt="HU-MultiTenant – Quick Script"/></p>
+<p align="center">
+  <a href="Docs/screenshot.png"><img src="Docs/screenshot.png" width="200" alt="Quick Script"/></a>
+  <a href="Docs/screenshot-extensions.png"><img src="Docs/screenshot-extensions.png" width="200" alt="Extensions"/></a>
+  <a href="Docs/screenshot-apps.png"><img src="Docs/screenshot-apps.png" width="200" alt="Apps"/></a>
+  <a href="Docs/screenshot-wartung.png"><img src="Docs/screenshot-wartung.png" width="200" alt="Wartung"/></a>
+  <br><sub>Quick Script · Extensions · Apps · Wartung – zum Vergrößern anklicken</sub>
+</p>
 
 ---
 
