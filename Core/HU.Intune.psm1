@@ -974,38 +974,29 @@ function Get-HUTenantAppList {
     }
 }
 
-# Installationsstand einer App (Anzahl Geraete). Quelle wie im Intune-Portal: Bericht getAppStatusOverviewReport;
-# Ersatz: installSummary. Leer, wenn Intune nichts liefert (Grund steht dann als Warnung im Protokoll).
+# Installationsstand einer App (Anzahl Geraete) - derselbe Bericht wie im Intune-Portal (getAppStatusOverviewReport).
+# Rueckgabe: Text; "noch keine Rueckmeldung", wenn Intune noch keine Daten hat; leer bei Fehler (Grund im Protokoll).
+# (installSummary liefert bei Win32/Store-Apps "Resource not found" und wird nicht mehr verwendet.)
 function Get-HUAppInstallSummary {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId)
-    $vals = $null; $why = ''
     try {
         $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceManagement/reports/getAppStatusOverviewReport' -Method POST -Body @{ filter = "(ApplicationId eq '$AppId')" } -NoRetry
         if ($r -is [byte[]]) { $r = [Text.Encoding]::UTF8.GetString($r) }
         if ($r -is [string]) { $r = $r | ConvertFrom-Json }
-        $cols = @($r.Schema | ForEach-Object { "$($_.Column)" })
-        $row = @($r.Values)[0]
-        if ($cols.Count -and $row) {
-            $vals = @{}
-            for ($i = 0; $i -lt $cols.Count; $i++) { $vals[$cols[$i]] = $row[$i] }
-        } else { $why = 'Bericht ohne Zeilen' }
-    } catch { $why = $_.Exception.Message }
-    if (-not $vals) {
-        try {
-            $x = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/installSummary" -NoRetry
-            if ($x) { $vals = @{}; foreach ($p in $x.PSObject.Properties) { $vals[$p.Name] = $p.Value } }
-        } catch { $why += " / installSummary: $($_.Exception.Message)" }
-    }
-    if (-not $vals) { Write-HULog -Message "Installationsstand nicht lesbar: $why" -Level 'WARN' -Tenant $TenantKey; return '' }
-    # Spaltennamen je nach Quelle (InstalledDeviceCount bzw. installedDeviceCount)
+    } catch { Write-HULog -Message "Installationsstand nicht lesbar: $($_.Exception.Message)" -Level 'WARN' -Tenant $TenantKey; return '' }
+    $cols = @($r.Schema | ForEach-Object { "$($_.Column)" })
+    $row = @($r.Values)[0]
+    if (-not $cols.Count -or -not $row) { return 'noch keine Rueckmeldung von Geraeten' }
+    $vals = @{}
+    for ($i = 0; $i -lt $cols.Count; $i++) { $vals[$cols[$i]] = $row[$i] }
     $get = { param($n) $k = @($vals.Keys | Where-Object { $_ -ieq $n })[0]; if ($k) { [int]"0$($vals[$k])" } else { $null } }
     $parts = @()
     foreach ($m in @(@('InstalledDeviceCount', 'installiert'), @('FailedDeviceCount', 'fehlgeschlagen'), @('PendingInstallDeviceCount', 'ausstehend'), @('NotInstalledDeviceCount', 'nicht installiert'), @('NotApplicableDeviceCount', 'nicht zutreffend'))) {
         $v = & $get $m[0]
         if ($null -ne $v -and ($v -gt 0 -or $m[0] -in 'InstalledDeviceCount', 'FailedDeviceCount')) { $parts += "$($m[1]) $v" }
     }
-    if (-not $parts.Count) { Write-HULog -Message "Installationsstand: unbekannte Spalten ($(@($vals.Keys) -join ', '))" -Level 'WARN' -Tenant $TenantKey; return '' }
+    if (-not $parts.Count) { Write-HULog -Message "Installationsstand: unbekannte Spalten ($($cols -join ', '))" -Level 'WARN' -Tenant $TenantKey; return '' }
     return ($parts -join ' | ')
 }
 
