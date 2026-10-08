@@ -481,3 +481,23 @@ Describe 'Intune: vorhandene Apps und Installationshuelle' {
         (Get-HUInstallPlan ([pscustomobject]@{ InstallCmd = 'a.exe /S'; NoDesktop = $false })).Cmd | Should -Be 'a.exe /S'
     }
 }
+
+Describe 'Intune: Seitenweises Lesen und App-Liste' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'liefert einzelne Eintraege (nicht ein verschachteltes Array) und filtert Windows-Apps' {
+        Mock -ModuleName HU.Intune Invoke-HUIntuneGraph {
+            if ($Endpoint -like '*mobileApps*') {
+                [pscustomobject]@{ value = @(
+                        [pscustomobject]@{ '@odata.type' = '#microsoft.graph.win32LobApp'; id = '1'; displayName = 'VLC'; displayVersion = '3'; publisher = 'V'; assignments = @([pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'g1' } }) }
+                        [pscustomobject]@{ '@odata.type' = '#microsoft.graph.iosStoreApp'; id = '2'; displayName = 'iOS'; assignments = @() }
+                        [pscustomobject]@{ '@odata.type' = '#microsoft.graph.winGetApp'; id = '3'; displayName = 'Teams'; assignments = @() }
+                    ) }
+            } else { [pscustomobject]@{ value = @([pscustomobject]@{ id = 'g1'; displayName = 'Schueler' }) } }
+        }
+        @(Get-HUIntuneGraphAll -TenantKey 't' -Settings @{} -Endpoint '/deviceAppManagement/mobileApps').Count | Should -Be 3
+        $l = @(Get-HUTenantAppList -TenantKey 't' -Settings @{})
+        $l.Count | Should -Be 2
+        ($l | Where-Object Name -eq 'VLC').Assignments[0].Ziel | Should -Be 'Schueler'
+        ($l | Where-Object Name -eq 'Teams').Kind | Should -Be 'winget'
+    }
+}

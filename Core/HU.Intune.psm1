@@ -85,7 +85,7 @@ function Get-HUIntuneGraphAll {
         $next = $r.'@odata.nextLink'
         $n++
     }
-    return , $out.ToArray()
+    return $out.ToArray()
 }
 
 function ConvertTo-HUBase64Utf8([string]$Text) {
