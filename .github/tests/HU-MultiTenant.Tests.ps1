@@ -483,7 +483,10 @@ Describe 'Intune: vorhandene Apps und Installationshuelle' {
 }
 
 Describe 'Intune: Seitenweises Lesen und App-Liste' {
-    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+    }
     It 'liefert einzelne Eintraege (nicht ein verschachteltes Array) und filtert Windows-Apps' {
         Mock -ModuleName HU.Intune Invoke-HUIntuneGraph {
             if ($Endpoint -like '*mobileApps*') {
