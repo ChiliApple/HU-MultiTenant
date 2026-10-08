@@ -585,6 +585,7 @@
                                                     <ComboBoxItem Content="Gruppe" Tag="group"/>
                                                     <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
                                                     <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
+                                                    <ComboBoxItem Content="Keine Zuweisung" Tag="none" ToolTip="Nur hochladen bzw. aktualisieren - z. B. als Abhaengigkeit oder zum spaeteren Zuweisen im Portal"/>
                                                 </ComboBox>
                                                 <TextBox x:Name="txtAppGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Tenant gesucht"/>
                                                 <Button x:Name="btnAppGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>
@@ -740,6 +741,7 @@
                                                 <ComboBox x:Name="cmbRemTarget" Style="{StaticResource DarkComboBox}" Width="150">
                                                     <ComboBoxItem Content="Gruppe" Tag="group"/>
                                                     <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                    <ComboBoxItem Content="Keine Zuweisung" Tag="none" ToolTip="Nur hochladen bzw. aktualisieren - zuweisen spaeter hier oder im Portal"/>
                                                 </ComboBox>
                                                 <TextBox x:Name="txtRemGroup" Style="{StaticResource DarkTextBox}" Width="240" Margin="6,0,0,0" ToolTip="Gruppenname - wird je Tenant gesucht"/>
                                                 <Button x:Name="btnRemGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="2,0,0,0" ToolTip="Gruppe aus den gewaehlten Tenants suchen und auswaehlen"/>

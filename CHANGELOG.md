@@ -1,4 +1,4 @@
-﻿# HU-MultiTenant Changelog
+﻿﻿# HU-MultiTenant Changelog
 
 ## v2.1.0 (2026-10-08)
 
@@ -9,6 +9,8 @@
   - Paket wird einmal gebaut und je Tenant hochgeladen; unveraenderte Pakete werden nicht erneut hochgeladen; neue Version aktualisiert dieselbe Intune-App
   - Ziel Gruppe (per Name je Tenant gesucht), Alle Geraete oder Alle Benutzer; Erforderlich/Verfuegbar/Deinstallieren, Frist, Hinweise; vorhandene Zuweisungen bleiben erhalten
   - optional **Pilotgruppe** und spaeter "Fuer alle freigeben"
+  - Ziel **Keine Zuweisung** (nur hochladen/aktualisieren), auch bei Wartung
+  - Zuweisen wartet, bis Intune die App fertig verarbeitet hat; voruebergehende Serverfehler (500) werden wiederholt
   - **Status** je Geraet mit Fehlertext, Filter und Export
   - **Abhaengigkeiten** (z. B. Treiber, Laufzeitumgebungen): aus der Bibliothek (werden mit hochgeladen, auch mehrstufig, Kreise werden erkannt) oder **bereits in Intune vorhandene Win32-Apps** (Auswahl mit Filter und "vorhanden in x von y Tenants", je Tenant per Name verknuepft); automatisch installieren oder nur pruefen
   - Testinstallation erkennt sichtbare Fenster (Setup/Deinstallation nicht still) und ergaenzt fehlende Schalter fuer stilles Deinstallieren vor dem Test

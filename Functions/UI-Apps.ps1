@@ -164,7 +164,7 @@ function Get-HUComboTag($Combo) { if ($Combo.SelectedItem) { return "$($Combo.Se
 
 function Get-HUDeploymentText($Deployments) {
     $parts = foreach ($d in @($Deployments | Where-Object { $_.AppId -or $_.Stage })) {
-        $st = switch ("$($d.Stage)") { 'pilot' { 'Pilot' } 'all' { 'alle' } 'dep' { 'als Abhaengigkeit' } default { 'nicht zugewiesen' } }
+        $st = switch ("$($d.Stage)") { 'pilot' { 'Pilot' } 'all' { 'alle' } 'dep' { 'als Abhaengigkeit' } 'none' { 'ohne Zuweisung' } default { 'nicht zugewiesen' } }
         "$(Get-HUTenantDisplayName $d.Tenant): $(if ($d.Version) { "v$($d.Version), " })$st$(if ($d.Time) { ", $($d.Time)" })"
     }
     if (-not @($parts).Count) { return 'Noch nicht verteilt.' }
@@ -278,8 +278,10 @@ function Show-HUAppForm($App) {
 
 function Update-HUAppTargetUi {
     $c = $script:Controls
-    $c['txtAppGroup'].IsEnabled = ((Get-HUComboTag $c['cmbAppTarget']) -eq 'group')
-    $c['txtAppPilot'].IsEnabled = [bool]$c['chkAppPilot'].IsChecked
+    $kind = Get-HUComboTag $c['cmbAppTarget']
+    $c['txtAppGroup'].IsEnabled = ($kind -eq 'group')
+    foreach ($n in 'cmbAppIntent', 'chkAppPilot', 'btnAppPilotPick', 'txtAppDeadline', 'cmbAppNotify') { $c[$n].IsEnabled = ($kind -ne 'none') }
+    $c['txtAppPilot'].IsEnabled = [bool]$c['chkAppPilot'].IsChecked -and $kind -ne 'none'
     $c['btnAppGroupPick'].IsEnabled = $c['txtAppGroup'].IsEnabled
 }
 
@@ -464,7 +466,7 @@ function Test-HUAppReady($App, [switch]$Release) {
     if (-not $App.Name) { $err.Add('Name fehlt.') }
     if (-not @($App.Tenants).Count) { $err.Add('Kein Tenant angehakt.') }
     if ($App.TargetKind -eq 'group' -and -not $App.TargetGroup) { $err.Add('Zielgruppe fehlt (oder Ziel "Alle Geraete"/"Alle Benutzer" waehlen).') }
-    if ($App.Pilot -and -not $Release -and -not $App.PilotGroup) { $err.Add('Pilotgruppe fehlt.') }
+    if ($App.Pilot -and -not $Release -and -not $App.PilotGroup -and $App.TargetKind -ne 'none') { $err.Add('Pilotgruppe fehlt.') }
     try { [void](ConvertTo-HUDeadline $App.Deadline) } catch { $err.Add($_.Exception.Message) }
     if ($App.Type -eq 'store') {
         if (-not (Test-HUStoreId $App.StoreId)) { $err.Add('Store-ID fehlt oder ist ungueltig.') }
@@ -488,11 +490,13 @@ function Test-HUAppPackageReady($App) {
 }
 
 function Get-HUAppTargets($App, [switch]$Main) {
+    if ($App.TargetKind -eq 'none') { return @() }
     if ($App.Pilot -and -not $Main) { return @(@{ Kind = 'group'; GroupName = $App.PilotGroup; Intent = $App.Intent }) }
     return @(@{ Kind = $App.TargetKind; GroupName = $App.TargetGroup; Intent = $App.Intent })
 }
 
 function Get-HUAppTargetText($App, [switch]$Main) {
+    if ($App.TargetKind -eq 'none') { return 'keine Zuweisung (nur hochladen/aktualisieren)' }
     $intent = switch ($App.Intent) { 'available' { 'verfuegbar' } 'uninstall' { 'deinstallieren' } default { 'erforderlich' } }
     if ($App.Pilot -and -not $Main) { return "Pilotgruppe '$($App.PilotGroup)' ($intent)" }
     $t = switch ($App.TargetKind) { 'allDevices' { 'Alle Geraete' } 'allUsers' { 'Alle Benutzer' } default { "Gruppe '$($App.TargetGroup)'" } }
@@ -599,9 +603,11 @@ $script:AppDeployCode = {
                     }
                 }
             }
-            $tg = @(Resolve-HUTargets -TenantKey $tk -Settings $Settings -Targets $Targets)
-            $n = Set-HUAppAssignment -TenantKey $tk -Settings $Settings -AppId $r.AppId -AppKind $(if ($main.Type -eq 'store') { 'winget' } else { 'win32' }) -Targets $tg -Notifications $Notify -Deadline $Deadline
-            Write-HULog -Message "Zugewiesen: $(@($tg | ForEach-Object { $_.Label }) -join ', ') - insgesamt $n Zuweisung(en)" -Level 'OK' -Tenant $tk
+            if (@($Targets).Count) {
+                $tg = @(Resolve-HUTargets -TenantKey $tk -Settings $Settings -Targets $Targets)
+                $n = Set-HUAppAssignment -TenantKey $tk -Settings $Settings -AppId $r.AppId -AppKind $(if ($main.Type -eq 'store') { 'winget' } else { 'win32' }) -Targets $tg -Notifications $Notify -Deadline $Deadline
+                Write-HULog -Message "Zugewiesen: $(@($tg | ForEach-Object { $_.Label }) -join ', ') - insgesamt $n Zuweisung(en)" -Level 'OK' -Tenant $tk
+            } else { Write-HULog -Message 'Ohne Zuweisung hochgeladen (vorhandene Zuweisungen bleiben unveraendert)' -Level 'OK' -Tenant $tk }
             $r.Ok = $true
         } catch {
             $r.Error = $_.Exception.Message
@@ -689,7 +695,10 @@ function Complete-HUAppDeploy($Result) {
             if ($r.Signature) { $v.Signature = $r.Signature }
             if ($r.Ok) {
                 $v.Time = $now
-                $v.Stage = $(if ($script:AppJobRelease -or -not $a.Pilot) { 'all' } else { 'pilot' })
+                # "Keine Zuweisung" laesst eine fruehere Zuweisung stehen
+                $old0 = Get-HUAppDeployment $a $r.Tenant
+                $v.Stage = if ($a.TargetKind -eq 'none' -and -not $script:AppJobRelease) { if ($old0 -and $old0.Stage -in 'all', 'pilot') { $old0.Stage } else { 'none' } }
+                           elseif ($script:AppJobRelease -or -not $a.Pilot) { 'all' } else { 'pilot' }
                 if (-not $script:AppJobRelease) { $v.Version = $a.Version }
             }
             Set-HUAppDeployment $a $r.Tenant $v

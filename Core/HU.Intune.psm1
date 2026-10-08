@@ -40,7 +40,7 @@ function Invoke-HUIntuneGraph {
         $ver = if ($V1) { 'v1.0' } else { 'beta' }
         $r = Invoke-HUGraphRaw -Token $tok -Endpoint $Endpoint -Method $Method -Body $Body -Version $ver
         if ($r -and $r.PSObject.Properties['IsError'] -and $r.IsError) {
-            if ($r.StatusCode -in 429, 503, 504 -and $try -lt 4) { Start-Sleep -Seconds (5 * $try); continue }
+            if ($r.StatusCode -in 429, 500, 502, 503, 504 -and $try -lt 4) { Start-Sleep -Seconds (5 * $try); continue }
             throw "Graph $Method $($Endpoint -replace '\?.*$', ''): $($r.ErrorMessage)"
         }
         return $r
@@ -798,6 +798,20 @@ function New-HUAssignmentTarget($Target) {
     }
 }
 
+function Wait-HUAppPublished {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId, [int]$MaxSeconds = 300)
+    $start = Get-Date; $said = $false
+    while ($true) {
+        $a = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId"
+        $st = "$($a.publishingState)"
+        if (-not $st -or $st -eq 'published') { return }
+        if (((Get-Date) - $start).TotalSeconds -gt $MaxSeconds) { throw "App ist nach $MaxSeconds s noch nicht bereit (Status: $st) - spaeter erneut 'Hochladen & zuweisen' (Paket wird nicht noch einmal hochgeladen)" }
+        if (-not $said) { Write-HULog -Message "Intune verarbeitet die App noch ($st) - warte ..." -Level 'INFO' -Tenant $TenantKey; $said = $true }
+        Start-Sleep -Seconds 10
+    }
+}
+
 function Set-HUAppAssignment {
     [CmdletBinding()]
     param(
@@ -808,6 +822,8 @@ function Set-HUAppAssignment {
         $Deadline = $null
     )
     $setType = if ($AppKind -eq 'winget') { '#microsoft.graph.winGetAppAssignmentSettings' } else { '#microsoft.graph.win32LobAppAssignmentSettings' }
+    # Zuweisen geht erst, wenn Intune die App fertig verarbeitet hat (publishingState = published)
+    Wait-HUAppPublished -TenantKey $TenantKey -Settings $Settings -AppId $AppId
     $list = [ordered]@{}
     foreach ($a in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/assignments")) {
         $h = @{ '@odata.type' = '#microsoft.graph.mobileAppAssignment'; intent = "$($a.intent)"; target = $a.target }
@@ -1264,7 +1280,7 @@ Export-ModuleMember -Function @(
     'Get-HUIntuneWinAppUtil', 'New-HUIntuneWinPackage',
     'Get-HUDefaultReturnCodes', 'ConvertTo-HUDetectionRule', 'ConvertTo-HUWin32Payload',
     'Get-HUIntuneApp', 'New-HUWin32App', 'Update-HUWin32App', 'Publish-HUWin32Content', 'New-HUStoreApp',
-    'Set-HUAppAssignment', 'Invoke-HUExportReport', 'Get-HUErrorText', 'Get-HUAppInstallStatus',
+    'Set-HUAppAssignment', 'Wait-HUAppPublished', 'Invoke-HUExportReport', 'Get-HUErrorText', 'Get-HUAppInstallStatus',
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'ConvertFrom-HUSandboxEntry',

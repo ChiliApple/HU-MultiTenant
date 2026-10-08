@@ -98,7 +98,7 @@ function Update-HURemTenantChecks {
 
 function Get-HURemDeploymentText($Deployments) {
     $parts = foreach ($d in @($Deployments | Where-Object { $_.ScriptId })) {
-        $st = switch ("$($d.Stage)") { 'pilot' { 'Pilot' } 'all' { 'alle' } default { 'nicht zugewiesen' } }
+        $st = switch ("$($d.Stage)") { 'pilot' { 'Pilot' } 'all' { 'alle' } 'none' { 'ohne Zuweisung' } default { 'nicht zugewiesen' } }
         "$(Get-HUTenantDisplayName $d.Tenant): $st$(if ($d.Time) { ", $($d.Time)" })"
     }
     if (-not @($parts).Count) { return 'Noch nicht verteilt.' }
@@ -118,7 +118,9 @@ function Update-HURemScheduleUi {
     $c['txtRemDate'].Visibility = $(if ($t -eq 'once') { 'Visible' } else { 'Collapsed' })
     $c['txtRemGroup'].IsEnabled = ((Get-HUComboTag $c['cmbRemTarget']) -eq 'group')
     $c['btnRemGroupPick'].IsEnabled = $c['txtRemGroup'].IsEnabled
-    $c['txtRemPilot'].IsEnabled = [bool]$c['chkRemPilot'].IsChecked
+    $none = ((Get-HUComboTag $c['cmbRemTarget']) -eq 'none')
+    foreach ($n in 'chkRemPilot', 'btnRemPilotPick', 'cmbRemSchedule', 'txtRemInterval', 'txtRemTime', 'txtRemDate') { $c[$n].IsEnabled = -not $none }
+    $c['txtRemPilot'].IsEnabled = [bool]$c['chkRemPilot'].IsChecked -and -not $none
 }
 
 function Update-HURemButtons {
@@ -368,9 +370,11 @@ $script:RemDeployCode = {
                 $sid = $new
             }
             $r.ScriptId = $sid
-            $tg = @(Resolve-HUTargets -TenantKey $tk -Settings $Settings -Targets $Targets)
-            $n = Set-HURemediationAssignment -TenantKey $tk -Settings $Settings -Id $sid -Targets $tg -Schedule $Schedule -RunRemediation ([bool]"$($Def.Remediation)".Trim())
-            Write-HULog -Message "Zugewiesen: $(@($tg | ForEach-Object { $_.Label }) -join ', ') ($ScheduleText) - insgesamt $n Zuweisung(en)" -Level 'OK' -Tenant $tk
+            if (@($Targets).Count) {
+                $tg = @(Resolve-HUTargets -TenantKey $tk -Settings $Settings -Targets $Targets)
+                $n = Set-HURemediationAssignment -TenantKey $tk -Settings $Settings -Id $sid -Targets $tg -Schedule $Schedule -RunRemediation ([bool]"$($Def.Remediation)".Trim())
+                Write-HULog -Message "Zugewiesen: $(@($tg | ForEach-Object { $_.Label }) -join ', ') ($ScheduleText) - insgesamt $n Zuweisung(en)" -Level 'OK' -Tenant $tk
+            } else { Write-HULog -Message 'Ohne Zuweisung hochgeladen (vorhandene Zuweisungen bleiben unveraendert)' -Level 'OK' -Tenant $tk }
             $r.Ok = $true
         } catch {
             $r.Error = $_.Exception.Message
@@ -394,14 +398,14 @@ function Start-HURemDeploy([switch]$Release) {
     if (-not $r.Name) { $err.Add('Name fehlt.') }
     if (-not $tenants.Count) { $err.Add('Kein Tenant angehakt.') }
     if ($r.TargetKind -eq 'group' -and -not $r.TargetGroup) { $err.Add('Zielgruppe fehlt (oder "Alle Geraete" waehlen).') }
-    if ($r.Pilot -and -not $Release -and -not $r.PilotGroup) { $err.Add('Pilotgruppe fehlt.') }
+    if ($r.Pilot -and -not $Release -and -not $r.PilotGroup -and $r.TargetKind -ne 'none') { $err.Add('Pilotgruppe fehlt.') }
     $sched = $null
     try { $sched = Get-HURemSchedule $r } catch { $err.Add($_.Exception.Message) }
     if ($err.Count) { Show-HUMessage ("Bitte zuerst ergaenzen:`n`n- " + ($err -join "`n- ")) 'Wartung' -Icon Warning; return }
     if (-not $Release -and -not (Invoke-HURemCheck)) { Show-HUMessage 'Die Pruefung hat Fehler gefunden (siehe Ausgabe) - bitte zuerst beheben.' 'Wartung' -Icon Warning; return }
 
-    $targets = if ($r.Pilot -and -not $Release) { @(@{ Kind = 'group'; GroupName = $r.PilotGroup }) } else { @(@{ Kind = $r.TargetKind; GroupName = $r.TargetGroup }) }
-    $tText = if ($r.Pilot -and -not $Release) { "Pilotgruppe '$($r.PilotGroup)'" } elseif ($r.TargetKind -eq 'allDevices') { 'Alle Geraete' } else { "Gruppe '$($r.TargetGroup)'" }
+    $targets = if ($r.TargetKind -eq 'none' -and -not $Release) { @() } elseif ($r.Pilot -and -not $Release) { @(@{ Kind = 'group'; GroupName = $r.PilotGroup }) } else { @(@{ Kind = $r.TargetKind; GroupName = $r.TargetGroup }) }
+    $tText = if ($r.TargetKind -eq 'none' -and -not $Release) { 'keine Zuweisung (nur hochladen/aktualisieren)' } elseif ($r.Pilot -and -not $Release) { "Pilotgruppe '$($r.PilotGroup)'" } elseif ($r.TargetKind -eq 'allDevices') { 'Alle Geraete' } else { "Gruppe '$($r.TargetGroup)'" }
     $names = @($tenants | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', '
     $mode = if ("$($r.Remediation)".Trim()) { 'pruefen und reparieren' } else { 'nur pruefen und berichten' }
     if (-not (Confirm-HU "$($r.Name)`n`nTenants: $names`nZiel: $tText`nZeitplan: $(Get-HURemScheduleText $r)`nModus: $mode, als $(if ($r.RunAs -eq 'user') { 'Benutzer' } else { 'System' })`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
@@ -429,7 +433,7 @@ function Complete-HURemDeploy($Result) {
             if ($x.Ok) { $okN++ } else { $failN++ }
             if (-not $x.ScriptId) { continue }
             $v = @{ ScriptId = $x.ScriptId }
-            if ($x.Ok) { $v.Time = Get-Date -Format 'dd.MM. HH:mm'; $v.Stage = $(if ($script:RemJobRelease -or -not $r.Pilot) { 'all' } else { 'pilot' }) }
+            if ($x.Ok) { $v.Time = Get-Date -Format 'dd.MM. HH:mm'; $old0 = @($r.Deployments) | Where-Object { $_.Tenant -eq $x.Tenant } | Select-Object -First 1; $v.Stage = $(if ($r.TargetKind -eq 'none' -and -not $script:RemJobRelease) { if ($old0 -and $old0.Stage -in 'all', 'pilot') { $old0.Stage } else { 'none' } } elseif ($script:RemJobRelease -or -not $r.Pilot) { 'all' } else { 'pilot' }) }
             Set-HURemDeployment $r $x.Tenant $v
         }
         Save-HURemLib
