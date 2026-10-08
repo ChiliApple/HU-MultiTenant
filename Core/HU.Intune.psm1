@@ -710,11 +710,22 @@ function Save-HUStoreAppIcon([string]$StoreId, [string]$OutFile) {
 function New-HUInstallWrapper([string]$Cmd) {
     $c = "$Cmd".Replace("'", "''")
     return @"
-# HU-MultiTenant: Installation ohne neue Desktop-Verknuepfungen
-`$dirs = @("`$env:PUBLIC\Desktop", [Environment]::GetFolderPath('Desktop'))
-`$before = @(Get-ChildItem -Path `$dirs -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object { `$_.FullName })
+# HU-MultiTenant: Installation ohne neue Desktop-Verknuepfungen. Protokoll: %ProgramData%\HU-MultiTenant\Logs\HU-Install.log
+`$log = Join-Path `$env:ProgramData 'HU-MultiTenant\Logs\HU-Install.log'
+try { New-Item -ItemType Directory -Path (Split-Path `$log) -Force | Out-Null } catch { }
+function W([string]`$t) { try { Add-Content -LiteralPath `$log -Value ("{0:yyyy-MM-dd HH:mm:ss} {1}" -f (Get-Date), `$t) -Encoding UTF8 } catch { } }
+`$dirs = @("`$env:PUBLIC\Desktop", [Environment]::GetFolderPath('Desktop'), "`$env:SystemDrive\Users\Default\Desktop") | Where-Object { `$_ } | Select-Object -Unique
+`$before = @(Get-ChildItem -Path `$dirs -Filter *.lnk -Force -ErrorAction SilentlyContinue | ForEach-Object { `$_.FullName })
+W ('Start: ' + '$c')
 `$p = Start-Process -FilePath "`$env:ComSpec" -ArgumentList '/c', ('"' + '$c' + '"') -WorkingDirectory `$PSScriptRoot -WindowStyle Hidden -Wait -PassThru
-Get-ChildItem -Path `$dirs -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { `$before -notcontains `$_.FullName } | Remove-Item -Force -ErrorAction SilentlyContinue
+W "Setup beendet, Exitcode `$(`$p.ExitCode)"
+# manche Setups legen Verknuepfungen erst kurz nach dem Ende an -> 30 s lang nachsehen
+for (`$i = 0; `$i -lt 15; `$i++) {
+    foreach (`$l in @(Get-ChildItem -Path `$dirs -Filter *.lnk -Force -ErrorAction SilentlyContinue | Where-Object { `$before -notcontains `$_.FullName })) {
+        try { Remove-Item -LiteralPath `$l.FullName -Force -ErrorAction Stop; W "Desktop-Verknuepfung entfernt: `$(`$l.FullName)" } catch { W "Nicht entfernt: `$(`$l.FullName) - `$(`$_.Exception.Message)" }
+    }
+    Start-Sleep -Seconds 2
+}
 exit `$p.ExitCode
 "@
 }
@@ -1272,7 +1283,7 @@ function Enable-HUSandbox {
 $script:SandboxScript = @'
 $ErrorActionPreference = 'Continue'
 $cfg = Get-Content -LiteralPath 'C:\HUTest\config.json' -Raw | ConvertFrom-Json
-$result = [ordered]@{ ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @(); InstallLog = ''; UninstallLog = ''; DesktopLinks = @() }
+$result = [ordered]@{ ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @(); InstallLog = ''; UninstallLog = ''; DesktopLinks = @(); WrapperLog = @() }
 function Get-Snap {
     $l = @()
     foreach ($p in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall') {
@@ -1374,8 +1385,11 @@ try {
         }
     } catch { }
     $result.NewFolders = @(Get-Dirs | Where-Object { $dirsBefore -notcontains $_ })
+    Start-Sleep -Seconds 5
     $result.DesktopLinks = @(Get-ChildItem -Path $lnkDirs -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $lnkBefore -notcontains $_.FullName } | ForEach-Object { $_.Name })
-    Write-Host "Exitcode $($result.ExitCode), neue Eintraege: $(@($result.NewEntries).Count)" -ForegroundColor Green
+    $wl = Join-Path $env:ProgramData 'HU-MultiTenant\Logs\HU-Install.log'
+    if (Test-Path $wl) { $result.WrapperLog = @(Get-Content $wl -ErrorAction SilentlyContinue | Select-Object -Last 20) }
+    Write-Host "Exitcode $($result.ExitCode) nach $($result.Seconds) s, neue Programme: $(@($result.NewEntries).Count)$(if (@($result.DesktopLinks).Count) { ', Desktop-Verknuepfungen: ' + (@($result.DesktopLinks) -join ', ') })" -ForegroundColor Green
     if ($cfg.TestUninstall -and "$($cfg.Uninstall)".Trim()) {
         Write-Host "Deinstalliere: $($cfg.Uninstall)" -ForegroundColor Yellow
         $result.UninstallTested = $true
@@ -1393,8 +1407,10 @@ try {
     }
 } catch { $result.Error = $_.Exception.Message }
 $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'C:\HUTest\result.json' -Encoding UTF8
-Write-Host 'Fertig.' -ForegroundColor Green
-if (-not $cfg.KeepOpen) { Start-Sleep -Seconds 3; shutdown.exe /s /t 0 }
+Write-Host ''
+Write-Host 'Fertig - Ergebnis steht in HU-MultiTenant.' -ForegroundColor Green
+if (-not $cfg.KeepOpen) { Write-Host 'Sandbox wird in 5 Sekunden geschlossen ...'; Start-Sleep -Seconds 5; shutdown.exe /s /t 0 }
+else { Write-Host 'Sandbox bleibt offen (zum Nachsehen). Schliessen mit dem X oben rechts.' -ForegroundColor Yellow }
 '@
 
 function Start-HUSandboxTest {
@@ -1423,7 +1439,7 @@ function Start-HUSandboxTest {
     <MappedFolder><HostFolder>$(& $esc $SourceFolder)</HostFolder><SandboxFolder>C:\HUSource</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>
     <MappedFolder><HostFolder>$(& $esc $WorkFolder)</HostFolder><SandboxFolder>C:\HUTest</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>
   </MappedFolders>
-  <LogonCommand><Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\HUTest\HUTest.ps1</Command></LogonCommand>
+  <LogonCommand><Command>cmd.exe /c start "HU-MultiTenant Testinstallation" powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass -File C:\HUTest\HUTest.ps1</Command></LogonCommand>
 </Configuration>
 "@
     $wsbFile = Join-Path $WorkFolder 'HUTest.wsb'

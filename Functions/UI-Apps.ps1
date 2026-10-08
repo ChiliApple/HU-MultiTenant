@@ -991,7 +991,9 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     $entries = @($Res.NewEntries | Where-Object { $_ })
     $links = @($Res.DesktopLinks | Where-Object { $_ })
     if ($links.Count) { $lines.Add("Desktop-Verknuepfung(en): $($links -join ', ')$(if (-not $a.NoDesktop) { "  -> 'Ohne Desktop-Verknuepfung' anhaken, wenn unerwuenscht" })") }
-    elseif ($a.NoDesktop) { $lines.Add('Desktop-Verknuepfung: keine (wird entfernt)') }
+    $removed = @($Res.WrapperLog | Where-Object { $_ -match 'Verknuepfung entfernt|Nicht entfernt' } | ForEach-Object { ($_ -replace '^\S+ \S+ ', '') })
+    if ($removed.Count) { foreach ($x in $removed) { $lines.Add($x) } }
+    elseif ($a.NoDesktop) { $lines.Add('Desktop-Verknuepfung: Setup hat keine angelegt') }
     $lines.Add("Neue Programme in 'Apps & Features': $($entries.Count)$(if ($entries.Count) { ' - ' + (@($entries | Select-Object -First 4 | ForEach-Object { "$($_.DisplayName) $($_.DisplayVersion)".Trim() }) -join '; ') })")
     if ($Res.UninstallTested) {
         $winU = @($Res.UninstallWindows | Where-Object { $_ })
