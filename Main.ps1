@@ -132,6 +132,7 @@ Register-HURemHandlers
 Register-HURintHandlers
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
 $script:Controls['btnSupport'].Add_Click({ Show-HUSupport })
+$script:Controls['btnPanic'].Add_Click({ Invoke-HUPanic })
 # Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
 $script:Controls['tabMain'].Add_SelectionChanged({ param($s, $e) if ($e.OriginalSource -eq $script:Controls['tabMain']) { Update-HULeftPanel } })
 # Rechtsklick in den Ausgaben: Kopieren / Alles kopieren / Ausgabe leeren

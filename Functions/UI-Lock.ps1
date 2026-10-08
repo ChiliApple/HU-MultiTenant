@@ -402,3 +402,41 @@ function Start-HULockTimer {
         })
     $script:LockTimer.Start()
 }
+
+# ----------------------------------------------------------------------------
+# Not-Aus: bei Verdacht auf Uebernahme alle lokal gespeicherten Secrets loeschen und beenden
+# ----------------------------------------------------------------------------
+function Get-HUPanicUrls {
+    # Entra: App-Registrierung > Zertifikate & Geheimnisse des jeweiligen Tenants
+    foreach ($t in @($script:Settings.tenants)) {
+        $tid = "$(Get-HUProp $t 'tenantId' '')"; $aid = "$(Get-HUProp $t 'appId' '')"
+        if ($tid -match '^[0-9a-fA-F-]{36}$' -and $aid -match '^[0-9a-fA-F-]{36}$') {
+            "https://entra.microsoft.com/$tid/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/$aid"
+        }
+    }
+}
+
+function Invoke-HUPanic {
+    $msg = "NOT-AUS`n`nAlle auf diesem PC gespeicherten Client-Secrets (und das GitHub-Signier-Token) werden sofort geloescht, alle Verbindungen getrennt und HU-MultiTenant beendet.`n`nDanach oeffnen sich die App-Registrierungen der Tenants im Browser - dort die Secrets widerrufen, falls sie schon kopiert wurden.`n`nFortfahren?"
+    if (-not (Confirm-HU $msg -Title 'Not-Aus' -Warning)) { return }
+    $base = Join-Path $env:APPDATA 'HU-MultiTenant'
+    $n = 0
+    try { Clear-TokenCache } catch { }
+    $files = @(Get-ChildItem -LiteralPath $base -Filter '*.cred' -File -ErrorAction SilentlyContinue)
+    $files += @(Get-ChildItem -LiteralPath $base -Filter 'GitHubSignToken.xml' -File -ErrorAction SilentlyContinue)
+    foreach ($f in $files) {
+        try {
+            # erst ueberschreiben, dann loeschen
+            [System.IO.File]::WriteAllBytes($f.FullName, (New-Object byte[] ([Math]::Max(1, [int]$f.Length))))
+            Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop
+            $n++
+        } catch { try { Write-HULog -Message "Not-Aus: $($f.Name) nicht geloescht: $($_.Exception.Message)" -Level 'ERROR' } catch { } }
+    }
+    $left = @(Get-ChildItem -LiteralPath $base -Filter '*.cred' -File -ErrorAction SilentlyContinue).Count
+    try { Write-HULog -Message "=== NOT-AUS: $n Secret-Datei(en) geloescht, $left uebrig ===" -Level 'WARN' } catch { }
+    foreach ($u in @(Get-HUPanicUrls)) { Open-HUUrl $u }
+    if ($left -gt 0) { Show-HUMessage "Achtung: $left Secret-Datei(en) konnten nicht geloescht werden.`nOrdner: $base" -Title 'Not-Aus' -Icon Error }
+    $script:SkipCloseChecks = $true
+    $script:LockActive = $false
+    try { $script:Window.Close() } catch { }
+}
