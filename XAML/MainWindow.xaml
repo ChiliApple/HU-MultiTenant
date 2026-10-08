@@ -71,12 +71,12 @@
         <Grid x:Name="gridMain" Margin="10,8,10,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="colLeft" Width="320" MinWidth="200"/>
-                <ColumnDefinition Width="8"/>
+                <ColumnDefinition x:Name="colSplit" Width="8"/>
                 <ColumnDefinition Width="*" MinWidth="380"/>
             </Grid.ColumnDefinitions>
 
             <!-- LINKS: EXTENSIONS -->
-            <Border Grid.Column="0" Background="#2D2D2D" CornerRadius="4" Padding="10">
+            <Border Grid.Column="0" x:Name="pnlLeft" Background="#2D2D2D" CornerRadius="4" Padding="10">
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock x:Name="btnReloadExt" DockPanel.Dock="Right" Text="&#x21BB;" Foreground="#858585"
@@ -118,7 +118,7 @@
                 </DockPanel>
             </Border>
 
-            <GridSplitter Grid.Column="1" Width="4" Background="#3E3E42" Opacity="0.5" HorizontalAlignment="Center"
+            <GridSplitter Grid.Column="1" x:Name="splLeft" Width="4" Background="#3E3E42" Opacity="0.5" HorizontalAlignment="Center"
                           VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext" Cursor="SizeWE"/>
 
             <!-- RECHTS: Reiter Quick Script | Extensions | Apps | Wartung -->

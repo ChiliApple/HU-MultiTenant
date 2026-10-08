@@ -129,6 +129,8 @@ Register-HUUpdateHandlers
 Register-HUAppHandlers
 Register-HURemHandlers
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
+# Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
+$script:Controls['tabMain'].Add_SelectionChanged({ param($s, $e) if ($e.OriginalSource -eq $script:Controls['tabMain']) { Update-HULeftPanel } })
 # Rechtsklick in den Ausgaben: Kopieren / Alles kopieren / Ausgabe leeren
 Add-HUOutputMenu $script:Controls['rtbQSOutput'] { $script:Controls['rtbQSOutput'].Document.Blocks.Clear() }
 Add-HUOutputMenu $script:Controls['rtbLog'] { Clear-LogBuffer -IncludeGui }
@@ -201,6 +203,7 @@ $script:Window.Add_ContentRendered({
                 if (-not $script:Controls['rtbQSOutput'].ContextMenu -or -not $script:Controls['rtbLog'].ContextMenu) { throw 'Rechtsklick-Menue fehlt' }
                 # Reiter Apps: Store-App und Win32-Erkennung im Formular
                 $script:Controls['tabMain'].SelectedItem = $script:Controls['tabApps']
+                if (-not $script:LeftHidden -or $script:Controls['pnlLeft'].Visibility -ne 'Collapsed') { throw 'Extension-Liste wird in Apps nicht ausgeblendet' }
                 $ta = ConvertTo-HUApp; $ta.Type = 'store'; $ta.Kind = 'store'; $ta.Name = 'Smoke-Store'; $ta.StoreId = '9NKSQGP7F2NH'; $ta.TargetKind = 'allDevices'
                 $ta.Tenants = @("$(@($script:Settings.tenants)[0].key)")
                 $script:AppLib.Add($ta); Update-HUAppList $ta.Id; Show-HUAppForm $ta; Save-HUAppForm
@@ -223,6 +226,8 @@ $script:Window.Add_ContentRendered({
                 if (-not $script:Controls['rtbApps'].ContextMenu -or -not $script:Controls['rtbRem'].ContextMenu) { throw 'Rechtsklick-Menue Apps/Wartung fehlt' }
                 $steps += 'Wartung'
                 $script:Controls['tabMain'].SelectedItem = $script:Controls['tabQuickScript']
+                if ($script:LeftHidden -or $script:Controls['colLeft'].Width.Value -lt 200) { throw 'Extension-Liste kommt nicht zurueck' }
+                $steps += 'Liste links'
                 $steps += 'Rechtsklick'
                 if ('HUTaskbar' -as [type]) { $steps += 'Taskleiste' }
                 Update-HUSecretDisplay; $steps += 'Secret-Anzeige'

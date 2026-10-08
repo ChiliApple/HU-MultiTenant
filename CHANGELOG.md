@@ -17,6 +17,7 @@
   - **Pruefen** ohne Ausfuehrung (exit 1, Neustart, Eingaben, PowerShell-7-Syntax, Benutzerpfade unter SYSTEM) und Pruefskript lokal testen
   - Verteilen mit Zeitplan (taeglich, stuendlich, einmal), optional Pilotgruppe; **Ergebnisse** je Geraet; **Jetzt auf Geraet ausfuehren**
   - 5 Beispiele (Speicherplatz, Zeitdienst, Windows Update, Neustart ueberfaellig, BitLocker)
+- In den Reitern Apps und Wartung ist die Extension-Liste links ausgeblendet (mehr Platz); Start-Reiter auch Apps oder Wartung
 - Neue Berechtigungen (nur fuer die neuen Reiter): DeviceManagementApps.ReadWrite.All, DeviceManagementScripts.ReadWrite.All, Group.Read.All, fuer "Jetzt ausfuehren" DeviceManagementManagedDevices.PrivilegedOperations.All
 
 ## v2.0.2 (2026-10-08)

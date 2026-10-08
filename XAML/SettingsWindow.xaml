@@ -60,6 +60,8 @@
                             <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbStartTab" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3">
                                 <ComboBoxItem Content="Quick Script" Tag="QuickScript"/>
                                 <ComboBoxItem Content="Extensions" Tag="Extensions"/>
+                                <ComboBoxItem Content="Apps" Tag="Apps"/>
+                                <ComboBoxItem Content="Wartung" Tag="Wartung"/>
                                 <ComboBoxItem Content="Zuletzt verwendeter Reiter" Tag="Last"/>
                             </ComboBox>
                             <TextBlock Grid.Row="1" Text="Oberfl&#xE4;chengr&#xF6;&#xDF;e" Style="{StaticResource FieldLabel}"/>
