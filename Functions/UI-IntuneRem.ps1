@@ -554,7 +554,7 @@ function Copy-HURintToTenants {
         })
     $def = [pscustomobject]@{ Name = $d0.Name; Description = $d0.Description; Publisher = $d0.Publisher; Detection = $d0.Detection; Remediation = $d0.Remediation; RunAs = $d0.RunAs; RunAs32 = [bool]$d0.RunAs32 }
     $script:RintCopyKeys = @($state.Keys)
-    Add-HURtbLine $script:Controls['rtbRem'] "=== Kopieren: $($it.Name) -> $(@($state.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') ===" '#4FC3F7'
+    Add-HURtbLine $script:Controls['rtbRem'] "=== Kopieren: $($it.Name) -> $(@($state.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') $(if (-not $withAsg) { '(ohne Zuweisungen)' } elseif ($missing -eq 'allDevices') { '(fehlende Gruppe -> Alle Geraete)' } else { '(fehlende Gruppe -> nicht zuweisen)' }) ===" '#4FC3F7'
     [void](Start-HUJob -Name 'RintAct' -Output $script:Controls['rtbRem'] -Vars @{ TargetKeys = @($state.Keys); Def = $def; Rows = $rows; Missing = $missing } -Code {
             foreach ($k in $TargetKeys) {
                 try {
