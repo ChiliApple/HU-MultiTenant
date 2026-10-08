@@ -34,7 +34,8 @@ function Get-HULogLineColor([string]$Line) {
 
 function Test-HUJobRunning([string]$Name) {
     $j = $script:HUJobs[$Name]
-    return ($j -and -not $j.Handle.IsCompleted)
+    # laeuft, bis das Ergebnis abgeholt ist (sonst koennte ein zweiter Auftrag gleichen Namens den ersten ueberholen)
+    return ($j -and -not $j.Done)
 }
 
 function Start-HUJob {
@@ -66,13 +67,14 @@ function Start-HUJob {
             Initialize-Logging -LogFilePath $__JobLog -MinLevel 'INFO'
             & ([scriptblock]::Create($__JobCode))
         })
-    $state = @{ Name = $Name; PS = $ps; RS = $rs; Log = $log; Pos = 0L; Output = $Output; OnDone = $OnDone; Started = Get-Date; Timer = $null; Handle = $null; Quiet = [bool]$Quiet }
+    $state = @{ Name = $Name; PS = $ps; RS = $rs; Log = $log; Pos = 0L; Output = $Output; OnDone = $OnDone; Started = Get-Date; Timer = $null; Handle = $null; Quiet = [bool]$Quiet; Done = $false }
     $state.Handle = $ps.BeginInvoke()
     $script:HUJobs[$Name] = $state
     $t = [System.Windows.Threading.DispatcherTimer]::new()
     $t.Interval = [TimeSpan]::FromMilliseconds(400)
-    $t.Tag = $Name
-    $t.Add_Tick({ Update-HUJob "$($this.Tag)" })
+    # der Timer kennt seinen eigenen Auftrag (nicht nur den Namen) - so stoppt er sicher sich selbst
+    $t.Tag = $state
+    $t.Add_Tick({ Update-HUJob $this.Tag })
     $state.Timer = $t
     $t.Start()
     return $true
@@ -93,12 +95,16 @@ function Read-HUJobLog($State) {
     } catch { }
 }
 
-function Update-HUJob([string]$Name) {
-    $s = $script:HUJobs[$Name]
+function Update-HUJob($State) {
+    $s = $State
     if (-not $s) { return }
+    if ($s.Done) { $s.Timer.Stop(); return }
     Read-HUJobLog $s
     if (-not $s.Handle.IsCompleted) { return }
     $s.Timer.Stop()
+    $s.Done = $true
+    # Auftraege mit eindeutigem Namen (z. B. je Tenant) nicht ansammeln
+    if ($script:HUJobs[$s.Name] -eq $s -and $s.Name -match '-\d+-') { $script:HUJobs.Remove($s.Name) }
     $result = $null; $errs = @()
     try { $result = $s.PS.EndInvoke($s.Handle) } catch { $errs += $_.Exception.InnerException.Message; if (-not $errs[-1]) { $errs[-1] = $_.Exception.Message } }
     $errs += @($s.PS.Streams.Error | ForEach-Object { "$($_.Exception.Message)" })
