@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Sperre: HU-MultiTenant nach einstellbarer Zeit ohne Eingabe (und auf Wunsch beim Start) sperren.
@@ -127,13 +127,21 @@ function Show-HULockPinDialog($Owner = $null) {
 $script:HelloCode = {
     try {
         Add-Type -AssemblyName System.Runtime.WindowsRuntime
-        $null = [Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]
+        $ucv = [Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]
+        # Ergebnis-Typen aus den Methoden lesen (liegen in Windows.Security.winmd, nicht in ...Credentials.UI)
+        $tAvail = $ucv.GetMethod('CheckAvailabilityAsync').ReturnType.GetGenericArguments()[0]
+        $tResult = $ucv.GetMethod('RequestVerificationAsync').ReturnType.GetGenericArguments()[0]
         $asTask = @([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
-        $await = { param($Op, [type]$T) $t = $asTask.MakeGenericMethod($T).Invoke($null, @($Op)); [void]$t.Wait(-1); $t.Result }
-        $avail = & $await ([Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync()) ([Windows.Security.Credentials.UI.UserConsentVerifierAvailability])
-        if ("$avail" -ne 'Available') { return "nicht verfuegbar ($avail)" }
-        $r = & $await ([Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync('HU-MultiTenant entsperren')) ([Windows.Security.Credentials.UI.UserConsentVerificationResult])
-        return "$r"
+        # WinRT-Aufruf abwarten; PowerShell liefert die Operation je nach Version schon als Task
+        $op = $ucv::CheckAvailabilityAsync()
+        $task = if ($op -is [System.Threading.Tasks.Task]) { $op } else { $asTask.MakeGenericMethod($tAvail).Invoke($null, @($op)) }
+        [void]$task.Wait(-1)
+        $avail = "$($task.Result)"
+        if ($avail -ne 'Available') { return "nicht verfuegbar ($avail)" }
+        $op = $ucv::RequestVerificationAsync('HU-MultiTenant entsperren')
+        $task = if ($op -is [System.Threading.Tasks.Task]) { $op } else { $asTask.MakeGenericMethod($tResult).Invoke($null, @($op)) }
+        [void]$task.Wait(-1)
+        return "$($task.Result)"
     } catch { return "Fehler: $($_.Exception.Message)" }
 }
 
