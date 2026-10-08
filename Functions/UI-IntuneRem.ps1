@@ -18,6 +18,9 @@ $script:RintDetail = @{}       # TenantKey -> Detail (Skripte, Zuweisungen, Zusa
 $script:RintDetailKey = ''
 $script:RintDetailPending = $false
 $script:RintLoadThen = $null
+$script:RintGen = 0
+$script:RintEditorFrom = ''
+$script:RintDetailWait = New-Object System.Collections.Generic.List[string]
 
 # ----------------------------------------------------------------------------
 # Ansicht umschalten
@@ -155,7 +158,7 @@ function Update-HURintButtons {
     $it = $script:RintCurrent
     $busy = Test-HUJobRunning 'RintAct'
     $has = [bool]$it
-    $detail = $has -and [bool]$script:RintDetail.Count
+    $detail = $has -and (Test-HURintDetailComplete)
     foreach ($b in 'btnRintResults', 'btnRintRunNow') { $c[$b].IsEnabled = $has -and -not $busy }
     $c['btnRintReloadOne'].IsEnabled = $has
     $c['btnRintPortal'].IsEnabled = $has
@@ -239,70 +242,100 @@ function Update-HURintAssignGrid {
         })
 }
 
-# Skripte, Zuweisungen und Zusammenfassung aller Tenants des Skripts laden (Hintergrund)
+# Skripte, Zuweisungen und Zusammenfassung laden - je Tenant ein eigener Hintergrundauftrag (gleichzeitig),
+# jeder Tenant erscheint, sobald er da ist. Gen verwirft Antworten zu einer frueheren Auswahl.
 function Start-HURintDetail {
     $it = $script:RintCurrent
     if (-not $it) { return }
-    if (Test-HUJobRunning 'RintDetail') { $script:RintDetailPending = $true; return }
-    $script:RintDetailPending = $false
-    $per = @{}; foreach ($k in $it.Per.Keys) { $per[$k] = $it.Per[$k].Id }
+    $script:RintGen++
+    $gen = $script:RintGen
+    $script:RintDetail = @{}
+    $script:RintEditorFrom = ''
     $script:RintDetailKey = $it.Key
-    [void](Start-HUJob -Name 'RintDetail' -Quiet -Output $script:Controls['rtbRem'] -Vars @{ Per = $per } -Code {
-            foreach ($k in $Per.Keys) {
+    $script:RintDetailWait = New-Object System.Collections.Generic.List[string]
+    foreach ($k in @($it.Per.Keys)) {
+        $script:RintDetailWait.Add($k)
+        [void](Start-HUJob -Name "RintDetail-$gen-$k" -Quiet -Output $script:Controls['rtbRem'] -Vars @{ K = $k; Id = $it.Per[$k].Id; Gen = $gen } -Code {
                 $sw = [Diagnostics.Stopwatch]::StartNew()
-                try { Get-HURemediationDetail -TenantKey $k -Settings $Settings -Id $Per[$k] }
-                catch { Write-HULog -Message "Details: $($_.Exception.Message)" -Level 'WARN' -Tenant $k }
-                if ($sw.Elapsed.TotalSeconds -gt 15) { Write-HULog -Message "Details brauchten $([int]$sw.Elapsed.TotalSeconds) s (Intune antwortet langsam)" -Level 'INFO' -Tenant $k }
-            }
-        } -OnDone {
-            param($Result, $Errors)
-            if (-not $script:RintCurrent) { return }
-            if ($script:RintDetailPending -or $script:RintCurrent.Key -ne $script:RintDetailKey) { Start-HURintDetail; return }
-            $c = $script:Controls
-            $script:RintDetail = @{}
-            foreach ($d in @($Result | Where-Object { $_ -and $_.PSObject.Properties['Detection'] })) { $script:RintDetail[$d.Tenant] = $d }
-            $keys = @($script:RintCurrent.Per.Keys | Where-Object { $script:RintDetail.ContainsKey($_) })
-            if (-not $keys.Count) {
-                $c['txtRintSummary'].Text = 'Details nicht lesbar (siehe Ausgabe unten).'
-                if (@($Errors).Count -eq 0) { Add-HURtbLine $c['rtbRem'] "Details zu '$($script:RintCurrent.Name)' kamen leer zurueck." '#FFB74D' }
-                Update-HURintButtons; return
-            }
-            $d0 = $script:RintDetail[$keys[0]]
-            $c['txtRintDetect'].Text = $d0.Detection
-            $c['txtRintFix'].Text = $d0.Remediation
-            $c['txtRintName'].Text = $d0.Name
-            $c['txtRintDesc'].Text = $d0.Description
-            [void](Select-HUComboTag $c['cmbRintRunAs'] $d0.RunAs)
-            $c['chkRint32'].IsChecked = [bool]$d0.RunAs32
-            $multi = ($keys.Count -gt 1)
-            $c['txtRintSummary'].Text = (@(foreach ($k in $keys) { $s = $script:RintDetail[$k].Summary; if ($s) { $(if ($multi) { "$(Get-HUTenantDisplayName $k): " }) + $s } }) -join "`n")
-            if (-not $c['txtRintSummary'].Text) { $c['txtRintSummary'].Text = 'Noch keine Laeufe gemeldet.' }
-            # Skripte zwischen den Tenants vergleichen
-            $diff = @($keys | Where-Object { $script:RintDetail[$_].Detection -ne $d0.Detection -or $script:RintDetail[$_].Remediation -ne $d0.Remediation })
-            $state = @()
-            if ($script:RintCurrent.Global) { $state += 'Skript von Microsoft - Inhalt kann nicht geaendert werden.' }
-            if (-not "$($d0.Detection)".Trim() -and -not $script:RintCurrent.Global) { $state += 'Pruefskript leer oder nicht lesbar.' }
-            if ($diff.Count) { $state += "Skripte unterscheiden sich in: $(@($diff | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') - angezeigt wird $(Get-HUTenantDisplayName $keys[0]). Werden die Skripte geaendert und gespeichert, bekommen alle Tenants diese Fassung (Name/Beschreibung allein aendert sie nicht)." }
-            $c['lblRintScriptState'].Text = ($state -join ' ')
-            Update-HURintAssignGrid
-            Update-HURintButtons
-        })
+                $d = $null
+                try { $d = Get-HURemediationDetail -TenantKey $K -Settings $Settings -Id $Id } catch { Write-HULog -Message "Details: $($_.Exception.Message)" -Level 'WARN' -Tenant $K }
+                if ($sw.Elapsed.TotalSeconds -gt 15) { Write-HULog -Message "Details brauchten $([int]$sw.Elapsed.TotalSeconds) s (Intune antwortet langsam)" -Level 'INFO' -Tenant $K }
+                [pscustomobject]@{ Gen = $Gen; Tenant = $K; Detail = $d }
+            } -OnDone {
+                param($Result, $Errors)
+                $r = @($Result | Where-Object { $_ -and $_.PSObject.Properties['Gen'] })[0]
+                if (-not $r -or $r.Gen -ne $script:RintGen -or -not $script:RintCurrent) { return }
+                [void]$script:RintDetailWait.Remove($r.Tenant)
+                if ($r.Detail) { $script:RintDetail[$r.Tenant] = $r.Detail }
+                Show-HURintDetail
+            })
+    }
+    Update-HURintButtons
+}
+
+function Test-HURintDetailComplete { return ($script:RintCurrent -and $script:RintDetailWait -and $script:RintDetailWait.Count -eq 0 -and $script:RintDetail.Count) }
+
+# Detailansicht aus den bisher geladenen Tenants
+function Show-HURintDetail {
+    $c = $script:Controls; $it = $script:RintCurrent
+    if (-not $it) { return }
+    $keys = @($it.Per.Keys | Where-Object { $script:RintDetail.ContainsKey($_) })
+    $waiting = @($script:RintDetailWait)
+    if ($keys.Count -and -not $script:RintEditorFrom) {
+        # Editor einmal fuellen (erster geladener Tenant) - danach nicht mehr ueberschreiben
+        $script:RintEditorFrom = $keys[0]
+        $d0 = $script:RintDetail[$keys[0]]
+        $c['txtRintDetect'].Text = $d0.Detection
+        $c['txtRintFix'].Text = $d0.Remediation
+        $c['txtRintName'].Text = $d0.Name
+        $c['txtRintDesc'].Text = $d0.Description
+        [void](Select-HUComboTag $c['cmbRintRunAs'] $d0.RunAs)
+        $c['chkRint32'].IsChecked = [bool]$d0.RunAs32
+    }
+    $multi = (@($it.Per.Keys).Count -gt 1)
+    $lines = @(foreach ($k in $keys) { $sm = $script:RintDetail[$k].Summary; $(if ($multi) { "$(Get-HUTenantDisplayName $k): " }) + $(if ($sm) { $sm } else { 'noch keine Laeufe gemeldet' }) })
+    if ($waiting.Count) { $lines += "Lade: $(@($waiting | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') ..." }
+    elseif (-not $keys.Count) { $lines += 'Details nicht lesbar (siehe Ausgabe unten).' }
+    $c['txtRintSummary'].Text = ($lines -join "`n")
+    $state = @()
+    if ($it.Global) { $state += 'Skript von Microsoft - Inhalt kann nicht geaendert werden.' }
+    if ($script:RintEditorFrom) {
+        $d0 = $script:RintDetail[$script:RintEditorFrom]
+        if (-not "$($d0.Detection)".Trim() -and -not $it.Global) { $state += 'Pruefskript leer oder nicht lesbar.' }
+        $diff = @($keys | Where-Object { $script:RintDetail[$_].Detection -ne $d0.Detection -or $script:RintDetail[$_].Remediation -ne $d0.Remediation })
+        if ($diff.Count) { $state += "Skripte unterscheiden sich in: $(@($diff | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') - angezeigt wird $(Get-HUTenantDisplayName $script:RintEditorFrom). Werden die Skripte geaendert und gespeichert, bekommen alle Tenants diese Fassung (Name/Beschreibung allein aendert sie nicht)." }
+    }
+    $c['lblRintScriptState'].Text = ($state -join ' ')
+    Update-HURintAssignGrid
+    Update-HURintButtons
+}
+
+# Quelle der im Editor angezeigten Fassung
+function Get-HURintEditorDetail {
+    if ($script:RintEditorFrom -and $script:RintDetail.ContainsKey($script:RintEditorFrom)) { return $script:RintDetail[$script:RintEditorFrom] }
+    return @($script:RintDetail.Values)[0]
 }
 
 # ----------------------------------------------------------------------------
 # Aktionen (alle Tenants des gewaehlten Skripts)
 # ----------------------------------------------------------------------------
-function Start-HURintAction([string]$Title, [scriptblock]$Code, [hashtable]$Vars = @{}, [string[]]$Only = @()) {
+function Start-HURintAction([string]$Title, [scriptblock]$Code, [hashtable]$Vars = @{}, [string[]]$Only = @(), [scriptblock]$Local = $null) {
     $it = $script:RintCurrent
     if (-not $it) { return }
     if (Test-HUJobRunning 'RintAct') { Show-HUMessage 'Es laeuft bereits eine Aktion - bitte warten.' -Icon Warning; return }
     $per = @{}; foreach ($k in $it.Per.Keys) { if (-not $Only.Count -or $Only -contains $k) { $per[$k] = $it.Per[$k].Id } }
     $Vars.Per = $per; $Vars.ScriptName = $it.Name
     $script:RintActKeys = @($per.Keys)
+    $script:RintActKeysLocal = $Local
     Add-HURtbLine $script:Controls['rtbRem'] "=== $Title`: $($it.Name) ===" '#4FC3F7'
     [void](Start-HUJob -Name 'RintAct' -Output $script:Controls['rtbRem'] -Vars $Vars -Code $Code -OnDone {
             param($Result, $Errors)
-            Start-HURintLoad -Keys $script:RintActKeys -Force -Then { if ($script:RintCurrent) { Show-HURint } }
+            # sofort in der Anzeige nachziehen (z. B. entfernte Zuweisung), dann neu laden - Intune liefert Aenderungen
+            # oft erst nach ein paar Sekunden, daher einmal sofort und einmal verzoegert
+            if ($script:RintActKeysLocal) { try { & $script:RintActKeysLocal } catch { } }
+            else { Start-HURintLoad -Keys $script:RintActKeys -Force -Then { if ($script:RintCurrent) { Show-HURint } } }
+            $script:RintActKeysDelayed = @($script:RintActKeys)
+            Invoke-HUDelayed 6 { Start-HURintLoad -Keys $script:RintActKeysDelayed -Force -Then { if ($script:RintCurrent) { Show-HURint } } }
             Update-HURintButtons
         })
     Update-HURintButtons
@@ -352,7 +385,13 @@ function Remove-HURintAssignment {
     if (-not $sel.Count) { Show-HUMessage 'Bitte in der Tabelle die Zuweisung(en) markieren.' -Icon Info; return }
     $keys = @($sel | ForEach-Object { $_.Key } | Select-Object -Unique)
     if (-not (Confirm-HU "Zuweisung(en) entfernen:`n- $(@($sel | ForEach-Object { "$($_.Ziel)$(if ($_.Zeitplan) { " ($($_.Zeitplan))" })" }) -join "`n- ")`n`nin allen Tenants dieses Skripts?" -Warning)) { return }
-    Start-HURintAction 'Zuweisung entfernen' -Vars @{ RemoveKeys = $keys } -Code {
+    $script:RintRemoveKeys = $keys
+    $local = {
+        foreach ($r in @($script:RintCurrent.Per.Values)) { $r.Assignments = @(@($r.Assignments) | Where-Object { $script:RintRemoveKeys -notcontains $_.Key }) }
+        foreach ($d in @($script:RintDetail.Values)) { $d.Assignments = @(@($d.Assignments) | Where-Object { $script:RintRemoveKeys -notcontains $_.Key }) }
+        Update-HURintAssignGrid
+    }
+    Start-HURintAction 'Zuweisung entfernen' -Local $local -Vars @{ RemoveKeys = $keys } -Code {
         foreach ($k in $Per.Keys) {
             try { $n = Remove-HURemediationAssignments -TenantKey $k -Settings $Settings -Id $Per[$k] -Keys $RemoveKeys; Write-HULog -Message "$n Zuweisung(en) entfernt" -Level $(if ($n) { 'OK' } else { 'INFO' }) -Tenant $k }
             catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $k }
@@ -363,7 +402,7 @@ function Remove-HURintAssignment {
 function Save-HURintChanges {
     $c = $script:Controls; $it = $script:RintCurrent
     if (-not $it -or $it.Global -or -not $script:RintDetail.Count) { return }
-    $d0 = @($script:RintDetail.Values)[0]
+    $d0 = Get-HURintEditorDetail
     $v = @{}
     $name = $c['txtRintName'].Text.Trim(); $desc = $c['txtRintDesc'].Text.Trim()
     if ($name -and $name -ne $d0.Name) { $v.Name = $name }
@@ -448,7 +487,7 @@ function Copy-HURintToLib {
     $it = $script:RintCurrent
     if (-not $it -or -not $script:RintDetail.Count) { return }
     $keys = @($it.Per.Keys | Where-Object { $script:RintDetail.ContainsKey($_) })
-    $d0 = $script:RintDetail[$keys[0]]
+    $d0 = Get-HURintEditorDetail
     $ids = @($it.Per.Values | ForEach-Object { $_.Id })
     $r = $script:RemLib | Where-Object { @($_.Deployments | Where-Object { $ids -contains $_.ScriptId }).Count } | Select-Object -First 1
     if (-not $r) { $r = $script:RemLib | Where-Object { $_.Name -eq $it.Name } | Select-Object -First 1 }
@@ -517,9 +556,8 @@ function Copy-HURintToTenants {
     $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
     $w = $d.Window; $c = $d.C
-    $src = $have | Select-Object -First 1
-    $d0 = $script:RintDetail[$src]
-    if (-not $d0) { $d0 = @($script:RintDetail.Values)[0]; $src = $d0.Tenant }
+    $d0 = Get-HURintEditorDetail
+    $src = $d0.Tenant
     $c.lblHint.Text = "'$($it.Name)' wird mit Pruef- und Reparaturskript aus $(Get-HUTenantDisplayName $src) angelegt. Gibt es im Ziel schon ein Skript mit diesem Namen, wird der Tenant uebersprungen."
     if ("$($d0.Detection)`n$($d0.Remediation)" -match '(?i)tenant.?id|client.?id|secret|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}') { $c.lblHint.Text += "`n`nACHTUNG: Das Skript enthaelt Tenant-/App-IDs oder ein Secret - im Ziel-Tenant passen diese Werte vermutlich nicht. Nach dem Kopieren dort anpassen." }
     foreach ($t in $cand) {

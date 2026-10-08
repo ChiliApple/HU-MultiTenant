@@ -1,5 +1,14 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.1 (in Arbeit)
+
+### Verbessert
+- In Intune (Apps und Wartung): Details laden je Tenant gleichzeitig, jeder Tenant erscheint, sobald er da ist
+- Apps > In Intune: Installationsstand je Tenant oben (installiert, fehlgeschlagen, ausstehend, nicht installiert)
+- Entfernte Zuweisungen verschwinden sofort aus der Anzeige; nach jeder Aenderung wird nach ein paar Sekunden nochmal neu geladen (Intune liefert Aenderungen oft verzoegert)
+- Kuerzere Wartezeiten bei voruebergehenden Intune-Fehlern, bei Drosselung (429) wird die Vorgabe von Intune beachtet
+- Neuer Tenant heisst "Neuer Tenant n" / "Tenant-n" statt "Neue Schule"
+
 ## v2.1.0 (2026-10-08)
 
 ### Neu: Reiter Apps

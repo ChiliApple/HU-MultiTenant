@@ -49,7 +49,7 @@ function Open-HUSettings([string]$Tab = '', [string]$TenantKey = '') {
     if (Show-HUSettingsDialog -Tab $Tab -TenantKey $TenantKey) {
         Update-TenantDropdown
         Update-HUSecretDisplay
-        # Schulen-Haken in Apps/Wartung neu aufbauen (Auswahl der offenen Eintraege bleibt)
+        # Tenant-Haken in Apps/Wartung neu aufbauen (Auswahl der offenen Eintraege bleibt)
         Save-HUAppForm; Update-HUAppTenantChecks; Show-HUAppForm $script:AppCurrent; Update-HUIntTenantChecks
         Save-HURemForm; Update-HURemTenantChecks; Show-HURemForm $script:RemCurrent
     }
@@ -201,9 +201,9 @@ function Show-HUSettingsDialog {
     $c.btnTenantAdd.Add_Click({
         & $formToTenant
         $n = $st.Tenants.Count + 1
-        $key = "Schule-$n"; while (@($st.Tenants | Where-Object { $_.key -eq $key }).Count) { $n++; $key = "Schule-$n" }
+        $key = "Tenant-$n"; while (@($st.Tenants | Where-Object { $_.key -eq $key }).Count) { $n++; $key = "Tenant-$n" }
         $st.Tenants.Add([pscustomobject][ordered]@{
-            key = $key; displayName = "Neue Schule $n"; tenantId = ''; appId = ''; domain = ''; credentialName = "HU-$($key.ToUpper())"
+            key = $key; displayName = "Neuer Tenant $n"; tenantId = ''; appId = ''; domain = ''; credentialName = "HU-$($key.ToUpper())"
             isPrimary = ($st.Tenants.Count -eq 0); adSchema = 'VirtualSchool'; tags = @(); notes = ''; persistCredential = $true
         })
         $st.Cur = $st.Tenants.Count - 1

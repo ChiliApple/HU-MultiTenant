@@ -32,15 +32,21 @@ function Invoke-HUIntuneGraph {
         [Parameter(Mandatory)][string]$Endpoint,
         [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string]$Method = 'GET',
         [hashtable]$Body,
-        [switch]$V1
+        [switch]$V1,
+        [switch]$NoRetry
     )
-    for ($try = 1; $try -le 4; $try++) {
+    $max = if ($NoRetry) { 1 } else { 4 }
+    for ($try = 1; $try -le $max; $try++) {
         $tok = Get-GraphToken -TenantKey $TenantKey -Settings $Settings -ErrorAction Stop
         if (-not $tok) { throw "Kein Token fuer '$TenantKey' (Secret pruefen)" }
         $ver = if ($V1) { 'v1.0' } else { 'beta' }
         $r = Invoke-HUGraphRaw -Token $tok -Endpoint $Endpoint -Method $Method -Body $Body -Version $ver
         if ($r -and $r.PSObject.Properties['IsError'] -and $r.IsError) {
-            if ($r.StatusCode -in 429, 500, 502, 503, 504 -and $try -lt 4) { Start-Sleep -Seconds (5 * $try); continue }
+            if ($r.StatusCode -in 429, 500, 502, 503, 504 -and $try -lt $max) {
+                # 429: Retry-After von Intune beachten; Serverfehler: kurz warten (2, 4, 6 s)
+                $wait = if ($r.StatusCode -eq 429 -and $r.RetryAfter -gt 0) { [Math]::Min(30, $r.RetryAfter) } elseif ($r.StatusCode -eq 429) { 5 * $try } else { 2 * $try }
+                Start-Sleep -Seconds $wait; continue
+            }
             throw "Graph $Method $($Endpoint -replace '\?.*$', ''): $($r.ErrorMessage)"
         }
         return $r
@@ -65,16 +71,17 @@ function Invoke-HUGraphRaw {
         return $res
     }
     catch {
-        $code = $null; $msg = $_.Exception.Message
+        $code = $null; $msg = $_.Exception.Message; $ra = 0
         if ($_.Exception.Response) {
             $code = [int]$_.Exception.Response.StatusCode
+            try { $ra = [int]"$($_.Exception.Response.Headers['Retry-After'])" } catch { }
             try {
                 $sr = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())
                 $j = $sr.ReadToEnd() | ConvertFrom-Json -ErrorAction SilentlyContinue
                 if ($j.error.message) { $msg = "$code - $($j.error.code): $($j.error.message)" }
             } catch { }
         }
-        return [pscustomobject]@{ IsError = $true; StatusCode = $code; ErrorMessage = $msg; Endpoint = $Endpoint; Method = $Method }
+        return [pscustomobject]@{ IsError = $true; StatusCode = $code; ErrorMessage = $msg; Endpoint = $Endpoint; Method = $Method; RetryAfter = $ra }
     }
 }
 
@@ -967,6 +974,18 @@ function Get-HUTenantAppList {
     }
 }
 
+# Installationsstand einer App (Anzahl Geraete), leer wenn Intune keinen liefert
+function Get-HUAppInstallSummary {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId)
+    try { $x = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/installSummary" -NoRetry } catch { return '' }
+    if (-not $x) { return '' }
+    $n = { param($v) [int]"0$v" }
+    $parts = @("installiert $(& $n $x.installedDeviceCount)", "fehlgeschlagen $(& $n $x.failedDeviceCount)", "ausstehend $(& $n $x.pendingInstallDeviceCount)", "nicht installiert $(& $n $x.notInstalledDeviceCount)")
+    if ((& $n $x.notApplicableDeviceCount) -gt 0) { $parts += "nicht zutreffend $(& $n $x.notApplicableDeviceCount)" }
+    return ($parts -join ' | ')
+}
+
 # Zuweisungen einer App direkt lesen (genauer als $expand in der Liste)
 function Get-HUAppAssignmentRows {
     [CmdletBinding()]
@@ -1326,7 +1345,7 @@ function Get-HURemediationDetail {
     $names = Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids @($asg | ForEach-Object { $_.target.groupId })
     $sum = ''
     try {
-        $x = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id/runSummary"
+        $x = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/deviceHealthScripts/$Id/runSummary" -NoRetry
         if ($x) {
             $err = [int]"0$($x.detectionScriptErrorDeviceCount)" + [int]"0$($x.remediationScriptErrorDeviceCount)"
             $sum = "ohne Problem $([int]"0$($x.noIssueDetectedDeviceCount)") | Problem $([int]"0$($x.issueDetectedDeviceCount)") | behoben $([int]"0$($x.issueRemediatedDeviceCount)") | wieder aufgetreten $([int]"0$($x.issueReoccurredDeviceCount)") | Fehler $err | ausstehend $([int]"0$($x.detectionScriptPendingDeviceCount)")"
@@ -1741,7 +1760,7 @@ Export-ModuleMember -Function @(
     'Get-HUIntuneApp', 'New-HUWin32App', 'Update-HUWin32App', 'Publish-HUWin32Content', 'New-HUStoreApp',
     'Set-HUAppAssignment', 'Wait-HUAppPublished',
     'Get-HUAppKindFromType', 'Get-HUGroupNames', 'ConvertFrom-HUAssignment', 'Get-HUTenantAppList', 'Get-HUAppAssignmentRows', 'Remove-HUAppAssignments', 'Update-HUAppProperties',
-    'Get-HUAppIconBytes', 'Get-HUAppRelationRows', 'Set-HUAppRelations', 'Remove-HUIntuneApp', 'Invoke-HUExportReport', 'Get-HUErrorText', 'ConvertTo-HUInstallStateText', 'Get-HUAppInstallStatus',
+    'Get-HUAppIconBytes', 'Get-HUAppInstallSummary', 'Get-HUAppRelationRows', 'Set-HUAppRelations', 'Remove-HUIntuneApp', 'Invoke-HUExportReport', 'Get-HUErrorText', 'ConvertTo-HUInstallStateText', 'Get-HUAppInstallStatus',
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',

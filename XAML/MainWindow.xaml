@@ -681,6 +681,7 @@
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock x:Name="txtIntTitle" Text="Links eine App waehlen" Foreground="#E0E0E0" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                                 <TextBlock x:Name="txtIntInfo" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
+                                                <TextBlock x:Name="txtIntSummary" Foreground="#90CAF9" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </DockPanel>
 

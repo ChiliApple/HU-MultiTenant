@@ -110,3 +110,12 @@ function Update-HUJob([string]$Name) {
     if (-not $s.Quiet) { Add-HURtbLine $s.Output "--- fertig ($secs s) ---" '#666666' }
     if ($s.OnDone) { try { & $s.OnDone @($result) @($errs | Where-Object { $_ }) } catch { Add-HURtbLine $s.Output "[FEHLER] $($_.Exception.Message)" '#FF5252' } }
 }
+
+# Scriptblock nach ein paar Sekunden im UI-Thread ausfuehren (z. B. neu laden, wenn Intune Aenderungen erst verzoegert liefert)
+function Invoke-HUDelayed([int]$Seconds, [scriptblock]$Do) {
+    $t = [System.Windows.Threading.DispatcherTimer]::new()
+    $t.Interval = [TimeSpan]::FromSeconds([Math]::Max(1, $Seconds))
+    $t.Tag = $Do
+    $t.Add_Tick({ $this.Stop(); try { & $this.Tag } catch { Write-HULogError "Verzoegerte Aktion: $($_.Exception.Message)" } })
+    $t.Start()
+}

@@ -19,6 +19,10 @@ $script:IntIconFile = ''
 $script:IntLoading = $false
 $script:IntDetailPending = $false
 $script:IntDetailKey = ''
+$script:IntGen = 0
+$script:IntDet = @{}
+$script:IntDetWait = New-Object System.Collections.Generic.List[string]
+$script:IntIconShown = $false
 
 $script:IntIntentText = @{ required = 'Erforderlich'; available = 'Verfuegbar'; uninstall = 'Deinstallieren'; availableWithoutEnrollment = 'Verfuegbar (ohne Reg.)' }
 $script:IntNotifyText = @{ showAll = 'anzeigen'; showReboot = 'nur Neustart'; hideAll = 'keine' }
@@ -181,7 +185,7 @@ function Show-HUIntApp([switch]$KeepRel) {
     $c['pnlIntForm'].IsEnabled = [bool]$it
     foreach ($b in 'btnIntStatus', 'btnIntReloadOne', 'btnIntPortal', 'btnIntDelete') { $c[$b].IsEnabled = [bool]$it }
     if (-not $it) {
-        $c['txtIntTitle'].Text = 'Links eine App waehlen'; $c['txtIntInfo'].Text = ''
+        $c['txtIntTitle'].Text = 'Links eine App waehlen'; $c['txtIntInfo'].Text = ''; $c['txtIntSummary'].Text = ''
         $c['gridIntAssign'].ItemsSource = $null; $c['gridIntRel'].ItemsSource = $null; $c['imgIntIcon'].Source = $null
         foreach ($n in 'txtIntName', 'txtIntPublisher', 'txtIntDesc') { $c[$n].Text = '' }
         $c['lblIntIcon'].Text = ''
@@ -209,6 +213,7 @@ function Show-HUIntApp([switch]$KeepRel) {
         $script:IntIconFile = ''; $c['lblIntIcon'].Text = ''
         $c['gridIntRel'].ItemsSource = $null
         $c['imgIntIcon'].Source = $null
+        $c['txtIntSummary'].Text = 'Lade Zuweisungen und Installationsstand ...'
         Start-HUIntDetail
     }
 }
@@ -238,71 +243,101 @@ function Update-HUIntAssignGrid {
         })
 }
 
-# Symbol, Zuweisungen und Beziehungen der gewaehlten App laden (Hintergrund)
+# Symbol, Zuweisungen, Beziehungen und Installationsstand laden - je Tenant ein eigener Hintergrundauftrag
+# (gleichzeitig), jeder Tenant erscheint, sobald er da ist. Gen verwirft Antworten zu einer frueheren Auswahl.
 function Start-HUIntDetail {
     $it = $script:IntCurrent
     if (-not $it) { return }
-    if (Test-HUJobRunning 'IntDetail') { $script:IntDetailPending = $true; return }
-    $script:IntDetailPending = $false
-    $per = @{}; foreach ($k in $it.Per.Keys) { $per[$k] = $it.Per[$k].Id }
+    $script:IntGen++
+    $gen = $script:IntGen
     $script:IntDetailKey = $it.Key
-    [void](Start-HUJob -Name 'IntDetail' -Quiet -Output $script:Controls['rtbApps'] -Vars @{ Per = $per; Win32 = ($it.Kind -eq 'win32') } -Code {
-            $first = @($Per.Keys)[0]
-            $icon = $null
-            try { $icon = Get-HUAppIconBytes -TenantKey $first -Settings $Settings -AppId $Per[$first] } catch { Write-HULog -Message "Symbol: $($_.Exception.Message)" -Level 'WARN' -Tenant $first }
-            $rel = @()
-            if ($Win32) {
-                $rel = @(foreach ($k in $Per.Keys) {
-                        try { foreach ($r in @(Get-HUAppRelationRows -TenantKey $k -Settings $Settings -AppId $Per[$k])) { $r | Add-Member -NotePropertyName Tenant -NotePropertyValue $k -PassThru } } catch { Write-HULog -Message "Abhaengigkeiten: $($_.Exception.Message)" -Level 'WARN' -Tenant $k }
-                    })
-            }
-            $asg = @{}
-            foreach ($k in $Per.Keys) { try { $asg[$k] = @(Get-HUAppAssignmentRows -TenantKey $k -Settings $Settings -AppId $Per[$k]) } catch { Write-HULog -Message "Zuweisungen: $($_.Exception.Message)" -Level 'WARN' -Tenant $k } }
-            [pscustomobject]@{ Icon = $icon; Rel = $rel; Assign = $asg }
-        } -OnDone {
-            param($Result, $Errors)
-            $r = @($Result | Where-Object { $_ -and $_.PSObject.Properties['Rel'] })[0]
-            # inzwischen andere App gewaehlt -> fuer diese neu laden
-            if (-not $script:IntCurrent) { return }
-            if ($script:IntDetailPending -or $script:IntCurrent.Key -ne $script:IntDetailKey) { Start-HUIntDetail; return }
-            if (-not $r) { return }
-            $c = $script:Controls
-            foreach ($k in @($r.Assign.Keys)) { if ($script:IntCurrent.Per.Contains($k)) { $script:IntCurrent.Per[$k].Assignments = @($r.Assign[$k]) } }
-            Update-HUIntAssignGrid
-            if ($r.Icon) {
-                try {
-                    $ms = New-Object System.IO.MemoryStream(, [byte[]]$r.Icon)
-                    $bi = New-Object System.Windows.Media.Imaging.BitmapImage
-                    $bi.BeginInit(); $bi.CacheOption = 'OnLoad'; $bi.StreamSource = $ms; $bi.EndInit()
-                    $c['imgIntIcon'].Source = $bi
-                } catch { }
-            }
-            $script:IntRelRows = @($r.Rel)
-            $all = @(Get-HUIntTenants)
-            $agg = [ordered]@{}
-            foreach ($x in $script:IntRelRows) {
-                if (-not $agg.Contains($x.Key)) { $agg[$x.Key] = @{ X = $x; T = New-Object System.Collections.Generic.List[string] } }
-                $agg[$x.Key].T.Add($x.Tenant)
-            }
-            $c['gridIntRel'].ItemsSource = @(foreach ($v in $agg.Values) { [pscustomobject]@{ Art = $v.X.Art; App = $v.X.App; Typ = $v.X.Typ; Tenants = $(if ($all.Count -gt 1) { Get-HUIntTenantText @($v.T) $all } else { '' }); Key = $v.X.Key } })
-        })
+    $script:IntDet = @{}
+    $script:IntDetWait = New-Object System.Collections.Generic.List[string]
+    $script:IntIconShown = $false
+    $first = @($it.Per.Keys)[0]
+    foreach ($k in @($it.Per.Keys)) {
+        $script:IntDetWait.Add($k)
+        [void](Start-HUJob -Name "IntDetail-$gen-$k" -Quiet -Output $script:Controls['rtbApps'] -Vars @{ K = $k; Id = $it.Per[$k].Id; Gen = $gen; Win32 = ($it.Kind -eq 'win32'); WithIcon = ($k -eq $first) } -Code {
+                $sw = [Diagnostics.Stopwatch]::StartNew()
+                $o = [ordered]@{ Gen = $Gen; Tenant = $K; Icon = $null; Rel = @(); Assign = $null; Summary = '' }
+                if ($WithIcon) { try { $o.Icon = Get-HUAppIconBytes -TenantKey $K -Settings $Settings -AppId $Id } catch { Write-HULog -Message "Symbol: $($_.Exception.Message)" -Level 'WARN' -Tenant $K } }
+                if ($Win32) {
+                    try { $o.Rel = @(foreach ($r in @(Get-HUAppRelationRows -TenantKey $K -Settings $Settings -AppId $Id)) { $r | Add-Member -NotePropertyName Tenant -NotePropertyValue $K -PassThru }) }
+                    catch { Write-HULog -Message "Abhaengigkeiten: $($_.Exception.Message)" -Level 'WARN' -Tenant $K }
+                }
+                try { $o.Assign = @(Get-HUAppAssignmentRows -TenantKey $K -Settings $Settings -AppId $Id) } catch { Write-HULog -Message "Zuweisungen: $($_.Exception.Message)" -Level 'WARN' -Tenant $K }
+                $o.Summary = Get-HUAppInstallSummary -TenantKey $K -Settings $Settings -AppId $Id
+                if ($sw.Elapsed.TotalSeconds -gt 15) { Write-HULog -Message "Details brauchten $([int]$sw.Elapsed.TotalSeconds) s (Intune antwortet langsam)" -Level 'INFO' -Tenant $K }
+                [pscustomobject]$o
+            } -OnDone {
+                param($Result, $Errors)
+                $r = @($Result | Where-Object { $_ -and $_.PSObject.Properties['Gen'] })[0]
+                if (-not $r -or $r.Gen -ne $script:IntGen -or -not $script:IntCurrent) { return }
+                [void]$script:IntDetWait.Remove($r.Tenant)
+                $script:IntDet[$r.Tenant] = $r
+                if ($null -ne $r.Assign -and $script:IntCurrent.Per.Contains($r.Tenant)) { $script:IntCurrent.Per[$r.Tenant].Assignments = @($r.Assign) }
+                Show-HUIntDetail
+            })
+    }
+}
+
+# Detailansicht aus den bisher geladenen Tenants
+function Show-HUIntDetail {
+    $c = $script:Controls; $it = $script:IntCurrent
+    if (-not $it) { return }
+    Update-HUIntAssignGrid
+    $done = @($it.Per.Keys | Where-Object { $script:IntDet.ContainsKey($_) })
+    foreach ($k in $done) {
+        $r = $script:IntDet[$k]
+        if ($r.Icon -and -not $script:IntIconShown) {
+            try {
+                $ms = New-Object System.IO.MemoryStream(, [byte[]]$r.Icon)
+                $bi = New-Object System.Windows.Media.Imaging.BitmapImage
+                $bi.BeginInit(); $bi.CacheOption = 'OnLoad'; $bi.StreamSource = $ms; $bi.EndInit()
+                if (-not $script:IntIconFile) { $c['imgIntIcon'].Source = $bi }
+                $script:IntIconShown = $true
+            } catch { }
+        }
+    }
+    # Installationsstand je Tenant
+    $multi = (@($it.Per.Keys).Count -gt 1)
+    $lines = @(foreach ($k in $done) { $sm = $script:IntDet[$k].Summary; $(if ($multi) { "$(Get-HUTenantDisplayName $k): " }) + $(if ($sm) { $sm } else { 'kein Installationsstand' }) })
+    $wait = @($script:IntDetWait)
+    if ($wait.Count) { $lines += "Lade: $(@($wait | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') ..." }
+    $c['txtIntSummary'].Text = ($lines -join "`n")
+    # Abhaengigkeiten/Ersetzungen ueber die geladenen Tenants
+    $script:IntRelRows = @(foreach ($k in $done) { @($script:IntDet[$k].Rel) })
+    $all = @(Get-HUIntTenants)
+    $agg = [ordered]@{}
+    foreach ($x in $script:IntRelRows) {
+        if (-not $x) { continue }
+        if (-not $agg.Contains($x.Key)) { $agg[$x.Key] = @{ X = $x; T = New-Object System.Collections.Generic.List[string] } }
+        $agg[$x.Key].T.Add($x.Tenant)
+    }
+    $c['gridIntRel'].ItemsSource = @(foreach ($v in $agg.Values) { [pscustomobject]@{ Art = $v.X.Art; App = $v.X.App; Typ = $v.X.Typ; Tenants = $(if ($all.Count -gt 1) { Get-HUIntTenantText @($v.T) $all } else { '' }); Key = $v.X.Key } })
 }
 
 # ----------------------------------------------------------------------------
 # Aktionen (alle Tenants der gewaehlten App)
 # ----------------------------------------------------------------------------
-function Start-HUIntAction([string]$Title, [scriptblock]$Code, [hashtable]$Vars = @{}, [string[]]$Only = @()) {
+function Start-HUIntAction([string]$Title, [scriptblock]$Code, [hashtable]$Vars = @{}, [string[]]$Only = @(), [scriptblock]$Local = $null) {
     $it = $script:IntCurrent
     if (-not $it) { return }
     if (Test-HUJobRunning 'IntAct') { Show-HUMessage 'Es laeuft bereits eine Aktion - bitte warten.' -Icon Warning; return }
     $per = @{}; foreach ($k in $it.Per.Keys) { if (-not $Only.Count -or $Only -contains $k) { $per[$k] = $it.Per[$k].Id } }
     $Vars.Per = $per; $Vars.OType = $it.OType; $Vars.Kind = $it.Kind; $Vars.AppName = $it.Name
     $script:IntActKeys = @($per.Keys)
+    $script:IntActKeysLocal = $Local
     Add-HURtbLine $script:Controls['rtbApps'] "=== $Title`: $($it.Name) ===" '#4FC3F7'
     [void](Start-HUJob -Name 'IntAct' -Output $script:Controls['rtbApps'] -Vars $Vars -Code $Code -OnDone {
             param($Result, $Errors)
             # betroffene Tenants neu laden, Detail neu
-            Start-HUIntLoad -Keys $script:IntActKeys -Force -Then { if ($script:IntCurrent) { Show-HUIntApp } }
+            # sofort in der Anzeige nachziehen (z. B. entfernte Zuweisung), dann neu laden - Intune liefert Aenderungen
+            # oft erst nach ein paar Sekunden, daher einmal sofort und einmal verzoegert
+            if ($script:IntActKeysLocal) { try { & $script:IntActKeysLocal } catch { } }
+            else { Start-HUIntLoad -Keys $script:IntActKeys -Force -Then { if ($script:IntCurrent) { Show-HUIntApp } } }
+            $script:IntActKeysDelayed = @($script:IntActKeys)
+            Invoke-HUDelayed 6 { Start-HUIntLoad -Keys $script:IntActKeysDelayed -Force -Then { if ($script:IntCurrent) { Show-HUIntApp } } }
         })
 }
 
@@ -333,9 +368,15 @@ function Remove-HUIntAssignment {
     if (-not $sel.Count) { Show-HUMessage 'Bitte in der Tabelle die Zuweisung(en) markieren.' -Icon Info; return }
     $keys = @($sel | ForEach-Object { $_.Key } | Select-Object -Unique)
     if (-not (Confirm-HU "Zuweisung(en) entfernen:`n- $(@($sel | ForEach-Object { "$($_.Ziel) ($($_.Absicht))" }) -join "`n- ")`n`nin allen Tenants dieser App?" -Warning)) { return }
-    Start-HUIntAction 'Zuweisung entfernen' -Vars @{ Keys = $keys } -Code {
+    $script:IntRemoveKeys = $keys
+    # sofort aus der Anzeige nehmen (Intune liefert die Aenderung oft erst nach ein paar Sekunden)
+    $local = {
+        foreach ($r in @($script:IntCurrent.Per.Values)) { $r.Assignments = @(@($r.Assignments) | Where-Object { $script:IntRemoveKeys -notcontains $_.Key }) }
+        Update-HUIntAssignGrid
+    }
+    Start-HUIntAction 'Zuweisung entfernen' -Local $local -Vars @{ RemoveKeys = $keys } -Code {
         foreach ($k in $Per.Keys) {
-            try { $n = Remove-HUAppAssignments -TenantKey $k -Settings $Settings -AppId $Per[$k] -Keys $Keys; Write-HULog -Message "$n Zuweisung(en) entfernt" -Level $(if ($n) { 'OK' } else { 'INFO' }) -Tenant $k }
+            try { $n = Remove-HUAppAssignments -TenantKey $k -Settings $Settings -AppId $Per[$k] -Keys $RemoveKeys; Write-HULog -Message "$n Zuweisung(en) entfernt" -Level $(if ($n) { 'OK' } else { 'INFO' }) -Tenant $k }
             catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $k }
         }
     }
@@ -374,9 +415,9 @@ function Remove-HUIntRelation {
     if (-not $sel.Count) { return }
     $keys = @($sel | ForEach-Object { $_.Key } | Select-Object -Unique)
     if (-not (Confirm-HU "Entfernen:`n- $(@($sel | ForEach-Object { "$($_.Art): $($_.App)" }) -join "`n- ")`n`nin allen Tenants dieser App?" -Warning)) { return }
-    Start-HUIntAction 'Beziehung entfernen' -Vars @{ Keys = $keys } -Code {
+    Start-HUIntAction 'Beziehung entfernen' -Vars @{ RelKeys = $keys } -Code {
         foreach ($k in $Per.Keys) {
-            try { $n = Set-HUAppRelations -TenantKey $k -Settings $Settings -AppId $Per[$k] -RemoveKeys $Keys; Write-HULog -Message "Entfernt - noch $n Beziehung(en)" -Level 'OK' -Tenant $k }
+            try { $n = Set-HUAppRelations -TenantKey $k -Settings $Settings -AppId $Per[$k] -RemoveKeys $RelKeys; Write-HULog -Message "Entfernt - noch $n Beziehung(en)" -Level 'OK' -Tenant $k }
             catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $k }
         }
     }

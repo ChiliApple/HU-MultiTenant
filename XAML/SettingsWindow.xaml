@@ -148,7 +148,7 @@
                                     <TextBox Grid.Row="0" Grid.Column="1" x:Name="tDisplay" Style="{StaticResource DarkTextBox}" Margin="0,3"/>
                                     <TextBlock Grid.Row="1" Text="Schl&#xFC;ssel (kurz, eindeutig)" Style="{StaticResource FieldLabel}"/>
                                     <TextBox Grid.Row="1" Grid.Column="1" x:Name="tKey" Style="{StaticResource DarkTextBox}" Margin="0,3"
-                                             ToolTip="z. B. Schule-1 - wird in Extensions/Snippets als $TenantKey verwendet"/>
+                                             ToolTip="z. B. Tenant-1 - wird in Extensions/Snippets als $TenantKey verwendet"/>
                                     <TextBlock Grid.Row="2" Text="Verzeichnis-ID (Tenant-ID)" Style="{StaticResource FieldLabel}"/>
                                     <TextBox Grid.Row="2" Grid.Column="1" x:Name="tTenantId" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,3"/>
                                     <TextBlock Grid.Row="3" Text="Anwendungs-ID (Client-ID)" Style="{StaticResource FieldLabel}"/>
