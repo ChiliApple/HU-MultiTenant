@@ -388,3 +388,31 @@ Describe 'Intune: Apps und Wartung (HU.Intune)' {
         Remove-Item -LiteralPath $tmp -Recurse -Force
     }
 }
+
+Describe 'Intune: App-Symbol' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+    }
+    It 'Symbol-Ort aus DisplayIcon lesen' {
+        $l = Split-HUIconLocation '"C:\Program Files\Foo\foo.exe",-101'
+        $l.Path | Should -Be 'C:\Program Files\Foo\foo.exe'
+        $l.Index | Should -Be -101
+        (Split-HUIconLocation 'C:\x\a.ico').Index | Should -Be 0
+    }
+    It 'Bild wird auf 256 px verkleinert und als largeIcon mitgegeben' -Skip:($env:OS -ne 'Windows_NT') {
+        Add-Type -AssemblyName System.Drawing
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("hu-icon-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+        $b = New-Object System.Drawing.Bitmap(400, 200); $b.Save("$tmp\in.jpg", [System.Drawing.Imaging.ImageFormat]::Jpeg); $b.Dispose()
+        [void](ConvertTo-HUIconPng -Path "$tmp\in.jpg" -OutFile "$tmp\out.png")
+        $img = [System.Drawing.Image]::FromFile("$tmp\out.png"); $img.Width | Should -Be 256; $img.Height | Should -Be 128; $img.Dispose()
+        [void](ConvertTo-HUIconPng -Path "$env:windir\System32\notepad.exe" -OutFile "$tmp\np.png")
+        (Get-Item "$tmp\np.png").Length | Should -BeGreaterThan 100
+        $def = [pscustomobject]@{ Name = 'T'; Version = '1'; SetupFile = 's.exe'; InstallCmd = 's.exe /S'; UninstallCmd = 'u.exe /S'; RunAs = 'system'; Kind = 'exe'
+            Detection = [pscustomobject]@{ Type = 'file'; Path = 'C:\T'; FileName = 't.exe' }; IconFile = "$tmp\out.png" }
+        $p = ConvertTo-HUWin32Payload $def
+        $p.largeIcon.type | Should -Be 'image/png'
+        $p.largeIcon.value.Length | Should -BeGreaterThan 100
+        Remove-Item -LiteralPath $tmp -Recurse -Force
+    }
+}

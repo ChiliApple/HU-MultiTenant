@@ -10,6 +10,7 @@
   - Ziel Gruppe (per Name je Tenant gesucht), Alle Geraete oder Alle Benutzer; Erforderlich/Verfuegbar/Deinstallieren, Frist, Hinweise; vorhandene Zuweisungen bleiben erhalten
   - optional **Pilotgruppe** und spaeter "Fuer alle freigeben"
   - **Status** je Geraet mit Fehlertext, Filter und Export
+  - **Symbol fuer das Unternehmensportal**: aus Bild, ICO oder EXE (wird auf PNG max. 256 px gebracht); automatisch aus der Setup-EXE, aus der installierten App (Testinstallation) bzw. bei Store-Apps aus dem Microsoft Store
   - Paketier-Werkzeug von Microsoft wird beim ersten Hochladen nach Rueckfrage geladen und auf die Microsoft-Signatur geprueft
 - **Reiter Wartung**: Intune Remediations (Pruef- und Reparaturskript)
   - **Mit KI erstellen**: Prompt mit allen Intune-Regeln kopieren, Antwort einfuegen - wird automatisch aufgeteilt

@@ -22,6 +22,44 @@ $script:AppSbWatch = $null
 $script:AppSbTimer = $null
 
 function Get-HUAppLibPath { return (Join-Path $script:AppRoot 'Config\apps.json') }
+function Get-HUAppIconPath($App) { return (Join-Path $script:AppRoot "Config\app-icons\$($App.Id).png") }
+
+# Symbol im Formular anzeigen (Datei wird nicht gesperrt)
+function Update-HUAppIconView {
+    $c = $script:Controls; $a = $script:AppCurrent
+    $c['imgAppIcon'].Source = $null
+    $has = $false
+    if ($a) {
+        $f = Get-HUAppIconPath $a
+        if (Test-Path -LiteralPath $f) {
+            try {
+                $bi = New-Object System.Windows.Media.Imaging.BitmapImage
+                $bi.BeginInit()
+                $bi.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
+                $bi.CreateOptions = [System.Windows.Media.Imaging.BitmapCreateOptions]::IgnoreImageCache
+                $bi.UriSource = [Uri]::new($f)
+                $bi.EndInit()
+                $c['imgAppIcon'].Source = $bi
+                $has = $true
+            } catch { }
+        }
+    }
+    $c['lblAppIconNone'].Visibility = $(if ($has) { 'Collapsed' } else { 'Visible' })
+    $c['btnAppIconClear'].IsEnabled = $has
+}
+
+# Symbol aus Bild/ICO/EXE uebernehmen -> Config\app-icons\<Id>.png
+function Set-HUAppIcon($App, [string]$Source, [int]$Index = 0, [switch]$Quiet) {
+    if (-not $App) { return $false }
+    try {
+        [void](ConvertTo-HUIconPng -Path $Source -Index $Index -OutFile (Get-HUAppIconPath $App))
+        if ($script:AppCurrent -and $script:AppCurrent.Id -eq $App.Id) { Update-HUAppIconView }
+        return $true
+    } catch {
+        if (-not $Quiet) { Show-HUMessage "Symbol nicht uebernommen:`n$($_.Exception.Message)" -Icon Warning }
+        return $false
+    }
+}
 
 # ----------------------------------------------------------------------------
 # Datenmodell
@@ -190,6 +228,7 @@ function Show-HUAppForm($App) {
             foreach ($n in 'txtAppName', 'txtAppPublisher', 'txtAppVersion', 'txtAppDesc', 'txtAppSetup', 'txtAppInstall', 'txtAppUninstall', 'txtAppDetA', 'txtAppDetB', 'txtAppDetVer', 'txtAppStoreId', 'txtAppGroup', 'txtAppPilot', 'txtAppDeadline') { $c[$n].Text = '' }
             $c['txtAppKind'].Text = ''; $c['txtAppInfo'].Text = ''; $c['txtAppSandbox'].Text = ''
             $c['txtAppTenantState'].Text = 'Links eine App waehlen oder mit "+ Setup-Datei" hinzufuegen (auch per Ziehen auf die Liste).'
+            Update-HUAppIconView
             Update-HUAppButtons
             return
         }
@@ -223,6 +262,7 @@ function Show-HUAppForm($App) {
         Select-HUComboTag $c['cmbAppNotify'] $App.Notify
         $c['txtAppTenantState'].Text = Get-HUDeploymentText $App.Deployments
         Update-HUAppTargetUi
+        Update-HUAppIconView
     } finally { $script:AppLoading = $false }
     Update-HUAppButtons
 }
@@ -317,6 +357,8 @@ function Add-HUAppFromFile([string]$Path) {
     $big = (Split-Path $dir -Leaf) -match '(?i)^(downloads|desktop|documents|dokumente)$'
     $a.WholeFolder = ($others.Count -gt 0 -and -not $big)
     if ($isNew) { $script:AppLib.Add($a) }
+    # Symbol aus der Setup-EXE (spaeter ersetzt die Testinstallation es durch das der installierten App)
+    if ($info.Kind -eq 'exe' -and -not (Test-Path -LiteralPath (Get-HUAppIconPath $a))) { [void](Set-HUAppIcon $a $a.SetupPath -Quiet) }
     Save-HUAppLib
     Update-HUAppList $a.Id
     Show-HUAppForm $a
@@ -360,6 +402,11 @@ function Update-HUAppStoreInfo {
         if (-not $c['txtAppDesc'].Text.Trim()) { $c['txtAppDesc'].Text = $info.Description }
         Add-HURtbLine $c['rtbApps'] "Store-App gefunden: $($info.Name) ($($info.Publisher))" '#81C784'
     } else { Add-HURtbLine $c['rtbApps'] "Store-ID $id - Name konnte nicht abgerufen werden, bitte selbst eintragen." '#FFB74D' }
+    if (-not (Test-Path -LiteralPath (Get-HUAppIconPath $a))) {
+        $script:Window.Cursor = [System.Windows.Input.Cursors]::Wait
+        try { if (Save-HUStoreAppIcon $id (Get-HUAppIconPath $a)) { Add-HURtbLine $c['rtbApps'] 'Symbol aus dem Microsoft Store uebernommen.' '#81C784' } } finally { $script:Window.Cursor = $old }
+        Update-HUAppIconView
+    }
     Save-HUAppForm; Save-HUAppLib; Update-HUAppList $a.Id
 }
 
@@ -371,6 +418,7 @@ function Remove-HUAppCurrent {
     if ($deps.Count) { $msg += "`n`nIn Intune bleibt die App in $($deps.Count) Schule(n) bestehen (dort bei Bedarf loeschen)." }
     if (-not (Confirm-HU $msg -Warning)) { return }
     [void]$script:AppLib.Remove($a)
+    Remove-Item -LiteralPath (Get-HUAppIconPath $a) -Force -ErrorAction SilentlyContinue
     foreach ($sub in "Packages\$($a.Id)", "Sandbox\$($a.Id)") {
         $p = Join-Path (Join-Path $env:LOCALAPPDATA 'HU-MultiTenant') $sub
         if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue }
@@ -444,7 +492,7 @@ $script:AppDeployCode = {
     $w32 = [pscustomobject]@{
         Name = $Def.Name; Publisher = $Def.Publisher; Description = $Def.Description; Version = $Def.Version
         SetupFile = [IO.Path]::GetFileName("$($Def.SetupPath)"); InstallCmd = $Def.InstallCmd; UninstallCmd = $Def.UninstallCmd
-        RunAs = $Def.RunAs; Kind = $Def.Kind; UpgradeCode = $Def.UpgradeCode; Detection = $Def.Detection; Restart = 'suppress'
+        RunAs = $Def.RunAs; Kind = $Def.Kind; UpgradeCode = $Def.UpgradeCode; Detection = $Def.Detection; Restart = 'suppress'; IconFile = $Def.IconFile
     }
     foreach ($tk in $Tenants) {
         $r = [ordered]@{ Tenant = $tk; Ok = $false; AppId = ''; Signature = ''; Error = '' }
@@ -462,7 +510,11 @@ $script:AppDeployCode = {
                     $new = New-HUStoreApp -TenantKey $tk -Settings $Settings -Def $Def
                     $appId = "$($new.id)"
                     Write-HULog -Message "Store-App angelegt ($($Def.StoreId))" -Level 'OK' -Tenant $tk
-                } else { Write-HULog -Message 'Store-App ist schon vorhanden' -Level 'INFO' -Tenant $tk }
+                } else {
+                    Write-HULog -Message 'Store-App ist schon vorhanden' -Level 'INFO' -Tenant $tk
+                    $ic = Get-HUIconContent "$($Def.IconFile)"
+                    if ($ic) { [void](Invoke-HUIntuneGraph -TenantKey $tk -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$appId" -Method PATCH -Body @{ '@odata.type' = '#microsoft.graph.winGetApp'; largeIcon = $ic }); Write-HULog -Message 'Symbol aktualisiert' -Level 'OK' -Tenant $tk }
+                }
                 $r.AppId = $appId
             } else {
                 if ($existing) {
@@ -517,6 +569,7 @@ function Start-HUAppDeploy([switch]$Release) {
     $dl = ConvertTo-HUDeadline $a.Deadline
     $msg = "$($a.Name)$(if ($a.Version) { " v$($a.Version)" })`n`nSchulen: $names`n$what$(if ($dl) { "`nFrist: $($dl.ToString('dd.MM.yyyy HH:mm'))" })"
     if (-not $Release -and $a.Type -eq 'win32' -and -not $a.SandboxNote) { $msg += "`n`nHinweis: noch keine Testinstallation in der Sandbox." }
+    if (-not $Release -and -not (Test-Path -LiteralPath (Get-HUAppIconPath $a))) { $msg += "`nHinweis: ohne Symbol (im Unternehmensportal erscheint ein Platzhalter)." }
     if (-not (Confirm-HU "$msg`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
 
     Set-HUStateValue 'appTenants' @($a.Tenants)
@@ -524,6 +577,8 @@ function Start-HUAppDeploy([switch]$Release) {
     $deps = @{}
     foreach ($d in @($a.Deployments)) { $deps[$d.Tenant] = $d }
     $def = $a | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+    $ip = Get-HUAppIconPath $a
+    $def | Add-Member -NotePropertyName IconFile -NotePropertyValue $(if (Test-Path -LiteralPath $ip) { $ip } else { '' }) -Force
     $script:AppJobApp = $a.Id
     $script:AppJobRelease = [bool]$Release
     $rtb = $script:Controls['rtbApps']
@@ -753,6 +808,8 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     $prop = $null
     $e = Select-HUSandboxEntry -Entries $entries -AppName $a.Name
     if ($e) { $prop = ConvertFrom-HUSandboxEntry $e }
+    $iconSrc = ''
+    if ($prop -and $prop.IconFile) { $f = Join-Path (Join-Path (Get-HUWorkPath 'Sandbox') $AppId) $prop.IconFile; if (Test-Path -LiteralPath $f) { $iconSrc = $f } }
     $folders = @($Res.NewFolders | Where-Object { $_ -match '(?i)\\Program Files' })
     if ($ok -and ($prop -or $folders.Count)) {
         $msg = "Testinstallation $codeText.`n`nVorschlag:`n"
@@ -761,6 +818,7 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
             $msg += "  Erkennung: $(if ($det.Type -eq 'msi') { "MSI-Produktcode $($det.ProductCode)" } else { "Registry $($det.KeyPath)" })$(if ($det.VersionCheck) { ", Version >= $($det.Version)" })`n"
             if ($prop.UninstallCmd) { $msg += "  Deinstallation: $($prop.UninstallCmd)`n" }
             if ($prop.HKCU) { $msg += "`n  Achtung: die App installiert sich nur fuer den Benutzer - 'Ausfuehren als: Benutzer' waehlen.`n" }
+            if ($iconSrc) { $msg += "  Symbol: aus der installierten App`n" }
         } else {
             $f = $folders[0]
             $msg += "  Erkennung: Ordner $f vorhanden (kein Eintrag in 'Apps & Features' gefunden)`n"
@@ -773,6 +831,7 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
                 if (-not $a.Version -and $prop.Version) { $a.Version = $prop.Version }
                 if (-not $a.Publisher -and $prop.Publisher) { $a.Publisher = $prop.Publisher }
                 if ($prop.HKCU) { $a.RunAs = 'user' }
+                if ($iconSrc) { [void](Set-HUAppIcon $a $iconSrc -Quiet) }
             } else {
                 $a.Detection = New-HUAppDetection ([pscustomobject]@{ Type = 'file'; Path = (Split-Path $folders[0] -Parent); FileName = (Split-Path $folders[0] -Leaf) })
             }
@@ -818,6 +877,21 @@ function Register-HUAppHandlers {
             if ($dlg.ShowDialog($script:Window)) { Add-HUAppFromFile $dlg.FileName }
         })
     $c['btnAppAddStore'].Add_Click({ Add-HUAppStore })
+    $c['btnAppIcon'].Add_Click({
+            $a = $script:AppCurrent
+            if (-not $a) { return }
+            $dlg = New-Object Microsoft.Win32.OpenFileDialog
+            $dlg.Filter = 'Bild, Symbol oder Programm|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.ico;*.exe;*.dll|Alle Dateien|*.*'
+            $dlg.Title = 'Symbol fuer das Unternehmensportal'
+            if ($a.SetupPath) { $dir = Split-Path $a.SetupPath -Parent; if (Test-Path -LiteralPath $dir) { $dlg.InitialDirectory = $dir } }
+            if ($dlg.ShowDialog($script:Window)) { if (Set-HUAppIcon $a $dlg.FileName) { Add-HURtbLine $script:Controls['rtbApps'] "Symbol uebernommen - wird beim naechsten Hochladen gesetzt." '#81C784' } }
+        })
+    $c['btnAppIconClear'].Add_Click({
+            $a = $script:AppCurrent
+            if (-not $a) { return }
+            Remove-Item -LiteralPath (Get-HUAppIconPath $a) -Force -ErrorAction SilentlyContinue
+            Update-HUAppIconView
+        })
     $c['btnAppRemove'].Add_Click({ Remove-HUAppCurrent })
     $c['btnAppStoreOpen'].Add_Click({
             $q = $script:Controls['txtAppName'].Text.Trim()

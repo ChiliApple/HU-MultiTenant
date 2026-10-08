@@ -360,6 +360,7 @@ function ConvertTo-HUWin32Payload($Def, [string]$IntuneWinName = '') {
         minimumSupportedWindowsRelease = '1903'
     }
     if ($IntuneWinName) { $p.fileName = $IntuneWinName }
+    if ($Def.PSObject.Properties['IconFile']) { $ic = Get-HUIconContent "$($Def.IconFile)"; if ($ic) { $p.largeIcon = $ic } }
     if ("$($Def.Kind)" -eq 'msi' -and "$($Def.Detection.ProductCode)") {
         $p.msiInformation = @{
             '@odata.type' = '#microsoft.graph.win32LobAppMsiInformation'
@@ -571,6 +572,95 @@ function Get-HUStoreAppInfo([string]$StoreId) {
 }
 
 # ============================================================================
+# App-Symbol (Unternehmensportal): Bild/ICO/EXE -> PNG (max. 256 px) -> largeIcon
+# ============================================================================
+function Initialize-HUIconNative {
+    if ('HUTools.IconNative' -as [type]) { return }
+    Add-Type -Namespace 'HUTools' -Name 'IconNative' -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern uint PrivateExtractIcons(string lpszFile, int nIconIndex, int cxIcon, int cyIcon, System.IntPtr[] phicon, int[] piconid, uint nIcons, uint flags);
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool DestroyIcon(System.IntPtr hIcon);
+'@
+}
+
+# "C:\x\app.exe,0" / "\"C:\x\app.exe\",-101" -> @{ Path; Index }
+function Split-HUIconLocation([string]$Text) {
+    $t = "$Text".Trim()
+    $idx = 0
+    $m = [regex]::Match($t, '^(.*?),\s*(-?\d+)\s*$')
+    if ($m.Success) { $t = $m.Groups[1].Value; $idx = [int]$m.Groups[2].Value }
+    return [pscustomobject]@{ Path = [Environment]::ExpandEnvironmentVariables($t.Trim().Trim('"')); Index = $idx }
+}
+
+function ConvertTo-HUIconPng {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$OutFile, [int]$Index = 0, [int]$MaxSize = 256)
+    Add-Type -AssemblyName System.Drawing
+    if (-not (Test-Path -LiteralPath $Path)) { throw "Datei nicht gefunden: $Path" }
+    $ext = [IO.Path]::GetExtension($Path).ToLower()
+    $bmp = $null
+    if ($ext -in '.exe', '.dll') {
+        Initialize-HUIconNative
+        foreach ($size in 256, 128, 64, 48, 32) {
+            $h = New-Object IntPtr[] 1; $id = New-Object int[] 1
+            $n = [HUTools.IconNative]::PrivateExtractIcons($Path, $Index, $size, $size, $h, $id, 1, 0)
+            if ($n -ge 1 -and $h[0] -ne [IntPtr]::Zero) {
+                try { $bmp = ([System.Drawing.Icon]::FromHandle($h[0])).ToBitmap() } finally { [void][HUTools.IconNative]::DestroyIcon($h[0]) }
+                break
+            }
+        }
+        if (-not $bmp) { $ic = [System.Drawing.Icon]::ExtractAssociatedIcon($Path); if ($ic) { $bmp = $ic.ToBitmap() } }
+        if (-not $bmp) { throw 'Kein Symbol in der Datei gefunden' }
+    } elseif ($ext -eq '.ico') {
+        $ic = New-Object System.Drawing.Icon($Path, 256, 256)
+        try { $bmp = $ic.ToBitmap() } finally { $ic.Dispose() }
+    } else {
+        $fs = [IO.File]::OpenRead($Path)
+        try { $img = [System.Drawing.Image]::FromStream($fs); $bmp = New-Object System.Drawing.Bitmap($img); $img.Dispose() } finally { $fs.Dispose() }
+    }
+    try {
+        $w = $bmp.Width; $hgt = $bmp.Height
+        $scale = [Math]::Min(1.0, $MaxSize / [double][Math]::Max($w, $hgt))
+        $nw = [Math]::Max(1, [int]($w * $scale)); $nh = [Math]::Max(1, [int]($hgt * $scale))
+        $out = New-Object System.Drawing.Bitmap($nw, $nh, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $g = [System.Drawing.Graphics]::FromImage($out)
+        try {
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $g.Clear([System.Drawing.Color]::Transparent)
+            $g.DrawImage($bmp, 0, 0, $nw, $nh)
+        } finally { $g.Dispose() }
+        $dir = Split-Path $OutFile -Parent
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $tmp = "$OutFile.tmp"
+        $out.Save($tmp, [System.Drawing.Imaging.ImageFormat]::Png)
+        $out.Dispose()
+        Move-Item -LiteralPath $tmp -Destination $OutFile -Force
+    } finally { $bmp.Dispose() }
+    return $OutFile
+}
+
+function Get-HUIconContent([string]$Path) {
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+    return @{ '@odata.type' = '#microsoft.graph.mimeContent'; type = 'image/png'; value = [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) }
+}
+
+# Logo einer Store-App (Produktkatalog des Microsoft Store, ohne Anmeldung). Fehler -> $false.
+function Save-HUStoreAppIcon([string]$StoreId, [string]$OutFile) {
+    try {
+        $r = Invoke-RestMethod -Uri "https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=$StoreId&market=AT&languages=de-AT,en-US,neutral" -UseBasicParsing -TimeoutSec 8
+        $imgs = @(@($r.Products)[0].LocalizedProperties | ForEach-Object { $_.Images } | Where-Object { $_ })
+        $pick = @($imgs | Where-Object { $_.ImagePurpose -in 'Tile', 'Logo', 'BoxArt' } | Sort-Object @{ Expression = { switch ($_.ImagePurpose) { 'Tile' { 0 } 'Logo' { 1 } default { 2 } } } }, @{ Expression = { [Math]::Abs(300 - [int]$_.Width) } })[0]
+        if (-not $pick) { return $false }
+        $uri = "$($pick.Uri)"; if ($uri.StartsWith('//')) { $uri = "https:$uri" }
+        $tmp = "$OutFile.download"
+        Invoke-WebRequest -Uri $uri -OutFile $tmp -UseBasicParsing -TimeoutSec 15
+        try { [void](ConvertTo-HUIconPng -Path $tmp -OutFile $OutFile) } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+        return $true
+    } catch { return $false }
+}
+
+# ============================================================================
 # Microsoft Store App (neu) = winGetApp (beta)
 # ============================================================================
 function New-HUStoreApp {
@@ -585,6 +675,7 @@ function New-HUStoreApp {
         packageIdentifier = "$($Def.StoreId)".ToUpper()
         installExperience = @{ '@odata.type' = '#microsoft.graph.winGetAppInstallExperience'; runAsAccount = $(if ("$($Def.RunAs)" -eq 'user') { 'user' } else { 'system' }) }
     }
+    if ($Def.PSObject.Properties['IconFile']) { $ic = Get-HUIconContent "$($Def.IconFile)"; if ($ic) { $body.largeIcon = $ic } }
     return (Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceAppManagement/mobileApps' -Method POST -Body $body)
 }
 
@@ -900,7 +991,7 @@ function Get-Snap {
         foreach ($k in Get-ChildItem $p -ErrorAction SilentlyContinue) {
             $v = Get-ItemProperty $k.PSPath -ErrorAction SilentlyContinue
             $l += [pscustomobject]@{ Key = $k.Name; DisplayName = "$($v.DisplayName)"; DisplayVersion = "$($v.DisplayVersion)"; Publisher = "$($v.Publisher)"
-                UninstallString = "$($v.UninstallString)"; QuietUninstallString = "$($v.QuietUninstallString)"; InstallLocation = "$($v.InstallLocation)" }
+                UninstallString = "$($v.UninstallString)"; QuietUninstallString = "$($v.QuietUninstallString)"; InstallLocation = "$($v.InstallLocation)"; DisplayIcon = "$($v.DisplayIcon)"; IconFile = '' }
         }
     }
     $l
@@ -926,6 +1017,28 @@ try {
     $result.NewEntries = @($after | Where-Object { $keys -notcontains $_.Key })
     $changed = @($after | Where-Object { $keys -contains $_.Key } | Where-Object { $k = $_.Key; $b = $before | Where-Object { $_.Key -eq $k } | Select-Object -First 1; $b.DisplayVersion -ne $_.DisplayVersion })
     $result.NewEntries += $changed
+    # Symbole der neuen Programme als PNG ablegen (fuer das Unternehmensportal)
+    try {
+        Add-Type -AssemblyName System.Drawing
+        Add-Type -Namespace 'HUSb' -Name 'Icon' -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern uint PrivateExtractIcons(string f, int i, int cx, int cy, System.IntPtr[] h, int[] id, uint n, uint fl);'
+        $n = 0
+        foreach ($e in @($result.NewEntries)) {
+            $n++
+            $loc = "$($e.DisplayIcon)".Trim()
+            if (-not $loc -and $e.InstallLocation) { $x = Get-ChildItem -LiteralPath $e.InstallLocation -Filter *.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '(?i)unins|setup|update|helper|crash' } | Sort-Object Length -Descending | Select-Object -First 1; if ($x) { $loc = $x.FullName } }
+            if (-not $loc) { continue }
+            $idx = 0; $mm = [regex]::Match($loc, '^(.*?),\s*(-?\d+)\s*$'); if ($mm.Success) { $loc = $mm.Groups[1].Value; $idx = [int]$mm.Groups[2].Value }
+            $loc = [Environment]::ExpandEnvironmentVariables($loc.Trim().Trim('"'))
+            if (-not (Test-Path -LiteralPath $loc)) { continue }
+            $bmp = $null
+            if ($loc -match '(?i)\.ico$') { $bmp = (New-Object System.Drawing.Icon($loc, 256, 256)).ToBitmap() }
+            else {
+                $h = New-Object IntPtr[] 1; $id = New-Object int[] 1
+                if ([HUSb.Icon]::PrivateExtractIcons($loc, $idx, 256, 256, $h, $id, 1, 0) -ge 1 -and $h[0] -ne [IntPtr]::Zero) { $bmp = ([System.Drawing.Icon]::FromHandle($h[0])).ToBitmap() }
+            }
+            if ($bmp) { $f = "icon_$n.png"; $bmp.Save("C:\HUTest\$f", [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); $e.IconFile = $f }
+        }
+    } catch { }
     $result.NewFolders = @(Get-Dirs | Where-Object { $dirsBefore -notcontains $_ })
     Write-Host "Exitcode $($result.ExitCode), neue Eintraege: $(@($result.NewEntries).Count)" -ForegroundColor Green
     if ($cfg.TestUninstall -and "$($cfg.Uninstall)".Trim()) {
@@ -990,7 +1103,8 @@ function ConvertFrom-HUSandboxEntry($Entry) {
     if ((Split-Path $key -Leaf) -match '^\{[0-9A-Fa-f-]{36}\}$') { $pc = Split-Path $key -Leaf }
     $det = if ($pc) { [pscustomobject]@{ Type = 'msi'; ProductCode = $pc; Version = "$($Entry.DisplayVersion)"; VersionCheck = [bool]"$($Entry.DisplayVersion)" } }
     else { [pscustomobject]@{ Type = 'registry'; KeyPath = $kp; ValueName = $(if ("$($Entry.DisplayVersion)") { 'DisplayVersion' } else { '' }); Version = "$($Entry.DisplayVersion)"; VersionCheck = [bool]"$($Entry.DisplayVersion)"; Check32 = $is32 } }
-    return [pscustomobject]@{ DisplayName = "$($Entry.DisplayName)"; Version = "$($Entry.DisplayVersion)"; Publisher = "$($Entry.Publisher)"; UninstallCmd = $un; Detection = $det; HKCU = ($key -match '^HKEY_CURRENT_USER') }
+    $icon = if ($Entry.PSObject.Properties['IconFile']) { "$($Entry.IconFile)" } else { '' }
+    return [pscustomobject]@{ DisplayName = "$($Entry.DisplayName)"; Version = "$($Entry.DisplayVersion)"; Publisher = "$($Entry.Publisher)"; UninstallCmd = $un; Detection = $det; HKCU = ($key -match '^HKEY_CURRENT_USER'); IconFile = $icon }
 }
 
 # Aus den neuen Uninstall-Eintraegen den passenden waehlen (Name aehnlich, sonst der mit Deinstallationsbefehl)
@@ -1018,5 +1132,6 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Select-HUSandboxEntry'
+    'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo',
+    'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

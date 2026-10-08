@@ -209,6 +209,8 @@ $script:Window.Add_ContentRendered({
                 [void](Select-HUComboTag $script:Controls['cmbAppDetType'] 'file')
                 $script:Controls['txtAppDetA'].Text = 'C:\Program Files\X'; $script:Controls['txtAppDetB'].Text = 'x.exe'; Save-HUAppForm
                 if ($tw.Detection.Type -ne 'file' -or $tw.Detection.FileName -ne 'x.exe') { throw 'Apps: Erkennung wird nicht uebernommen' }
+                if (-not (Set-HUAppIcon $tw "$env:windir\System32\notepad.exe" -Quiet) -or -not $script:Controls['imgAppIcon'].Source) { throw 'Apps: Symbol wird nicht uebernommen' }
+                Remove-Item -LiteralPath (Get-HUAppIconPath $tw) -Force -ErrorAction SilentlyContinue
                 [void]$script:AppLib.Remove($ta); [void]$script:AppLib.Remove($tw); $script:AppCurrent = $null; Update-HUAppList; Show-HUAppForm $null
                 $steps += 'Apps'
                 # Reiter Wartung: Beispiel uebernehmen und pruefen

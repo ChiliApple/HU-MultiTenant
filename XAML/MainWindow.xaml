@@ -425,7 +425,21 @@
                                             <TextBlock Grid.Row="2" Text="Version" Style="{StaticResource FieldLabel}"/>
                                             <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppVersion" Style="{StaticResource DarkTextBox}" Margin="0,2" Width="160" HorizontalAlignment="Left"/>
                                             <TextBlock Grid.Row="3" Text="Beschreibung" Style="{StaticResource FieldLabel}"/>
-                                            <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" x:Name="txtAppDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBox Grid.Row="3" Grid.Column="1" x:Name="txtAppDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <StackPanel Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Orientation="Horizontal" Margin="10,2,0,2" VerticalAlignment="Top">
+                                                <Border Width="72" Height="72" Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="4"
+                                                        ToolTip="Symbol im Unternehmensportal">
+                                                    <Grid>
+                                                        <TextBlock x:Name="lblAppIconNone" Text="kein&#x0a;Symbol" Foreground="#666666" FontSize="10" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        <Image x:Name="imgAppIcon" Width="64" Height="64" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                    </Grid>
+                                                </Border>
+                                                <StackPanel Margin="6,0,0,0" VerticalAlignment="Center">
+                                                    <Button x:Name="btnAppIcon" Content="Symbol ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,0,4"
+                                                            ToolTip="Bild (PNG, JPG), ICO oder EXE waehlen - wird als PNG (max. 256 px) im Unternehmensportal angezeigt"/>
+                                                    <Button x:Name="btnAppIconClear" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"/>
+                                                </StackPanel>
+                                            </StackPanel>
                                         </Grid>
 
                                         <!-- Win32 (MSI/EXE) -->
