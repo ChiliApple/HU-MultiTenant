@@ -723,8 +723,10 @@ function Update-HUAppDepList {
             else { [pscustomobject]@{ Title = '(nicht mehr in der Bibliothek)'; Sub = ''; Id = $id; Kind = 'lib' } }
         }) + @(foreach ($n in @(if ($a) { $a.IntuneDeps })) { [pscustomobject]@{ Title = $n; Sub = 'Intune | je Tenant per Name'; Id = $n; Kind = 'intune' } })
     $c['lstAppDeps'].ItemsSource = @($items)
-    $c['btnAppDepRemove'].IsEnabled = [bool]@($items).Count
-    $c['chkAppDepAuto'].IsEnabled = [bool]@($items).Count
+    $n = @($items).Count
+    $vis = $(if ($n) { 'Visible' } else { 'Collapsed' })
+    foreach ($x in 'lstAppDeps', 'btnAppDepRemove', 'chkAppDepAuto') { $c[$x].Visibility = $vis }
+    $c['lblAppDeps'].Text = $(if ($n) { "$n" } else { 'keine' })
 }
 
 # haengt $Candidate (direkt oder ueber Umwege) von $Target ab?

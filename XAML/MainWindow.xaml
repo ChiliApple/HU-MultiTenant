@@ -517,15 +517,22 @@
                                                 </StackPanel>
                                             </Border>
 
-                                            <TextBlock Text="Abhaengigkeiten (werden vorher installiert - z. B. Treiber, Laufzeitumgebungen)" Style="{StaticResource SectionTitle}" Margin="0,10,0,4"/>
-                                            <Grid>
+                                            <Grid Margin="0,8,0,0">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="130"/>
                                                     <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                                                <ListBox Grid.Column="1" x:Name="lstAppDeps" Style="{StaticResource DarkListBox}" MinHeight="34" MaxHeight="110" SelectionMode="Extended">
+                                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                                <TextBlock Text="Abhaengigkeiten" Style="{StaticResource FieldLabel}" ToolTip="Werden vor der App installiert - z. B. Treiber, Laufzeitumgebungen"/>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                                    <TextBlock x:Name="lblAppDeps" Text="keine" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                    <Button x:Name="btnAppDepAdd" Content="+ Bibliothek ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,4,0"
+                                                            ToolTip="App aus der Bibliothek - wird beim Hochladen mit hochgeladen (nur Setup-Dateien, keine Store-Apps)"/>
+                                                    <Button x:Name="btnAppDepAddIntune" Content="+ Intune ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,4,0"
+                                                            ToolTip="Win32-App, die schon in Intune liegt (z. B. Treiber, Runtime) - wird nur verknuepft, je Tenant per Name gesucht"/>
+                                                    <Button x:Name="btnAppDepRemove" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Visibility="Collapsed"/>
+                                                </StackPanel>
+                                                <ListBox Grid.Row="1" Grid.Column="1" x:Name="lstAppDeps" Style="{StaticResource DarkListBox}" MaxHeight="110" SelectionMode="Extended" Margin="0,2" Visibility="Collapsed">
                                                     <ListBox.ItemTemplate>
                                                         <DataTemplate>
                                                             <StackPanel Orientation="Horizontal" Margin="0,1">
@@ -535,15 +542,8 @@
                                                         </DataTemplate>
                                                     </ListBox.ItemTemplate>
                                                 </ListBox>
-                                                <StackPanel Grid.Column="2" Margin="6,0,0,0">
-                                                    <Button x:Name="btnAppDepAdd" Content="+ Aus Bibliothek ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,0,4"
-                                                            ToolTip="App aus der Bibliothek - wird beim Hochladen mit hochgeladen (nur Setup-Dateien, keine Store-Apps)"/>
-                                                    <Button x:Name="btnAppDepAddIntune" Content="+ Aus Intune ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,0,4"
-                                                            ToolTip="Win32-App, die schon in Intune liegt (z. B. Treiber, Runtime) - wird nur verknuepft, je Tenant per Name gesucht"/>
-                                                    <Button x:Name="btnAppDepRemove" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"/>
-                                                </StackPanel>
-                                                <CheckBox Grid.Row="1" Grid.Column="1" x:Name="chkAppDepAuto" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,4,0,0"
-                                                          Content="automatisch mitinstallieren (die Abhaengigkeiten brauchen keine eigene Zuweisung)"/>
+                                                <CheckBox Grid.Row="2" Grid.Column="1" x:Name="chkAppDepAuto" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,2,0,0" Visibility="Collapsed"
+                                                          Content="automatisch mitinstallieren (brauchen keine eigene Zuweisung)"/>
                                             </Grid>
                                         </StackPanel>
 
