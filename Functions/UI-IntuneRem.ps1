@@ -125,8 +125,6 @@ function Update-HURintList {
         if ($kind -eq 'global' -and -not $it.Global) { continue }
         $rows = @($it.Per.Values)
         $sub = $(if ($it.Global) { 'Microsoft' } else { "$(@($rows)[0].Publisher)" })
-        $fix = @($rows | Where-Object { $null -ne $_.HasRemediation })
-        if ($fix.Count) { $sub += $(if (@($fix | Where-Object { $_.HasRemediation }).Count) { ' | Pruefen + Reparieren' } else { ' | Nur pruefen' }) }
         if ($keys.Count -gt 1) { $sub += " | $($it.Per.Count) von $($keys.Count)" }
         if (@($rows | Where-Object { $_.AssignKnown }).Count) { $sub += $(if (@($rows | Where-Object { @($_.Assignments).Count }).Count) { ' | zugewiesen' } else { ' | nicht zugewiesen' }) }
         [pscustomobject]@{ Title = $it.Name; Sub = $sub.Trim(' ', '|'); Key = $it.Key }
@@ -248,8 +246,10 @@ function Start-HURintDetail {
     $script:RintDetailKey = $it.Key
     [void](Start-HUJob -Name 'RintDetail' -Quiet -Output $script:Controls['rtbRem'] -Vars @{ Per = $per } -Code {
             foreach ($k in $Per.Keys) {
+                $sw = [Diagnostics.Stopwatch]::StartNew()
                 try { Get-HURemediationDetail -TenantKey $k -Settings $Settings -Id $Per[$k] }
                 catch { Write-HULog -Message "Details: $($_.Exception.Message)" -Level 'WARN' -Tenant $k }
+                if ($sw.Elapsed.TotalSeconds -gt 15) { Write-HULog -Message "Details brauchten $([int]$sw.Elapsed.TotalSeconds) s (Intune antwortet langsam)" -Level 'INFO' -Tenant $k }
             }
         } -OnDone {
             param($Result, $Errors)
@@ -259,7 +259,11 @@ function Start-HURintDetail {
             $script:RintDetail = @{}
             foreach ($d in @($Result | Where-Object { $_ -and $_.PSObject.Properties['Detection'] })) { $script:RintDetail[$d.Tenant] = $d }
             $keys = @($script:RintCurrent.Per.Keys | Where-Object { $script:RintDetail.ContainsKey($_) })
-            if (-not $keys.Count) { $c['txtRintSummary'].Text = 'Details nicht lesbar (siehe Ausgabe unten).'; Update-HURintButtons; return }
+            if (-not $keys.Count) {
+                $c['txtRintSummary'].Text = 'Details nicht lesbar (siehe Ausgabe unten).'
+                if (@($Errors).Count -eq 0) { Add-HURtbLine $c['rtbRem'] "Details zu '$($script:RintCurrent.Name)' kamen leer zurueck." '#FFB74D' }
+                Update-HURintButtons; return
+            }
             $d0 = $script:RintDetail[$keys[0]]
             $c['txtRintDetect'].Text = $d0.Detection
             $c['txtRintFix'].Text = $d0.Remediation

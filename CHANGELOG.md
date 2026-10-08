@@ -17,6 +17,7 @@
   - **Ohne Desktop-Verknuepfung**: neue Desktop-Verknuepfungen werden nach der Installation entfernt (HU-Install.ps1 im Paket); die Testinstallation zeigt, welche Verknuepfungen ein Setup anlegt
   - Inno-Setups werden fuer alle Benutzer installiert (/ALLUSERS); Inno-Deinstallation immer /VERYSILENT /SUPPRESSMSGBOXES, laufende App wird vorher beendet; Warnung, wenn ein Setup nur ins Benutzerprofil installiert; bestehende Eintraege werden beim Oeffnen angepasst
   - Installationsstatus mit Klartext (Installiert, Fehlgeschlagen, Nicht installiert, Ausstehend ...) statt Zahlencodes
+  - Testinstallation: HU-MultiTenant schliesst die Sandbox selbst (keine Meldung "Remoteumgebung wird heruntergefahren" mehr)
   - Statusbericht: kurze 503-Fehler von Intune beim Warten werden abgefangen; Hinweis fuer 0x87D300C9; Sandbox meldet unsichtbare Setup-Hauptfenster (Inno) nicht mehr als Dialog
   - Ausschluss-Gruppen bei Zuweisungen werden korrekt aufgeloest
   - In Intune: Abhaengigkeiten zeigen auch "Benoetigt von" / "Ersetzt durch"

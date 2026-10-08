@@ -1620,9 +1620,27 @@ try {
 $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'C:\HUTest\result.json' -Encoding UTF8
 Write-Host ''
 Write-Host 'Fertig - Ergebnis steht in HU-MultiTenant.' -ForegroundColor Green
-if (-not $cfg.KeepOpen) { Write-Host 'Sandbox wird in 5 Sekunden geschlossen ...'; Start-Sleep -Seconds 5; shutdown.exe /s /t 0 }
+# HU-MultiTenant schliesst die Sandbox von aussen; nur falls das nicht klappt, hier nach 90 s herunterfahren
+if (-not $cfg.KeepOpen) { Write-Host 'Sandbox wird von HU-MultiTenant geschlossen ...'; Start-Sleep -Seconds 90; shutdown.exe /s /t 0 }
 else { Write-Host 'Sandbox bleibt offen (zum Nachsehen). Schliessen mit dem X oben rechts.' -ForegroundColor Yellow }
 '@
+
+# Laufende Windows Sandbox von aussen schliessen (ohne Rueckfrage/Fehlermeldung im Sandbox-Fenster).
+# Ab Windows 11 24H2 ueber "wsb stop", sonst Sandbox-Fenster beenden. Laeuft unsichtbar im Hintergrund.
+function Stop-HUSandbox {
+    $cmd = @'
+$ErrorActionPreference = 'SilentlyContinue'
+$wsb = Get-Command wsb.exe -ErrorAction SilentlyContinue
+if ($wsb) {
+    $ids = @([regex]::Matches(((& $wsb.Source list) -join ' '), '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}') | ForEach-Object { $_.Value } | Select-Object -Unique)
+    foreach ($i in $ids) { & $wsb.Source stop --id $i | Out-Null }
+    Start-Sleep -Seconds 3
+}
+Get-Process -Name 'WindowsSandboxRemoteSession', 'WindowsSandboxClient', 'WindowsSandbox' -ErrorAction SilentlyContinue | Stop-Process -Force
+'@
+    $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
+    try { Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc -WindowStyle Hidden } catch { }
+}
 
 function Start-HUSandboxTest {
     [CmdletBinding()]
@@ -1725,7 +1743,7 @@ Export-ModuleMember -Function @(
     'Get-HUAppIconBytes', 'Get-HUAppRelationRows', 'Set-HUAppRelations', 'Remove-HUIntuneApp', 'Invoke-HUExportReport', 'Get-HUErrorText', 'ConvertTo-HUInstallStateText', 'Get-HUAppInstallStatus',
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
-    'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'ConvertFrom-HUSandboxEntry',
+    'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
     'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'

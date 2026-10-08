@@ -937,7 +937,7 @@ function Start-HUAppSandbox {
     $c = $script:Controls
     $testUn = [bool]$c['chkAppSandboxUninstall'].IsChecked
     if ($testUn -and -not $a.UninstallCmd) { $testUn = $false }
-    $script:AppSbStart = @{ AppId = $a.Id; TestUn = $testUn; Uninstall = $a.UninstallCmd }
+    $script:AppSbStart = @{ AppId = $a.Id; TestUn = $testUn; Uninstall = $a.UninstallCmd; KeepOpen = [bool]$c['chkAppSandboxKeep'].IsChecked }
     $rtb = $c['rtbApps']
     Add-HURtbLine $rtb "=== Testinstallation: $($a.Name) ===" '#CE93D8'
     $c['txtAppSandbox'].Text = 'Sandbox wird vorbereitet ...'
@@ -960,7 +960,7 @@ function Start-HUAppSandbox {
 }
 
 function Start-HUSandboxWatch([string]$File) {
-    $script:AppSbWatch = @{ File = $File; AppId = $script:AppSbStart.AppId; Started = Get-Date; Seen = $false; TestUn = $script:AppSbStart.TestUn }
+    $script:AppSbWatch = @{ File = $File; AppId = $script:AppSbStart.AppId; Started = Get-Date; Seen = $false; TestUn = $script:AppSbStart.TestUn; KeepOpen = [bool]$script:AppSbStart.KeepOpen }
     if (-not $script:AppSbTimer) {
         $script:AppSbTimer = [System.Windows.Threading.DispatcherTimer]::new()
         $script:AppSbTimer.Interval = [TimeSpan]::FromSeconds(3)
@@ -989,7 +989,10 @@ function Update-HUSandboxWatch {
         $res = $null
         try { $res = Get-Content -LiteralPath $w.File -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return }
         if (-not $res) { return }
+        $keep = [bool]$w.KeepOpen
         Stop-HUSandboxWatch ''
+        # von aussen schliessen - beim Herunterfahren in der Sandbox meldet Windows "Remoteumgebung wird heruntergefahren"
+        if (-not $keep) { Stop-HUSandbox }
         Show-HUSandboxResult $res $w.AppId $w.TestUn
         return
     }
