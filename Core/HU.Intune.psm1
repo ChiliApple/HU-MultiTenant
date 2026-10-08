@@ -961,10 +961,19 @@ function Get-HUTenantAppList {
         [pscustomobject]@{
             Name = "$($a.displayName)"; Typ = $script:WinAppTypes[$t]; OType = $t; Kind = (Get-HUAppKindFromType $t)
             Version = "$($a.displayVersion)"; Publisher = "$($a.publisher)"; Description = "$($a.description)"; Id = "$($a.id)"
-            Modified = "$($a.lastModifiedDateTime)"; State = "$($a.publishingState)"
+            Modified = "$($a.lastModifiedDateTime)"; State = "$($a.publishingState)"; IsAssigned = [bool]$a.isAssigned
             Assignments = @(@($a.assignments) | Where-Object { $_ } | ForEach-Object { ConvertFrom-HUAssignment $_ $names })
         }
     }
+}
+
+# Zuweisungen einer App direkt lesen (genauer als $expand in der Liste)
+function Get-HUAppAssignmentRows {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId)
+    $cur = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/assignments")
+    $names = Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids @($cur | ForEach-Object { $_.target.groupId })
+    foreach ($a in $cur) { ConvertFrom-HUAssignment $a $names }
 }
 
 # Zuweisungen entfernen, deren Key (Art|Gruppenname) in -Keys steht
@@ -1521,7 +1530,7 @@ Export-ModuleMember -Function @(
     'Get-HUDefaultReturnCodes', 'ConvertTo-HUDetectionRule', 'ConvertTo-HUWin32Payload',
     'Get-HUIntuneApp', 'New-HUWin32App', 'Update-HUWin32App', 'Publish-HUWin32Content', 'New-HUStoreApp',
     'Set-HUAppAssignment', 'Wait-HUAppPublished',
-    'Get-HUAppKindFromType', 'Get-HUGroupNames', 'ConvertFrom-HUAssignment', 'Get-HUTenantAppList', 'Remove-HUAppAssignments', 'Update-HUAppProperties',
+    'Get-HUAppKindFromType', 'Get-HUGroupNames', 'ConvertFrom-HUAssignment', 'Get-HUTenantAppList', 'Get-HUAppAssignmentRows', 'Remove-HUAppAssignments', 'Update-HUAppProperties',
     'Get-HUAppIconBytes', 'Get-HUAppRelationRows', 'Set-HUAppRelations', 'Remove-HUIntuneApp', 'Invoke-HUExportReport', 'Get-HUErrorText', 'Get-HUAppInstallStatus',
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',

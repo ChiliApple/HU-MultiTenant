@@ -17,6 +17,8 @@ $script:IntCurrent = $null
 $script:IntRelRows = @()
 $script:IntIconFile = ''
 $script:IntLoading = $false
+$script:IntDetailPending = $false
+$script:IntDetailKey = ''
 
 $script:IntIntentText = @{ required = 'Erforderlich'; available = 'Verfuegbar'; uninstall = 'Deinstallieren'; availableWithoutEnrollment = 'Verfuegbar (ohne Reg.)' }
 $script:IntNotifyText = @{ showAll = 'anzeigen'; showReboot = 'nur Neustart'; hideAll = 'keine' }
@@ -131,7 +133,7 @@ function Update-HUIntList {
         if ($kind -and $it.Kind -ne $kind) { continue }
         $rows = @($it.Per.Values)
         $vers = @($rows | ForEach-Object { $_.Version } | Where-Object { $_ } | Select-Object -Unique)
-        $assigned = @($rows | Where-Object { @($_.Assignments).Count }).Count
+        $assigned = @($rows | Where-Object { @($_.Assignments).Count -or $_.IsAssigned }).Count
         $sub = "$($it.Typ)$(if ($vers.Count) { " | v$($vers -join '/')" })"
         if ($keys.Count -gt 1) { $sub += " | $($it.Per.Count) von $($keys.Count)" }
         $sub += $(if ($assigned) { ' | zugewiesen' } else { ' | nicht zugewiesen' })
@@ -185,6 +187,26 @@ function Show-HUIntApp([switch]$KeepRel) {
     if ($tt) { $info += " | vorhanden: $tt" }
     if (@($rows | Where-Object { $_.State -and $_.State -ne 'published' }).Count) { $info += ' | wird von Intune noch verarbeitet' }
     $c['txtIntInfo'].Text = $info
+    Update-HUIntAssignGrid
+    $c['pnlIntRel'].Visibility = $(if ($it.Kind -eq 'win32') { 'Visible' } else { 'Collapsed' })
+    $isWin = ($it.Kind -ne 'other')
+    $c['txtIntDeadline'].IsEnabled = $isWin; $c['cmbIntNotify'].IsEnabled = $isWin
+    if (-not $KeepRel) {
+        $c['txtIntName'].Text = $it.Name
+        $c['txtIntPublisher'].Text = "$($first.Publisher)"
+        $c['txtIntDesc'].Text = "$($first.Description)"
+        $script:IntIconFile = ''; $c['lblIntIcon'].Text = ''
+        $c['gridIntRel'].ItemsSource = $null
+        $c['imgIntIcon'].Source = $null
+        Start-HUIntDetail
+    }
+}
+
+function Update-HUIntAssignGrid {
+    $c = $script:Controls; $it = $script:IntCurrent
+    if (-not $it) { return }
+    $keys = @($it.Per.Keys)
+    $all = @(Get-HUIntTenants)
     # Zuweisungen zusammengefasst ueber die Tenants
     $agg = [ordered]@{}
     foreach ($k in $keys) {
@@ -203,24 +225,14 @@ function Show-HUIntApp([switch]$KeepRel) {
                 Tenants = $(if ($all.Count -gt 1) { Get-HUIntTenantText @($v.T) $all } else { '' }); Key = $v.A.Key
             }
         })
-    $c['pnlIntRel'].Visibility = $(if ($it.Kind -eq 'win32') { 'Visible' } else { 'Collapsed' })
-    $isWin = ($it.Kind -ne 'other')
-    $c['txtIntDeadline'].IsEnabled = $isWin; $c['cmbIntNotify'].IsEnabled = $isWin
-    if (-not $KeepRel) {
-        $c['txtIntName'].Text = $it.Name
-        $c['txtIntPublisher'].Text = "$($first.Publisher)"
-        $c['txtIntDesc'].Text = "$($first.Description)"
-        $script:IntIconFile = ''; $c['lblIntIcon'].Text = ''
-        $c['gridIntRel'].ItemsSource = $null
-        $c['imgIntIcon'].Source = $null
-        Start-HUIntDetail
-    }
 }
 
-# Symbol und Beziehungen der gewaehlten App laden (Hintergrund)
+# Symbol, Zuweisungen und Beziehungen der gewaehlten App laden (Hintergrund)
 function Start-HUIntDetail {
     $it = $script:IntCurrent
-    if (-not $it -or (Test-HUJobRunning 'IntDetail')) { return }
+    if (-not $it) { return }
+    if (Test-HUJobRunning 'IntDetail') { $script:IntDetailPending = $true; return }
+    $script:IntDetailPending = $false
     $per = @{}; foreach ($k in $it.Per.Keys) { $per[$k] = $it.Per[$k].Id }
     $script:IntDetailKey = $it.Key
     [void](Start-HUJob -Name 'IntDetail' -Output $null -Vars @{ Per = $per; Win32 = ($it.Kind -eq 'win32') } -Code {
@@ -233,12 +245,19 @@ function Start-HUIntDetail {
                         try { foreach ($r in @(Get-HUAppRelationRows -TenantKey $k -Settings $Settings -AppId $Per[$k])) { $r | Add-Member -NotePropertyName Tenant -NotePropertyValue $k -PassThru } } catch { }
                     })
             }
-            [pscustomobject]@{ Icon = $icon; Rel = $rel }
+            $asg = @{}
+            foreach ($k in $Per.Keys) { try { $asg[$k] = @(Get-HUAppAssignmentRows -TenantKey $k -Settings $Settings -AppId $Per[$k]) } catch { } }
+            [pscustomobject]@{ Icon = $icon; Rel = $rel; Assign = $asg }
         } -OnDone {
             param($Result, $Errors)
             $r = @($Result | Where-Object { $_ -and $_.PSObject.Properties['Rel'] })[0]
-            if (-not $r -or -not $script:IntCurrent -or $script:IntCurrent.Key -ne $script:IntDetailKey) { return }
+            # inzwischen andere App gewaehlt -> fuer diese neu laden
+            if (-not $script:IntCurrent) { return }
+            if ($script:IntDetailPending -or $script:IntCurrent.Key -ne $script:IntDetailKey) { Start-HUIntDetail; return }
+            if (-not $r) { return }
             $c = $script:Controls
+            foreach ($k in @($r.Assign.Keys)) { if ($script:IntCurrent.Per.Contains($k)) { $script:IntCurrent.Per[$k].Assignments = @($r.Assign[$k]) } }
+            Update-HUIntAssignGrid
             if ($r.Icon) {
                 try {
                     $ms = New-Object System.IO.MemoryStream(, [byte[]]$r.Icon)
