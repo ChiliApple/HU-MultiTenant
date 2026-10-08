@@ -119,6 +119,8 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><td>Standard-Tenant</td><td>wird beim allerersten Start vorgewählt</td></tr>
     <tr><td>Secret dauerhaft speichern</td><td>aus: das Secret wird beim Beenden gelöscht (geteilte PCs)</td></tr>
   </table>
+  <h3 id="sperre">Sperre</h3>
+  <p><span class="ui">⚙ Einstellungen</span> › <b>Allgemein</b> › <b>Sperre</b>: zuerst <span class="ui">PIN festlegen …</span>, dann <i>sperren nach … Minuten ohne Eingabe</i> und auf Wunsch <i>auch beim Start</i>. Entsperrt wird mit Windows Hello (Gesicht, Fingerabdruck, Windows-PIN) oder der PIN; <kbd>Strg</kbd>+<kbd>L</kbd> sperrt sofort. Laufende Aufträge laufen im Hintergrund weiter. Das ist ein Schutz gegen schnelles Mitbenutzen am offenen PC – der eigentliche Schutz bleibt die Windows-Sperre. PIN vergessen und kein Hello: in <code>Config\settings.json</code> <code>"lockEnabled": false</code> setzen.</p>
   <h3 id="verkn">Verknüpfung</h3>
   <p><span class="ui">⚙ Einstellungen</span> › <b>Allgemein</b> › <span class="ui b">Desktop-Verknüpfung</span> oder <span class="ui b">Startmenü-Eintrag</span>. Dabei entsteht <code>HU-MultiTenant.exe</code> im Programmordner: eigenes Logo, kein Konsolenfenster, an die Taskleiste anheftbar. Ohne Administratorrechte.</p>
 </section>
@@ -296,6 +298,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><td><code>Tools\IntuneWinAppUtil.exe</code></td><td>Paketier-Werkzeug von Microsoft (wird beim ersten Hochladen geladen)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\*.cred</code></td><td>Client Secrets (DPAPI)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\ui-state.json</code></td><td>Fenster und letzte Auswahl</td></tr>
+    <tr><td><code>%APPDATA%\HU-MultiTenant\lock.json</code></td><td>Prüfwert der Sperr-PIN (nicht die PIN)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\secret-expiry.json</code></td><td>zuletzt gelesene Ablaufdaten</td></tr>
     <tr><td><code>Config\quick-snippets.example.json</code></td><td>Beispiel-Snippets</td></tr>
     <tr><td><code>Logs\QuickScript\</code></td><td>Verlauf (<code>verlauf.jsonl</code>) und Protokoll je Lauf</td></tr>
@@ -308,6 +311,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <table>
     <tr><th>Taste</th><th>Wirkung</th></tr>
     <tr><td><kbd>F1</kbd></td><td>diese Anleitung</td></tr>
+    <tr><td><kbd>Strg</kbd>+<kbd>L</kbd></td><td>HU-MultiTenant sperren (wenn die Sperre eingeschaltet ist)</td></tr>
     <tr><td><kbd>Strg</kbd> + Mausrad · <kbd>Strg</kbd>+<kbd>0</kbd></td><td>Oberfläche größer/kleiner · 100 %</td></tr>
     <tr><td><kbd>Strg</kbd>+<kbd>Enter</kbd> · <kbd>F5</kbd></td><td>Quick Script ausführen</td></tr>
     <tr><td><kbd>F8</kbd></td><td>nur die Markierung ausführen</td></tr>

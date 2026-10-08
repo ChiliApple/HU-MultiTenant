@@ -2,6 +2,9 @@
 
 ## v2.1.2 (in Arbeit)
 
+### Neu
+- **Sperre**: HU-MultiTenant nach einstellbarer Zeit ohne Eingabe am PC sperren, auf Wunsch auch beim Start; entsperren mit Windows Hello oder einer eigenen PIN (nur als Hash gespeichert, 5 Fehlversuche = 30 s Pause); Strg+L sperrt sofort; beim Sperren werden zwischengespeicherte Tokens verworfen (Einstellungen > Allgemein > Sperre)
+
 ### Behoben
 - App-Symbol: liefert ein Programm beim Auslesen nur Bildrauschen (z. B. nach der Testinstallation), wird es nicht mehr uebernommen - das vorhandene Symbol bleibt
 

@@ -82,6 +82,14 @@ function Show-HUSettingsDialog {
     $c.txtReports.Text = "$(Get-HUProp $S.reporting 'outputPath' './Reports')"
     $c.chkSecretCheckStart.IsChecked = [bool](Get-HUProp $S.ui 'checkSecretsOnStart' $true)
     $c.txtWarnDays.Text = "$(Get-HUSecretWarnDays)"
+    # Sperre
+    $lc = Get-HULockConfig
+    $c.chkLockEnabled.IsChecked = $lc.Enabled
+    $c.txtLockMinutes.Text = "$($lc.Minutes)"
+    $c.chkLockOnStart.IsChecked = $lc.OnStart
+    $updLockInfo = { $c.txtLockInfo.Text = $(if (Test-HULockPinSet) { 'PIN ist festgelegt' } else { 'noch keine PIN' }) }
+    & $updLockInfo
+    $c.btnLockPin.Add_Click({ if (Show-HULockPinDialog $w) { & $updLockInfo } })
     $updShortcutInfo = {
         $exe = Join-Path $script:AppRoot $script:LauncherName
         $c.txtShortcutInfo.Text = "Starter: $(if (Test-Path -LiteralPath $exe) { $exe } else { 'noch nicht erstellt' })  |  Verknuepfung vorhanden: $(if (Test-HUShortcut) { 'ja' } else { 'nein' })"
@@ -320,6 +328,11 @@ function Show-HUSettingsDialog {
         if ($st.Cur -ge 0 -and $et -and -not [datetime]::TryParseExact($et, @('dd.MM.yyyy', 'd.M.yyyy', 'yyyy-MM-dd'), [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$dtx)) {
             $c.tabSettings.SelectedItem = $c.tabTenants; Show-HUMessage "'Secret gueltig bis' bitte als TT.MM.JJJJ eingeben (oder leer lassen)." -Icon Warning -Owner $w; return
         }
+        $lm = 0
+        if ($c.chkLockEnabled.IsChecked) {
+            if (-not [int]::TryParse($c.txtLockMinutes.Text.Trim(), [ref]$lm) -or $lm -lt 1 -or $lm -gt 240) { $c.tabSettings.SelectedItem = $c.tabGeneral; Show-HUMessage 'Sperre: Minuten als Zahl zwischen 1 und 240.' -Icon Warning -Owner $w; return }
+            if (-not (Test-HULockPinSet)) { $c.tabSettings.SelectedItem = $c.tabGeneral; Show-HUMessage 'Fuer die Sperre bitte zuerst eine PIN festlegen (Ersatz, falls Windows Hello nicht geht).' -Icon Warning -Owner $w; return }
+        } else { [void][int]::TryParse($c.txtLockMinutes.Text.Trim(), [ref]$lm); if ($lm -lt 1) { $lm = 10 } }
         $wd = 0
         if (-not [int]::TryParse($c.txtWarnDays.Text.Trim(), [ref]$wd) -or $wd -lt 1 -or $wd -gt 365) { $c.tabSettings.SelectedItem = $c.tabGeneral; Show-HUMessage 'Warnschwelle: Zahl zwischen 1 und 365.' -Icon Warning -Owner $w; return }
 
@@ -327,6 +340,9 @@ function Show-HUSettingsDialog {
         Set-HUProp $S.ui 'startTab' "$($c.cmbStartTab.SelectedItem.Tag)"
         Set-HUProp $S.ui 'secretWarnDays' $wd
         Set-HUProp $S.ui 'checkSecretsOnStart' ([bool]$c.chkSecretCheckStart.IsChecked)
+        Set-HUProp $S.ui 'lockEnabled' ([bool]$c.chkLockEnabled.IsChecked)
+        Set-HUProp $S.ui 'lockMinutes' $lm
+        Set-HUProp $S.ui 'lockOnStart' ([bool]$c.chkLockOnStart.IsChecked)
         Set-HUProp $S.ui 'checkUpdatesOnStart' ([bool]$c.chkCheckOnStart.IsChecked)
         Set-HUProp $S.logging 'logLevel' "$($c.cmbLogLevel.SelectedItem.Tag)"
         Set-HUProp $S.reporting 'outputPath' $c.txtReports.Text.Trim()
