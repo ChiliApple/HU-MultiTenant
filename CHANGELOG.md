@@ -1,46 +1,32 @@
-﻿﻿﻿# HU-MultiTenant Changelog
+﻿# HU-MultiTenant Changelog
 
 ## v2.1.0 (2026-10-08)
 
-### Neu
-- **Reiter Apps**: MSI, EXE und Microsoft-Store-Apps (neu) an mehrere Tenants verteilen
-  - Setup-Datei hinzufuegen oder auf die Liste ziehen: Name, Version, Befehle und Erkennung werden ausgelesen (MSI vollstaendig; EXE: Inno, NSIS, InstallShield, WiX, Advanced Installer, Squirrel mit stillem Schalter)
-  - **Testinstallation in der Windows Sandbox**: installiert im Wegwerf-Windows, schlaegt Erkennung, Deinstallation (mit Schalter fuer stilles Entfernen, z. B. NSIS /S) und Symbol vor, testet die Deinstallation mit; das Ergebnis holt HU-MultiTenant vor das Sandbox-Fenster. Ist die Sandbox nicht aktiviert, aktiviert sie ein Knopf (Admin, Neustart)
-  - Paket wird einmal gebaut und je Tenant hochgeladen; unveraenderte Pakete werden nicht erneut hochgeladen; neue Version aktualisiert dieselbe Intune-App
-  - **Updates**: neue Setup-Datei auf die Liste ziehen oder "Andere Datei ..." - wird als neue Version derselben App erkannt, auch wenn die Versionsnummer im Namen steht; beim Anlegen wird ein Name ohne Version vorgeschlagen
-  - Ziel Gruppe (per Name je Tenant gesucht), Alle Geraete oder Alle Benutzer; Erforderlich/Verfuegbar/Deinstallieren, Frist, Hinweise; vorhandene Zuweisungen bleiben erhalten
-  - optional **Pilotgruppe** und spaeter "Fuer alle freigeben"
-  - Ziel **Keine Zuweisung** (nur hochladen/aktualisieren), auch bei Wartung
-  - Zuweisen wartet, bis Intune die App fertig verarbeitet hat; voruebergehende Serverfehler (500) werden wiederholt
-  - **Status** je Geraet mit Fehlertext, Filter und Export
-  - **In Intune**: alle vorhandenen Windows-Apps der angehakten Tenants (Win32, Store, MSI, Microsoft 365, Edge, Weblinks); bei mehreren Tenants nach Namen zusammengefasst. Zuweisungen (Gruppe, Ausschluss, Alle Geraete/Benutzer, Absicht, Hinweise, Frist) ergaenzen und entfernen, Abhaengigkeiten und Ersetzungen, Name/Hersteller/Beschreibung/Symbol, Status je Geraet, im Portal oeffnen, Loeschen mit doppelter Rueckfrage
-  - **Ohne Desktop-Verknuepfung**: neue Desktop-Verknuepfungen werden nach der Installation entfernt (HU-Install.ps1 im Paket); die Testinstallation zeigt, welche Verknuepfungen ein Setup anlegt
-  - Inno-Setups werden fuer alle Benutzer installiert (/ALLUSERS); Inno-Deinstallation immer /VERYSILENT /SUPPRESSMSGBOXES, laufende App wird vorher beendet; Warnung, wenn ein Setup nur ins Benutzerprofil installiert; bestehende Eintraege werden beim Oeffnen angepasst
-  - Installationsstatus mit Klartext (Installiert, Fehlgeschlagen, Nicht installiert, Ausstehend ...) statt Zahlencodes
-  - Testinstallation: HU-MultiTenant schliesst die Sandbox selbst (keine Meldung "Remoteumgebung wird heruntergefahren" mehr)
-  - Statusbericht: kurze 503-Fehler von Intune beim Warten werden abgefangen; Hinweis fuer 0x87D300C9; Sandbox meldet unsichtbare Setup-Hauptfenster (Inno) nicht mehr als Dialog
-  - Ausschluss-Gruppen bei Zuweisungen werden korrekt aufgeloest
-  - In Intune: Abhaengigkeiten zeigen auch "Benoetigt von" / "Ersetzt durch"
-  - Testinstallation zeigt bei Problemen die Protokolle (Befehlsausgabe, MSI-Protokoll, neue Log-Dateien, MSI-Ereignisse) direkt in der Ausgabe
-  - **Abhaengigkeiten** (z. B. Treiber, Laufzeitumgebungen): aus der Bibliothek (werden mit hochgeladen, auch mehrstufig, Kreise werden erkannt) oder **bereits in Intune vorhandene Win32-Apps** (Auswahl mit Filter und "vorhanden in x von y Tenants", je Tenant per Name verknuepft); automatisch installieren oder nur pruefen
-  - Testinstallation erkennt sichtbare Fenster (Setup/Deinstallation nicht still) und ergaenzt fehlende Schalter fuer stilles Deinstallieren vor dem Test
-  - **Symbol fuer das Unternehmensportal**: aus Bild, ICO oder EXE (wird auf PNG max. 256 px gebracht); automatisch aus der Setup-EXE, aus der installierten App (Testinstallation) bzw. bei Store-Apps aus dem Microsoft Store
-  - Paketier-Werkzeug von Microsoft wird beim ersten Hochladen nach Rueckfrage geladen und auf die Microsoft-Signatur geprueft
-- **Reiter Wartung**: Intune Remediations (Pruef- und Reparaturskript)
-  - **Mit KI erstellen**: Prompt mit allen Intune-Regeln kopieren, Antwort einfuegen - wird automatisch aufgeteilt
-  - **Pruefen** ohne Ausfuehrung (exit 1, Neustart, Eingaben, PowerShell-7-Syntax, Benutzerpfade unter SYSTEM) und Pruefskript lokal testen
-  - Verteilen mit Zeitplan (taeglich, stuendlich, einmal), optional Pilotgruppe; **Ergebnisse** je Geraet; **Jetzt auf Geraet ausfuehren**
-  - Pruefung warnt bei App-Secrets im Klartext; In Intune: abweichende Skripte je Tenant werden nur ueberschrieben, wenn die Skripte geaendert wurden (mit Rueckfrage), Kopieren warnt bei Tenant-/App-IDs im Skript
-  - 5 Beispiele (Speicherplatz, Zeitdienst, Windows Update, Neustart ueberfaellig, BitLocker)
-  - **In Intune**: alle vorhandenen Wartungsskripte der angehakten Tenants (auch von Hand angelegte und die von Microsoft), nach Namen zusammengefasst. Zusammenfassung (Problem, behoben, Fehler), Zuweisungen mit Zeitplan und Ausschluss ergaenzen/entfernen, Skripte und Eigenschaften aendern (mit Pruefung, abweichende Fassungen je Tenant werden angezeigt), Ergebnisse, Jetzt auf Geraet, **In Bibliothek uebernehmen**, **In andere Tenants kopieren** (Skripte, Hersteller, Ausfuehren als und auf Wunsch die Zuweisungen; Gruppen per Name, fehlt eine Gruppe: nicht zuweisen oder Alle Geraete), Loeschen mit doppelter Rueckfrage
-- **Gruppen suchen** (Lupe neben Ziel- und Pilotgruppe): liest die Gruppen der angehakten Tenants, Filter, zeigt in welchen Tenants eine Gruppe fehlt
-- **Support** (Knopf oben): packt Protokolle, Testinstallationen, Einstellungen und App-Bibliothek anonymisiert (Tenants, Domaenen, Benutzer, IDs, IP-Adressen, Windows-Benutzer) in ein ZIP auf dem Desktop; E-Mail (klassisches Outlook mit Anhang, sonst Standard-Mailprogramm) oder GitHub-Issue im Browser (ohne Protokolle); Inhalt vorher ansehbar
-- In den Reitern Apps und Wartung ist die Extension-Liste links ausgeblendet (mehr Platz); Start-Reiter auch Apps oder Wartung
-- In Intune (Apps und Wartung): Loeschen fragt bei mehreren Tenants, in welchen (Haken, nichts vorausgewaehlt)
-- In Intune (Apps und Wartung): Liste zeigt, in welchen Tenants etwas fehlt ("nur: ..." / "fehlt: ...", Tooltip mit allen); Wartung filtert "Nicht ueberall"
-- Behoben: "Markierte entfernen" (Zuweisungen, Abhaengigkeiten) und "In andere Tenants kopieren" taten nichts (Hintergrundauftrag bekam seine Werte nicht)
-- Tenant-Leiste (Verbinden/Trennen) nur noch im Reiter Extensions; Klick auf eine Extension in der linken Liste wechselt zum Reiter Extensions
-- Neue Berechtigungen (nur fuer die neuen Reiter): DeviceManagementApps.ReadWrite.All, DeviceManagementScripts.ReadWrite.All, Group.Read.All, fuer "Jetzt ausfuehren" DeviceManagementManagedDevices.PrivilegedOperations.All
+### Neu: Reiter Apps
+- **Bibliothek**: MSI, EXE und Microsoft-Store-Apps an mehrere Tenants verteilen - Setup hineinziehen, Name, Version, Befehle und Erkennung werden ausgelesen (MSI vollstaendig; EXE: Inno, NSIS, InstallShield, WiX, Advanced Installer, Squirrel); Paket wird einmal gebaut und je Tenant hochgeladen
+- **Testinstallation in der Windows Sandbox**: schlaegt Erkennung, stille Deinstallation und Symbol vor, testet die Deinstallation mit, meldet Fenster, Desktop-Verknuepfungen und Installationen ins Benutzerprofil, zeigt bei Fehlern die Protokolle; schliesst die Sandbox selbst. Inno-Setups: /ALLUSERS beim Installieren, /VERYSILENT und Beenden der laufenden App beim Deinstallieren
+- **Zuweisen**: Gruppe (per Name je Tenant), Alle Geraete, Alle Benutzer oder keine Zuweisung; Erforderlich/Verfuegbar/Deinstallieren, Frist, Hinweise; optional Pilotgruppe mit "Fuer alle freigeben"
+- **Neue Version**: neue Setup-Datei aktualisiert dieselbe Intune-App, auch wenn die Version im Namen steht
+- **Abhaengigkeiten** aus der Bibliothek oder aus Intune (Treiber, Laufzeitumgebungen), automatisch mitinstallieren oder nur pruefen
+- **Symbol** fuer das Unternehmensportal (Bild, ICO, EXE, Microsoft Store) und **Ohne Desktop-Verknuepfung**
+- **Status** je Geraet im Klartext mit Fehlerhinweis und Export
+- **In Intune**: alle vorhandenen Windows-Apps verwalten - Zuweisungen, Abhaengigkeiten/Ersetzungen, Eigenschaften und Symbol, Status, Loeschen
+
+### Neu: Reiter Wartung (Remediations)
+- **Bibliothek**: Pruef- und Reparaturskript mit KI erstellen (Prompt kopieren, Antwort einfuegen), automatisch pruefen (exit 1, Neustart, Eingaben, PowerShell-7-Syntax, Benutzerpfade, Secrets im Klartext), mit Zeitplan verteilen, Ergebnisse je Geraet, sofort auf einem Geraet ausfuehren; 5 Beispiele
+- **In Intune**: alle vorhandenen Wartungsskripte inkl. Microsoft - Zusammenfassung, Zuweisungen mit Zeitplan, Skripte und Eigenschaften aendern, Ergebnisse, in die Bibliothek uebernehmen, **in andere Tenants kopieren** (auf Wunsch mit Zuweisungen; fehlende Gruppe: nicht zuweisen oder Alle Geraete), Loeschen
+
+### Fuer beide "In Intune"-Ansichten
+- Mehrere Tenants gleichzeitig, gleiche Namen zusammengefasst; Liste zeigt "nur: ..." / "fehlt: ..."
+- Loeschen: Tenants per Haken waehlen, danach doppelte Rueckfrage
+- Abweichende Skripte je Tenant werden nur nach Aenderung und Rueckfrage ueberschrieben
+
+### Weiteres
+- **Gruppen suchen** (Lupe): Gruppen der angehakten Tenants mit Filter, zeigt wo eine fehlt
+- **Support**-Knopf: Protokolle und Einstellungen anonymisiert als ZIP, per E-Mail oder GitHub-Issue (ohne Protokolle)
+- Tenant-Leiste (Verbinden/Trennen) nur noch im Reiter Extensions; Klick auf eine Extension wechselt dorthin; in Apps und Wartung ist die Extension-Liste ausgeblendet
+- Start-Reiter auch Apps oder Wartung; Aufteilungen in Apps und Wartung bleiben gespeichert
+- Neue Berechtigungen (nur fuer die neuen Reiter): DeviceManagementApps.ReadWrite.All, DeviceManagementScripts.ReadWrite.All, Group.Read.All; fuer "Jetzt auf Geraet" DeviceManagementManagedDevices.PrivilegedOperations.All
 
 ## v2.0.2 (2026-10-08)
 
