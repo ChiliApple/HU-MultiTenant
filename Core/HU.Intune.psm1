@@ -410,6 +410,7 @@ function ConvertTo-HUWin32Payload($Def, [string]$IntuneWinName = '') {
         applicableArchitectures        = 'x64'
         minimumSupportedWindowsRelease = '1903'
     }
+    if ($Def.PSObject.Properties['Owner'] -and "$($Def.Owner)".Trim()) { $p.owner = "$($Def.Owner)".Trim() }
     if ($IntuneWinName) { $p.fileName = $IntuneWinName }
     if ($Def.PSObject.Properties['IconFile']) { $ic = Get-HUIconContent "$($Def.IconFile)"; if ($ic) { $p.largeIcon = $ic } }
     if ("$($Def.Kind)" -eq 'msi' -and "$($Def.Detection.ProductCode)") {
@@ -782,6 +783,14 @@ function Get-HUInstallPlan($Def, [switch]$Sandbox) {
 }
 
 # Bibliotheks-Eintrag -> Def fuer ConvertTo-HUWin32Payload
+# Autor aus den Einstellungen (ui.author) - fuer Besitzer der Apps und Herausgeber der Wartungsskripte
+function Get-HUAuthor($Settings, [string]$Default = '') {
+    $a = ''
+    try { if ($Settings -and $Settings.ui -and $Settings.ui.PSObject.Properties['author']) { $a = "$($Settings.ui.author)".Trim() } } catch { }
+    if ($a) { return $a }
+    return $Default
+}
+
 function New-HUWin32Def($Def) {
     return [pscustomobject]@{
         Name = $Def.Name; Publisher = $Def.Publisher; Description = $Def.Description; Version = $Def.Version
@@ -797,6 +806,7 @@ function Publish-HUWin32App {
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)]$Def, [Parameter(Mandatory)]$Package,
         [string]$AppId = '', [string]$LastSignature = '')
     $w32 = New-HUWin32Def $Def
+    $w32 | Add-Member -NotePropertyName Owner -NotePropertyValue (Get-HUAuthor $Settings) -Force
     $existing = if ($AppId) { Get-HUIntuneApp -TenantKey $TenantKey -Settings $Settings -AppId $AppId } else { $null }
     if ($AppId -and -not $existing) { Write-HULog -Message "$($Def.Name): frueher hochgeladene App gibt es in Intune nicht mehr - wird neu angelegt" -Level 'WARN' -Tenant $TenantKey; $AppId = '' }
     if ($existing) {
@@ -855,6 +865,8 @@ function New-HUStoreApp {
         packageIdentifier = "$($Def.StoreId)".ToUpper()
         installExperience = @{ '@odata.type' = '#microsoft.graph.winGetAppInstallExperience'; runAsAccount = $(if ("$($Def.RunAs)" -eq 'user') { 'user' } else { 'system' }) }
     }
+    $own = Get-HUAuthor $Settings
+    if ($own) { $body.owner = $own }
     if ($Def.PSObject.Properties['IconFile']) { $ic = Get-HUIconContent "$($Def.IconFile)"; if ($ic) { $body.largeIcon = $ic } }
     return (Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceAppManagement/mobileApps' -Method POST -Body $body)
 }
@@ -1937,7 +1949,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

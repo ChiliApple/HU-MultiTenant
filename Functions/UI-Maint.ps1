@@ -422,7 +422,7 @@ function Start-HURemDeploy([switch]$Release) {
     $rtb = $script:Controls['rtbRem']
     Add-HURtbLine $rtb "=== $(if ($Release) { 'Freigabe' } else { 'Verteilung' }): $($r.Name) $(Get-Date -Format 'HH:mm:ss') ===" '#4FC3F7'
     [void](Start-HUJob -Name 'Rem' -Code $script:RemDeployCode -Output $rtb -Vars @{
-            Def = [pscustomobject]@{ Name = $r.Name; Description = $r.Description; Detection = $r.Detection; Remediation = $r.Remediation; RunAs = $r.RunAs; RunAs32 = [bool]$r.RunAs32; Publisher = 'HU-MultiTenant' }
+            Def = [pscustomobject]@{ Name = $r.Name; Description = $r.Description; Detection = $r.Detection; Remediation = $r.Remediation; RunAs = $r.RunAs; RunAs32 = [bool]$r.RunAs32; Publisher = (Get-HUAuthor $script:Settings 'HU-MultiTenant') }
             Tenants = $tenants; Deployments = $deps; Release = [bool]$Release; Targets = $targets; Schedule = $sched; ScheduleText = (Get-HURemScheduleText $r)
         } -OnDone { param($Result, $Errors) Complete-HURemDeploy $Result })
     Update-HURemButtons
