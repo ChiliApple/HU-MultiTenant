@@ -52,15 +52,19 @@ function Get-HUAnaKind {
 function Set-HUAnaMode([string]$Mode) {
     $c = $script:Controls
     $asg = ($Mode -ne 'cmp')
+    $script:AnaMode = $(if ($asg) { 'asg' } else { 'cmp' })
     $c['pnlAnaAsg'].Visibility = $(if ($asg) { 'Visible' } else { 'Collapsed' })
+    $c['pnlAnaCmp'].Visibility = $(if ($asg) { 'Collapsed' } else { 'Visible' })
+    $c['gridAna'].Visibility = $c['pnlAnaAsg'].Visibility
+    $c['gridCmp'].Visibility = $c['pnlAnaCmp'].Visibility
     $c['btnAnaModeAsg'].Background = Get-HUBrush $(if ($asg) { '#1976D2' } else { '#3E3E42' })
     $c['btnAnaModeCmp'].Background = Get-HUBrush $(if ($asg) { '#3E3E42' } else { '#1976D2' })
     Set-HUStateValue 'anaMode' $Mode
-    if (-not $asg) { $c['lblAnaHint'].Text = 'Tenant-Vergleich folgt in der naechsten Testversion.' }
-    else { Update-HUAnaHint }
+    Update-HUAnaHint
 }
 
 function Update-HUAnaHint {
+    if ($script:AnaMode -eq 'cmp') { Update-HUCmpHint; return }
     $c = $script:Controls
     $wait = @($script:AnaWait.Keys)
     $n = $script:AnaRows.Count
@@ -150,6 +154,161 @@ function Start-HUAnaRun {
     Update-HUAnaHint
 }
 
+# ----------------------------------------------------------------------------
+# Tenant-Vergleich
+# ----------------------------------------------------------------------------
+$script:AnaMode = 'asg'
+$script:CmpData = @{}
+$script:CmpWait = @{}
+$script:CmpKeys = @()
+$script:CmpGen = 0
+$script:CmpMatrix = @()
+
+function Update-HUCmpHint {
+    $c = $script:Controls
+    $wait = @($script:CmpWait.Keys)
+    if ($wait.Count) { $c['lblAnaHint'].Text = "Lese Bestand ... warte auf $(@($wait | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')"; return }
+    if (-not $script:CmpKeys.Count) { $c['lblAnaHint'].Text = 'Tenants anhaken (mindestens 2) und Vergleichen klicken. Verglichen werden Profile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot, Conditional Access und Apps - nach Name.'; return }
+    $all = @($script:CmpMatrix)
+    $d = @($all | Where-Object Diff).Count
+    $vis = @(Get-HUCmpVisibleRows).Count
+    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' nur fuer Profile, Compliance, Feature-Updates und Autopilot. Kopieren ohne Zuweisungen."
+}
+
+function Get-HUCmpVisibleRows {
+    $rows = @($script:CmpMatrix)
+    if ($script:Controls['chkCmpDiff'].IsChecked) { $rows = @($rows | Where-Object Diff) }
+    $typ = "$($script:Controls['cmbCmpType'].SelectedItem)"
+    if ($typ -and $typ -ne '(alle Arten)') { $rows = @($rows | Where-Object { $_.Typ -eq $typ }) }
+    foreach ($w in @("$($script:Controls['txtCmpFilter'].Text)" -split '\s+' | Where-Object { $_ })) {
+        $rows = @($rows | Where-Object { ("$($_.Typ) $($_.Name) $($_.Status)").IndexOf($w, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
+    }
+    return @($rows | Sort-Object Typ, Name)
+}
+
+function Update-HUCmpGrid {
+    $c = $script:Controls
+    $g = $c['gridCmp']
+    $keys = @($script:CmpKeys)
+    # Spalten: Typ, Name, je Tenant, Status
+    $g.Columns.Clear()
+    $add = { param($h, $b, $w) $col = New-Object System.Windows.Controls.DataGridTextColumn; $col.Header = $h; $col.Binding = New-Object System.Windows.Data.Binding($b); $col.Width = $w; [void]$g.Columns.Add($col) }
+    & $add 'Typ' 'Typ' (New-Object System.Windows.Controls.DataGridLength(150))
+    & $add 'Name' 'Name' (New-Object System.Windows.Controls.DataGridLength(2, 'Star'))
+    for ($i = 0; $i -lt $keys.Count; $i++) { & $add (Get-HUAnaTenantName $keys[$i]) "T$i" (New-Object System.Windows.Controls.DataGridLength(95)) }
+    & $add 'Status' 'Status' (New-Object System.Windows.Controls.DataGridLength(1, 'Star'))
+    # Arten-Auswahl
+    $cb = $c['cmbCmpType']; $cur = "$($cb.SelectedItem)"
+    $types = @('(alle Arten)') + @($script:CmpMatrix | ForEach-Object { $_.Typ } | Sort-Object -Unique)
+    if ((@($cb.Items) -join '|') -ne ($types -join '|')) {
+        $script:CmpTypeBusy = $true
+        $cb.Items.Clear(); foreach ($t in $types) { [void]$cb.Items.Add($t) }
+        $cb.SelectedItem = $(if ($types -contains $cur) { $cur } else { '(alle Arten)' })
+        $script:CmpTypeBusy = $false
+    }
+    $items = foreach ($m in @(Get-HUCmpVisibleRows)) {
+        $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
+        for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = $(if ($m.Have -contains $keys[$i]) { "$([char]0x2714)" } else { "$([char]0x2014)" }) }
+        $o.Status = "$($m.Status)$(if ($m.Missing.Count -and -not $m.Copy) { ' (nur anzeigen)' })"
+        $o.Ref = $m
+        [pscustomobject]$o
+    }
+    $g.ItemsSource = @($items)
+    Update-HUCmpHint
+}
+
+function Start-HUCmpRun {
+    $c = $script:Controls
+    $keys = @(Get-HUCheckedTenants $c['spAnaTenants'])
+    if ($keys.Count -lt 2) { Show-HUMessage 'Bitte mindestens zwei Tenants anhaken.' -Icon Warning; return }
+    $script:CmpGen++
+    $gen = $script:CmpGen
+    $script:CmpKeys = $keys
+    $script:CmpData = @{}
+    $script:CmpWait = @{}
+    $script:CmpMatrix = @()
+    Update-HUCmpGrid
+    $c['rtbAna'].Document.Blocks.Clear()
+    Add-HURtbLine $c['rtbAna'] "Tenant-Vergleich: $(@($keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" '#90CAF9'
+    foreach ($k in $keys) {
+        $script:CmpWait[$k] = $true
+        $ok = Start-HUJob -Name "Cmp-$gen-$k" -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; Gen = $gen } -Code {
+            $rows = @()
+            try { $rows = @(Get-HUCompareInventory -TenantKey $TK -Settings $Settings) }
+            catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $TK }
+            [pscustomobject]@{ __CmpDone = $TK; __CmpGen = $Gen; Rows = $rows }
+        } -OnDone {
+            param($Result, $Errors)
+            $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__CmpDone'] }) | Select-Object -First 1
+            if (-not $d -or [int]$d.__CmpGen -ne $script:CmpGen) { return }
+            $script:CmpWait.Remove("$($d.__CmpDone)")
+            $script:CmpData["$($d.__CmpDone)"] = @($d.Rows)
+            if (-not $script:CmpWait.Count) {
+                $all = @($script:CmpData.Values | ForEach-Object { $_ })
+                $script:CmpMatrix = @(Get-HUCompareMatrix $all $script:CmpKeys)
+                Update-HUCmpGrid
+            } else { Update-HUCmpHint }
+        }
+        if (-not $ok) { $script:CmpWait.Remove($k) }
+    }
+    Update-HUCmpHint
+}
+
+function Start-HUCmpCopy {
+    $c = $script:Controls
+    $sel = @($c['gridCmp'].SelectedItems | ForEach-Object { $_.Ref } | Where-Object { $_ -and $_.Missing.Count })
+    if (-not $sel.Count) { Show-HUMessage 'Bitte Eintraege markieren, die in einem Tenant fehlen (Strg/Shift fuer mehrere).' -Icon Info; return }
+    $no = @($sel | Where-Object { -not $_.Copy })
+    $todo = @($sel | Where-Object { $_.Copy })
+    if (-not $todo.Count) { Show-HUMessage "Diese Arten koennen nicht kopiert werden: $(@($no | ForEach-Object { $_.Typ } | Select-Object -Unique) -join ', ').`n`nApps ueber die Bibliothek verteilen; Conditional Access, Administrative Vorlagen und Autopilot im Portal anlegen (Gruppen-IDs unterscheiden sich je Tenant)." -Icon Info; return }
+    $jobs = foreach ($m in $todo) {
+        $srcItem = @($m.Items)[0]
+        foreach ($t in $m.Missing) { [pscustomobject]@{ Typ = $m.Typ; Name = $m.Name; From = $srcItem.Tenant; Id = $srcItem.Id; To = $t } }
+    }
+    $jobs = @($jobs)
+    $lines = @($jobs | Select-Object -First 15 | ForEach-Object { "  $($_.Typ): $($_.Name)  ($(Get-HUAnaTenantName $_.From) -> $(Get-HUAnaTenantName $_.To))" })
+    $more = if ($jobs.Count -gt 15) { "`n  ... und $($jobs.Count - 15) weitere" } else { '' }
+    $skip = if ($no.Count) { "`n`nNicht kopierbar (uebersprungen): $($no.Count)" } else { '' }
+    if (-not (Confirm-HU "$($jobs.Count) Kopie(n) anlegen - OHNE Zuweisungen (wirkt also noch auf keinem Geraet):`n`n$($lines -join "`n")$more$skip`n`nKennwoerter/Zertifikate in Profilen liefert Intune nicht mit - solche Profile danach im Portal pruefen.")) { return }
+    $c['btnCmpCopy'].IsEnabled = $false
+    $ok = Start-HUJob -Name 'CmpCopy' -Output $c['rtbAna'] -Vars @{ Jobs = $jobs } -Code {
+        foreach ($j in $Jobs) {
+            try {
+                $id = Copy-HUIntuneObject -Typ $j.Typ -SourceTenant $j.From -SourceId $j.Id -TargetTenant $j.To -Settings $Settings
+                Write-HULog -Message "$($j.Typ) '$($j.Name)' kopiert (ohne Zuweisungen)" -Level 'OK' -Tenant $j.To
+            } catch { Write-HULog -Message "$($j.Typ) '$($j.Name)': $($_.Exception.Message)" -Level 'ERROR' -Tenant $j.To }
+        }
+    } -OnDone {
+        param($Result, $Errors)
+        $script:Controls['btnCmpCopy'].IsEnabled = $true
+        Add-HURtbLine $script:Controls['rtbAna'] 'Fertig - Vergleich wird neu geladen.' '#90CAF9'
+        Start-HUCmpRun
+    }
+    if (-not $ok) { $c['btnCmpCopy'].IsEnabled = $true }
+}
+
+function Register-HUCmpHandlers {
+    $c = $script:Controls
+    $c['chkCmpDiff'].IsChecked = [bool](Get-HUStateValue 'cmpDiff' $true)
+    $c['chkCmpDiff'].Add_Checked({ Set-HUStateValue 'cmpDiff' $true; Update-HUCmpGrid })
+    $c['chkCmpDiff'].Add_Unchecked({ Set-HUStateValue 'cmpDiff' $false; Update-HUCmpGrid })
+    $c['cmbCmpType'].Add_SelectionChanged({ if (-not $script:CmpTypeBusy) { Update-HUCmpGrid } })
+    $c['txtCmpFilter'].Add_TextChanged({ Update-HUCmpGrid })
+    $c['btnCmpRun'].Add_Click({ Start-HUCmpRun })
+    $c['btnCmpCopy'].Add_Click({ Start-HUCmpCopy })
+    $c['btnCmpTable'].Add_Click({
+            if (-not @($script:CmpMatrix).Count) { Show-HUMessage 'Noch keine Ergebnisse.' -Icon Info; return }
+            $keys = @($script:CmpKeys)
+            $rows = foreach ($m in @(Get-HUCmpVisibleRows)) {
+                $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
+                foreach ($k in $keys) { $o[(Get-HUAnaTenantName $k)] = $(if ($m.Have -contains $k) { 'ja' } else { 'fehlt' }) }
+                $o.Status = $m.Status
+                [pscustomobject]$o
+            }
+            Show-HUQSTable -Title 'Tenant-Vergleich' -Objects @($rows) -FilePrefix 'Tenant-Vergleich'
+        })
+}
+
 function Register-HUAnaHandlers {
     $c = $script:Controls
     Update-HUAnaTenantChecks
@@ -178,5 +337,6 @@ function Register-HUAnaHandlers {
             Show-HUQSTable -Title "Zuweisungen: $($script:AnaLabel)" -Objects @(Get-HUAnaVisibleRows) -FilePrefix 'Zuweisungen'
         })
     Add-HUOutputMenu $c['rtbAna'] { $script:Controls['rtbAna'].Document.Blocks.Clear() }
+    Register-HUCmpHandlers
     Set-HUAnaMode "$(Get-HUStateValue 'anaMode' 'asg')"
 }

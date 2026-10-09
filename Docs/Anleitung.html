@@ -95,7 +95,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <div class="card p"><b>🧩 Extensions</b>Reports und Aktionen mit Parametern, Dry-Run und Excel-Ausgabe.</div>
     <div class="card b"><b>📦 Apps</b>MSI, EXE und Store-Apps testen, an mehrere Tenants verteilen und per winget aktuell halten.</div>
     <div class="card g"><b>🛠 Wartung</b>Remediations mit KI erstellen, verteilen und auswerten.</div>
-    <div class="card p"><b>🔍 Analyse</b>Was bekommt eine Gruppe, ein Gerät oder ein Benutzer – über alle Tenants.</div>
+    <div class="card p"><b>🔍 Analyse</b>Was bekommt eine Gruppe, ein Gerät oder ein Benutzer – und Tenants nebeneinander vergleichen.</div>
     <div class="card m"><b>🔑 Secrets</b>DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf.</div>
   </div>
   <div class="flow"><span>Einstellungen › Tenants</span><i>→</i><span>Secret eingeben</span><i>→</i><span>Snippet wählen</span><i>→</i><span>Strg + Enter</span></div>
@@ -286,6 +286,14 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <li><span class="ui">📊 Tabelle / Export</span>: Filter, CSV, Excel (wie angezeigt).</li>
   </ol>
   <div class="note"><b class="h">Grenzen</b>Zuweisungsfilter werden angezeigt (Spalte <i>Filter</i>), aber nicht ausgewertet – ob ein Filter das Gerät ausschließt, steht in Intune beim Gerät. Bei einer Gruppe zählen auch die Gruppen, in denen sie selbst Mitglied ist. Berechtigungen: <code>DeviceManagementConfiguration.Read.All</code>, <code>DeviceManagementApps.Read.All</code>, <code>DeviceManagementManagedDevices.Read.All</code>, <code>Group.Read.All</code>, <code>User.Read.All</code>, <code>Device.Read.All</code> (bzw. die vorhandenen ReadWrite-Rechte).</div>
+  <h3 id="ana-cmp">Tenant-Vergleich</h3>
+  <p>Stellt den Bestand der angehakten Tenants (mindestens zwei) nebeneinander: Konfigurationsprofile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot-Profile, Conditional Access und Apps. Gleich heißt: gleicher Name (Groß-/Kleinschreibung egal).</p>
+  <ol class="steps">
+    <li><span class="ui b">▶ Vergleichen</span> – je Tenant ✔ vorhanden oder — fehlt. <i>Nur Unterschiede</i> (Standard) blendet aus, was überall gleich ist; dazu Textfilter und Art.</li>
+    <li>Status: <b>fehlt teilweise</b>, <b>nur in einem</b>, <b>doppelt</b> (zweimal im selben Tenant) und <b>Einstellungen abweichend</b> – Letzteres nur bei Profilen, Compliance, Feature-Updates und Autopilot, wo Intune die Einstellungen in der Liste mitliefert (IDs, Zeitstempel und Namen zählen nicht).</li>
+    <li>Einträge markieren (Strg/Shift) → <span class="ui">Fehlendes kopieren …</span>: legt sie in den angehakten Tenants an, in denen sie fehlen – <b>ohne Zuweisungen</b>, also noch ohne Wirkung. Danach im jeweiligen Tenant zuweisen (z. B. unter Wartung › In Intune).</li>
+  </ol>
+  <div class="note warn"><b class="h">Was kopiert wird</b>Kopierbar: Konfigurationsprofile, Einstellungskatalog, Compliance (Aktion „Sperren“, ohne E-Mail-Vorlagen), Wartung, Plattform-Skripte, Feature-Updates. Nur anzeigen: Apps (über die Bibliothek verteilen), Conditional Access, Administrative Vorlagen und Autopilot (Gruppen-IDs und Verweise unterscheiden sich je Tenant). Kennwörter und Zertifikate (z. B. WLAN-Schlüssel) liefert Intune nicht mit – solche Profile scheitern oder müssen im Portal ergänzt werden. Berechtigungen: <code>DeviceManagementConfiguration.ReadWrite.All</code>, <code>DeviceManagementScripts.ReadWrite.All</code>; für Conditional Access zum Lesen <code>Policy.Read.All</code>.</div>
 </section>
 
 <section id="secrets">

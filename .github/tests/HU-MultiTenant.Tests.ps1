@@ -717,3 +717,48 @@ Describe 'App-Updates: Build-Angaben' {
         Compare-HUVersion '1.3.323+7f37e7a' '1.3.324' | Should -Be -1
     }
 }
+
+Describe 'Analyse: Tenant-Vergleich' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+    }
+    It 'Fingerabdruck ignoriert IDs, Zeitstempel und Namen' {
+        $a = '{"id":"1","displayName":"A","createdDateTime":"x","@odata.type":"#microsoft.graph.windows10GeneralConfiguration","passwordRequired":true,"list":[{"id":"9","v":1}]}' | ConvertFrom-Json
+        $b = '{"id":"2","displayName":"B","createdDateTime":"y","@odata.type":"#microsoft.graph.windows10GeneralConfiguration","passwordRequired":true,"list":[{"id":"8","v":1}]}' | ConvertFrom-Json
+        $c = '{"id":"3","displayName":"A","@odata.type":"#microsoft.graph.windows10GeneralConfiguration","passwordRequired":false,"list":[{"v":1}]}' | ConvertFrom-Json
+        Get-HUCompareHash $a | Should -Be (Get-HUCompareHash $b)
+        Get-HUCompareHash $a | Should -Not -Be (Get-HUCompareHash $c)
+    }
+    It 'Matrix: fehlt, abweichend, ueberall' {
+        $rows = @(
+            [pscustomobject]@{ Tenant = 't1'; Typ = 'Compliance'; Name = 'Win'; Id = 'a'; Hash = 'h1'; Copy = 'compliance' }
+            [pscustomobject]@{ Tenant = 't2'; Typ = 'Compliance'; Name = 'win'; Id = 'b'; Hash = 'h2'; Copy = 'compliance' }
+            [pscustomobject]@{ Tenant = 't1'; Typ = 'Wartung'; Name = 'Disk'; Id = 'c'; Hash = ''; Copy = 'generic' }
+        )
+        $m = @(Get-HUCompareMatrix $rows @('t1', 't2'))
+        $w = $m | Where-Object Typ -eq 'Wartung'
+        $w.Missing | Should -Be @('t2'); $w.Status | Should -Match 'nur in einem'
+        $cp = $m | Where-Object Typ -eq 'Compliance'
+        $cp.Missing.Count | Should -Be 0; $cp.Status | Should -Match 'abweichend'
+    }
+    It 'Kopieren (generisch): ohne IDs/Zuweisungen, mit Inhalt, POST in den Ziel-Tenant' {
+        InModuleScope HU.Intune {
+            $script:posted = $null
+            Mock Invoke-HUIntuneGraph {
+                if ($Method -eq 'POST') { $script:posted = @{ T = $TenantKey; E = $Endpoint; B = $Body }; return [pscustomobject]@{ id = 'neu' } }
+                return ('{"id":"s1","displayName":"Disk","createdDateTime":"x","isGlobalScript":false,"detectionScriptContent":"ZQ==","assignments":[{"id":"z"}],"@odata.context":"ctx"}' | ConvertFrom-Json)
+            }
+            Copy-HUIntuneObject -Typ 'Wartung' -SourceTenant 'a' -SourceId 's1' -TargetTenant 'b' -Settings ([pscustomobject]@{}) | Should -Be 'neu'
+            $script:posted.T | Should -Be 'b'
+            $script:posted.E | Should -Be '/deviceManagement/deviceHealthScripts'
+            $script:posted.B.ContainsKey('id') | Should -BeFalse
+            $script:posted.B.ContainsKey('assignments') | Should -BeFalse
+            $script:posted.B.ContainsKey('@odata.context') | Should -BeFalse
+            $script:posted.B.detectionScriptContent | Should -Be 'ZQ=='
+        }
+    }
+    It 'nur anzeigen: Conditional Access wird nicht kopiert' {
+        { Copy-HUIntuneObject -Typ 'Conditional Access' -SourceTenant 'a' -SourceId 'x' -TargetTenant 'b' -Settings ([pscustomobject]@{}) } | Should -Throw
+    }
+}

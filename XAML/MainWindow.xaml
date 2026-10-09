@@ -1164,6 +1164,18 @@
                                         <TextBox x:Name="txtAnaFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Name, Typ, Absicht, Ueber, Status oder Tenant (mehrere Woerter: alle muessen vorkommen)"/>
                                     </DockPanel>
                                 </StackPanel>
+                                <StackPanel x:Name="pnlAnaCmp" Visibility="Collapsed">
+                                    <DockPanel>
+                                        <Button x:Name="btnCmpTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                        <Button x:Name="btnCmpCopy" DockPanel.Dock="Right" Content="Fehlendes kopieren ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                                ToolTip="Markierte Eintraege in die angehakten Tenants kopieren, in denen sie fehlen - ohne Zuweisungen"/>
+                                        <Button x:Name="btnCmpRun" DockPanel.Dock="Right" Content="&#x25B6; Vergleichen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                        <CheckBox x:Name="chkCmpDiff" DockPanel.Dock="Right" Content="Nur Unterschiede" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                        <ComboBox x:Name="cmbCmpType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,0" ToolTip="Nur eine Art anzeigen"/>
+                                        <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBox x:Name="txtCmpFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Typ, Name oder Status (mehrere Woerter: alle muessen vorkommen)"/>
+                                    </DockPanel>
+                                </StackPanel>
                                 <TextBlock x:Name="lblAnaHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
@@ -1171,6 +1183,9 @@
                                      VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6" Margin="0,6,0,0">
                             <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
                         </RichTextBox>
+                        <Grid>
+                        <DataGrid x:Name="gridCmp" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
+                                  CanUserSortColumns="True" Visibility="Collapsed"/>
                         <DataGrid x:Name="gridAna" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
                                   CanUserSortColumns="True">
                             <DataGrid.Columns>
@@ -1183,6 +1198,7 @@
                                 <DataGridTextColumn Header="Filter" Binding="{Binding Filter}" Width="50"/>
                             </DataGrid.Columns>
                         </DataGrid>
+                        </Grid>
                     </DockPanel>
                 </TabItem>
             </TabControl>
