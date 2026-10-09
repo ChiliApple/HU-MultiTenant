@@ -1472,7 +1472,7 @@ function Test-HURemediationScript {
         @{ P = '(?im)\?\?|\?\.\w'; L = 'Warnung'; T = 'Moeglicherweise PowerShell-7-Syntax (?? / ?.) - Intune nutzt Windows PowerShell 5.1.' }
         @{ P = '(?im)\bInvoke-Expression\b|\biex\b'; L = 'Warnung'; T = 'Invoke-Expression vermeiden.' }
         @{ P = '[A-Za-z0-9_.\-]{3}\dQ~[A-Za-z0-9_.\-~]{30,}|(?im)\$\w*secret\w*\s*=\s*["''][^"'']{16,}'; L = 'Warnung'; T = 'Enthaelt offenbar ein App-Secret im Klartext - liegt auf jedem Geraet lesbar (Intune-Cache, Protokolle). Besser ohne Secret loesen oder ein Zertifikat/eine eigene App mit minimalen Rechten verwenden.' }
-        @{ P = '(?im)\$\w*(pw|pwd|pass|passwort|password|kennwort)\w*\s*=\s*["''](?![a-z]:\\|\\\\|https?:)[^"'']{4,}["'']|ConvertTo-SecureString\s+(-String\s+)?["''][^"'']+["'']\s+-AsPlainText|\bnet(\.exe)?\s+user\s+\S+\s+["'']?[^\s/*"'']{4,}'; L = 'Warnung'; T = 'Enthaelt offenbar ein Passwort im Klartext - jeder mit Leserechten in Intune sieht es, und es liegt auf jedem Geraet im Intune-Cache. Wenn bewusst so gewollt: Hinweis ignorieren.' }
+        @{ P = '(?im)\$\w*(pw|pwd|pass|passwort|password|kennwort)\w*\s*=\s*["''](?![a-z]:\\|\\\\|https?:)[^"'']{4,}["'']|ConvertTo-SecureString\s+(-String\s+)?["''][^"'']+["'']\s+-AsPlainText|\bnet(\.exe)?\s+user\s+\S+\s+["'']?[^\s/*"'']{4,}'; L = 'Warnung'; T = 'Enthaelt offenbar ein Passwort im Klartext - lesbar fuer alle mit Leserecht auf Wartungsskripte in Intune und fuer lokale Administratoren auf den Geraeten (Intune-Cache). Wenn bewusst so gewollt: Hinweis ignorieren.' }
     )
     foreach ($r in $rx) { if ($Code -match $r.P) { & $add $r.L "${name}: $($r.T)" } }
     if ($Kind -eq 'detection') {
