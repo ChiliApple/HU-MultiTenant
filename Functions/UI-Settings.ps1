@@ -84,6 +84,20 @@ function Show-HUSettingsDialog {
     $c.chkSecretCheckStart.IsChecked = [bool](Get-HUProp $S.ui 'checkSecretsOnStart' $true)
     $c.txtWarnDays.Text = "$(Get-HUSecretWarnDays)"
     $c.txtAuthor.Text = "$(Get-HUProp $S.ui 'author' '')"
+    # Quelle fuer App-Updates: Liste erst beim Aufklappen holen (winget braucht etwas)
+    $ws = "$(Get-HUProp $S.ui 'wingetSource' 'winget')"; if (-not $ws) { $ws = 'winget' }
+    foreach ($n in @('winget', $ws) | Select-Object -Unique) { [void]$c.cmbWingetSource.Items.Add($n) }
+    $c.cmbWingetSource.SelectedItem = $ws
+    $script:WsDlg = $c; $script:WsLoaded = $false
+    $c.cmbWingetSource.Add_DropDownOpened({
+            if ($script:WsLoaded) { return }
+            $script:WsLoaded = $true
+            [System.Windows.Input.Mouse]::OverrideCursor = [System.Windows.Input.Cursors]::Wait
+            try {
+                $cb = $script:WsDlg.cmbWingetSource
+                foreach ($n in @(Get-HUWingetSources)) { if (@($cb.Items) -notcontains $n) { [void]$cb.Items.Add($n) } }
+            } catch { } finally { [System.Windows.Input.Mouse]::OverrideCursor = $null }
+        })
     # Sperre
     $lc = Get-HULockConfig
     $c.chkLockEnabled.IsChecked = $lc.Enabled
@@ -343,6 +357,7 @@ function Show-HUSettingsDialog {
         Set-HUProp $S.ui 'secretWarnDays' $wd
         Set-HUProp $S.ui 'checkSecretsOnStart' ([bool]$c.chkSecretCheckStart.IsChecked)
         Set-HUProp $S.ui 'author' $c.txtAuthor.Text.Trim()
+        Set-HUProp $S.ui 'wingetSource' $(if ($c.cmbWingetSource.SelectedItem) { "$($c.cmbWingetSource.SelectedItem)" } else { 'winget' })
         Set-HUProp $S.ui 'lockEnabled' ([bool]$c.chkLockEnabled.IsChecked)
         Set-HUProp $S.ui 'lockMinutes' $lm
         Set-HUProp $S.ui 'lockOnStart' ([bool]$c.chkLockOnStart.IsChecked)

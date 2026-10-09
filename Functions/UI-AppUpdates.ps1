@@ -9,6 +9,12 @@
 
 $script:UpdInfo = @{}
 
+function Get-HUUpdSource {
+    $s = "$(Get-HUProp $script:Settings.ui 'wingetSource' 'winget')"
+    if (-not $s) { $s = 'winget' }
+    return $s
+}
+
 function Get-HUUpdApps { return @($script:AppLib | Where-Object { $_.Type -eq 'win32' } | Sort-Object Name) }
 
 function Get-HUUpdRow($App) {
@@ -60,20 +66,20 @@ function Start-HUUpdCheck {
     $items = @($apps | ForEach-Object { [pscustomobject]@{ Id = $_.Id; WingetId = "$($_.WingetId)"; Name = "$($_.Name)"; Query = (Get-HUAppBaseName $_.Name) } })
     $script:Controls['lblUpdState'].Text = "Pruefe $($items.Count) App(s) bei winget ... (je App einige Sekunden)"
     $script:Controls['btnUpdCheck'].IsEnabled = $false
-    $ok = Start-HUJob -Name 'AppUpd' -Output $script:Controls['rtbApps'] -Vars @{ Items = $items } -Code {
+    $ok = Start-HUJob -Name 'AppUpd' -Output $script:Controls['rtbApps'] -Vars @{ Items = $items; Src = (Get-HUUpdSource) } -Code {
         if (-not (Get-HUWingetExe) -and -not (Test-HUWingetModule)) { Write-HULog -Message 'winget fehlt - App-Installer aus dem Microsoft Store installieren.' -Level 'ERROR'; return }
-        Write-HULog -Message "winget: $(if (Test-HUWingetModule) { 'Modul Microsoft.WinGet.Client' } else { 'winget.exe' })" -Level 'INFO'
+        Write-HULog -Message "winget: $(if (Test-HUWingetModule) { 'Modul Microsoft.WinGet.Client' } else { 'winget.exe' }), Quelle '$Src'" -Level 'INFO'
         foreach ($it in $Items) {
             $r = [pscustomobject]@{ Id = $it.Id; Latest = ''; Error = ''; Suggest = @() }
             try {
                 if ($it.WingetId) {
-                    $r.Latest = Get-HUWingetLatest $it.WingetId
+                    $r.Latest = Get-HUWingetLatest $it.WingetId $Src
                     Write-HULog -Message "$($it.Name): $(if ($r.Latest) { "winget $($r.Latest)" } else { "'$($it.WingetId)' nicht gefunden" })" -Level 'INFO'
                 } else {
-                    $r.Suggest = @(Find-HUWingetPackage $it.Query 8)
+                    $r.Suggest = @(Find-HUWingetPackage $it.Query 8 $Src)
                     # nichts gefunden (z. B. 'VLC Player' heisst bei winget 'VLC media player') -> erstes Wort
                     $w1 = ("$($it.Query)" -split '\s+')[0]
-                    if (-not $r.Suggest.Count -and $w1 -and $w1 -ne $it.Query -and $w1.Length -ge 3) { $r.Suggest = @(Find-HUWingetPackage $w1 8) }
+                    if (-not $r.Suggest.Count -and $w1 -and $w1 -ne $it.Query -and $w1.Length -ge 3) { $r.Suggest = @(Find-HUWingetPackage $w1 8 $Src) }
                     Write-HULog -Message "$($it.Name): keine winget-ID, $($r.Suggest.Count) Treffer fuer '$($it.Query)'" -Level 'INFO'
                 }
             } catch { $r.Error = $_.Exception.Message; Write-HULog -Message "$($it.Name): $($r.Error)" -Level 'WARN' }
@@ -169,7 +175,7 @@ function Show-HUWingetIdDialog($App) {
             if (-not $q) { return }
             $script:WgDlg.lblInfo.Text = 'Suche ...'
             [System.Windows.Input.Mouse]::OverrideCursor = [System.Windows.Input.Cursors]::Wait
-            try { & $script:WgShow @(Find-HUWingetPackage $q 15) }
+            try { & $script:WgShow @(Find-HUWingetPackage $q 15 (Get-HUUpdSource)) }
             catch { $script:WgDlg.lblInfo.Text = "Fehler: $($_.Exception.Message)" }
             finally { [System.Windows.Input.Mouse]::OverrideCursor = $null }
         })
@@ -201,9 +207,9 @@ function Start-HUUpdGet {
     if (-not (Confirm-HU "$($a.Name): v$ver von winget herunterladen?`n`nOrdner: $dir`n`nDie Datei wird als neue Version der Bibliotheks-App uebernommen - hochgeladen wird noch nichts. Danach: Testinstallation in der Sandbox, dann Hochladen mit Pilotgruppe.")) { return }
     $script:UpdGetApp = $a.Id
     $script:Controls['btnUpdGet'].IsEnabled = $false
-    $ok = Start-HUJob -Name 'AppUpdGet' -Output $script:Controls['rtbApps'] -Vars @{ WId = "$($a.WingetId)"; Ver = $ver; Dir = $dir; Msi = ($a.Kind -eq 'msi'); AName = "$($a.Name)" } -Code {
+    $ok = Start-HUJob -Name 'AppUpdGet' -Output $script:Controls['rtbApps'] -Vars @{ WId = "$($a.WingetId)"; Ver = $ver; Dir = $dir; Msi = ($a.Kind -eq 'msi'); AName = "$($a.Name)"; Src = (Get-HUUpdSource) } -Code {
         Write-HULog -Message "$AName v${Ver}: lade herunter ($WId) ..." -Level 'INFO'
-        $r = Save-HUWingetInstaller -Id $WId -Version $Ver -Folder $Dir -PreferMsi:$Msi
+        $r = Save-HUWingetInstaller -Id $WId -Version $Ver -Folder $Dir -PreferMsi:$Msi -Source $Src
         Write-HULog -Message "Heruntergeladen: $($r.Path)" -Level 'OK'
         [pscustomobject]@{ __UpdPath = $r.Path; Silent = (Get-HUWingetSilentSwitch $Dir) }
     } -OnDone {

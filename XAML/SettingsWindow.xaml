@@ -56,6 +56,7 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Text="Reiter beim Start" Style="{StaticResource FieldLabel}"/>
                             <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbStartTab" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3">
@@ -83,6 +84,9 @@
                             <TextBlock Grid.Row="4" Text="Autor (Apps und Wartung)" Style="{StaticResource FieldLabel}"/>
                             <TextBox Grid.Row="4" Grid.Column="1" x:Name="txtAuthor" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,3"
                                      ToolTip="Steht in Intune bei hochgeladenen Apps als Besitzer und bei Wartungsskripten als Herausgeber. Leer = Apps ohne Besitzer, Wartung mit &quot;HU-MultiTenant&quot;. Wirkt beim naechsten Hochladen."/>
+                            <TextBlock Grid.Row="5" Text="Quelle f&#xFC;r App-Updates" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox Grid.Row="5" Grid.Column="1" x:Name="cmbWingetSource" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
+                                      ToolTip="winget-Quelle fuer Apps &gt; Updates. Standard: winget (Community-Repository). Die Liste zeigt die auf diesem PC eingerichteten Quellen (winget source list)."/>
                         </Grid>
 
                         <TextBlock Text="Sperre" Style="{StaticResource SectionTitle}"/>

@@ -79,35 +79,38 @@ function ConvertFrom-HUWingetTable([string[]]$Lines) {
 }
 
 # Pakete suchen -> Name, Id, Version
-function Find-HUWingetPackage([string]$Query, [int]$Max = 10) {
+function Find-HUWingetPackage([string]$Query, [int]$Max = 10, [string]$Source = 'winget') {
+    if (-not $Source) { $Source = 'winget' }
     if (-not "$Query".Trim()) { return @() }
     if (Test-HUWingetModule) {
         try {
-            return @(Find-WinGetPackage -Query $Query -Source winget -ErrorAction Stop | Select-Object -First $Max | ForEach-Object { [pscustomobject]@{ Name = "$($_.Name)"; Id = "$($_.Id)"; Version = "$($_.Version)" } })
+            return @(Find-WinGetPackage -Query $Query -Source $Source -ErrorAction Stop | Select-Object -First $Max | ForEach-Object { [pscustomobject]@{ Name = "$($_.Name)"; Id = "$($_.Id)"; Version = "$($_.Version)" } })
         } catch { }
     }
-    $lines = Invoke-HUWinget @('search', '--query', $Query, '--source', 'winget', '--accept-source-agreements', '--disable-interactivity')
+    $lines = Invoke-HUWinget @('search', '--query', $Query, '--source', $Source, '--accept-source-agreements', '--disable-interactivity')
     return @(ConvertFrom-HUWingetTable $lines | Select-Object -First $Max)
 }
 
 # neueste Version einer winget-ID ('' = nicht gefunden)
-function Get-HUWingetLatest([string]$Id) {
+function Get-HUWingetLatest([string]$Id, [string]$Source = 'winget') {
+    if (-not $Source) { $Source = 'winget' }
     if (-not "$Id".Trim()) { return '' }
     if (Test-HUWingetModule) {
         try {
-            $p = Find-WinGetPackage -Id $Id -MatchOption Equals -Source winget -ErrorAction Stop | Select-Object -First 1
+            $p = Find-WinGetPackage -Id $Id -MatchOption Equals -Source $Source -ErrorAction Stop | Select-Object -First 1
             if ($p) { return "$($p.Version)" }
         } catch { }
     }
-    $lines = Invoke-HUWinget @('show', '--id', $Id, '--exact', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity')
+    $lines = Invoke-HUWinget @('show', '--id', $Id, '--exact', '--source', $Source, '--accept-source-agreements', '--disable-interactivity')
     foreach ($l in $lines) { if ($l -match '^\s*Version\s*:\s*(\S+)') { return $Matches[1] } }
     return ''
 }
 
 # Installer herunterladen -> Pfad der Setup-Datei (.msi bevorzugt, wenn -PreferMsi)
-function Save-HUWingetInstaller([string]$Id, [string]$Version, [string]$Folder, [switch]$PreferMsi) {
+function Save-HUWingetInstaller([string]$Id, [string]$Version, [string]$Folder, [switch]$PreferMsi, [string]$Source = 'winget') {
+    if (-not $Source) { $Source = 'winget' }
     if (-not (Test-Path -LiteralPath $Folder)) { [void](New-Item -ItemType Directory -Path $Folder -Force) }
-    $base = @('download', '--id', $Id, '--exact', '--source', 'winget', '--download-directory', $Folder, '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity', '--skip-dependencies')
+    $base = @('download', '--id', $Id, '--exact', '--source', $Source, '--download-directory', $Folder, '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity', '--skip-dependencies')
     if ($Version) { $base += @('--version', $Version) }
     $variants = @(
         @('--architecture', 'x64', '--scope', 'machine') + $(if ($PreferMsi) { @('--installer-type', 'msi') } else { @() }),
@@ -129,6 +132,18 @@ function Save-HUWingetInstaller([string]$Id, [string]$Version, [string]$Folder, 
     throw "Kein Installer heruntergeladen. winget: $((@($log | Where-Object { $_.Trim() }) | Select-Object -Last 3) -join ' | ')"
 }
 
+# eingerichtete Quellen (winget source list)
+function Get-HUWingetSources {
+    if (Get-Command Get-WinGetSource -ErrorAction SilentlyContinue) {
+        try { return @(Get-WinGetSource -ErrorAction Stop | ForEach-Object { "$($_.Name)" } | Where-Object { $_ }) } catch { }
+    }
+    $lines = @(Invoke-HUWinget @('source', 'list', '--disable-interactivity'))
+    $sep = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^-{5,}\s*$') { $sep = $i; break } }
+    if ($sep -lt 0) { return @() }
+    return @($lines | Select-Object -Skip ($sep + 1) | ForEach-Object { ($_.Trim() -split '\s+')[0] } | Where-Object { $_ })
+}
+
 # Leise-Schalter aus dem heruntergeladenen Manifest (winget legt eine .yaml daneben)
 function Get-HUWingetSilentSwitch([string]$Folder) {
     $y = Get-ChildItem -LiteralPath $Folder -Filter *.yaml -File -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -139,4 +154,4 @@ function Get-HUWingetSilentSwitch([string]$Folder) {
     return ''
 }
 
-Export-ModuleMember -Function Compare-HUVersion, Get-HUWingetExe, Test-HUWingetModule, Invoke-HUWinget, ConvertFrom-HUWingetTable, Find-HUWingetPackage, Get-HUWingetLatest, Save-HUWingetInstaller, Get-HUWingetSilentSwitch
+Export-ModuleMember -Function Get-HUWingetSources, Compare-HUVersion, Get-HUWingetExe, Test-HUWingetModule, Invoke-HUWinget, ConvertFrom-HUWingetTable, Find-HUWingetPackage, Get-HUWingetLatest, Save-HUWingetInstaller, Get-HUWingetSilentSwitch
