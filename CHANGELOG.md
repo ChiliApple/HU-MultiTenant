@@ -5,7 +5,7 @@
 ### Neu
 - **Wartung: Duplizieren** per Rechtsklick in der linken Liste - Bibliothek: lokale Kopie; In Intune: Kopie mit neuem Namen in denselben Tenants, ohne Zuweisungen
 - **Apps: Kategorien** fuer das Unternehmensportal (mit Komma getrennt oder "Auswahl ..." aus den angehakten Tenants); Kategorien in der Auswahl anlegen und loeschen (mit Rueckfrage); fehlende werden beim Hochladen je Tenant gemeldet; auch unter Apps > In Intune (Eigenschaften), mit Anzeige abweichender Kategorien je Tenant
-- **Neuer Reiter Analyse: "Was bekommt ...?"** - alle Apps, Profile, Richtlinien, Wartungs- und Plattformskripte, Feature-Updates und Autopilot-Profile, die eine Gruppe, ein Geraet oder ein Benutzer in den angehakten Tenants bekommt (inkl. verschachtelter Gruppen, Alle Geraete/Benutzer und Ausschluessen); Tabelle und Export
+- **Neuer Reiter Analyse: "Was bekommt ...?"** - alle Apps, Profile, Richtlinien, Wartungs- und Plattformskripte, Feature-Updates und Autopilot-Profile, die eine Gruppe, ein Geraet oder ein Benutzer in den angehakten Tenants bekommt (Benutzer auch ohne Domain, inkl. seiner Intune-Geraete; verschachtelte Gruppen, Alle Geraete/Benutzer und Ausschluessen); Tabelle und Export
 
 ## v2.1.5 (2026-10-09)
 

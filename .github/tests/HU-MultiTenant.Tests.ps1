@@ -265,6 +265,27 @@ Describe 'Analyse: Zuweisungen' {
             ($r | Where-Object Typ -eq 'Einstellungskatalog').Ueber | Should -Be 'Alle Geraete'
         }
     }
+    It 'Benutzer ohne Domain: UPN-Anfang, mit Intune-Geraeten und deren Gruppen' {
+        InModuleScope HU.Intune {
+            Mock Invoke-HUIntuneGraph {
+                if ($Endpoint -like '/users?*startswith*') { return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'u1'; displayName = 'Max'; userPrincipalName = 'max@schule.at' }) } }
+                if ($Endpoint -like '/devices?*') { return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'd1' }) } }
+                throw "unerwartet: $Endpoint"
+            }
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '/users/u1/transitiveMemberOf*') { return @([pscustomobject]@{ id = 'gu'; displayName = '3A' }) }
+                if ($Endpoint -like '/deviceManagement/managedDevices*') { return @([pscustomobject]@{ id = 'm1'; deviceName = 'NB01'; azureADDeviceId = 'aad1' }) }
+                if ($Endpoint -like '/devices/d1/transitiveMemberOf*') { return @([pscustomobject]@{ id = 'gd'; displayName = 'MDM-Notebooks' }) }
+                return @()
+            }
+            $t = Resolve-HUAssignmentTarget -TenantKey 't' -Settings ([pscustomobject]@{}) -Kind user -Name 'max'
+            $t.Label | Should -Match '^max@schule\.at'
+            $t.Groups['gu'] | Should -Match '3A'
+            $t.Groups['gd'] | Should -Match 'MDM-Notebooks.*NB01'
+            $t.AllDevices | Should -BeTrue
+            $t.AllUsers | Should -BeTrue
+        }
+    }
 }
 
 Describe 'Release-Texte' {

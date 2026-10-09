@@ -2038,12 +2038,34 @@ function Resolve-HUAssignmentTarget {
         }
         'user' {
             $u = $null
-            try { $u = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/users/$([uri]::EscapeDataString($Name))?`$select=id,displayName,userPrincipalName" -V1 } catch { }
-            if (-not $u) { $r = @((Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/users?`$filter=displayName eq '$(& $esc $Name)'&`$select=id,displayName,userPrincipalName" -V1).value); $u = $r | Select-Object -First 1 }
+            $gu = { param($f) @((Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/users?`$filter=$f&`$select=id,displayName,userPrincipalName" -V1).value) }
+            if ($Name -match '@') {
+                try { $u = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/users/$([uri]::EscapeDataString($Name))?`$select=id,displayName,userPrincipalName" -V1 } catch { }
+            } else {
+                # ohne Domain: Benutzername vor dem @ (je Tenant passend), sonst Kurzname
+                $r = @(& $gu "startswith(userPrincipalName,'$(& $esc ($Name + '@'))')")
+                if (-not $r.Count) { $r = @(& $gu "mailNickname eq '$(& $esc $Name)'") }
+                if ($r.Count -gt 1) { $t.Note = "'$Name' passt auf $($r.Count) Benutzer - verwendet wird $($r[0].userPrincipalName)." }
+                $u = $r | Select-Object -First 1
+            }
+            if (-not $u) { $r = @(& $gu "displayName eq '$(& $esc $Name)'"); $u = $r | Select-Object -First 1 }
             if (-not $u) { return $null }
             $t.Label = "$($u.userPrincipalName)"
             & $addParents "/users/$($u.id)" 'Benutzer'
             $t.AllUsers = $true
+            # Intune-Geraete des Benutzers (primaerer Benutzer) mit ihren Gruppen
+            $md = @()
+            try { $md = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/managedDevices?`$filter=userPrincipalName eq '$(& $esc "$($u.userPrincipalName)")'&`$select=id,deviceName,azureADDeviceId") } catch { }
+            $names = @()
+            foreach ($d in $md) {
+                $aad = "$($d.azureADDeviceId)"
+                $names += "$($d.deviceName)"
+                $t.AllDevices = $true
+                if (-not $aad -or $aad -eq '00000000-0000-0000-0000-000000000000') { continue }
+                $dev = @((Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/devices?`$filter=deviceId eq '$aad'&`$select=id" -V1).value) | Select-Object -First 1
+                if ($dev) { & $addParents "/devices/$($dev.id)" "Geraet $($d.deviceName)" }
+            }
+            if ($names.Count) { $t.Label += " (Geraete: $($names -join ', '))"; $t.Note = (@($t.Note, "Mit $($names.Count) Intune-Geraet(en) des Benutzers: $($names -join ', ').") | Where-Object { $_ }) -join ' ' }
         }
         'device' {
             $md = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/managedDevices?`$filter=deviceName eq '$(& $esc $Name)'&`$select=id,deviceName,azureADDeviceId,userPrincipalName,userId")

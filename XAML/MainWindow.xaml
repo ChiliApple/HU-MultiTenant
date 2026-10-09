@@ -1126,7 +1126,7 @@
                                         <Button x:Name="btnAnaRun" DockPanel.Dock="Right" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0" IsDefault="False"/>
                                         <Button x:Name="btnAnaPick" DockPanel.Dock="Right" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="6,0,0,0" ToolTip="Gruppe aus den angehakten Tenants suchen"/>
                                         <TextBox x:Name="txtAnaName" Style="{StaticResource DarkTextBox}" FontSize="12"
-                                                 ToolTip="Gruppenname, Geraetename (wie in Intune) oder Benutzer (UPN bzw. Anzeigename)"/>
+                                                 ToolTip="Gruppenname, Geraetename (wie in Intune) oder Benutzer (Benutzername ohne Domain, UPN oder Anzeigename - inkl. seiner Intune-Geraete)"/>
                                     </DockPanel>
                                 </StackPanel>
                                 <TextBlock x:Name="lblAnaHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>

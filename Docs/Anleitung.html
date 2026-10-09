@@ -271,11 +271,11 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <h3 id="ana-asg">Was bekommt …?</h3>
   <p>Zeigt alles, was eine <b>Gruppe</b>, ein <b>Gerät</b> oder ein <b>Benutzer</b> in den angehakten Tenants bekommt: Apps (mit Absicht erforderlich / verfügbar / deinstallieren), Konfigurationsprofile, Einstellungskatalog, Administrative Vorlagen, Compliance-Richtlinien, Wartungsskripte, Plattformskripte, Feature-Updates und Autopilot-Profile.</p>
   <ol class="steps">
-    <li>Art wählen, Namen eingeben (Gruppe: 🔍 sucht in den angehakten Tenants; Gerät: Name wie in Intune; Benutzer: UPN oder Anzeigename) → <span class="ui b">▶ Anzeigen</span> oder Enter.</li>
+    <li>Art wählen, Namen eingeben (Gruppe: 🔍 sucht in den angehakten Tenants; Gerät: Name wie in Intune; Benutzer: Benutzername ohne <code>@domain</code> – passt in jedem Tenant –, UPN oder Anzeigename; dabei zählen auch seine Intune-Geräte und deren Gruppen) → <span class="ui b">▶ Anzeigen</span> oder Enter.</li>
     <li>Die Tabelle füllt sich je Tenant, sobald er fertig ist. Spalte <i>Über</i>: über welche Gruppe (auch verschachtelt) bzw. <i>Alle Geräte</i> / <i>Alle Benutzer</i>; <i>Status</i> <b>ausgeschlossen</b>, wenn eine Ausschlussgruppe greift.</li>
     <li><span class="ui">📊 Tabelle / Export</span>: Filter, CSV, Excel.</li>
   </ol>
-  <div class="note"><b class="h">Grenzen</b>Zuweisungsfilter werden angezeigt (Spalte <i>Filter</i>), aber nicht ausgewertet – ob ein Filter das Gerät ausschließt, steht in Intune beim Gerät. Bei einer Gruppe zählen auch die Gruppen, in denen sie selbst Mitglied ist. Berechtigungen: <code>DeviceManagementConfiguration.Read.All</code>, <code>DeviceManagementApps.Read.All</code>, <code>DeviceManagementManagedDevices.Read.All</code>, <code>Group.Read.All</code>, <code>User.Read.All</code> (bzw. die vorhandenen ReadWrite-Rechte).</div>
+  <div class="note"><b class="h">Grenzen</b>Zuweisungsfilter werden angezeigt (Spalte <i>Filter</i>), aber nicht ausgewertet – ob ein Filter das Gerät ausschließt, steht in Intune beim Gerät. Bei einer Gruppe zählen auch die Gruppen, in denen sie selbst Mitglied ist. Berechtigungen: <code>DeviceManagementConfiguration.Read.All</code>, <code>DeviceManagementApps.Read.All</code>, <code>DeviceManagementManagedDevices.Read.All</code>, <code>Group.Read.All</code>, <code>User.Read.All</code>, <code>Device.Read.All</code> (bzw. die vorhandenen ReadWrite-Rechte).</div>
 </section>
 
 <section id="secrets">

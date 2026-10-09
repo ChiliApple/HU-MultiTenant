@@ -103,7 +103,7 @@ function Start-HUAnaRun {
             try { @(Get-HUAssignmentReport -TenantKey $TK -Settings $Settings -Kind $Kind -Name $Target) | ForEach-Object { $_ } }
             catch {
                 $m = $_.Exception.Message
-                if ($m -match '403|Forbidden|Authorization') { $m = "Berechtigung fehlt ($m) - noetig: DeviceManagementConfiguration.Read.All, DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All, Group.Read.All, User.Read.All" }
+                if ($m -match '403|Forbidden|Authorization') { $m = "Berechtigung fehlt ($m) - noetig: DeviceManagementConfiguration.Read.All, DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All, Group.Read.All, User.Read.All, Device.Read.All" }
                 Write-HULog -Message $m -Level 'ERROR' -Tenant $TK
             }
             [pscustomobject]@{ __AnaDone = $TK; __AnaGen = $Gen }
