@@ -172,7 +172,7 @@ function Update-HUCmpHint {
     $all = @($script:CmpMatrix)
     $d = @($all | Where-Object Diff).Count
     $vis = @(Get-HUCmpVisibleRows).Count
-    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' nur fuer Profile, Compliance, Feature-Updates und Autopilot. Kopieren ohne Zuweisungen."
+    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' nur fuer Profile, Compliance, Feature-Updates und Autopilot. Doppelklick zeigt die abweichenden Einstellungen. Kopieren ohne Zuweisungen."
 }
 
 function Get-HUCmpVisibleRows {
@@ -287,6 +287,42 @@ function Start-HUCmpCopy {
     if (-not $ok) { $c['btnCmpCopy'].IsEnabled = $true }
 }
 
+# Doppelklick: Einstellungen der Tenants gegenueberstellen (nur abweichende)
+function Show-HUCmpDetail {
+    $r = $script:Controls['gridCmp'].SelectedItem
+    if (-not $r -or -not $r.Ref) { return }
+    $m = $r.Ref
+    $items = @($m.Items | Group-Object Tenant | ForEach-Object { $_.Group[0] })
+    if ($items.Count -lt 2) { Show-HUMessage "'$($m.Name)' gibt es nur in $(Get-HUAnaTenantName $items[0].Tenant) - nichts zu vergleichen." -Icon Info; return }
+    if ($m.Typ -eq 'App') { Show-HUMessage 'Apps bitte unter Apps > In Intune vergleichen.' -Icon Info; return }
+    $script:CmpDetailName = "$($m.Typ): $($m.Name)"
+    $script:CmpDetailKeys = @($items | ForEach-Object { $_.Tenant })
+    Add-HURtbLine $script:Controls['rtbAna'] "Lade Einstellungen von '$($m.Name)' ..." '#90CAF9'
+    [void](Start-HUJob -Name 'CmpDetail' -Quiet -Output $script:Controls['rtbAna'] -Vars @{ Items = $items } -Code {
+            $maps = @{}
+            foreach ($it in $Items) {
+                try { $maps[$it.Tenant] = ConvertTo-HUFlatMap (Get-HUCompareObject -TenantKey $it.Tenant -Settings $Settings -Typ $it.Typ -Id $it.Id) }
+                catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $it.Tenant }
+            }
+            [pscustomobject]@{ __Diff = @(Get-HUCompareDiff $maps @($Items | ForEach-Object { $_.Tenant })); Count = $maps.Count }
+        } -OnDone {
+            param($Result, $Errors)
+            $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__Diff'] }) | Select-Object -First 1
+            if (-not $d) { return }
+            $keys = @($script:CmpDetailKeys)
+            if ($d.Count -lt 2) { Add-HURtbLine $script:Controls['rtbAna'] 'Nicht in allen Tenants lesbar - kein Vergleich.' '#FFB74D'; return }
+            $rows = foreach ($x in @($d.__Diff)) {
+                $o = [ordered]@{ Einstellung = $x.Einstellung }
+                for ($i = 0; $i -lt $keys.Count; $i++) { $o[(Get-HUAnaTenantName $keys[$i])] = $x."T$i" }
+                [pscustomobject]$o
+            }
+            $rows = @($rows)
+            if (-not $rows.Count) { Show-HUMessage "$($script:CmpDetailName)`n`nKeine Unterschiede in den Einstellungen (nur IDs, Zeitstempel oder Name/Beschreibung)." -Icon Info; return }
+            Add-HURtbLine $script:Controls['rtbAna'] "$($rows.Count) abweichende Einstellung(en)" '#81C784'
+            Show-HUQSTable -Title "Unterschiede - $($script:CmpDetailName)" -Objects $rows -FilePrefix 'Vergleich-Details'
+        })
+}
+
 function Register-HUCmpHandlers {
     $c = $script:Controls
     $c['chkCmpDiff'].IsChecked = [bool](Get-HUStateValue 'cmpDiff' $true)
@@ -296,6 +332,7 @@ function Register-HUCmpHandlers {
     $c['txtCmpFilter'].Add_TextChanged({ Update-HUCmpGrid })
     $c['btnCmpRun'].Add_Click({ Start-HUCmpRun })
     $c['btnCmpCopy'].Add_Click({ Start-HUCmpCopy })
+    $c['gridCmp'].Add_MouseDoubleClick({ Show-HUCmpDetail })
     $c['btnCmpTable'].Add_Click({
             if (-not @($script:CmpMatrix).Count) { Show-HUMessage 'Noch keine Ergebnisse.' -Icon Info; return }
             $keys = @($script:CmpKeys)

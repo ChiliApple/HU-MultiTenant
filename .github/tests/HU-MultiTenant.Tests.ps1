@@ -762,3 +762,23 @@ Describe 'Analyse: Tenant-Vergleich' {
         { Copy-HUIntuneObject -Typ 'Conditional Access' -SourceTenant 'a' -SourceId 'x' -TargetTenant 'b' -Settings ([pscustomobject]@{}) } | Should -Throw
     }
 }
+
+Describe 'Analyse: Vergleich-Details' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'nur abweichende Einstellungen, Katalog nach settingDefinitionId (Reihenfolge egal)' {
+        $a = '{"id":"1","name":"X","settings":[{"id":"0","settingInstance":{"settingDefinitionId":"s_a","choiceSettingValue":{"value":"on"}}},{"id":"1","settingInstance":{"settingDefinitionId":"s_b","simpleSettingValue":{"value":5}}}]}' | ConvertFrom-Json
+        $b = '{"id":"2","name":"X","settings":[{"id":"0","settingInstance":{"settingDefinitionId":"s_b","simpleSettingValue":{"value":7}}},{"id":"1","settingInstance":{"settingDefinitionId":"s_a","choiceSettingValue":{"value":"on"}}}]}' | ConvertFrom-Json
+        $d = @(Get-HUCompareDiff @{ t1 = (ConvertTo-HUFlatMap $a); t2 = (ConvertTo-HUFlatMap $b) } @('t1', 't2'))
+        $d.Count | Should -Be 1
+        $d[0].Einstellung | Should -Match 's_b'
+        $d[0].T0 | Should -Be '5'; $d[0].T1 | Should -Be '7'
+    }
+    It 'lange Skriptinhalte als Kurzform, fehlende Werte als (nicht gesetzt)' {
+        $m1 = ConvertTo-HUFlatMap ([pscustomobject]@{ detectionScriptContent = ('QUJD' * 50); extra = 'x' })
+        $m2 = ConvertTo-HUFlatMap ([pscustomobject]@{ detectionScriptContent = ('QUJE' * 50) })
+        $m1.detectionScriptContent | Should -Match '^\(Inhalt, 200 Zeichen'
+        $d = @(Get-HUCompareDiff @{ a = $m1; b = $m2 } @('a', 'b'))
+        ($d | Where-Object Einstellung -eq 'extra').T1 | Should -Be '(nicht gesetzt)'
+        $d.Count | Should -Be 2
+    }
+}

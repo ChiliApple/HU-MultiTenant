@@ -2278,6 +2278,76 @@ function Copy-HUIntuneObject {
     return "$($r.id)"
 }
 
+# Objekt vollstaendig holen (fuer die Detail-Ansicht im Vergleich)
+function Get-HUCompareObject {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [Parameter(Mandatory)][string]$Id)
+    $src = Get-HUCompareSources | Where-Object { $_.Typ -eq $Typ } | Select-Object -First 1
+    if (-not $src) { throw "Unbekannte Art: $Typ" }
+    $base = ($src.Ep -replace '\?.*$', '')
+    $q = switch ($Typ) {
+        'Einstellungskatalog' { '?$expand=settings' }
+        'Compliance' { '?$expand=scheduledActionsForRule($expand=scheduledActionConfigurations)' }
+        'Administrative Vorlage' { '?$expand=definitionValues($expand=definition($select=displayName,categoryPath),presentationValues)' }
+        default { '' }
+    }
+    return (Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$Id$q" -V1:($Typ -eq 'Conditional Access'))
+}
+
+# Objekt zu Pfad -> Wert flach machen. Listenelemente mit settingDefinitionId/definition werden darueber benannt (Reihenfolge egal).
+function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null) {
+    if ($null -eq $Map) { $Map = @{} }
+    $skip = $script:HUCmpSkip + @('displayName', 'name', 'description', '@odata.context', 'settingInstanceTemplateReference', 'settingValueTemplateReference', 'definition@odata.bind', 'presentation@odata.bind')
+    if ($null -eq $Obj) { return $Map }
+    if ($Obj -is [string] -or $Obj -is [ValueType]) {
+        $v = "$Obj"
+        if ($v.Length -gt 120 -and $v -match '^[A-Za-z0-9+/=\r\n]+$') {
+            $sha = [System.Security.Cryptography.SHA256]::Create()
+            try { $h = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($v))) -replace '-', '').Substring(0, 8) } finally { $sha.Dispose() }
+            $v = "(Inhalt, $($v.Length) Zeichen, #$h)"
+        } elseif ($v.Length -gt 200) { $v = $v.Substring(0, 200) + ' ...' }
+        $Map[$(if ($Prefix) { $Prefix } else { '(Wert)' })] = $v
+        return $Map
+    }
+    if ($Obj -is [System.Collections.IEnumerable] -and -not ($Obj -is [System.Collections.IDictionary])) {
+        $list = @($Obj)
+        if (-not $list.Count) { $Map[$Prefix] = '(leer)'; return $Map }
+        $simple = @($list | Where-Object { $_ -is [string] -or $_ -is [ValueType] })
+        if ($simple.Count -eq $list.Count) { $Map[$Prefix] = (@($list | ForEach-Object { "$_" } | Sort-Object) -join ', '); return $Map }
+        $i = 0
+        foreach ($e in $list) {
+            $k = "$i"
+            if ($e.PSObject.Properties['settingDefinitionId'] -and "$($e.settingDefinitionId)") { $k = "$($e.settingDefinitionId)" }
+            elseif ($e.PSObject.Properties['settingInstance'] -and $e.settingInstance.settingDefinitionId) { $k = "$($e.settingInstance.settingDefinitionId)" }
+            elseif ($e.PSObject.Properties['definition'] -and $e.definition.displayName) { $k = "$($e.definition.displayName)" }
+            elseif ($e.PSObject.Properties['actionType']) { $k = "$($e.actionType)" }
+            [void](ConvertTo-HUFlatMap $e "$Prefix[$k]" $Map)
+            $i++
+        }
+        return $Map
+    }
+    $props = if ($Obj -is [System.Collections.IDictionary]) { @($Obj.Keys | ForEach-Object { [pscustomobject]@{ Name = "$_"; Value = $Obj[$_] } }) } else { @($Obj.PSObject.Properties | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Value = $_.Value } }) }
+    foreach ($p in $props) {
+        if ($p.Name -in $skip -or $p.Name -match '@odata\.(context|navigationLink|associationLink|etag)$|^id$') { continue }
+        if ($null -eq $p.Value) { continue }
+        if ($p.Name -eq '@odata.type' -and $Prefix) { continue }
+        [void](ConvertTo-HUFlatMap $p.Value $(if ($Prefix) { "$Prefix.$($p.Name)" } else { $p.Name }) $Map)
+    }
+    return $Map
+}
+
+# Unterschiede zwischen den flachen Maps je Tenant -> Zeilen Einstellung, T0..Tn
+function Get-HUCompareDiff([hashtable]$Maps, [string[]]$Keys) {
+    $paths = @($Keys | ForEach-Object { if ($Maps[$_]) { $Maps[$_].Keys } } | Sort-Object -Unique)
+    foreach ($p in $paths) {
+        $vals = @($Keys | ForEach-Object { if ($Maps[$_] -and $Maps[$_].ContainsKey($p)) { "$($Maps[$_][$p])" } else { '(nicht gesetzt)' } })
+        if (@($vals | Select-Object -Unique).Count -le 1) { continue }
+        $o = [ordered]@{ Einstellung = ($p -replace '^device_vendor_msft_policy_config_', '' -replace '\[device_vendor_msft_policy_config_', '[') }
+        for ($i = 0; $i -lt $Keys.Count; $i++) { $o["T$i"] = $vals[$i] }
+        [pscustomobject]$o
+    }
+}
+
 Export-ModuleMember -Function @(
     'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups', 'ConvertTo-HUW32Row', 'Get-HUTenantWin32Apps', 'Find-HUWin32AppByName',
     'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo',
@@ -2290,7 +2360,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'Copy-HUIntuneObject', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )
