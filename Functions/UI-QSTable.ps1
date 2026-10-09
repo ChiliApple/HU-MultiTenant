@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Quick Script: Objekt-Ausgaben als Tabelle (filtern, sortieren) mit Export nach CSV, Excel und Zwischenablage.
@@ -120,7 +120,12 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
     $w.Title = "Ergebnis$(if ($Title) { " - $Title" })"
     Restore-HUDialogState $w 'QSTable'
     $view = $dt.DefaultView
-    $c.grid.Add_AutoGeneratingColumn({ param($s0, $e) $e.Column.Header = $map[$e.PropertyName]; $e.Column.MaxWidth = 600 })
+    # lange Texte umbrechen; Startbreite hoechstens 600, danach frei aufziehbar
+    $wrap = New-Object System.Windows.Style([System.Windows.Controls.TextBlock])
+    $wrap.Setters.Add((New-Object System.Windows.Setter([System.Windows.Controls.TextBlock]::TextWrappingProperty, [System.Windows.TextWrapping]::Wrap)))
+    $c.grid.Tag = $wrap
+    $c.grid.Add_AutoGeneratingColumn({ param($s0, $e) $e.Column.Header = $map[$e.PropertyName]; $e.Column.MaxWidth = 600; if ($e.Column -is [System.Windows.Controls.DataGridTextColumn]) { $e.Column.ElementStyle = $s0.Tag } })
+    $c.grid.Add_Loaded({ param($s0, $e) foreach ($col in @($s0.Columns)) { $aw = $col.ActualWidth; $col.MaxWidth = [double]::PositiveInfinity; if ($aw -gt 0) { $col.Width = New-Object System.Windows.Controls.DataGridLength($aw) } } })
     $c.grid.ItemsSource = $view
     $updCount = { $c.txtCount.Text = "$($view.Count) von $($dt.Rows.Count) Zeilen  |  $($map.Count) Spalten" }
     & $updCount

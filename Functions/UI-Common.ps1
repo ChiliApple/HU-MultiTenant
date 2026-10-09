@@ -152,6 +152,23 @@ function Read-HUJsonFile([string]$Path) {
     try { return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { return $null }
 }
 
+# Rechtsklick-Menue fuer eine Liste: Eintraege @( @{ Header; Action; Enabled (scriptblock, optional) } )
+# Ein Rechtsklick waehlt den Eintrag unter der Maus aus (WPF-ListBox), das Menue wirkt also auf ihn.
+function Set-HUListMenu($ListBox, [object[]]$Entries) {
+    $menu = New-Object System.Windows.Controls.ContextMenu
+    foreach ($e in $Entries) {
+        $mi = New-Object System.Windows.Controls.MenuItem
+        $mi.Header = $e.Header
+        $mi.Tag = $e
+        $mi.Add_Click({ & $this.Tag.Action })
+        [void]$menu.Items.Add($mi)
+    }
+    $menu.Add_Opened({
+            foreach ($mi in $this.Items) { $mi.IsEnabled = [bool]$this.PlacementTarget.SelectedItem -and (-not $mi.Tag.Enabled -or [bool](& $mi.Tag.Enabled)) }
+        })
+    $ListBox.ContextMenu = $menu
+}
+
 # Rechtsklick-Menue fuer Ausgabefenster (RichTextBox): Kopieren, Alles kopieren, Ausgabe leeren
 function Add-HUOutputMenu($RichTextBox, [scriptblock]$Clear) {
     $menu = New-Object System.Windows.Controls.ContextMenu

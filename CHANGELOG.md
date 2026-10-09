@@ -1,14 +1,37 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.6 (2026-10-09)
+
+### Neu: Reiter Analyse
+- **Was bekommt ...?** - alle Apps, Profile, Richtlinien, Wartungs- und Plattformskripte, Feature-Updates und Autopilot-Profile, die eine Gruppe, ein Geraet oder ein Benutzer in den angehakten Tenants bekommt: ueber verschachtelte Gruppen, Alle Geraete / Alle Benutzer und mit Ausschluessen. Benutzer auch ohne Domain (passt in jedem Tenant), inklusive seiner Intune-Geraete. Filter nach Text und Art, Alle Geraete/Benutzer ausblendbar, Tabelle und Export
+- **Tenant-Vergleich** - Profile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot, Conditional Access und Apps nebeneinander: fehlt, nur in einem, doppelt, Einstellungen abweichend. Doppelklick zeigt die abweichenden Einstellungen je Tenant - Gruppen, Benutzer, Rollen, Cloud-Apps und Orte mit Namen statt ID, Listen als "gleich: N + Zusaetzliches". Markierte fehlende Eintraege in andere Tenants kopieren (ohne Zuweisungen)
+- **Backup & Verlauf** - Konfiguration sichern (alle oben genannten Arten mit Zuweisungen, Apps als Liste), automatisch einmal taeglich beim Start (Standard an). Zwei Staende vergleichen: neu, geloescht, Einstellungen / Zuweisungen / Beschreibung geaendert, umbenannt - mit "Geaendert von" aus dem Intune-Protokoll. Doppelklick zeigt vorher/nachher. Eintraege aus einem alten Stand neu anlegen (Name mit Zusatz, ohne Zuweisungen, Conditional Access deaktiviert). Ablage lokal, Ordner und Anzahl Staende in den Einstellungen
+
+### Neu: Apps
+- **Updates** (neben Bibliothek und In Intune) - prueft die Setup-Apps der Bibliothek gegen winget: Bibliothek, neueste Version und tatsaechlicher Stand in Intune je Tenant. winget-ID bei eindeutigem Namen automatisch, sonst per Suche. "Neue Version holen" laedt den Installer und uebernimmt ihn als neue Version der App (eigene Installationsschalter bleiben, alter Sandbox-Hinweis wird geleert) - danach wie gewohnt Testinstallation und Hochladen mit Pilotgruppe. Quelle waehlbar (Einstellungen > Allgemein, Standard winget). In Intune geloeschte Apps werden erkannt und die Verteilung in der Bibliothek zurueckgesetzt
+- **Kategorien** fuer das Unternehmensportal - mit Komma getrennt oder "Auswahl ..." aus den angehakten Tenants, dort auch anlegen und loeschen (mit Rueckfrage); fehlende werden beim Hochladen je Tenant gemeldet. Auch unter In Intune (Eigenschaften), mit Anzeige abweichender Kategorien
+
+### Neu: Wartung
+- **Duplizieren** per Rechtsklick in der linken Liste - Bibliothek: lokale Kopie; In Intune: Kopie mit neuem Namen in denselben Tenants, ohne Zuweisungen
+
+### Verbessert
+- Ergebnis-Tabellen: lange Werte werden umgebrochen, Spalten lassen sich beliebig breit ziehen
+
+### Hinweise
+- Neue Berechtigungen je nach Nutzung (INSTALL.md): `Policy.Read.All` (Conditional Access in Vergleich/Backup), `Device.Read.All` (Was bekommt ein Geraet), `DeviceManagementConfiguration.ReadWrite.All` (Kopieren/Wiederherstellen), optional `RoleManagement.Read.Directory` und `Policy.ReadWrite.ConditionalAccess`
+- Backup sichert die Intune-Konfiguration und Conditional Access - kein vollstaendiges Tenant-Backup (keine Benutzer, Gruppen, Postfaecher, Dateien, App-Pakete)
+- Backups enthalten Skripte und Richtlinien im Klartext - Standardablage ist lokal (`%LOCALAPPDATA%`), nicht im Programmordner
+- Apps > Updates braucht winget (App-Installer aus dem Microsoft Store)
+
 ## v2.1.5 (2026-10-09)
 
 ### Neu
 - Einstellungen > Allgemein: **Autor** - steht in Intune bei Apps als Besitzer und bei Wartungsskripten als Herausgeber (statt "HU-MultiTenant")
-- **Wartung: Felder fuer Werte** - "# @param"-Zeilen (wie im Quick Script) werden zu Eingabefeldern ueber den Skripten; der Wert steht direkt im Skript ("# @value") und wird genau so hochgeladen, daher auch unter In Intune aenderbar. "Werte als Felder uebernehmen" wandelt einfache Zuweisungen am Skriptanfang um; Pruefen meldet falsche Platzierung
+- **Wartung: Felder fuer Werte** - `# @param`-Zeilen (wie im Quick Script) werden zu Eingabefeldern ueber den Skripten; der Wert steht direkt im Skript (`# @value`) und wird genau so hochgeladen, daher auch unter In Intune aenderbar. "Werte als Felder uebernehmen" wandelt einfache Zuweisungen am Skriptanfang um; Pruefen meldet falsche Platzierung
 
 ### Verbessert
 - Rechtsklick-Menues (z. B. Ausgabe: Kopieren / Alles kopieren / Ausgabe leeren) im dunklen Stil, ohne helle Symbolspalte
-- KI-Prompt fuer Wartungsskripte: Werte als @param-Felder, Funktionsnamen in Verb-Nomen-Form, Reparaturfehler zusaetzlich auf die Fehlerausgabe (Intune zeigt nur diese)
+- KI-Prompt fuer Wartungsskripte: Werte als `@param`-Felder, Funktionsnamen in Verb-Nomen-Form, Reparaturfehler zusaetzlich auf die Fehlerausgabe (Intune zeigt nur diese)
 - Wartung > Pruefen: warnt jetzt auch bei Passwoertern im Klartext (Variablen wie $Password/$Kennwort, ConvertTo-SecureString mit festem Text, net user) - nur Hinweis, blockiert nichts
 
 ## v2.1.4 (2026-10-09)

@@ -56,6 +56,9 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Text="Reiter beim Start" Style="{StaticResource FieldLabel}"/>
                             <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbStartTab" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3">
@@ -63,6 +66,7 @@
                                 <ComboBoxItem Content="Extensions" Tag="Extensions"/>
                                 <ComboBoxItem Content="Apps" Tag="Apps"/>
                                 <ComboBoxItem Content="Wartung" Tag="Wartung"/>
+                                <ComboBoxItem Content="Analyse" Tag="Analyse"/>
                                 <ComboBoxItem Content="Zuletzt verwendeter Reiter" Tag="Last"/>
                             </ComboBox>
                             <TextBlock Grid.Row="1" Text="Oberfl&#xE4;chengr&#xF6;&#xDF;e" Style="{StaticResource FieldLabel}"/>
@@ -82,6 +86,22 @@
                             <TextBlock Grid.Row="4" Text="Autor (Apps und Wartung)" Style="{StaticResource FieldLabel}"/>
                             <TextBox Grid.Row="4" Grid.Column="1" x:Name="txtAuthor" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,3"
                                      ToolTip="Steht in Intune bei hochgeladenen Apps als Besitzer und bei Wartungsskripten als Herausgeber. Leer = Apps ohne Besitzer, Wartung mit &quot;HU-MultiTenant&quot;. Wirkt beim naechsten Hochladen."/>
+                            <TextBlock Grid.Row="5" Text="Quelle f&#xFC;r App-Updates" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock Grid.Row="6" Text="Backup-Ordner" Style="{StaticResource FieldLabel}"/>
+                            <DockPanel Grid.Row="6" Grid.Column="1" Margin="0,3">
+                                <Button x:Name="btnBackupBrowse" DockPanel.Dock="Right" Content="..." Style="{StaticResource ToolButton}" Width="34" Margin="6,0,0,0"/>
+                                <TextBox x:Name="txtBackupPath" Style="{StaticResource DarkTextBox}" FontSize="12"
+                                         ToolTip="Leer = lokal (%LOCALAPPDATA%\HU-MultiTenant\Backups). Enthaelt Skripte und Richtlinien im Klartext - nicht in einen geteilten Ordner legen."/>
+                            </DockPanel>
+                            <TextBlock Grid.Row="7" Text="Backup" Style="{StaticResource FieldLabel}"/>
+                            <StackPanel Grid.Row="7" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                                <CheckBox x:Name="chkBackupDaily" Content="Beim Start automatisch (einmal taeglich, alle Tenants)" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                <TextBlock Text="aufbewahren:" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="16,0,6,0"/>
+                                <TextBox x:Name="txtBackupKeep" Width="50" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Anzahl Staende je Tenant (aeltere werden geloescht)"/>
+                                <TextBlock Text="Staende" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                            </StackPanel>
+                            <ComboBox Grid.Row="5" Grid.Column="1" x:Name="cmbWingetSource" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
+                                      ToolTip="winget-Quelle fuer Apps &gt; Updates. Standard: winget (Community-Repository). Die Liste zeigt die auf diesem PC eingerichteten Quellen (winget source list)."/>
                         </Grid>
 
                         <TextBlock Text="Sperre" Style="{StaticResource SectionTitle}"/>

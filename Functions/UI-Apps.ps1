@@ -78,7 +78,7 @@ function ConvertTo-HUApp($Src = $null) {
         Detection = (New-HUAppDetection); StoreId = ''
         TargetKind = 'group'; TargetGroup = ''; Intent = 'required'; Pilot = $false; PilotGroup = ''; Deadline = ''; Notify = 'showAll'
         Tenants = @(); Deployments = @(); SandboxNote = ''; Created = (Get-Date -Format 'yyyy-MM-dd HH:mm'); Modified = ''
-        Dependencies = @(); IntuneDeps = @(); DepAuto = $true; DepsManaged = $false; NoDesktop = $false
+        Dependencies = @(); IntuneDeps = @(); DepAuto = $true; DepsManaged = $false; NoDesktop = $false; Categories = @(); WingetId = ''
     }
     if ($Src) {
         foreach ($p in $a.PSObject.Properties.Name) { if ($Src.PSObject.Properties[$p] -and $null -ne $Src.$p) { $a.$p = $Src.$p } }
@@ -88,9 +88,136 @@ function ConvertTo-HUApp($Src = $null) {
         $a.WholeFolder = [bool]$a.WholeFolder; $a.Pilot = [bool]$a.Pilot; $a.NoDesktop = [bool]$a.NoDesktop
         $a.Dependencies = @($a.Dependencies | Where-Object { $_ } | ForEach-Object { "$_" })
         $a.IntuneDeps = @($a.IntuneDeps | Where-Object { $_ } | ForEach-Object { "$_" })
+        $a.Categories = @($a.Categories | Where-Object { $_ } | ForEach-Object { "$_" })
         $a.DepAuto = [bool]$a.DepAuto; $a.DepsManaged = [bool]$a.DepsManaged
     }
     return $a
+}
+
+function ConvertTo-HUCategoryList([string]$Text) { return @("$Text" -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique) }
+
+# Kategorien aus den angehakten Tenants laden und zum Anhaken anbieten
+function Show-HUAppCategoryPicker([string[]]$Keys = @(), [string]$Box = 'txtAppCategories') {
+    $c = $script:Controls
+    $script:AppCatBox = $Box
+    $keys = if ($Keys.Count) { @($Keys) } else { @(Get-HUCheckedTenants $c['spAppTenants']) }
+    if (-not $keys.Count) { $keys = @($script:Settings.tenants | Select-Object -First 1 | ForEach-Object { "$($_.key)" }) }
+    if (-not $keys.Count) { return }
+    $script:AppCatKeys = @($keys)
+    if (Test-HUJobRunning 'AppCats') { return }
+    Add-HURtbLine $c['rtbApps'] "Kategorien laden: $(@($keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') ..." '#90CAF9'
+    [void](Start-HUJob -Name 'AppCats' -Quiet -Output $c['rtbApps'] -Vars @{ Keys = $keys } -Code {
+            foreach ($k in $Keys) {
+                try { foreach ($x in @(Get-HUTenantAppCategories $k $Settings)) { [pscustomobject]@{ Cat = $x.Name; Tenant = $k } } }
+                catch { Write-HULog -Message "Kategorien: $($_.Exception.Message)" -Level 'WARN' -Tenant $k }
+            }
+        } -OnDone {
+            param($Result, $Errors)
+            $rows = @($Result | Where-Object { $_ -and $_.PSObject.Properties['Cat'] })
+            Show-HUAppCategoryDialog $rows
+        })
+}
+
+function Show-HUAppCategoryDialog([object[]]$Rows) {
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Kategorien" Width="420" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <StackPanel Margin="18">
+        <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"
+                   Text="Kategorien im Unternehmensportal (aus den angehakten Tenants). Fehlt eine Kategorie in einem Tenant, wird sie dort beim Hochladen uebersprungen."/>
+        <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="spCats"/>
+        </ScrollViewer>
+        <TextBlock Text="Kategorie anlegen (auch in fehlenden Tenants) oder loeschen" Style="{StaticResource FieldLabel}" Margin="0,12,0,3"/>
+        <DockPanel>
+            <Button x:Name="btnDelete" DockPanel.Dock="Right" Content="Loeschen ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0" Foreground="#E57373"
+                    ToolTip="Kategorie mit diesem Namen in den Tenants loeschen (auch per Rechtsklick auf eine Kategorie)"/>
+            <Button x:Name="btnCreate" DockPanel.Dock="Right" Content="Anlegen ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"/>
+            <TextBox x:Name="txtNew" Style="{StaticResource DarkTextBox}" FontSize="12"/>
+        </DockPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="btnOk" Content="Uebernehmen" Width="110" Background="#4CAF50" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
+            <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
+'@
+    $theme = Get-HUXaml 'Theme'
+    $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+    $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
+    $w = $d.Window; $dc = $d.C
+    $script:AppCatDlg = $dc
+    try { $w.Owner = $script:Window } catch { }
+    $box = if ($script:AppCatBox) { $script:AppCatBox } else { 'txtAppCategories' }
+    $cur = @(ConvertTo-HUCategoryList $script:Controls[$box].Text)
+    $all = @($Rows | Group-Object Cat | Sort-Object Name)
+    $catKeys = @($script:AppCatKeys)
+    $tenantCount = [Math]::Max(1, $catKeys.Count)
+    $names = @($all | ForEach-Object { $_.Name }) + @($cur | Where-Object { @($all | ForEach-Object { $_.Name }) -notcontains $_ })
+    if (-not $names.Count) { $t = New-Object System.Windows.Controls.TextBlock; $t.Text = '(noch keine Kategorien)'; $t.Foreground = Get-HUBrush '#858585'; [void]$dc.spCats.Children.Add($t) }
+    foreach ($n in $names) {
+        $g = @($all | Where-Object { $_.Name -eq $n })[0]
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Style = $w.FindResource('DarkCheckBox')
+        $cb.Content = $(if ($g -and $tenantCount -gt 1 -and $g.Count -lt $tenantCount) { "$n  (nur in $($g.Count) von $tenantCount Tenants)" } elseif (-not $g) { "$n  (in keinem Tenant vorhanden)" } else { $n })
+        $cb.Tag = $n
+        $cb.IsChecked = ($cur -contains $n)
+        $cb.Margin = [System.Windows.Thickness]::new(0, 2, 0, 2)
+        # Rechtsklick: Name ins Feld uebernehmen und loeschen
+        $cm = New-Object System.Windows.Controls.ContextMenu
+        $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Kategorie loeschen ...'; $mi.Tag = $n
+        $mi.Add_Click({ $script:AppCatDlg.txtNew.Text = "$($this.Tag)"; $script:AppCatDlg.btnDelete.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) })
+        [void]$cm.Items.Add($mi); $cb.ContextMenu = $cm
+        [void]$dc.spCats.Children.Add($cb)
+    }
+    $st = @{ Ok = $false; Create = '' }
+    $dc.btnOk.Add_Click({ $st.Ok = $true; $w.Close() })
+    $dc.btnCreate.Add_Click({
+            $n = $dc.txtNew.Text.Trim()
+            if (-not $n -or $n -match '[,;]') { Show-HUMessage 'Bitte einen Namen ohne Komma/Strichpunkt eingeben.' -Icon Warning -Owner $w; return }
+            $have = @($Rows | Where-Object { $_.Cat -eq $n } | ForEach-Object { $_.Tenant })
+            $miss = @($catKeys | Where-Object { $have -notcontains $_ })
+            if (-not $miss.Count) { Show-HUMessage "'$n' gibt es schon in allen Tenants." -Icon Info -Owner $w; return }
+            if (-not (Confirm-HU "Kategorie '$n' im Unternehmensportal anlegen?`n`nTenants: $(@($miss | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nIm Intune-Portal erscheint sie erst nach dem Neuladen der Seite." 'Kategorien' -Owner $w)) { return }
+            $st.Ok = $true; $st.Create = $n; $st.Miss = $miss; $w.Close()
+        })
+    $dc.btnDelete.Add_Click({
+            $n = $dc.txtNew.Text.Trim()
+            if (-not $n) { Show-HUMessage 'Bitte den Namen der Kategorie eintragen (oder Rechtsklick auf eine Kategorie).' -Icon Info -Owner $w; return }
+            $have = @($Rows | Where-Object { $_.Cat -eq $n } | ForEach-Object { $_.Tenant } | Select-Object -Unique)
+            if (-not $have.Count) { Show-HUMessage "'$n' gibt es in keinem der Tenants." -Icon Info -Owner $w; return }
+            if (-not (Confirm-HU "Kategorie '$n' LOESCHEN?`n`nTenants: $(@($have | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nApps mit dieser Kategorie verlieren die Zuordnung." 'Kategorien' -Warning -Owner $w)) { return }
+            $st.Ok = $true; $st.Delete = $n; $st.Have = $have; $w.Close()
+        })
+    [void]$w.ShowDialog()
+    if (-not $st.Ok) { return }
+    if ($st.Delete) {
+        $script:Controls[$box].Text = (@(ConvertTo-HUCategoryList $script:Controls[$box].Text | Where-Object { $_ -ne $st.Delete }) -join ', ')
+        if ($box -eq 'txtAppCategories') { Save-HUAppForm; try { Save-HUAppLib } catch { } }
+        [void](Start-HUJob -Name 'AppCatDel' -Output $script:Controls['rtbApps'] -Vars @{ Keys = @($st.Have); CatName = $st.Delete } -Code {
+                foreach ($k in $Keys) {
+                    try { if (Remove-HUAppCategory $k $Settings $CatName) { Write-HULog -Message "Kategorie '$CatName' geloescht" -Level 'OK' -Tenant $k } }
+                    catch { Write-HULog -Message "Kategorie '$CatName': $($_.Exception.Message)" -Level 'ERROR' -Tenant $k }
+                }
+            })
+        return
+    }
+    $sel = @($dc.spCats.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+    if ($st.Create) { $sel += $st.Create }
+    $script:Controls[$box].Text = (@($sel | Select-Object -Unique) -join ', ')
+    if ($box -eq 'txtAppCategories') { Save-HUAppForm; try { Save-HUAppLib } catch { } }
+    if ($st.Create) {
+        $rtb = $script:Controls['rtbApps']
+        [void](Start-HUJob -Name 'AppCatNew' -Output $rtb -Vars @{ Keys = @($st.Miss); CatName = $st.Create } -Code {
+                foreach ($k in $Keys) {
+                    try { if (New-HUAppCategory $k $Settings $CatName) { Write-HULog -Message "Kategorie '$CatName' angelegt" -Level 'OK' -Tenant $k } else { Write-HULog -Message "Kategorie '$CatName' gab es schon" -Level 'INFO' -Tenant $k } }
+                    catch { Write-HULog -Message "Kategorie '$CatName': $($_.Exception.Message)" -Level 'ERROR' -Tenant $k }
+                }
+            } -OnDone { param($Result, $Errors) Add-HURtbLine $script:Controls['rtbApps'] 'Kategorie ist eingetragen - wird mit Hochladen bzw. Eigenschaften speichern gesetzt. Im Intune-Portal Seite neu laden.' '#90CAF9' })
+    }
 }
 
 function Import-HUAppLib {
@@ -258,7 +385,7 @@ function Show-HUAppForm($App) {
         $script:AppCurrent = $App
         $c['pnlAppForm'].IsEnabled = [bool]$App
         if (-not $App) {
-            foreach ($n in 'txtAppName', 'txtAppPublisher', 'txtAppVersion', 'txtAppDesc', 'txtAppSetup', 'txtAppInstall', 'txtAppUninstall', 'txtAppDetA', 'txtAppDetB', 'txtAppDetVer', 'txtAppStoreId', 'txtAppGroup', 'txtAppPilot', 'txtAppDeadline') { $c[$n].Text = '' }
+            foreach ($n in 'txtAppName', 'txtAppPublisher', 'txtAppVersion', 'txtAppDesc', 'txtAppCategories', 'txtAppSetup', 'txtAppInstall', 'txtAppUninstall', 'txtAppDetA', 'txtAppDetB', 'txtAppDetVer', 'txtAppStoreId', 'txtAppGroup', 'txtAppPilot', 'txtAppDeadline') { $c[$n].Text = '' }
             $c['txtAppKind'].Text = ''; $c['txtAppInfo'].Text = ''; $c['txtAppSandbox'].Text = ''
             foreach ($p in @(@('cmbAppTarget', 'group'), @('cmbAppIntent', 'required'), @('cmbAppNotify', 'showAll'), @('cmbAppRunAs', 'system'), @('cmbAppDetType', 'msi'))) { [void](Select-HUComboTag $c[$p[0]] $p[1]) }
             Set-HUCheckedTenants $c['spAppTenants'] @()
@@ -276,6 +403,7 @@ function Show-HUAppForm($App) {
         $c['txtAppPublisher'].Text = "$($App.Publisher)"
         $c['txtAppVersion'].Text = "$($App.Version)"
         $c['txtAppDesc'].Text = "$($App.Description)"
+        $c['txtAppCategories'].Text = (@($App.Categories) -join ', ')
         $c['txtAppSetup'].Text = "$($App.SetupPath)"
         $c['chkAppWholeFolder'].IsChecked = [bool]$App.WholeFolder
         $c['chkAppNoDesktop'].IsChecked = [bool]$App.NoDesktop
@@ -342,6 +470,7 @@ function Save-HUAppForm {
     $a.Publisher = $c['txtAppPublisher'].Text.Trim()
     $a.Version = $c['txtAppVersion'].Text.Trim()
     $a.Description = $c['txtAppDesc'].Text.Trim()
+    $a.Categories = @(ConvertTo-HUCategoryList $c['txtAppCategories'].Text)
     $a.WholeFolder = [bool]$c['chkAppWholeFolder'].IsChecked
     $a.NoDesktop = [bool]$c['chkAppNoDesktop'].IsChecked
     $a.InstallCmd = $c['txtAppInstall'].Text.Trim()
@@ -379,14 +508,14 @@ function Get-HUAppBaseName([string]$Name) {
 }
 
 # -Target: als neue Version dieser Bibliotheks-App uebernehmen ("Andere Datei ...")
-function Add-HUAppFromFile([string]$Path, $Target = $null) {
+function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck) {
     if ($Path -notmatch '(?i)\.(msi|exe)$') { Show-HUMessage "Nur .msi- und .exe-Dateien.`n`n$Path" -Icon Warning; return }
     try { $info = Get-HUSetupInfo -Path $Path } catch { Show-HUMessage "Datei nicht lesbar:`n$($_.Exception.Message)" -Icon Error; return }
     Save-HUAppForm
     $a = $null
     if ($Target) {
         $a = $Target
-        if ($info.Name -and (Get-HUAppBaseName $info.Name) -ne (Get-HUAppBaseName $a.Name) -and -not (Confirm-HU "Die Datei meldet sich als '$($info.Name)'.`n`nTrotzdem als neue Version von '$($a.Name)' uebernehmen?")) { return }
+        if (-not $NoNameCheck -and $info.Name -and (Get-HUAppBaseName $info.Name) -ne (Get-HUAppBaseName $a.Name) -and -not (Confirm-HU "Die Datei meldet sich als '$($info.Name)'.`n`nTrotzdem als neue Version von '$($a.Name)' uebernehmen?")) { return }
     } else {
         $existing = $script:AppLib | Where-Object { $_.Type -eq 'win32' -and $info.Name -and $_.Name -eq $info.Name } | Select-Object -First 1
         $sameText = "'$($info.Name)' gibt es schon in der Bibliothek"
@@ -413,6 +542,8 @@ function Add-HUAppFromFile([string]$Path, $Target = $null) {
         $a.TargetGroup = "$(Get-HUStateValue 'appLastGroup' '')"
     }
     $a.Kind = $info.Kind; $a.InstallerType = $info.InstallerType
+    # neue Version: alte Testinstallation gilt nicht mehr
+    if (-not $isNew -and "$($a.Version)" -ne "$($info.Version)") { $a.SandboxNote = '' }
     $a.Version = $info.Version
     $a.SetupPath = (Get-Item -LiteralPath $Path).FullName
     $a.InstallCmd = $info.InstallCmd
@@ -641,6 +772,11 @@ $script:AppDeployCode = {
                         $res = Publish-HUWin32App -TenantKey $tk -Settings $Settings -Def $d -Package $pkgs[$d.Id] -AppId $kid -LastSignature $(if ($k) { "$($k.Signature)" } else { '' })
                     }
                     $ids[$d.Id] = $res.AppId
+                    # Kategorien (Unternehmensportal) - nur wenn welche eingetragen sind
+                    if (@($d.Categories | Where-Object { $_ }).Count) {
+                        try { $ct = Set-HUAppCategories -TenantKey $tk -Settings $Settings -AppId $res.AppId -Names @($d.Categories); if ($ct) { Write-HULog -Message "$($d.Name): $ct" -Level 'OK' -Tenant $tk } }
+                        catch { Write-HULog -Message "$($d.Name): Kategorien nicht gesetzt - $($_.Exception.Message)" -Level 'WARN' -Tenant $tk }
+                    }
                     if ($d.Id -eq $MainId) { $r.AppId = $res.AppId; $r.Signature = $res.Signature }
                     else { $r.Deps.Add([pscustomobject]@{ Id = $d.Id; AppId = $res.AppId; Signature = $res.Signature; Version = "$($d.Version)" }) }
                     # Abhaengigkeiten setzen - nur wenn hier je welche festgelegt wurden (sonst bleiben im Portal gesetzte unangetastet)
@@ -1203,6 +1339,7 @@ function Register-HUAppHandlers {
             $n = Show-HUGroupPicker -TenantKeys @(Get-HUCheckedTenants $c['spAppTenants']) -Current $c['txtAppPilot'].Text.Trim() -Title 'Pilotgruppe waehlen'
             if ($n) { $c['chkAppPilot'].IsChecked = $true; $c['txtAppPilot'].Text = $n; Update-HUAppTargetUi }
         })
+    $c['btnAppCategories'].Add_Click({ Save-HUAppForm; Show-HUAppCategoryPicker })
     $c['btnAppIcon'].Add_Click({
             $a = $script:AppCurrent
             if (-not $a) { return }

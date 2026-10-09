@@ -204,6 +204,105 @@ Describe 'Snippet-Parameter' {
     }
 }
 
+Describe 'Apps: Kategorien (Set-HUAppCategories)' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'setzt nur vorhandene, fuegt hinzu und entfernt ueberzaehlige' {
+        InModuleScope HU.Intune {
+            $script:calls = New-Object System.Collections.Generic.List[string]
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '*/mobileAppCategories') { return @([pscustomobject]@{ id = 'c1'; displayName = 'Schule' }, [pscustomobject]@{ id = 'c2'; displayName = 'Alt' }) }
+                return @([pscustomobject]@{ id = 'c2' })
+            }
+            Mock Invoke-HUIntuneGraph { $script:calls.Add("$Method $Endpoint") }
+            $r = Set-HUAppCategories -TenantKey 't' -Settings ([pscustomobject]@{}) -AppId 'a1' -Names @('Schule', 'Gibtsnicht', 'Schule')
+            $r | Should -Match 'nicht vorhanden: Gibtsnicht'
+            $script:calls | Should -Not -Contain 'POST /deviceAppManagement/mobileAppCategories'
+            $script:calls | Should -Contain 'POST /deviceAppManagement/mobileApps/a1/categories/$ref'
+            $script:calls | Should -Contain 'DELETE /deviceAppManagement/mobileApps/a1/categories/c2/$ref'
+        }
+    }
+    It 'keine passende Kategorie -> nichts entfernen' {
+        InModuleScope HU.Intune {
+            Mock Get-HUIntuneGraphAll { return @([pscustomobject]@{ id = 'c1'; displayName = 'Schule' }) }
+            Mock Invoke-HUIntuneGraph { throw 'darf nicht aufgerufen werden' }
+            Set-HUAppCategories -TenantKey 't' -Settings ([pscustomobject]@{}) -AppId 'a1' -Names @('Gibtsnicht') | Should -Match 'nichts geaendert'
+        }
+    }
+    It 'leere Liste aendert nichts' {
+        InModuleScope HU.Intune {
+            Mock Invoke-HUIntuneGraph { throw 'darf nicht aufgerufen werden' }
+            Mock Get-HUIntuneGraphAll { throw 'darf nicht aufgerufen werden' }
+            Set-HUAppCategories -TenantKey 't' -Settings ([pscustomobject]@{}) -AppId 'a1' -Names @(' ', '') | Should -Be ''
+        }
+    }
+}
+
+Describe 'Analyse: Zuweisungen' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'Gruppe, verschachtelt, Alle Geraete, Ausschluss' {
+        $t = @{ Groups = @{ 'g1' = 'Schueler'; 'p1' = 'Alle Schueler (ueber Schueler)' }; AllDevices = $true; AllUsers = $false }
+        $a = @([pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'p1' } })
+        $m = Test-HUAssignmentMatch $a $t
+        $m.Via | Should -Be @('Alle Schueler (ueber Schueler)'); $m.Intent | Should -Be @('required'); $m.Excluded.Count | Should -Be 0
+        $m2 = Test-HUAssignmentMatch @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allDevicesAssignmentTarget' } }, [pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.exclusionGroupAssignmentTarget'; groupId = 'g1' } }) $t
+        $m2.Via | Should -Be @('Alle Geraete'); $m2.Excluded | Should -Be @('Schueler')
+        Test-HUAssignmentMatch @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allLicensedUsersAssignmentTarget' } }) $t | Should -BeNullOrEmpty
+        Test-HUAssignmentMatch @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'zz' } }) $t | Should -BeNullOrEmpty
+    }
+    It 'Bericht: Zeilen je Objektart, Fehler einer Art bricht nicht ab' {
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+        InModuleScope HU.Intune {
+            Mock Resolve-HUAssignmentTarget { @{ Label = 'Schueler'; Groups = @{ 'g1' = 'Schueler' }; AllDevices = $true; AllUsers = $true; Note = '' } }
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '/deviceAppManagement/mobileApps*') { return @([pscustomobject]@{ displayName = '7-Zip'; assignments = @([pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'g1' } }) }) }
+                if ($Endpoint -like '*configurationPolicies*') { return @([pscustomobject]@{ name = 'Edge'; assignments = @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allDevicesAssignmentTarget' } }) }) }
+                if ($Endpoint -like '*deviceHealthScripts*') { throw '403' }
+                return @()
+            }
+            $r = @(Get-HUAssignmentReport -TenantKey 't' -Settings ([pscustomobject]@{}) -Kind group -Name 'Schueler')
+            $r.Count | Should -Be 2
+            ($r | Where-Object Typ -eq 'App').Absicht | Should -Be 'Erforderlich'
+            ($r | Where-Object Typ -eq 'Einstellungskatalog').Ueber | Should -Be 'Alle Geraete'
+        }
+    }
+    It 'Benutzer ohne Domain: UPN-Anfang, mit Intune-Geraeten und deren Gruppen' {
+        InModuleScope HU.Intune {
+            Mock Invoke-HUIntuneGraph {
+                if ($Endpoint -like '/users?*startswith*') { return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'u1'; displayName = 'Max'; userPrincipalName = 'max@schule.at' }) } }
+                if ($Endpoint -like '/devices?*') { return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'd1' }) } }
+                throw "unerwartet: $Endpoint"
+            }
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '/users/u1/transitiveMemberOf*') { return @([pscustomobject]@{ id = 'gu'; displayName = '3A' }) }
+                if ($Endpoint -like '/deviceManagement/managedDevices*') { return @([pscustomobject]@{ id = 'm1'; deviceName = 'NB01'; azureADDeviceId = 'aad1' }) }
+                if ($Endpoint -like '/devices/d1/transitiveMemberOf*') { return @([pscustomobject]@{ id = 'gd'; displayName = 'MDM-Notebooks' }) }
+                return @()
+            }
+            $t = Resolve-HUAssignmentTarget -TenantKey 't' -Settings ([pscustomobject]@{}) -Kind user -Name 'max'
+            $t.Label | Should -Match '^max@schule\.at'
+            $t.Groups['gu'] | Should -Match '3A'
+            $t.Groups['gd'] | Should -Match 'MDM-Notebooks.*NB01'
+            $t.AllDevices | Should -BeTrue
+            $t.AllUsers | Should -BeTrue
+        }
+    }
+}
+
+Describe 'Release-Texte' {
+    It 'keine @-Erwaehnungen ausserhalb von Code (GitHub macht daraus Benutzer-Erwaehnungen/Contributors)' {
+        $bad = @()
+        foreach ($f in 'CHANGELOG.md', 'README.md') {
+            $n = 0
+            foreach ($ln in Get-Content -LiteralPath (Join-Path $script:AppRoot $f) -Encoding UTF8) {
+                $n++
+                $plain = [regex]::Replace($ln, '`[^`]*`', '')
+                if ($plain -match '(?<![\w.])@[A-Za-z0-9][A-Za-z0-9-]*') { $bad += "${f}:$n $($Matches[0])" }
+            }
+        }
+        $bad | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Wartung: @param-Felder' {
     It 'Wert setzen und wieder lesen (Sonderzeichen, Zahl, Ja/Nein)' {
         $code = "# @param Pw|string|Passwort|`n# @param Max|int|Max|3`n# @param On|bool|An|true`nexit 0"
@@ -576,5 +675,209 @@ Describe 'Wartung: vorhandene Skripte lesen' {
         ConvertFrom-HUBase64Text (ConvertTo-HUBase64Utf8 "Write-Output 'Ä'") | Should -Be "Write-Output 'Ä'"
         ConvertTo-HUInstallStateText '3' | Should -Be 'Nicht installiert'
         ConvertTo-HUInstallStateText 'Installed' | Should -Be 'Installiert'
+    }
+}
+
+Describe 'App-Updates: winget' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Winget.psm1') -Force -DisableNameChecking }
+    It 'Versionen vergleichen' {
+        Compare-HUVersion '24.08' '24.09' | Should -Be -1
+        Compare-HUVersion '1.10' '1.9' | Should -Be 1
+        Compare-HUVersion 'v3.0' '3.0.0.0' | Should -Be 0
+        Compare-HUVersion '131.0.6778.86' '131.0.6778.109' | Should -Be -1
+        Compare-HUVersion '2.0' '2.0-beta' | Should -Not -Be 0
+    }
+    It 'Suchtabelle zerlegen (deutsche Kopfzeile, Fortschritt davor)' {
+        $lines = @(
+            '   - ',
+            'Name                ID                 Version   Übereinstimmung  Quelle',
+            '-------------------------------------------------------------------------',
+            '7-Zip               7zip.7zip          24.09                      winget',
+            '7-Zip ZS            mcmilk.7zip-zstd   24.09.0.0 Tag: 7zip        winget'
+        )
+        $r = @(ConvertFrom-HUWingetTable $lines)
+        $r.Count | Should -Be 2
+        $r[0].Id | Should -Be '7zip.7zip'
+        $r[0].Version | Should -Be '24.09'
+        $r[1].Id | Should -Be 'mcmilk.7zip-zstd'
+    }
+    It 'neueste Version aus winget show (ohne Modul)' {
+        InModuleScope HU.Winget {
+            Mock Test-HUWingetModule { $false }
+            Mock Invoke-HUWinget { @('Gefunden 7-Zip [7zip.7zip]', 'Version: 24.09', 'Herausgeber: Igor Pavlov') }
+            Get-HUWingetLatest '7zip.7zip' | Should -Be '24.09'
+        }
+    }
+}
+
+Describe 'App-Updates: Build-Angaben' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Winget.psm1') -Force -DisableNameChecking }
+    It '+Build zaehlt nicht' {
+        Compare-HUVersion '1.3.323+7f37e7a' '1.3.323' | Should -Be 0
+        Compare-HUVersion '1.3.323+7f37e7a' '1.3.324' | Should -Be -1
+    }
+}
+
+Describe 'Analyse: Tenant-Vergleich' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+    }
+    It 'Fingerabdruck ignoriert IDs, Zeitstempel und Namen' {
+        $a = '{"id":"1","displayName":"A","createdDateTime":"x","@odata.type":"#microsoft.graph.windows10GeneralConfiguration","passwordRequired":true,"list":[{"id":"9","v":1}]}' | ConvertFrom-Json
+        $b = '{"id":"2","displayName":"B","createdDateTime":"y","@odata.type":"#microsoft.graph.windows10GeneralConfiguration","passwordRequired":true,"list":[{"id":"8","v":1}]}' | ConvertFrom-Json
+        $c = '{"id":"3","displayName":"A","@odata.type":"#microsoft.graph.windows10GeneralConfiguration","passwordRequired":false,"list":[{"v":1}]}' | ConvertFrom-Json
+        Get-HUCompareHash $a | Should -Be (Get-HUCompareHash $b)
+        Get-HUCompareHash $a | Should -Not -Be (Get-HUCompareHash $c)
+    }
+    It 'Matrix: fehlt, abweichend, ueberall' {
+        $rows = @(
+            [pscustomobject]@{ Tenant = 't1'; Typ = 'Compliance'; Name = 'Win'; Id = 'a'; Hash = 'h1'; Copy = 'compliance' }
+            [pscustomobject]@{ Tenant = 't2'; Typ = 'Compliance'; Name = 'win'; Id = 'b'; Hash = 'h2'; Copy = 'compliance' }
+            [pscustomobject]@{ Tenant = 't1'; Typ = 'Wartung'; Name = 'Disk'; Id = 'c'; Hash = ''; Copy = 'generic' }
+        )
+        $m = @(Get-HUCompareMatrix $rows @('t1', 't2'))
+        $w = $m | Where-Object Typ -eq 'Wartung'
+        $w.Missing | Should -Be @('t2'); $w.Status | Should -Match 'nur in einem'
+        $cp = $m | Where-Object Typ -eq 'Compliance'
+        $cp.Missing.Count | Should -Be 0; $cp.Status | Should -Match 'abweichend'
+    }
+    It 'Kopieren (generisch): ohne IDs/Zuweisungen, mit Inhalt, POST in den Ziel-Tenant' {
+        InModuleScope HU.Intune {
+            $script:posted = $null
+            Mock Invoke-HUIntuneGraph {
+                if ($Method -eq 'POST') { $script:posted = @{ T = $TenantKey; E = $Endpoint; B = $Body }; return [pscustomobject]@{ id = 'neu' } }
+                return ('{"id":"s1","displayName":"Disk","createdDateTime":"x","isGlobalScript":false,"detectionScriptContent":"ZQ==","assignments":[{"id":"z"}],"@odata.context":"ctx"}' | ConvertFrom-Json)
+            }
+            Copy-HUIntuneObject -Typ 'Wartung' -SourceTenant 'a' -SourceId 's1' -TargetTenant 'b' -Settings ([pscustomobject]@{}) | Should -Be 'neu'
+            $script:posted.T | Should -Be 'b'
+            $script:posted.E | Should -Be '/deviceManagement/deviceHealthScripts'
+            $script:posted.B.ContainsKey('id') | Should -BeFalse
+            $script:posted.B.ContainsKey('assignments') | Should -BeFalse
+            $script:posted.B.ContainsKey('@odata.context') | Should -BeFalse
+            $script:posted.B.detectionScriptContent | Should -Be 'ZQ=='
+        }
+    }
+    It 'nur anzeigen: Conditional Access wird nicht kopiert' {
+        { Copy-HUIntuneObject -Typ 'Conditional Access' -SourceTenant 'a' -SourceId 'x' -TargetTenant 'b' -Settings ([pscustomobject]@{}) } | Should -Throw
+    }
+}
+
+Describe 'Analyse: Vergleich-Details' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'nur abweichende Einstellungen, Katalog nach settingDefinitionId (Reihenfolge egal)' {
+        $a = '{"id":"1","name":"X","settings":[{"id":"0","settingInstance":{"settingDefinitionId":"s_a","choiceSettingValue":{"value":"on"}}},{"id":"1","settingInstance":{"settingDefinitionId":"s_b","simpleSettingValue":{"value":5}}}]}' | ConvertFrom-Json
+        $b = '{"id":"2","name":"X","settings":[{"id":"0","settingInstance":{"settingDefinitionId":"s_b","simpleSettingValue":{"value":7}}},{"id":"1","settingInstance":{"settingDefinitionId":"s_a","choiceSettingValue":{"value":"on"}}}]}' | ConvertFrom-Json
+        $d = @(Get-HUCompareDiff @{ t1 = (ConvertTo-HUFlatMap $a); t2 = (ConvertTo-HUFlatMap $b) } @('t1', 't2'))
+        $d.Count | Should -Be 1
+        $d[0].Einstellung | Should -Match 's_b'
+        $d[0].T0 | Should -Be '5'; $d[0].T1 | Should -Be '7'
+    }
+    It 'lange Skriptinhalte als Kurzform, fehlende Werte als (nicht gesetzt)' {
+        $m1 = ConvertTo-HUFlatMap ([pscustomobject]@{ detectionScriptContent = ('QUJD' * 50); extra = 'x' })
+        $m2 = ConvertTo-HUFlatMap ([pscustomobject]@{ detectionScriptContent = ('QUJE' * 50) })
+        $m1.detectionScriptContent | Should -Match '^\(Inhalt, 200 Zeichen'
+        $d = @(Get-HUCompareDiff @{ a = $m1; b = $m2 } @('a', 'b'))
+        ($d | Where-Object Einstellung -eq 'extra').T1 | Should -Be '(nicht gesetzt)'
+        $d.Count | Should -Be 2
+    }
+}
+
+Describe 'Analyse: IDs je Tenant aufloesen' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'gleiche Gruppe mit verschiedenen IDs ist kein Unterschied' {
+        InModuleScope HU.Intune {
+            Mock Get-HUIntuneGraphAll { @([pscustomobject]@{ id = '11111111-1111-1111-1111-111111111111'; displayName = 'Oesterreich' }) }
+            Mock Invoke-HUIntuneGraph { if ($Endpoint -like '/groups/*') { [pscustomobject]@{ displayName = 'Lehrer' } } else { throw '404' } }
+            $m1 = Resolve-HUFlatMapIds -TenantKey 'a' -Settings ([pscustomobject]@{}) -Map @{ 'conditions.users.includeGroups' = 'aaaaaaaa-0000-0000-0000-000000000001'; 'conditions.locations.excludeLocations' = '11111111-1111-1111-1111-111111111111' }
+            $m2 = Resolve-HUFlatMapIds -TenantKey 'b' -Settings ([pscustomobject]@{}) -Map @{ 'conditions.users.includeGroups' = 'bbbbbbbb-0000-0000-0000-000000000002'; 'conditions.locations.excludeLocations' = '11111111-1111-1111-1111-111111111111' }
+            $m1['conditions.users.includeGroups'] | Should -Be 'Lehrer (Gruppe)'
+            $m1['conditions.locations.excludeLocations'] | Should -Be 'Oesterreich (Ort)'
+            @(Get-HUCompareDiff @{ a = $m1; b = $m2 } @('a', 'b')).Count | Should -Be 0
+        }
+    }
+}
+
+Describe 'Analyse: Listen im Vergleich' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'zeigt gemeinsame Anzahl und je Tenant nur das Zusaetzliche' {
+        $d = @(Get-HUCompareDiff @{ a = @{ r = 'A, B, C' }; b = @{ r = 'A, B, D, E' } } @('a', 'b'))
+        $d[0].T0 | Should -Be '(gleich: 2) + C'
+        $d[0].T1 | Should -Be '(gleich: 2) + D, E'
+    }
+}
+
+Describe 'Backup und Verlauf' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+        $script:bakRoot = Join-Path ([IO.Path]::GetTempPath()) ("hu-bak-" + [guid]::NewGuid().ToString('N').Substring(0, 6))
+    }
+    AfterAll { Remove-Item -LiteralPath $script:bakRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    It 'sichert, vergleicht zwei Staende (geaendert, neu, geloescht, Zuweisung) und zeigt Details' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:bakRoot } {
+            param($Root)
+            $script:val = 1; $script:grp = 'g1'; $script:extra = $false
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '*/assignments') { return @([pscustomobject]@{ intent = 'apply'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = $script:grp } }) }
+                if ($Endpoint -eq '/deviceManagement/deviceHealthScripts') {
+                    $l = @([pscustomobject]@{ id = 'r1'; displayName = 'Disk' })
+                    if ($script:extra) { $l += [pscustomobject]@{ id = 'r2'; displayName = 'Neu' } }
+                    return $l
+                }
+                if ($Endpoint -eq '/deviceManagement/deviceCompliancePolicies' -and -not $script:extra) { return @([pscustomobject]@{ id = 'c1'; displayName = 'Alt' }) }
+                return @()
+            }
+            Mock Invoke-HUIntuneGraph { [pscustomobject]@{ id = ($Endpoint -split '/')[-1] -replace '\?.*$', ''; displayName = 'x'; description = "Text $($script:val)"; detectionScriptContent = 'QQ=='; runAsAccount = 'system'; value = $script:val } }
+            $b1 = Save-HUTenantBackup -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Root $Root
+            Start-Sleep -Milliseconds 1100
+            $script:val = 2; $script:grp = 'g2'; $script:extra = $true
+            $b2 = Save-HUTenantBackup -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Root $Root
+            @(Get-HUBackupList -Root $Root -TenantKey 'T1').Count | Should -Be 2
+            $rows = @(Compare-HUBackups -FolderA $b1.Folder -FolderB $b2.Folder)
+            ($rows | Where-Object Id -eq 'r1').Aenderung | Should -Match 'Einstellungen geaendert'
+            ($rows | Where-Object Id -eq 'r1').Aenderung | Should -Match 'Zuweisungen geaendert'
+            ($rows | Where-Object Id -eq 'r1').Aenderung | Should -Match 'Beschreibung geaendert'
+            ($rows | Where-Object Id -eq 'r2').Aenderung | Should -Be 'neu'
+            ($rows | Where-Object Id -eq 'c1').Aenderung | Should -Be 'geloescht'
+            $r1 = $rows | Where-Object Id -eq 'r1'
+            $d = @(Get-HUBackupItemDiff $r1.FileA $r1.FileB)
+            ($d | Where-Object Einstellung -eq 'value').T1 | Should -Be '2'
+            ($d | Where-Object Einstellung -eq 'description').T1 | Should -Be 'Text 2'
+            @($d | Where-Object { $_.Einstellung -like 'assignments*' }).Count | Should -BeGreaterThan 0
+            Remove-HUOldBackups -Root $Root -TenantKey 'T1' -Keep 1 | Should -Be 1
+        }
+    }
+    It 'Wiederherstellen legt neu an (Name mit Zusatz, ohne Zuweisungen, CA deaktiviert)' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:bakRoot } {
+            param($Root)
+            $f = Join-Path $Root 'ca.json'
+            Write-HUJsonFile $f ([pscustomobject]@{ id = 'p1'; displayName = '201 - MFA'; state = 'enabled'; assignments = @(); conditions = [pscustomobject]@{ users = [pscustomobject]@{ includeGroups = @('g1') } } })
+            $script:posted = $null
+            Mock Invoke-HUIntuneGraph { $script:posted = @{ E = $Endpoint; B = $Body }; [pscustomobject]@{ id = 'neu' } }
+            Restore-HUBackupItem -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Typ 'Conditional Access' -File $f -Name '201 - MFA (wiederhergestellt)' | Should -Be 'neu'
+            $script:posted.B.state | Should -Be 'disabled'
+            $script:posted.B.displayName | Should -Be '201 - MFA (wiederhergestellt)'
+            $script:posted.B.ContainsKey('id') | Should -BeFalse
+            $script:posted.B.ContainsKey('assignments') | Should -BeFalse
+        }
+    }
+}
+
+Describe 'Backup: Administrative Vorlagen' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'liest Einstellungen getrennt (expand hoechstens 1 Ebene)' {
+        InModuleScope HU.Intune {
+            Mock Invoke-HUIntuneGraph { if ($Endpoint -match 'expand') { throw 'zu tief' }; [pscustomobject]@{ id = 'a1'; displayName = 'Zeitsync' } }
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '*/presentationValues*') { return @([pscustomobject]@{ value = 'pool.ntp.org'; presentation = [pscustomobject]@{ id = 'p1' } }) }
+                @([pscustomobject]@{ id = 'v1'; enabled = $true; definition = [pscustomobject]@{ id = 'd1'; displayName = 'NTP' } })
+            }
+            $o = Get-HUCompareObject -TenantKey 't' -Settings ([pscustomobject]@{}) -Typ 'Administrative Vorlage' -Id 'a1'
+            @($o.definitionValues).Count | Should -Be 1
+            @($o.definitionValues)[0].presentationValues[0].presentation.id | Should -Be 'p1'
+            Should -Invoke Get-HUIntuneGraphAll -ParameterFilter { $Endpoint -like '*/definitionValues?$expand=definition' }
+            Should -Invoke Get-HUIntuneGraphAll -ParameterFilter { $Endpoint -like '*/definitionValues/v1/presentationValues?$expand=presentation' }
+        }
     }
 }

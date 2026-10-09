@@ -445,6 +445,40 @@ function Save-HURintChanges {
     }
 }
 
+# In Intune: Kopie mit neuem Namen in denselben Tenants anlegen - ohne Zuweisungen (wirkt also noch auf kein Geraet).
+# Jeder Tenant bekommt die Fassung, die er selbst hat (tenant-eigene Werte bleiben erhalten).
+function Copy-HURintDuplicate {
+    $it = $script:RintCurrent
+    if (-not $it -or $it.Global) { return }
+    if (-not (Test-HURintDetailComplete)) { Show-HUMessage 'Die Details werden noch geladen - bitte kurz warten.' -Icon Info; return }
+    $keys = @($it.Per.Keys | Where-Object { $script:RintDetail.ContainsKey($_) })
+    if (-not $keys.Count) { return }
+    $nd = Read-HUNameDescription -Title 'Duplizieren' -Name "$($it.Name) (Kopie)" -Description "$((Get-HURintEditorDetail).Description)" -Hint 'Die Kopie wird ohne Zuweisungen angelegt - sie laeuft also noch auf keinem Geraet. Gespeicherte Fassung aus Intune (nicht gespeicherte Aenderungen im Editor werden nicht uebernommen).' -Owner $script:Window
+    if (-not $nd) { return }
+    if ($nd.Name -eq $it.Name) { Show-HUMessage 'Bitte einen anderen Namen waehlen.' -Icon Warning; return }
+    $exist = @($script:RintItems | Where-Object { $_.Key -eq $nd.Name.ToLower() } | ForEach-Object { @($_.Per.Keys) })
+    if ($keys.Count -gt 1) {
+        $notes = @{}; foreach ($k in $keys) { $notes[$k] = $(if ($exist -contains $k) { 'Name schon vorhanden' } else { '' }) }
+        $keys = @(Show-HUTenantChoice -Title 'Duplizieren' -Text "'$($nd.Name)' in welchen Tenants anlegen?" -Keys $keys -Notes $notes -OkText 'Anlegen')
+        if (-not $keys.Count) { return }
+    }
+    $skip = @($keys | Where-Object { $exist -contains $_ })
+    $keys = @($keys | Where-Object { $exist -notcontains $_ })
+    if ($skip.Count) { Add-HURtbLine $script:Controls['rtbRem'] "Uebersprungen (Name schon vorhanden): $(@($skip | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')" '#FFB74D' }
+    if (-not $keys.Count) { return }
+    $defs = @{}
+    foreach ($k in $keys) {
+        $d = $script:RintDetail[$k]
+        $defs[$k] = [pscustomobject]@{ Name = $nd.Name; Description = $nd.Description; Publisher = $d.Publisher; Detection = $d.Detection; Remediation = $d.Remediation; RunAs = $d.RunAs; RunAs32 = [bool]$d.RunAs32 }
+    }
+    Start-HURintAction 'Duplizieren' -Only $keys -Vars @{ Defs = $defs; NewName = $nd.Name } -Code {
+        foreach ($k in $Per.Keys) {
+            try { [void](Publish-HURemediation -TenantKey $k -Settings $Settings -Def $Defs[$k]); Write-HULog -Message "'$NewName' angelegt (ohne Zuweisung)" -Level 'OK' -Tenant $k }
+            catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $k }
+        }
+    }
+}
+
 function Remove-HURintScript {
     $it = $script:RintCurrent
     if (-not $it -or $it.Global) { return }
@@ -683,6 +717,7 @@ function Register-HURintHandlers {
             foreach ($x in $all) { Add-HURtbLine $rtb "[$($x.Stufe)] $($x.Hinweis)" $(switch ($x.Stufe) { 'Fehler' { '#FF5252' } 'Warnung' { '#FFB74D' } 'OK' { '#81C784' } default { '#90CAF9' } }) }
         })
     $c['btnRintSave'].Add_Click({ Save-HURintChanges })
+    Set-HUListMenu $c['lstRint'] @(@{ Header = 'Duplizieren ...'; Action = { Copy-HURintDuplicate }; Enabled = { $script:RintCurrent -and -not $script:RintCurrent.Global -and -not (Test-HUJobRunning 'RintAct') } })
     $c['btnRintSandbox'].Add_Click({ $c = $script:Controls; if (-not $c['txtRintDetect'].IsReadOnly) { Complete-HURemParams 'Int' }; Start-HURemSandbox -Name $c['txtRintName'].Text -Detection $c['txtRintDetect'].Text -Remediation $c['txtRintFix'].Text -RunAs (Get-HUComboTag $c['cmbRintRunAs']) -Use32 ([bool]$c['chkRint32'].IsChecked) -KeepOpen ([bool]$c['chkRintSandboxKeep'].IsChecked) })
     $c['btnRintResults'].Add_Click({ Start-HURintResults })
     $c['btnRintRunNow'].Add_Click({ Show-HURintRunNow })

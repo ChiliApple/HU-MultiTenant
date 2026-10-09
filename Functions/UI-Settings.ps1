@@ -52,6 +52,7 @@ function Open-HUSettings([string]$Tab = '', [string]$TenantKey = '') {
         # Tenant-Haken in Apps/Wartung neu aufbauen (Auswahl der offenen Eintraege bleibt)
         Save-HUAppForm; Update-HUAppTenantChecks; Show-HUAppForm $script:AppCurrent; Update-HUIntTenantChecks
         Save-HURemForm; Update-HURemTenantChecks; Show-HURemForm $script:RemCurrent
+        Update-HUAnaTenantChecks
     }
 }
 
@@ -83,6 +84,23 @@ function Show-HUSettingsDialog {
     $c.chkSecretCheckStart.IsChecked = [bool](Get-HUProp $S.ui 'checkSecretsOnStart' $true)
     $c.txtWarnDays.Text = "$(Get-HUSecretWarnDays)"
     $c.txtAuthor.Text = "$(Get-HUProp $S.ui 'author' '')"
+    $c.txtBackupPath.Text = "$(Get-HUProp $S.ui 'backupPath' '')"
+    $c.txtBackupKeep.Text = "$(Get-HUProp $S.ui 'backupKeep' 30)"
+    $c.chkBackupDaily.IsChecked = [bool](Get-HUProp $S.ui 'backupDaily' $true)
+    # Quelle fuer App-Updates: Liste erst beim Aufklappen holen (winget braucht etwas)
+    $ws = "$(Get-HUProp $S.ui 'wingetSource' 'winget')"; if (-not $ws) { $ws = 'winget' }
+    foreach ($n in @('winget', $ws) | Select-Object -Unique) { [void]$c.cmbWingetSource.Items.Add($n) }
+    $c.cmbWingetSource.SelectedItem = $ws
+    $script:WsDlg = $c; $script:WsLoaded = $false
+    $c.cmbWingetSource.Add_DropDownOpened({
+            if ($script:WsLoaded) { return }
+            $script:WsLoaded = $true
+            [System.Windows.Input.Mouse]::OverrideCursor = [System.Windows.Input.Cursors]::Wait
+            try {
+                $cb = $script:WsDlg.cmbWingetSource
+                foreach ($n in @(Get-HUWingetSources)) { if (@($cb.Items) -notcontains $n) { [void]$cb.Items.Add($n) } }
+            } catch { } finally { [System.Windows.Input.Mouse]::OverrideCursor = $null }
+        })
     # Sperre
     $lc = Get-HULockConfig
     $c.chkLockEnabled.IsChecked = $lc.Enabled
@@ -111,6 +129,12 @@ function Show-HUSettingsDialog {
     $c.btnLauncher.Add_Click({
         if (New-HULauncher -Force) { Show-HUMessage "Starter bereit:`n$(Join-Path $script:AppRoot $script:LauncherName)" -Owner $w } else { Show-HUMessage 'Starter konnte nicht erstellt werden (Protokoll).' -Icon Error -Owner $w }
         & $updShortcutInfo
+    })
+    $c.btnBackupBrowse.Add_Click({
+        $f = New-Object System.Windows.Forms.FolderBrowserDialog
+        $f.Description = 'Ordner fuer Backups (nicht in einen geteilten Ordner - enthaelt Skripte im Klartext)'
+        if ($c.txtBackupPath.Text) { $f.SelectedPath = $c.txtBackupPath.Text }
+        if ($f.ShowDialog() -eq 'OK') { $c.txtBackupPath.Text = $f.SelectedPath }
     })
     $c.btnReportsBrowse.Add_Click({
         $f = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -342,6 +366,11 @@ function Show-HUSettingsDialog {
         Set-HUProp $S.ui 'secretWarnDays' $wd
         Set-HUProp $S.ui 'checkSecretsOnStart' ([bool]$c.chkSecretCheckStart.IsChecked)
         Set-HUProp $S.ui 'author' $c.txtAuthor.Text.Trim()
+        Set-HUProp $S.ui 'backupPath' $c.txtBackupPath.Text.Trim()
+        $bk = 30; if (-not [int]::TryParse($c.txtBackupKeep.Text.Trim(), [ref]$bk) -or $bk -lt 1) { $bk = 30 }
+        Set-HUProp $S.ui 'backupKeep' $bk
+        Set-HUProp $S.ui 'backupDaily' ([bool]$c.chkBackupDaily.IsChecked)
+        Set-HUProp $S.ui 'wingetSource' $(if ($c.cmbWingetSource.SelectedItem) { "$($c.cmbWingetSource.SelectedItem)" } else { 'winget' })
         Set-HUProp $S.ui 'lockEnabled' ([bool]$c.chkLockEnabled.IsChecked)
         Set-HUProp $S.ui 'lockMinutes' $lm
         Set-HUProp $S.ui 'lockOnStart' ([bool]$c.chkLockOnStart.IsChecked)

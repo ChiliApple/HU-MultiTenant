@@ -385,8 +385,10 @@
                             <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="0,0,0,8">
                                 <Button x:Name="btnAppModeLib" Content="Bibliothek" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="0,0,2,0"
                                         ToolTip="Eigene Apps: Setup-Dateien und Store-Apps, die HU-MultiTenant paketiert und hochlaedt"/>
-                                <Button x:Name="btnAppModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                <Button x:Name="btnAppModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,2,0"
                                         ToolTip="Alle Windows-Apps, die schon in Intune liegen: Zuweisungen, Eigenschaften, Abhaengigkeiten, Status, Loeschen"/>
+                                <Button x:Name="btnAppModeUpd" Content="Updates" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                        ToolTip="Neue Versionen der Bibliotheks-Apps ueber winget finden, herunterladen, testen und per Pilot verteilen"/>
                             </UniformGrid>
                             <Grid>
                             <DockPanel x:Name="pnlAppLibLeft">
@@ -439,6 +441,14 @@
                                     </ListBox.ItemTemplate>
                                 </ListBox>
                             </DockPanel>
+                            <DockPanel x:Name="pnlAppUpdLeft" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Top" Text="App-Updates (winget)" Style="{StaticResource SectionTitle}"/>
+                                <Button x:Name="btnUpdCheck" DockPanel.Dock="Top" Content="&#x21BB; Nach Updates suchen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,0,6"/>
+                                <CheckBox x:Name="chkUpdOnlyNew" DockPanel.Dock="Top" Content="Nur Apps mit Update" Style="{StaticResource DarkCheckBox}" FontSize="11" Margin="0,0,0,6"/>
+                                <TextBlock DockPanel.Dock="Top" x:Name="lblUpdState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
+                                           Text="Vergleicht die Setup-Apps der Bibliothek mit dem winget-Repository. Ablauf: neue Version holen (wird als neue Version der App uebernommen) &#x2192; in der Bibliothek Testinstallation in der Sandbox &#x2192; Hochladen mit Pilotgruppe &#x2192; spaeter freigeben. Store-Apps aktualisiert der Store selbst."/>
+                            </DockPanel>
                             </Grid>
                             </DockPanel>
                         </Border>
@@ -473,7 +483,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
                                             <TextBlock Grid.Row="0" Text="Name" Style="{StaticResource FieldLabel}"/>
                                             <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtAppName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
@@ -484,6 +494,13 @@
                                             <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppVersion" Style="{StaticResource DarkTextBox}" Margin="0,2" Width="160" HorizontalAlignment="Left"/>
                                             <TextBlock Grid.Row="3" Text="Beschreibung" Style="{StaticResource FieldLabel}"/>
                                             <TextBox Grid.Row="3" Grid.Column="1" x:Name="txtAppDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="4" Text="Kategorien" Style="{StaticResource FieldLabel}"/>
+                                            <DockPanel Grid.Row="4" Grid.Column="1" Margin="0,2">
+                                                <Button x:Name="btnAppCategories" DockPanel.Dock="Right" Content="Auswahl ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"
+                                                        ToolTip="Kategorien der angehakten Tenants laden und auswaehlen"/>
+                                                <TextBox x:Name="txtAppCategories" Style="{StaticResource DarkTextBox}"
+                                                         ToolTip="Kategorien im Unternehmensportal, mit Komma getrennt - nur vorhandene (Auswahl ...). Leer = in Intune nichts aendern."/>
+                                            </DockPanel>
                                             <StackPanel Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Orientation="Horizontal" Margin="10,2,0,2" VerticalAlignment="Top">
                                                 <Border Width="72" Height="72" Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="4"
                                                         ToolTip="Symbol im Unternehmensportal">
@@ -754,14 +771,24 @@
                                         <TextBlock Text="Eigenschaften" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
                                         <Grid>
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                             <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
                                             <TextBox Grid.Column="1" x:Name="txtIntName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
                                             <TextBlock Grid.Row="1" Text="Hersteller" Style="{StaticResource FieldLabel}"/>
                                             <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtIntPublisher" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
                                             <TextBlock Grid.Row="2" Text="Beschreibung" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,6,8,0"/>
                                             <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtIntDesc" Style="{StaticResource DarkTextBox}" Margin="0,2" AcceptsReturn="True" TextWrapping="Wrap" Height="54" VerticalScrollBarVisibility="Auto"/>
-                                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
+                                            <TextBlock Grid.Row="3" Text="Kategorien" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,2">
+                                                <DockPanel>
+                                                    <Button x:Name="btnIntCategories" DockPanel.Dock="Right" Content="Auswahl ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"
+                                                            ToolTip="Kategorien der Tenants dieser App laden und auswaehlen"/>
+                                                    <TextBox x:Name="txtIntCategories" Style="{StaticResource DarkTextBox}"
+                                                             ToolTip="Kategorien im Unternehmensportal, mit Komma getrennt - nur vorhandene. Wird mit 'Eigenschaften speichern' gesetzt."/>
+                                                </DockPanel>
+                                                <TextBlock x:Name="lblIntCats" Style="{StaticResource HintText}" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0" x:Name="pnlIntPropBtns">
                                                 <Button x:Name="btnIntIcon" Content="Symbol ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,0"
                                                         ToolTip="Neues Symbol (Bild, ICO, EXE) - wird mit 'Eigenschaften speichern' gesetzt"/>
                                                 <TextBlock x:Name="lblIntIcon" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="0,0,12,0"/>
@@ -771,6 +798,24 @@
                                     </StackPanel>
                                 </ScrollViewer>
                             </Border>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlAppUpdRight" Visibility="Collapsed">
+                                <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                    <Button x:Name="btnUpdGet" Content="&#x2B07; Neue Version holen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                            ToolTip="Installer per winget herunterladen und als neue Version der Bibliotheks-App uebernehmen (noch nicht hochladen)"/>
+                                    <Button x:Name="btnUpdSetId" Content="winget-ID zuordnen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                    <Button x:Name="btnUpdOpen" Content="In Bibliothek oeffnen" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                </WrapPanel>
+                                <DataGrid x:Name="gridUpd" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" CanUserSortColumns="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="App" Binding="{Binding App}" Width="2*"/>
+                                        <DataGridTextColumn Header="Bibliothek" Binding="{Binding Version}" Width="90"/>
+                                        <DataGridTextColumn Header="Neueste" Binding="{Binding Latest}" Width="90"/>
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="2*"/>
+                                        <DataGridTextColumn Header="winget-ID" Binding="{Binding WingetId}" Width="150"/>
+                                        <DataGridTextColumn Header="In Intune" Binding="{Binding Intune}" Width="3*"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
                             </DockPanel>
                             </Grid>
 
@@ -1086,6 +1131,107 @@
                             </Border>
                         </Grid>
                     </Grid>
+                </TabItem>
+                <TabItem Header="&#x1F50D; Analyse" x:Name="tabAnalyse" Style="{StaticResource DarkTabItem}">
+                    <DockPanel Margin="0,8,0,0">
+                        <Border DockPanel.Dock="Top" Background="#252526" CornerRadius="4" Padding="10" Margin="0,0,0,6">
+                            <StackPanel>
+                                <UniformGrid Rows="1" HorizontalAlignment="Left" Margin="0,0,0,8">
+                                    <Button x:Name="btnAnaModeAsg" Content="Was bekommt ...?" Style="{StaticResource ToolButton}" FontSize="11" Padding="10,3" Margin="0,0,2,0"
+                                            ToolTip="Alle Apps, Profile, Richtlinien und Skripte, die eine Gruppe, ein Geraet oder ein Benutzer bekommt"/>
+                                    <Button x:Name="btnAnaModeCmp" Content="Tenant-Vergleich" Style="{StaticResource ToolButton}" FontSize="11" Padding="10,3" Margin="2,0,0,0"
+                                            ToolTip="Profile, Richtlinien, Apps und Wartung der Tenants nebeneinander"/>
+                                    <Button x:Name="btnAnaModeBak" Content="Backup &amp; Verlauf" Style="{StaticResource ToolButton}" FontSize="11" Padding="10,3" Margin="2,0,0,0"
+                                            ToolTip="Konfiguration sichern, zwei Staende vergleichen (was hat sich geaendert, wer war es), einzelne Eintraege wiederherstellen"/>
+                                </UniformGrid>
+                                <WrapPanel x:Name="spAnaTenants" Margin="0,0,0,6"/>
+                                <StackPanel x:Name="pnlAnaAsg">
+                                    <DockPanel>
+                                        <ComboBox x:Name="cmbAnaKind" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="110" Margin="0,0,6,0">
+                                            <ComboBoxItem Content="Gruppe" Tag="group" IsSelected="True"/>
+                                            <ComboBoxItem Content="Geraet" Tag="device"/>
+                                            <ComboBoxItem Content="Benutzer" Tag="user"/>
+                                        </ComboBox>
+                                        <Button x:Name="btnAnaTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                        <Button x:Name="btnAnaRun" DockPanel.Dock="Right" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0" IsDefault="False"/>
+                                        <Button x:Name="btnAnaPick" DockPanel.Dock="Right" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="6,0,0,0" ToolTip="Gruppe aus den angehakten Tenants suchen"/>
+                                        <TextBox x:Name="txtAnaName" Style="{StaticResource DarkTextBox}" FontSize="12"
+                                                 ToolTip="Gruppenname, Geraetename (wie in Intune) oder Benutzer (Benutzername ohne Domain, UPN oder Anzeigename - inkl. seiner Intune-Geraete)"/>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,6,0,0">
+                                        <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <CheckBox x:Name="chkAnaAll" DockPanel.Dock="Right" Content="Alle Geraete/Benutzer" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
+                                                  ToolTip="Auch Zuweisungen an Alle Geraete / Alle Benutzer zeigen (aus: nur ueber Gruppen)"/>
+                                        <ComboBox x:Name="cmbAnaType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,0" ToolTip="Nur eine Art anzeigen"/>
+                                        <TextBox x:Name="txtAnaFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Name, Typ, Absicht, Ueber, Status oder Tenant (mehrere Woerter: alle muessen vorkommen)"/>
+                                    </DockPanel>
+                                </StackPanel>
+                                <StackPanel x:Name="pnlAnaCmp" Visibility="Collapsed">
+                                    <DockPanel>
+                                        <Button x:Name="btnCmpTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                        <Button x:Name="btnCmpCopy" DockPanel.Dock="Right" Content="Fehlendes kopieren ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                                ToolTip="Markierte Eintraege in die angehakten Tenants kopieren, in denen sie fehlen - ohne Zuweisungen"/>
+                                        <Button x:Name="btnCmpRun" DockPanel.Dock="Right" Content="&#x25B6; Vergleichen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                        <CheckBox x:Name="chkCmpDiff" DockPanel.Dock="Right" Content="Nur Unterschiede" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                        <ComboBox x:Name="cmbCmpType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,0" ToolTip="Nur eine Art anzeigen"/>
+                                        <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBox x:Name="txtCmpFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Typ, Name oder Status (mehrere Woerter: alle muessen vorkommen)"/>
+                                    </DockPanel>
+                                </StackPanel>
+                                <StackPanel x:Name="pnlAnaBak" Visibility="Collapsed">
+                                    <DockPanel>
+                                        <Button x:Name="btnBakNow" DockPanel.Dock="Left" Content="&#x1F4BE; Backup jetzt" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,0"
+                                                ToolTip="Stand der angehakten Tenants sichern (Profile, Richtlinien, Skripte, Conditional Access ... mit Zuweisungen; Apps nur als Liste)"/>
+                                        <Button x:Name="btnBakFolder" DockPanel.Dock="Left" Content="Ordner" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,10,0"/>
+                                        <TextBlock x:Name="lblBakRoot" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,6,0,0">
+                                        <TextBlock DockPanel.Dock="Left" Text="Verlauf:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <ComboBox x:Name="cmbBakTenant" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="140" Margin="0,0,6,0"/>
+                                        <ComboBox x:Name="cmbBakA" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="150" Margin="0,0,4,0" ToolTip="Aelterer Stand"/>
+                                        <TextBlock DockPanel.Dock="Left" Text="&#x2192;" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <ComboBox x:Name="cmbBakB" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="170" Margin="0,0,6,0" ToolTip="Neuerer Stand - oder nur den linken Stand anzeigen"/>
+                                        <Button x:Name="btnBakCmp" DockPanel.Dock="Left" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,0"/>
+                                        <Button x:Name="btnBakTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                        <Button x:Name="btnBakRestore" DockPanel.Dock="Right" Content="Wiederherstellen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                                ToolTip="Markierte Eintraege aus dem aelteren der beiden Staende neu anlegen - mit Zusatz im Namen, ohne Zuweisungen"/>
+                                        <CheckBox x:Name="chkBakChanges" DockPanel.Dock="Right" Content="Nur Aenderungen" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                        <TextBox x:Name="txtBakFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Filter: Text in Typ, Name, Aenderung, Geaendert von"/>
+                                    </DockPanel>
+                                </StackPanel>
+                                <TextBlock x:Name="lblAnaHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <RichTextBox x:Name="rtbAna" DockPanel.Dock="Bottom" Height="120" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
+                                     VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6" Margin="0,6,0,0">
+                            <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
+                        </RichTextBox>
+                        <Grid>
+                        <DataGrid x:Name="gridBak" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
+                                  CanUserSortColumns="True" Visibility="Collapsed">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Typ" Binding="{Binding Typ}" Width="150"/>
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*"/>
+                                <DataGridTextColumn Header="Aenderung" Binding="{Binding Aenderung}" Width="2*"/>
+                                <DataGridTextColumn Header="Geaendert von (Intune-Protokoll)" Binding="{Binding Wer}" Width="2*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <DataGrid x:Name="gridCmp" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
+                                  CanUserSortColumns="True" Visibility="Collapsed"/>
+                        <DataGrid x:Name="gridAna" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
+                                  CanUserSortColumns="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Tenant" Binding="{Binding Tenant}" Width="120"/>
+                                <DataGridTextColumn Header="Typ" Binding="{Binding Typ}" Width="150"/>
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*"/>
+                                <DataGridTextColumn Header="Absicht" Binding="{Binding Absicht}" Width="110"/>
+                                <DataGridTextColumn Header="Ueber" Binding="{Binding Ueber}" Width="2*"/>
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
+                                <DataGridTextColumn Header="Filter" Binding="{Binding Filter}" Width="50"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        </Grid>
+                    </DockPanel>
                 </TabItem>
             </TabControl>
         </Grid>

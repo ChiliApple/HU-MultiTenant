@@ -88,13 +88,14 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 
 <section id="start">
   <h1>HU-MultiTenant</h1>
-  <p class="lead">Microsoft 365 und Intune für mehrere Tenants aus einer Oberfläche: PowerShell im Tenant-Kontext mit eigener Snippet-Bibliothek, fertige Reports als Extensions, App-Verteilung, Wartungsskripte und das Ablaufdatum der Client Secrets im Blick.</p>
+  <p class="lead">Microsoft 365 und Intune für mehrere Tenants aus einer Oberfläche: PowerShell im Tenant-Kontext mit eigener Snippet-Bibliothek, fertige Reports als Extensions, App-Verteilung mit Update-Erkennung, Wartungsskripte, Tenant-Vergleich, Konfigurations-Backup und das Ablaufdatum der Client Secrets im Blick.</p>
   <div class="cards">
     <div class="card g"><b>⚡ Quick Script</b>Eigene Skripte gegen einen Tenant ausführen – Token, Tenant und Graph-Funktionen sind schon da.</div>
     <div class="card b"><b>📚 Snippets</b>Skript-Bibliothek mit Kurzbeschreibung, Suche, Import und Export.</div>
     <div class="card p"><b>🧩 Extensions</b>Reports und Aktionen mit Parametern, Dry-Run und Excel-Ausgabe.</div>
-    <div class="card b"><b>📦 Apps</b>MSI, EXE und Store-Apps testen und an mehrere Tenants verteilen.</div>
+    <div class="card b"><b>📦 Apps</b>MSI, EXE und Store-Apps testen, an mehrere Tenants verteilen und per winget aktuell halten.</div>
     <div class="card g"><b>🛠 Wartung</b>Remediations mit KI erstellen, verteilen und auswerten.</div>
+    <div class="card p"><b>🔍 Analyse</b>Was bekommt wer? Tenants vergleichen, Konfiguration sichern, Änderungen nachvollziehen.</div>
     <div class="card m"><b>🔑 Secrets</b>DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf.</div>
   </div>
   <div class="flow"><span>Einstellungen › Tenants</span><i>→</i><span>Secret eingeben</span><i>→</i><span>Snippet wählen</span><i>→</i><span>Strg + Enter</span></div>
@@ -120,6 +121,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><td>Secret dauerhaft speichern</td><td>aus: das Secret wird beim Beenden gelöscht (geteilte PCs)</td></tr>
   </table>
   <p><span class="ui">⚙ Einstellungen</span> › <b>Allgemein</b> › <b>Autor (Apps und Wartung)</b>: steht in Intune bei hochgeladenen Apps als <i>Besitzer</i> und bei Wartungsskripten als <i>Herausgeber</i> (leer: Wartung mit „HU-MultiTenant“). Gilt ab dem nächsten Hochladen.</p>
+  <p>Ebenfalls unter <b>Allgemein</b>: <b>Quelle für App-Updates</b> (winget-Quelle, Standard <code>winget</code>), <b>Backup-Ordner</b> (leer = lokal unter <code>%LOCALAPPDATA%</code>) und <b>Backup</b> – automatisch beim Start einmal täglich für alle Tenants (Standard an) und wie viele Stände je Tenant bleiben (Standard 30).</p>
   <h3 id="sperre">Sperre</h3>
   <p><b>Warum?</b> Mit HU-MultiTenant hat man Zugriff auf mehrere Tenants gleichzeitig – entsprechend groß ist die Verantwortung. Sperre und Not-Aus sind eine zusätzliche Sicherheitsebene: Sie sollen verhindern, dass jemand am unbeaufsichtigten PC in wenigen Sekunden etwas in allen Tenants verändert, und erlauben bei Verdacht auf Schadsoftware, die gespeicherten Zugänge sofort zu entfernen.</p>
   <p><span class="ui">⚙ Einstellungen</span> › <b>Allgemein</b> › <b>Sperre</b>: zuerst <span class="ui">PIN festlegen …</span>, dann <i>sperren nach … Minuten ohne Eingabe in HU-MultiTenant</i> und auf Wunsch <i>auch beim Start</i>. Entsperrt wird mit Windows Hello (Gesicht, Fingerabdruck, Windows-PIN) oder der PIN; <kbd>Strg</kbd>+<kbd>L</kbd> sperrt sofort. Laufende Aufträge laufen im Hintergrund weiter. Das ist ein Schutz gegen schnelles Mitbenutzen am offenen PC – der eigentliche Schutz bleibt die Windows-Sperre. PIN vergessen und kein Hello: in <code>Config\settings.json</code> <code>"lockEnabled": false</code> setzen.</p>
@@ -135,8 +137,8 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><th>Bereich</th><th>Inhalt</th></tr>
     <tr><td>Titelleiste</td><td>Version, Warnung bei bald ablaufenden Secrets (Klick öffnet die Tenants), <span class="ui">🛠 Berechtigungen</span>, <span class="ui">⚙ Einstellungen</span>, <span class="ui">🛟 Support</span> (Protokolle anonymisiert als ZIP, per E-Mail oder GitHub-Issue), <span class="ui">?</span> Anleitung, <span class="ui">Update</span></td></tr>
     <tr><td>Tenant-Leiste</td><td>nur im Reiter Extensions: Tenant für die Extensions, Status (● grün = verbunden, gelb = Berechtigungen fehlen, rot = Fehler), Secret-Ablauf, <span class="ui b">Verbinden</span> / <span class="ui r">Trennen</span></td></tr>
-    <tr><td>links</td><td>Extensions mit Suche, ↻ lädt neu (eigene Extensions ohne Neustart) – in Apps und Wartung ausgeblendet; ein Klick auf eine Extension wechselt zum Reiter Extensions</td></tr>
-    <tr><td>rechts</td><td>Reiter <b>⚡ Quick Script</b> (Start-Reiter), <b>🧩 Extensions</b>, <b>📦 Apps</b> und <b>🛠 Wartung</b></td></tr>
+    <tr><td>links</td><td>Extensions mit Suche, ↻ lädt neu (eigene Extensions ohne Neustart) – in Apps, Wartung und Analyse ausgeblendet; ein Klick auf eine Extension wechselt zum Reiter Extensions</td></tr>
+    <tr><td>rechts</td><td>Reiter <b>⚡ Quick Script</b> (Start-Reiter), <b>🧩 Extensions</b>, <b>📦 Apps</b> (Bibliothek, In Intune, Updates), <b>🛠 Wartung</b> und <b>🔍 Analyse</b> (Was bekommt …?, Tenant-Vergleich, Backup &amp; Verlauf)</td></tr>
   </table>
   <div class="note tip"><b class="h">Bleibt gespeichert</b>Fensterposition und -größe (auch maximiert), Breite der Listen, Aufteilung Editor/Ausgabe, Details/Protokoll und in Apps/Wartung, Schriftgröße im Editor, letzter Tenant, letztes Snippet, Oberflächengröße. <kbd>Strg</kbd> + Mausrad skaliert die Oberfläche, <kbd>Strg</kbd>+<kbd>0</kbd> = 100 %.</div>
 </section>
@@ -207,6 +209,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <p>Programme (MSI, EXE) und Microsoft-Store-Apps an einen oder mehrere Tenants verteilen. Oben links umschalten: <span class="ui">Bibliothek</span> (eigene Apps, die HU-MultiTenant paketiert und hochlädt) oder <span class="ui">In Intune</span> (alle vorhandenen Apps verwalten).</p>
   <ol class="steps">
     <li><span class="ui">+ MSI / EXE …</span> oder die Setup-Datei auf die Liste ziehen. Name, Version, Hersteller, Befehle und Erkennung werden ausgelesen – bei MSI vollständig, bei EXE mit stillem Schalter (Inno, NSIS, InstallShield, WiX, Advanced Installer, Squirrel).</li>
+    <li><b>Kategorien</b> (Unternehmensportal): mit Komma getrennt eintragen oder <span class="ui">Auswahl …</span> – lädt die Kategorien der angehakten Tenants. Neue Kategorien legst Du in der Auswahl unter <i>Neue Kategorie</i> › <span class="ui">Anlegen …</span> an (mit Rückfrage, auch um eine vorhandene in fehlenden Tenants zu ergänzen; im Intune-Portal erst nach Neuladen der Seite sichtbar) und mit <span class="ui r">Löschen …</span> oder Rechtsklick auf eine Kategorie wieder löschen. Fehlt eine Kategorie beim Hochladen in einem Tenant, wird sie dort übersprungen und gemeldet; leer = in Intune nichts ändern.</li>
     <li><span class="ui m">Testinstallation in der Windows Sandbox</span> – schlägt Erkennung, Deinstallation und Symbol vor (siehe unten).</li>
     <li>Tenants anhaken, Ziel wählen – Gruppe (🔍 sucht in den angehakten Tenants und zeigt, wo eine fehlt), Alle Geräte, Alle Benutzer oder <i>Keine Zuweisung</i> – dazu <i>Erforderlich</i>, <i>Verfügbar</i> (Unternehmensportal) oder <i>Deinstallieren</i>, optional Frist und Hinweise.</li>
     <li><span class="ui b">⬆ Hochladen &amp; zuweisen</span> – das Paket wird einmal gebaut und in jeden Tenant hochgeladen; die Geräte holen die App beim nächsten Sync.</li>
@@ -217,6 +220,15 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <p>Ist die Sandbox nicht aktiviert, öffnet sich ein Fenster mit <span class="ui m">Sandbox jetzt aktivieren</span> (Administratorrechte, Neustart). Voraussetzung: Windows 10/11 Pro, Education oder Enterprise mit Virtualisierung; es läuft immer nur eine Sandbox.</p>
   <h3 id="apps-update">Neue Version</h3>
   <p>Neue Setup-Datei auf die Liste ziehen (oder in der App <span class="ui">Andere Datei …</span>) und <b>Ja</b> wählen: dieselbe Intune-App wird aktualisiert, Zuweisungen bleiben. Versionsnummern im Namen werden dabei ignoriert; neue Apps bekommen einen Namen ohne Version vorgeschlagen. Bei EXE-Setups mit Registry-Erkennung die Versionsprüfung einschalten – sonst gilt die alte Version auf den Geräten als „installiert“.</p>
+  <h3 id="apps-winget">Updates (winget)</h3>
+  <p>Ansicht <span class="ui">Updates</span> (neben Bibliothek und In Intune): vergleicht die Setup-Apps der Bibliothek mit dem winget-Repository. Braucht winget auf deinem PC (App-Installer aus dem Microsoft Store; ist das Modul <code>Microsoft.WinGet.Client</code> installiert, wird es bevorzugt). Quelle: <span class="ui">Einstellungen › Allgemein › Quelle für App-Updates</span> – Standard <code>winget</code> (Community-Repository), sonst jede auf deinem PC eingerichtete Quelle (<code>winget source list</code>, z. B. eine eigene REST-Quelle).</p>
+  <ol class="steps">
+    <li><span class="ui b">↻ Nach Updates suchen</span> – je App einige Sekunden. Apps ohne winget-ID bekommen sie automatisch, wenn genau ein Paket gleich heißt (orange Meldung – bitte prüfen); sonst <span class="ui">winget-ID zuordnen …</span> (oder Doppelklick): Treffer anklicken oder ID eintragen.</li>
+    <li>Spalten: Version in der Bibliothek, neueste bei winget, Status (<b>Update verfügbar</b>, aktuell, Intune noch alt) und Stand je Tenant.</li>
+    <li><span class="ui b">⬇ Neue Version holen</span>: lädt den Installer (x64, maschinenweit, bei MSI-Apps bevorzugt MSI) nach <code>Downloads\HU-App-Updates\App\Version</code> und übernimmt ihn als neue Version der App – wie „Andere Datei …“. Eigene Installationsschalter einer EXE bleiben; fehlen welche, kommen sie aus dem winget-Manifest. Hochgeladen wird noch nichts.</li>
+    <li>Weiter in der Bibliothek: Installationsbefehl prüfen → <span class="ui">Testinstallation</span> in der Sandbox → <span class="ui b">Hochladen</span> mit Pilotgruppe → später freigeben.</li>
+  </ol>
+  <div class="note">Store-Apps (neu) aktualisiert der Microsoft Store selbst. Nicht jedes Paket liefert eine MSI/EXE (z. B. nur ZIP oder MSIX) – dann meldet „Neue Version holen“ einen Fehler.</div>
   <h3 id="apps-deps">Abhängigkeiten (Treiber, Laufzeitumgebungen)</h3>
   <p>Unter <i>Abhängigkeiten</i>: <span class="ui">+ Bibliothek …</span> (eigene App, wird mit hochgeladen, auch mehrstufig) oder <span class="ui">+ Intune …</span> (schon vorhandene Win32-App, je Tenant per Name verknüpft). Mit <i>automatisch mitinstallieren</i> installiert Intune sie vor der App. Store-Apps können keine Abhängigkeit sein.</p>
   <h3 id="apps-options">Weitere Optionen</h3>
@@ -232,7 +244,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <ul>
     <li><b>Zuweisungen</b> ergänzen (gleiche Gruppe = ersetzen, auch Ausschluss) oder markierte entfernen</li>
     <li><b>Abhängigkeiten und Ersetzungen</b> (Win32), inkl. „Benötigt von“ / „Ersetzt durch“</li>
-    <li><b>Eigenschaften</b>: Name, Hersteller, Beschreibung, Symbol</li>
+    <li><b>Eigenschaften</b>: Name, Hersteller, Beschreibung, Symbol, Kategorien (<span class="ui">Auswahl …</span>; unterschiedliche Kategorien je Tenant werden darunter angezeigt)</li>
     <li><span class="ui">📊 Status</span>, <span class="ui">Im Portal öffnen</span>, <span class="ui r">Löschen …</span> – bei mehreren Tenants per Haken wählen, in welchen; danach doppelte Rückfrage</li>
   </ul>
   <div class="note tip"><b class="h">Einmalig: Paketier-Werkzeug</b>Beim ersten Hochladen fragt das Tool, ob es das <i>Microsoft Win32 Content Prep Tool</i> von GitHub laden darf (Microsoft erlaubt keine Weitergabe). Die Signatur wird geprüft, Ablage in <code>Tools\</code>.</div>
@@ -257,13 +269,47 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <li><b>Skripte ändern</b>: werden vor dem Speichern geprüft. Unterscheiden sich die Skripte zwischen Tenants (z. B. eigene IDs), steht das darüber – sie werden nur überschrieben, wenn du sie im Editor änderst, und nur nach Rückfrage.</li>
     <li><span class="ui">In andere Tenants kopieren …</span>: legt das Skript mit Hersteller und Kontext in weiteren Tenants an, auf Wunsch mit Zuweisungen (Gruppen per Name; fehlt eine: nicht zuweisen oder <i>Alle Geräte</i>). Gibt es dort schon eines mit diesem Namen, wird der Tenant übersprungen.</li>
     <li><span class="ui">In Bibliothek übernehmen</span>: z. B. um ein Skript mit KI zu überarbeiten und neu zu verteilen.</li>
+    <li><b>Rechtsklick › Duplizieren …</b> (links in der Liste): Kopie mit neuem Namen in denselben Tenants, <b>ohne Zuweisungen</b> – sie läuft also noch auf keinem Gerät. In der Bibliothek legt Rechtsklick › Duplizieren eine lokale Kopie an.</li>
     <li><span class="ui">📊 Ergebnisse</span>, <span class="ui">▶ Jetzt auf Gerät …</span>, <span class="ui r">Löschen …</span> wie oben bzw. wie bei den Apps.</li>
   </ul>
   <div class="note warn"><b class="h">Lizenz und Berechtigungen</b>Remediations brauchen Windows Enterprise/Education E3/A3 (oder höher) und einmal je Tenant im Intune Admin Center: <i>Mandantenverwaltung › Connectors und Token › Windows-Datenverarbeitung › Windows-Lizenzüberprüfung</i>. Berechtigungen: <code>DeviceManagementScripts.ReadWrite.All</code>, <code>Group.Read.All</code>; für <i>Jetzt auf Gerät</i> zusätzlich <code>DeviceManagementManagedDevices.PrivilegedOperations.All</code>.</div>
 </section>
 
+<section id="analyse">
+  <h2><span class="n">8</span>Analyse</h2>
+  <p>Drei Ansichten oben links. Die Tenants darunter anhaken (Standard: alle). <i>Was bekommt …?</i> ist nur lesend; im Tenant-Vergleich und im Backup wird nur nach Rückfrage etwas angelegt – immer neu und ohne Zuweisungen, Bestehendes wird nie überschrieben.</p>
+  <h3 id="ana-asg">Was bekommt …?</h3>
+  <p>Zeigt alles, was eine <b>Gruppe</b>, ein <b>Gerät</b> oder ein <b>Benutzer</b> in den angehakten Tenants bekommt: Apps (mit Absicht erforderlich / verfügbar / deinstallieren), Konfigurationsprofile, Einstellungskatalog, Administrative Vorlagen, Compliance-Richtlinien, Wartungsskripte, Plattformskripte, Feature-Updates und Autopilot-Profile.</p>
+  <ol class="steps">
+    <li>Art wählen, Namen eingeben (Gruppe: 🔍 sucht in den angehakten Tenants; Gerät: Name wie in Intune; Benutzer: Benutzername ohne <code>@domain</code> – passt in jedem Tenant –, UPN oder Anzeigename; dabei zählen auch seine Intune-Geräte und deren Gruppen) → <span class="ui b">▶ Anzeigen</span> oder Enter.</li>
+    <li>Die Tabelle füllt sich je Tenant, sobald er fertig ist. Spalte <i>Über</i>: über welche Gruppe (auch verschachtelt) bzw. <i>Alle Geräte</i> / <i>Alle Benutzer</i>; <i>Status</i> <b>ausgeschlossen</b>, wenn eine Ausschlussgruppe greift.</li>
+    <li><b>Filter</b>: Text (mehrere Wörter: alle müssen vorkommen, z. B. <code>erforderlich chrome</code>) und Art (App, Compliance, …). <i>Alle Geräte/Benutzer</i> abhaken blendet Zuweisungen aus, die nur über <i>Alle Geräte</i> / <i>Alle Benutzer</i> kommen – übrig bleibt, was gezielt über Gruppen kommt.</li>
+    <li><span class="ui">📊 Tabelle / Export</span>: Filter, CSV, Excel (wie angezeigt).</li>
+  </ol>
+  <div class="note"><b class="h">Grenzen</b>Zuweisungsfilter werden angezeigt (Spalte <i>Filter</i>), aber nicht ausgewertet – ob ein Filter das Gerät ausschließt, steht in Intune beim Gerät. Bei einer Gruppe zählen auch die Gruppen, in denen sie selbst Mitglied ist. Berechtigungen: <code>DeviceManagementConfiguration.Read.All</code>, <code>DeviceManagementApps.Read.All</code>, <code>DeviceManagementManagedDevices.Read.All</code>, <code>Group.Read.All</code>, <code>User.Read.All</code>, <code>Device.Read.All</code> (bzw. die vorhandenen ReadWrite-Rechte).</div>
+  <h3 id="ana-cmp">Tenant-Vergleich</h3>
+  <p>Stellt den Bestand der angehakten Tenants (mindestens zwei) nebeneinander: Konfigurationsprofile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot-Profile, Conditional Access und Apps. Gleich heißt: gleicher Name (Groß-/Kleinschreibung egal).</p>
+  <ol class="steps">
+    <li><span class="ui b">▶ Vergleichen</span> – je Tenant ✔ vorhanden oder — fehlt. <i>Nur Unterschiede</i> (Standard) blendet aus, was überall gleich ist; dazu Textfilter und Art.</li>
+    <li>Status: <b>fehlt teilweise</b>, <b>nur in einem</b>, <b>doppelt</b> (zweimal im selben Tenant) und <b>Einstellungen abweichend</b> – Letzteres nur bei Profilen, Compliance, Feature-Updates und Autopilot, wo Intune die Einstellungen in der Liste mitliefert (IDs, Zeitstempel und Namen zählen nicht).</li>
+    <li><b>Doppelklick</b> auf eine Zeile, die es in mehreren Tenants gibt: Tabelle der <b>abweichenden Einstellungen</b> (Einstellung, Wert je Tenant; Einstellungskatalog nach Einstellungs-ID, Reihenfolge egal; Skriptinhalte als Kurzform mit Prüfsumme; Gruppen, Benutzer, Rollen, Cloud-Apps und benannte Orte erscheinen mit Namen statt ID, bei Listen steht „(gleich: N)“ und je Tenant nur das Zusätzliche – dieselbe Gruppe mit anderer ID im anderen Tenant gilt also nicht als Unterschied). Geht für alle Arten außer Apps.</li>
+    <li>Einträge markieren (Strg/Shift) → <span class="ui">Fehlendes kopieren …</span>: legt sie in den angehakten Tenants an, in denen sie fehlen – <b>ohne Zuweisungen</b>, also noch ohne Wirkung. Danach im jeweiligen Tenant zuweisen (z. B. unter Wartung › In Intune).</li>
+  </ol>
+  <div class="note warn"><b class="h">Was kopiert wird</b>Kopierbar: Konfigurationsprofile, Einstellungskatalog, Administrative Vorlagen, Compliance (Aktion „Sperren“, ohne E-Mail-Vorlagen), Wartung, Plattform-Skripte, Feature-Updates. Nur anzeigen: Apps (über die Bibliothek verteilen), Conditional Access und Autopilot (Gruppen-IDs und Verweise unterscheiden sich je Tenant). Kennwörter und Zertifikate (z. B. WLAN-Schlüssel) liefert Intune nicht mit – solche Profile scheitern oder müssen im Portal ergänzt werden. Berechtigungen: <code>DeviceManagementConfiguration.ReadWrite.All</code>, <code>DeviceManagementScripts.ReadWrite.All</code>; für Conditional Access zum Lesen <code>Policy.Read.All</code>.</div>
+  <h3 id="ana-bak">Backup &amp; Verlauf</h3>
+  <p>Sichert die Konfiguration der angehakten Tenants als JSON-Dateien: Konfigurationsprofile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot und Conditional Access – jeweils vollständig und mit Zuweisungen; Apps nur als Liste. Je Tenant und Zeitpunkt ein eigener Ordner (Stand).</p>
+  <div class="note"><b class="h">Kein Tenant-Backup</b>Gesichert wird die <b>Intune-Konfiguration</b> und Conditional Access – nicht Benutzer, Gruppen, Postfächer, OneDrive/SharePoint, Teams, Geräte, App-Pakete oder Entra-Einstellungen. Ebenfalls nicht enthalten: App-Schutz- und App-Konfigurationsrichtlinien, Registrierungseinschränkungen und Statusseite (ESP), Zuweisungsfilter, Bereichsmarkierungen und ältere Endpunktsicherheits-Richtlinien (Vorlagen vor dem Einstellungskatalog).</div>
+  <ol class="steps">
+    <li><span class="ui g">💾 Backup jetzt</span> – je Tenant 1–3 Minuten. Automatisch: <span class="ui">Einstellungen › Allgemein › Backup</span> „beim Start, einmal täglich“ (Standard: an); dort auch Ordner und wie viele Stände je Tenant bleiben (Standard 30).</li>
+    <li><b>Verlauf</b>: Tenant und zwei Stände wählen → <span class="ui b">▶ Anzeigen</span>: <b>neu</b>, <b>gelöscht</b>, <b>Einstellungen geändert</b>, <b>Zuweisungen geändert</b>, <b>Beschreibung geändert</b>, <b>umbenannt</b>. Spalte <i>Geändert von</i> kommt aus dem Intune-Protokoll (wer hat dazwischen geändert). Rechts „(nur linken Stand zeigen)“ listet einen einzelnen Stand.</li>
+    <li><b>Doppelklick</b>: was sich geändert hat (Einstellung, Wert vorher/nachher, inkl. Zuweisungen) bzw. bei einem einzelnen Stand alle Einstellungen.</li>
+    <li><span class="ui">Wiederherstellen …</span>: legt markierte Einträge aus dem <b>linken (älteren)</b> Stand <b>neu</b> an – Name mit „(wiederhergestellt Datum)“, ohne Zuweisungen; Conditional Access deaktiviert. Der bestehende Eintrag bleibt unverändert: vergleichen, zuweisen, alten Eintrag selbst entfernen. Auch für gelöschte Einträge.</li>
+  </ol>
+  <div class="note warn"><b class="h">Ablage</b>Standard: <code>%LOCALAPPDATA%\HU-MultiTenant\Backups</code> (nicht im Programmordner, nicht in OneDrive). Backups enthalten Skripte und Richtlinien im Klartext (auch Kennwörter aus Wartungsskripten) – nicht in einen geteilten Ordner legen. Nicht wiederherstellbar: Autopilot-Profile und Apps. Berechtigungen wie beim Vergleich, für <i>Geändert von</i> zusätzlich Lesen des Intune-Protokolls (<code>DeviceManagementApps.Read.All</code> oder <code>DeviceManagementConfiguration.Read.All</code>).</div>
+</section>
+
 <section id="secrets">
-  <h2><span class="n">8</span>Secrets und Ablaufdatum</h2>
+  <h2><span class="n">9</span>Secrets und Ablaufdatum</h2>
   <p>Bis wann das Client Secret gültig ist, steht in der Tenant-Leiste (Reiter Extensions) und unter Einstellungen › Tenants. Gewarnt wird ab 30 Tagen (einstellbar) in der Titelleiste – orange, ab 7 Tagen rot.</p>
   <table>
     <tr><th>Quelle</th><th>Wie</th></tr>
@@ -280,7 +326,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="update">
-  <h2><span class="n">9</span>Update</h2>
+  <h2><span class="n">10</span>Update</h2>
   <p>Beim Start wird im Hintergrund nach Updates gesucht; bei einer neuen Version wird <span class="ui">Update</span> gold. Klick: HU-MultiTenant schließt sich, <code>Pull.ps1</code> lädt alle Dateien, prüft jede gegen die SHA-256-Liste und die Signatur des Herausgebers und ersetzt erst dann. Danach startet das Tool neu.</p>
   <table>
     <tr><th>Rechtsklick auf Update</th><th>Wirkung</th></tr>
@@ -292,7 +338,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="dateien">
-  <h2><span class="n">10</span>Dateien</h2>
+  <h2><span class="n">11</span>Dateien</h2>
   <table>
     <tr><th>Pfad</th><th>Inhalt</th></tr>
     <tr><td><code>Config\settings.json</code></td><td>Tenants und Einstellungen (Sicherung <code>.bak</code>)</td></tr>
@@ -301,6 +347,8 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><td><code>Config\apps.json</code> · <code>Config\remediations.json</code></td><td>Apps- und Wartungs-Bibliothek mit Verteilstand je Tenant (Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>Config\app-icons\</code></td><td>App-Symbole (PNG je App)</td></tr>
     <tr><td><code>%LOCALAPPDATA%\HU-MultiTenant\Packages\</code> · <code>…\Sandbox\</code></td><td>gebaute App-Pakete (Knopf <span class="ui">Paket-Ordner</span>) · Testinstallationen mit Protokollen – liegt bewusst nicht in OneDrive</td></tr>
+    <tr><td><code>%LOCALAPPDATA%\HU-MultiTenant\Backups\</code></td><td>Konfigurations-Backups: je Tenant und Stand ein Ordner mit <code>index.json</code> und einer JSON-Datei je Eintrag (Ordner in den Einstellungen änderbar; enthält Skripte im Klartext)</td></tr>
+    <tr><td><code>Downloads\HU-App-Updates\</code></td><td>per winget geholte Installer (App\Version)</td></tr>
     <tr><td><code>Tools\IntuneWinAppUtil.exe</code></td><td>Paketier-Werkzeug von Microsoft (wird beim ersten Hochladen geladen)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\*.cred</code></td><td>Client Secrets (DPAPI)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\ui-state.json</code></td><td>Fenster und letzte Auswahl</td></tr>
@@ -313,7 +361,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="tasten">
-  <h2><span class="n">11</span>Tastenkürzel</h2>
+  <h2><span class="n">12</span>Tastenkürzel</h2>
   <table>
     <tr><th>Taste</th><th>Wirkung</th></tr>
     <tr><td><kbd>F1</kbd></td><td>diese Anleitung</td></tr>
