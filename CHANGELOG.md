@@ -1,17 +1,27 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.1.6 (in Arbeit)
+## v2.1.6 (2026-10-09)
 
-### Neu
-- **Wartung: Duplizieren** per Rechtsklick in der linken Liste - Bibliothek: lokale Kopie; In Intune: Kopie mit neuem Namen in denselben Tenants, ohne Zuweisungen
-- **Apps: Kategorien** fuer das Unternehmensportal (mit Komma getrennt oder "Auswahl ..." aus den angehakten Tenants); Kategorien in der Auswahl anlegen und loeschen (mit Rueckfrage); fehlende werden beim Hochladen je Tenant gemeldet; auch unter Apps > In Intune (Eigenschaften), mit Anzeige abweichender Kategorien je Tenant
-- **Neuer Reiter Analyse: "Was bekommt ...?"** - alle Apps, Profile, Richtlinien, Wartungs- und Plattformskripte, Feature-Updates und Autopilot-Profile, die eine Gruppe, ein Geraet oder ein Benutzer in den angehakten Tenants bekommt (Benutzer auch ohne Domain, inkl. seiner Intune-Geraete; verschachtelte Gruppen, Alle Geraete/Benutzer und Ausschluessen); Anzeigefilter (Text, Art) und Alle Geraete/Benutzer ausblendbar; Tabelle und Export
-- **Analyse: Tenant-Vergleich** - Profile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot, Conditional Access und Apps der angehakten Tenants nebeneinander (fehlt / nur in einem / doppelt / Einstellungen abweichend), Filter und Export; Doppelklick zeigt die abweichenden Einstellungen je Tenant (Gruppen, Benutzer, Rollen, Cloud-Apps und Orte mit Namen statt ID; Listen als gemeinsam + Zusaetzliches); markierte fehlende Eintraege in die anderen Tenants kopieren (ohne Zuweisungen, auch Administrative Vorlagen)
-- **Analyse: Backup & Verlauf** - Konfiguration der Tenants sichern (Profile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot, Conditional Access mit Zuweisungen; Apps als Liste), automatisch einmal taeglich beim Start (Standard an, abschaltbar); zwei Staende vergleichen (neu, geloescht, Einstellungen/Zuweisungen/Beschreibung geaendert, umbenannt) mit "Geaendert von" aus dem Intune-Protokoll; Doppelklick zeigt vorher/nachher; Eintraege aus einem alten Stand neu anlegen (ohne Zuweisungen). Ablage lokal (Einstellungen > Allgemein)
-- **Apps: Updates** (neben Bibliothek / In Intune) - prueft die Setup-Apps der Bibliothek gegen winget (winget-ID wird bei eindeutigem Namen automatisch zugeordnet, sonst per Suche), zeigt Bibliothek, neueste Version und den tatsaechlichen Stand in Intune je Tenant (Version, in Intune geloescht - dann wird die Verteilungs-Notiz in der Bibliothek zurueckgesetzt); "Neue Version holen" laedt den Installer per winget und uebernimmt ihn als neue Version der App (eigene Installationsschalter bleiben); bei neuer Version wird der alte Sandbox-Hinweis geleert (Hochladen erinnert wieder an den Test); Quelle in Einstellungen > Allgemein waehlbar (Standard winget) - danach wie gewohnt Testinstallation in der Sandbox und Hochladen mit Pilotgruppe
+### Neu: Reiter Analyse
+- **Was bekommt ...?** - alle Apps, Profile, Richtlinien, Wartungs- und Plattformskripte, Feature-Updates und Autopilot-Profile, die eine Gruppe, ein Geraet oder ein Benutzer in den angehakten Tenants bekommt: ueber verschachtelte Gruppen, Alle Geraete / Alle Benutzer und mit Ausschluessen. Benutzer auch ohne Domain (passt in jedem Tenant), inklusive seiner Intune-Geraete. Filter nach Text und Art, Alle Geraete/Benutzer ausblendbar, Tabelle und Export
+- **Tenant-Vergleich** - Profile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot, Conditional Access und Apps nebeneinander: fehlt, nur in einem, doppelt, Einstellungen abweichend. Doppelklick zeigt die abweichenden Einstellungen je Tenant - Gruppen, Benutzer, Rollen, Cloud-Apps und Orte mit Namen statt ID, Listen als "gleich: N + Zusaetzliches". Markierte fehlende Eintraege in andere Tenants kopieren (ohne Zuweisungen)
+- **Backup & Verlauf** - Konfiguration sichern (alle oben genannten Arten mit Zuweisungen, Apps als Liste), automatisch einmal taeglich beim Start (Standard an). Zwei Staende vergleichen: neu, geloescht, Einstellungen / Zuweisungen / Beschreibung geaendert, umbenannt - mit "Geaendert von" aus dem Intune-Protokoll. Doppelklick zeigt vorher/nachher. Eintraege aus einem alten Stand neu anlegen (Name mit Zusatz, ohne Zuweisungen, Conditional Access deaktiviert). Ablage lokal, Ordner und Anzahl Staende in den Einstellungen
+
+### Neu: Apps
+- **Updates** (neben Bibliothek und In Intune) - prueft die Setup-Apps der Bibliothek gegen winget: Bibliothek, neueste Version und tatsaechlicher Stand in Intune je Tenant. winget-ID bei eindeutigem Namen automatisch, sonst per Suche. "Neue Version holen" laedt den Installer und uebernimmt ihn als neue Version der App (eigene Installationsschalter bleiben, alter Sandbox-Hinweis wird geleert) - danach wie gewohnt Testinstallation und Hochladen mit Pilotgruppe. Quelle waehlbar (Einstellungen > Allgemein, Standard winget). In Intune geloeschte Apps werden erkannt und die Verteilung in der Bibliothek zurueckgesetzt
+- **Kategorien** fuer das Unternehmensportal - mit Komma getrennt oder "Auswahl ..." aus den angehakten Tenants, dort auch anlegen und loeschen (mit Rueckfrage); fehlende werden beim Hochladen je Tenant gemeldet. Auch unter In Intune (Eigenschaften), mit Anzeige abweichender Kategorien
+
+### Neu: Wartung
+- **Duplizieren** per Rechtsklick in der linken Liste - Bibliothek: lokale Kopie; In Intune: Kopie mit neuem Namen in denselben Tenants, ohne Zuweisungen
 
 ### Verbessert
-- Ergebnis-Tabelle: lange Werte werden umgebrochen, Spalten lassen sich beliebig breit ziehen
+- Ergebnis-Tabellen: lange Werte werden umgebrochen, Spalten lassen sich beliebig breit ziehen
+
+### Hinweise
+- Neue Berechtigungen je nach Nutzung (INSTALL.md): `Policy.Read.All` (Conditional Access in Vergleich/Backup), `Device.Read.All` (Was bekommt ein Geraet), `DeviceManagementConfiguration.ReadWrite.All` (Kopieren/Wiederherstellen), optional `RoleManagement.Read.Directory` und `Policy.ReadWrite.ConditionalAccess`
+- Backup sichert die Intune-Konfiguration und Conditional Access - kein vollstaendiges Tenant-Backup (keine Benutzer, Gruppen, Postfaecher, Dateien, App-Pakete)
+- Backups enthalten Skripte und Richtlinien im Klartext - Standardablage ist lokal (`%LOCALAPPDATA%`), nicht im Programmordner
+- Apps > Updates braucht winget (App-Installer aus dem Microsoft Store)
 
 ## v2.1.5 (2026-10-09)
 

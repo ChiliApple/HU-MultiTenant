@@ -5,6 +5,8 @@
 - Internet: `login.microsoftonline.com`, `graph.microsoft.com`; für Updates `api.github.com`, `raw.githubusercontent.com`
 - je Tenant eine **App-Registrierung** (Client Credentials, siehe unten)
 - für Excel-Reports das Modul **ImportExcel** (wird beim ersten Report installiert; Excel selbst ist nicht nötig)
+- für **Apps › Updates** der Windows Paket-Manager **winget** (App-Installer aus dem Microsoft Store, ab Windows 10 1809 meist vorhanden); das Modul `Microsoft.WinGet.Client` wird genutzt, wenn installiert
+- für die Testinstallation die **Windows Sandbox** (Windows Pro/Enterprise/Education, wird auf Wunsch aktiviert)
 - keine Administratorrechte nötig
 
 ## Installieren
@@ -33,6 +35,11 @@ Alternativ: Repository als ZIP laden und entpacken (dann ohne Prüfsumme/Signatu
 | `DeviceManagementScripts.ReadWrite.All` | Reiter **Wartung** (Remediations) |
 | `Group.Read.All` | Apps/Wartung: Zielgruppe per Name finden |
 | `DeviceManagementManagedDevices.PrivilegedOperations.All` | Wartung: *Jetzt auf Gerät ausführen* |
+| `Policy.Read.All` | Analyse: Conditional Access im Vergleich und Backup, Namen benannter Orte |
+| `Device.Read.All` | Analyse: *Was bekommt …?* für Geräte (Gerätegruppen) |
+| `DeviceManagementConfiguration.ReadWrite.All` | Analyse: fehlende Profile/Richtlinien in andere Tenants kopieren, aus Backup wiederherstellen (zum Lesen reicht `Read.All`) |
+| `RoleManagement.Read.Directory` | optional: Rollennamen statt IDs im Tenant-Vergleich |
+| `Policy.ReadWrite.ConditionalAccess` | optional: Conditional Access aus Backup wiederherstellen (wird deaktiviert angelegt) |
 
    Jede Extension zeigt ihre Berechtigungen im Reiter *Extensions*; der Knopf **Berechtigungen** vergleicht sie mit dem Token.
    Schreibende Extensions (`READ/WRITE`) brauchen zusätzlich die passenden `ReadWrite`-Berechtigungen.

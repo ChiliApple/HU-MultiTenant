@@ -191,6 +191,27 @@
       "category": "Device Management",
       "usedBy": [],
       "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > DeviceManagementScripts.ReadWrite.All > Administratorzustimmung erteilen"
+    },
+    "Device.Read.All": {
+      "description": "Geraete in Entra ID lesen (Analyse: Was bekommt ein Geraet - Geraetegruppen)",
+      "risk": "Low",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Device.Read.All > Administratorzustimmung erteilen"
+    },
+    "RoleManagement.Read.Directory": {
+      "description": "Rollendefinitionen lesen (Analyse: Rollennamen im Tenant-Vergleich)",
+      "risk": "Low",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > RoleManagement.Read.Directory > Administratorzustimmung erteilen"
+    },
+    "Policy.ReadWrite.ConditionalAccess": {
+      "description": "Conditional-Access-Richtlinien anlegen (Analyse: aus Backup wiederherstellen, wird deaktiviert angelegt)",
+      "risk": "High",
+      "category": "Security",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Policy.ReadWrite.ConditionalAccess > Administratorzustimmung erteilen"
     }
   },
   "categoriesMapping": {
