@@ -1,5 +1,7 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.6 (in Arbeit)
+
 ## v2.1.5 (2026-10-09)
 
 ### Neu
