@@ -2511,7 +2511,7 @@ function Save-HUTenantBackup {
                 $full | Add-Member -NotePropertyName 'assignments' -NotePropertyValue $asg -Force
                 $rel = "$(ConvertTo-HUSafeFileName $src.Typ)\$(ConvertTo-HUSafeFileName $name 60)__$("$($it.id)".Substring(0, [Math]::Min(8, "$($it.id)".Length))).json"
                 Write-HUJsonFile (Join-Path $dir $rel) $full
-                $index.Add([pscustomobject]@{ Typ = $src.Typ; Name = $name; Id = "$($it.id)"; File = $rel; Hash = (Get-HUCompareHash $full); AHash = (Get-HUAssignmentHash $asg) })
+                $index.Add([pscustomobject]@{ Typ = $src.Typ; Name = $name; Id = "$($it.id)"; File = $rel; Hash = (Get-HUCompareHash $full); AHash = (Get-HUAssignmentHash $asg); Desc = "$($full.description)" })
                 $n++
             } catch { Write-HULog -Message "$($src.Typ) '$name': $($_.Exception.Message)" -Level 'WARN' -Tenant $TenantKey; $errors++ }
         }
@@ -2557,6 +2557,7 @@ function Compare-HUBackups {
         $ch = if (-not $x) { 'neu' } else {
             $c = @()
             if ("$($x.Name)" -ne "$($y.Name)") { $c += "umbenannt (vorher '$($x.Name)')" }
+            if ($x.PSObject.Properties['Desc'] -and $y.PSObject.Properties['Desc'] -and "$($x.Desc)" -ne "$($y.Desc)") { $c += 'Beschreibung geaendert' }
             if ("$($x.Hash)" -ne "$($y.Hash)") { $c += 'Einstellungen geaendert' }
             if ("$($x.AHash)" -ne "$($y.AHash)") { $c += 'Zuweisungen geaendert' }
             if ($c.Count) { $c -join ', ' } else { 'gleich' }
@@ -2572,8 +2573,14 @@ function Compare-HUBackups {
 # Unterschiede zwischen zwei Backup-Dateien desselben Objekts (inkl. Zuweisungen)
 function Get-HUBackupItemDiff {
     param([string]$FileA, [string]$FileB)
-    $ma = if ($FileA -and (Test-Path -LiteralPath $FileA)) { ConvertTo-HUFlatMap (Read-HUJsonFile $FileA) -WithAssignments } else { @{} }
-    $mb = if ($FileB -and (Test-Path -LiteralPath $FileB)) { ConvertTo-HUFlatMap (Read-HUJsonFile $FileB) -WithAssignments } else { @{} }
+    $oa = if ($FileA -and (Test-Path -LiteralPath $FileA)) { Read-HUJsonFile $FileA } else { $null }
+    $ob = if ($FileB -and (Test-Path -LiteralPath $FileB)) { Read-HUJsonFile $FileB } else { $null }
+    $ma = if ($oa) { ConvertTo-HUFlatMap $oa -WithAssignments } else { @{} }
+    $mb = if ($ob) { ConvertTo-HUFlatMap $ob -WithAssignments } else { @{} }
+    # Name und Beschreibung zaehlen im Verlauf mit (im Tenant-Vergleich nicht)
+    foreach ($f in 'displayName', 'name', 'description') {
+        foreach ($pair in @(@($oa, $ma), @($ob, $mb))) { if ($pair[0] -and $pair[0].PSObject.Properties[$f] -and "$($pair[0].$f)") { $pair[1][$f] = "$($pair[0].$f)" } }
+    }
     return @(Get-HUCompareDiff @{ A = $ma; B = $mb } @('A', 'B'))
 }
 

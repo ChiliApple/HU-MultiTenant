@@ -828,7 +828,7 @@ Describe 'Backup und Verlauf' {
                 if ($Endpoint -eq '/deviceManagement/deviceCompliancePolicies' -and -not $script:extra) { return @([pscustomobject]@{ id = 'c1'; displayName = 'Alt' }) }
                 return @()
             }
-            Mock Invoke-HUIntuneGraph { [pscustomobject]@{ id = ($Endpoint -split '/')[-1] -replace '\?.*$', ''; displayName = 'x'; detectionScriptContent = 'QQ=='; runAsAccount = 'system'; value = $script:val } }
+            Mock Invoke-HUIntuneGraph { [pscustomobject]@{ id = ($Endpoint -split '/')[-1] -replace '\?.*$', ''; displayName = 'x'; description = "Text $($script:val)"; detectionScriptContent = 'QQ=='; runAsAccount = 'system'; value = $script:val } }
             $b1 = Save-HUTenantBackup -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Root $Root
             Start-Sleep -Milliseconds 1100
             $script:val = 2; $script:grp = 'g2'; $script:extra = $true
@@ -837,11 +837,13 @@ Describe 'Backup und Verlauf' {
             $rows = @(Compare-HUBackups -FolderA $b1.Folder -FolderB $b2.Folder)
             ($rows | Where-Object Id -eq 'r1').Aenderung | Should -Match 'Einstellungen geaendert'
             ($rows | Where-Object Id -eq 'r1').Aenderung | Should -Match 'Zuweisungen geaendert'
+            ($rows | Where-Object Id -eq 'r1').Aenderung | Should -Match 'Beschreibung geaendert'
             ($rows | Where-Object Id -eq 'r2').Aenderung | Should -Be 'neu'
             ($rows | Where-Object Id -eq 'c1').Aenderung | Should -Be 'geloescht'
             $r1 = $rows | Where-Object Id -eq 'r1'
             $d = @(Get-HUBackupItemDiff $r1.FileA $r1.FileB)
             ($d | Where-Object Einstellung -eq 'value').T1 | Should -Be '2'
+            ($d | Where-Object Einstellung -eq 'description').T1 | Should -Be 'Text 2'
             @($d | Where-Object { $_.Einstellung -like 'assignments*' }).Count | Should -BeGreaterThan 0
             Remove-HUOldBackups -Root $Root -TenantKey 'T1' -Keep 1 | Should -Be 1
         }
