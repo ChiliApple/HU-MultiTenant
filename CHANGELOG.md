@@ -1,5 +1,10 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.4 (in Arbeit)
+
+### Neu
+- **Wartung: In Sandbox testen** (Bibliothek und In Intune): Pruef- und Reparaturskript laufen in der Windows Sandbox wie bei Intune - als SYSTEM bzw. Benutzer, 64/32-Bit, ohne Netzwerk, Zeitlimit 5 Min. je Skript; Ergebnis je Schritt (Exit-Code, Dauer, Konto, Ausgabe, Warnung ueber 2.048 Zeichen) und Bewertung wie in Intune
+
 ## v2.1.3 (2026-10-09)
 
 ### Behoben

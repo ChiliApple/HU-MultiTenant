@@ -949,6 +949,8 @@
                                         <WrapPanel Margin="0,6,0,0">
                                             <Button x:Name="btnRintCheck" Content="&#x2714; Pruefen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
                                                     ToolTip="Syntax, Exit-Codes und verbotene Befehle pruefen (ohne Ausfuehrung)"/>
+                                            <Button x:Name="btnRintSandbox" Content="&#x1F9EA; In Sandbox testen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
+                                                    ToolTip="Skripte aus dem Editor in der Windows Sandbox ausfuehren - wie Intune (als SYSTEM, Erkennung, Reparatur, Erkennung danach)"/>
                                             <Button x:Name="btnRintSave" Content="&#x1F4BE; Aenderungen speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11"
                                                     ToolTip="Geaenderte Felder in allen Tenants dieses Skripts speichern"/>
                                         </WrapPanel>
@@ -1010,6 +1012,8 @@
                                                     ToolTip="Syntax, Exit-Codes und verbotene Befehle pruefen (ohne Ausfuehrung)"/>
                                             <Button x:Name="btnRemTestLocal" Content="Pruefskript hier ausfuehren" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
                                                     ToolTip="Fuehrt nur das Pruefskript auf diesem PC aus (aendert nichts, wenn es korrekt geschrieben ist)"/>
+                                            <Button x:Name="btnRemSandbox" Content="&#x1F9EA; In Sandbox testen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,0"
+                                                    ToolTip="Pruef- und Reparaturskript in der Windows Sandbox ausfuehren - wie Intune (als SYSTEM, Erkennung, Reparatur, Erkennung danach)"/>
                                         </WrapPanel>
 
                                         <TextBlock Text="Verteilen" Style="{StaticResource SectionTitle}" Margin="0,12,0,6"/>
