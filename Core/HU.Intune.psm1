@@ -1517,11 +1517,17 @@ Regeln fuer beide Skripte:
 - Laufen als SYSTEM (64 Bit) auf Windows 11 Education. Kein Neustart, kein Herunterfahren.
 - Ausgabe kurz halten (unter 2.000 Zeichen), eine aussagekraeftige Zeile mit Write-Output.
 - Fehler mit try/catch abfangen.
+- Eigene Funktionen nur in Verb-Nomen-Form benennen (z. B. Test-AdminMember), keine Kurznamen - sonst kann ein Alias greifen.
+- Werte, die man spaeter aendern moechte (Namen, Passwoerter, Pfade, Zahlen, Ja/Nein), ganz oben in BEIDEN Skripten gleich als Feld anlegen - je zwei Zeilen, vor jeder Verwendung und ausserhalb von Funktionen:
+  # @param Name|Typ|Beschriftung|Standard
+  `$Name = 'Wert'  # @value
+  Typ ist string, int, bool oder choice (bei choice: # @param Name|choice|Beschriftung|Standard|A;B;C). Bei int steht der Wert ohne Anfuehrungszeichen, bei bool als `$true/`$false. Keinen param()-Block verwenden.
 Pruefskript:
 - exit 1, wenn das Problem vorliegt (dann laeuft die Reparatur), sonst exit 0.
 - Vor dem exit eine kurze Statusmeldung ausgeben.
 Reparaturskript:
 - Behebt das Problem; exit 0 bei Erfolg, exit 1 bei Fehler, mit kurzer Meldung.
+- Bei Fehlern die Meldung zusaetzlich mit [Console]::Error.WriteLine() ausgeben - Intune zeigt von der Reparatur nur die Fehlerausgabe an.
 Gib die beiden Skripte getrennt aus, ueberschrieben mit "### Pruefskript" und "### Reparaturskript", ohne weitere Erklaerung.
 "@
 }
