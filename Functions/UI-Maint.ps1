@@ -180,6 +180,8 @@ function Show-HURemForm($Rem) {
 function Save-HURemForm {
     $r = $script:RemCurrent
     if (-not $r -or $script:RemLoading) { return }
+    # @param-Felder: fehlende Wertzeilen mit dem Standard ergaenzen
+    try { Complete-HURemParams 'Lib' } catch { }
     $c = $script:Controls
     $r.Name = $c['txtRemName'].Text.Trim()
     $r.Description = $c['txtRemDesc'].Text.Trim()

@@ -1453,6 +1453,9 @@ function Remove-HURemediation {
 # ============================================================================
 # Pruefung eines Wartungsskripts (ohne Ausfuehrung)
 # ============================================================================
+# @param-Felder der Wartungsskripte (gemeinsam mit Quick Script)
+. (Join-Path $PSScriptRoot 'HU.QSParams.ps1')
+
 function Test-HURemediationScript {
     [CmdletBinding()]
     param([string]$Code, [ValidateSet('detection', 'remediation')][string]$Kind = 'detection', [string]$RunAs = 'system')
@@ -1466,6 +1469,7 @@ function Test-HURemediationScript {
     $tok = $null; $err = $null
     [void][System.Management.Automation.Language.Parser]::ParseInput($Code, [ref]$tok, [ref]$err)
     foreach ($e in @($err)) { & $add 'Fehler' "${name}: Zeile $($e.Extent.StartLineNumber): $($e.Message)" }
+    foreach ($x in @(Test-HURemParams $Code $name)) { & $add $x.Stufe $x.Hinweis }
     $rx = @(
         @{ P = '(?im)\b(Restart-Computer|Stop-Computer)\b|\bshutdown(\.exe)?\s+[/-][rs]'; L = 'Fehler'; T = 'Kein Neustart/Herunterfahren in Wartungsskripten (Intune-Vorgabe).' }
         @{ P = '(?im)\b(Read-Host|Out-GridView|Pause)\b|\[Console\]::ReadKey'; L = 'Fehler'; T = 'Keine Eingaben/Fenster - das Skript laeuft unbeaufsichtigt.' }

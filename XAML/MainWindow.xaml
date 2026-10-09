@@ -940,6 +940,7 @@
                                                 <CheckBox x:Name="chkRint32" Content="32-Bit-PowerShell" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="10,0,0,0"/>
                                             </StackPanel>
                                         </Grid>
+                                        <WrapPanel x:Name="pnlRintParams" Visibility="Collapsed" Margin="0,8,0,0"/>
                                         <TextBlock Text="Pruefskript" Style="{StaticResource FieldLabel}" Margin="0,8,0,3"/>
                                         <TextBox x:Name="txtRintDetect" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
                                                  Height="140" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
@@ -1002,6 +1003,7 @@
                                             </StackPanel>
                                         </Border>
 
+                                        <WrapPanel x:Name="pnlRemParams" Visibility="Collapsed" Margin="0,10,0,0"/>
                                         <TextBlock Text="Pruefskript (exit 1 = Problem gefunden)" Style="{StaticResource SectionTitle}" Margin="0,10,0,4"/>
                                         <TextBox x:Name="txtRemDetect" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
                                                  Height="150" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>

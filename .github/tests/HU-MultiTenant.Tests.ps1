@@ -204,6 +204,42 @@ Describe 'Snippet-Parameter' {
     }
 }
 
+Describe 'Wartung: @param-Felder' {
+    It 'Wert setzen und wieder lesen (Sonderzeichen, Zahl, Ja/Nein)' {
+        $code = "# @param Pw|string|Passwort|`n# @param Max|int|Max|3`n# @param On|bool|An|true`nexit 0"
+        $c = Set-HURemParamValues $code @{ Pw = "a'b’c # d" } -FillDefaults
+        $v = Get-HURemParamValues $c
+        $v.Pw | Should -BeExactly "a'b’c # d"
+        $v.Max | Should -Be 3
+        $v.On | Should -BeTrue
+        $e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($c, [ref]$null, [ref]$e); @($e).Count | Should -Be 0
+    }
+    It 'vorhandene Wertzeile wird ersetzt, nicht verdoppelt' {
+        $c = Set-HURemParamValues "# @param X|string|X|`n`$X = 'alt'  # @value`nexit 0" @{ X = 'neu' }
+        ([regex]::Matches($c, '@value')).Count | Should -Be 1
+        (Get-HURemParamValues $c).X | Should -Be 'neu'
+    }
+    It 'mehrzeiliger Text und ungueltige Zahl werden abgelehnt' {
+        { Set-HURemParamValues "# @param X|string|X|" @{ X = "a`nb" } } | Should -Throw
+        { Set-HURemParamValues "# @param N|int|N|" @{ N = 'abc' } } | Should -Throw
+    }
+    It 'Pruefung: Verwendung vor dem Feld, param()-Block, Funktion' {
+        @(Test-HURemParams "Write-Output `$X`n# @param X|string|X|`n`$X = 'a'  # @value" | Where-Object Stufe -eq 'Fehler').Count | Should -Be 1
+        @(Test-HURemParams "param(`$a)`n# @param X|string|X|`n`$X = 'a'  # @value" | Where-Object Stufe -eq 'Fehler').Count | Should -BeGreaterThan 0
+        @(Test-HURemParams "function F {`n# @param X|string|X|`n`$X = 'a'  # @value`n}" | Where-Object Stufe -eq 'Fehler').Count | Should -Be 1
+        @(Test-HURemParams "# @param X|string|X|`n`$X = 'a'  # @value`nWrite-Output `$X").Count | Should -Be 0
+    }
+    It 'Zuweisungen am Anfang werden zu Feldern' {
+        $code = "`$Name = 'GymAdmin'`n`$N = 5`n`$B = `$true`n`$D = Get-Date`n`$Spaet = 'x'"
+        @(Get-HURemParamCandidates $code | ForEach-Object Name) | Should -Be @('Name', 'N', 'B')
+        $c = Convert-HURemAssignToParam $code @('Name', 'N', 'B')
+        $v = Get-HURemParamValues $c
+        $v.Name | Should -Be 'GymAdmin'; $v.N | Should -Be 5; $v.B | Should -BeTrue
+        @(Get-HUQSParams $c).Count | Should -Be 3
+        @(Test-HURemParams $c).Count | Should -Be 0
+    }
+}
+
 Describe 'Tabelle' {
     It 'nur echte Objekte' {
         Test-HUQSTableObject 'text' | Should -BeFalse
