@@ -1881,7 +1881,7 @@ try { Stop-Transcript | Out-Null } catch { }
 [IO.File]::WriteAllText('C:\HUTest\Ergebnis.tmp', ($res | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding $false))
 Move-Item -LiteralPath 'C:\HUTest\Ergebnis.tmp' -Destination 'C:\HUTest\Ergebnis.json' -Force
 Write-Host ""
-Write-Host 'Fertig - das Ergebnis steht in HU-MultiTenant.' -ForegroundColor Green
+Write-Host 'Fertig. Ergebnis: C:\HUTest\Ergebnis.txt (beim ersten Lauf auch in HU-MultiTenant). Erneut testen: & C:\HUTest\HURemTest.ps1' -ForegroundColor Green
 '@
 
 function Start-HURemSandboxTest {
