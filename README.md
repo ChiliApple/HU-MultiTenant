@@ -37,7 +37,7 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
 | **Quick Script** | PowerShell direkt im Tenant – Token und Graph-Funktionen sind schon da. Auf mehreren Tenants nacheinander, Eingabefelder per `# @param`, Ergebnis als Tabelle mit CSV-/Excel-Export, Verlauf je Lauf |
 | **Snippets** | eigene Skript-Bibliothek mit Beschreibung, Kategorien, Favoriten, Suche (auch im Code), Import/Export; 12 Beispiele dabei |
 | **Extensions** | fertige Reports und Aktionen mit Parametern, Dry-Run und Excel-Report (Liste unten) |
-| **Apps** | MSI, EXE und Store-Apps an mehrere Tenants verteilen: Setup hineinziehen, Testinstallation in der Windows Sandbox ermittelt Erkennung und Deinstallation, Abhängigkeiten, Status je Gerät; vorhandene Intune-Apps tenantübergreifend verwalten |
+| **Apps** | MSI, EXE und Store-Apps an mehrere Tenants verteilen: Setup hineinziehen, Testinstallation in der Windows Sandbox ermittelt Erkennung und Deinstallation, Abhängigkeiten, Status je Gerät; vorhandene Intune-Apps tenantübergreifend verwalten; neue Versionen über winget erkennen und holen |
 | **Wartung** | Intune Remediations mit KI erstellen, automatisch prüfen, in der Windows Sandbox wie Intune (als SYSTEM) testen, Werte als Eingabefelder, mit Zeitplan verteilen, Ergebnisse je Gerät; vorhandene Skripte verwalten und in andere Tenants kopieren |
 | **Analyse** | Was bekommt eine Gruppe, ein Gerät oder ein Benutzer? Alle Apps, Profile, Richtlinien und Skripte über alle Tenants – inkl. verschachtelter Gruppen und Ausschlüsse, mit Export |
 | **Secrets** | DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf |

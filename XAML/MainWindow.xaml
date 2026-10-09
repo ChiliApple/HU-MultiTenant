@@ -385,8 +385,10 @@
                             <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="0,0,0,8">
                                 <Button x:Name="btnAppModeLib" Content="Bibliothek" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="0,0,2,0"
                                         ToolTip="Eigene Apps: Setup-Dateien und Store-Apps, die HU-MultiTenant paketiert und hochlaedt"/>
-                                <Button x:Name="btnAppModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                <Button x:Name="btnAppModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,2,0"
                                         ToolTip="Alle Windows-Apps, die schon in Intune liegen: Zuweisungen, Eigenschaften, Abhaengigkeiten, Status, Loeschen"/>
+                                <Button x:Name="btnAppModeUpd" Content="Updates" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                        ToolTip="Neue Versionen der Bibliotheks-Apps ueber winget finden, herunterladen, testen und per Pilot verteilen"/>
                             </UniformGrid>
                             <Grid>
                             <DockPanel x:Name="pnlAppLibLeft">
@@ -438,6 +440,14 @@
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
                                 </ListBox>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlAppUpdLeft" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Top" Text="App-Updates (winget)" Style="{StaticResource SectionTitle}"/>
+                                <Button x:Name="btnUpdCheck" DockPanel.Dock="Top" Content="&#x21BB; Nach Updates suchen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,0,6"/>
+                                <CheckBox x:Name="chkUpdOnlyNew" DockPanel.Dock="Top" Content="Nur Apps mit Update" Style="{StaticResource DarkCheckBox}" FontSize="11" Margin="0,0,0,6"/>
+                                <TextBlock DockPanel.Dock="Top" x:Name="lblUpdState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
+                                           Text="Vergleicht die Setup-Apps der Bibliothek mit dem winget-Repository. Ablauf: neue Version holen (wird als neue Version der App uebernommen) &#x2192; in der Bibliothek Testinstallation in der Sandbox &#x2192; Hochladen mit Pilotgruppe &#x2192; spaeter freigeben. Store-Apps aktualisiert der Store selbst."/>
                             </DockPanel>
                             </Grid>
                             </DockPanel>
@@ -788,6 +798,24 @@
                                     </StackPanel>
                                 </ScrollViewer>
                             </Border>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlAppUpdRight" Visibility="Collapsed">
+                                <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                    <Button x:Name="btnUpdGet" Content="&#x2B07; Neue Version holen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                            ToolTip="Installer per winget herunterladen und als neue Version der Bibliotheks-App uebernehmen (noch nicht hochladen)"/>
+                                    <Button x:Name="btnUpdSetId" Content="winget-ID zuordnen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                    <Button x:Name="btnUpdOpen" Content="In Bibliothek oeffnen" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                </WrapPanel>
+                                <DataGrid x:Name="gridUpd" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" CanUserSortColumns="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="App" Binding="{Binding App}" Width="2*"/>
+                                        <DataGridTextColumn Header="Bibliothek" Binding="{Binding Version}" Width="90"/>
+                                        <DataGridTextColumn Header="Neueste" Binding="{Binding Latest}" Width="90"/>
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="2*"/>
+                                        <DataGridTextColumn Header="In Intune" Binding="{Binding Intune}" Width="2*"/>
+                                        <DataGridTextColumn Header="winget-ID" Binding="{Binding WingetId}" Width="*"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
                             </DockPanel>
                             </Grid>
 

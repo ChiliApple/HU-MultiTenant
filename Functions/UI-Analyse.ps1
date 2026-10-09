@@ -69,7 +69,7 @@ function Update-HUAnaHint {
     } elseif ($script:AnaLabel) {
         $ex = @($script:AnaRows | Where-Object { "$($_.Status)" -like 'ausgeschlossen*' }).Count
         $vis = @(Get-HUAnaVisibleRows).Count
-        $c['lblAnaHint'].Text = "$($script:AnaLabel): $n Eintrag/Eintraege$(if ($vis -ne $n) { ", $vis angezeigt" })$(if ($ex) { " (davon $ex ausgeschlossen)" }). Nur lesend - Filter (Spalte Filter) werden angezeigt, aber nicht ausgewertet."
+        $c['lblAnaHint'].Text = "$($script:AnaLabel): $n Eintrag/Eintraege$(if ($ex) { " ($ex ausgeschlossen)" })$(if ($vis -ne $n) { ", $vis angezeigt" }). Nur lesend - Filter (Spalte Filter) werden angezeigt, aber nicht ausgewertet."
     } else {
         $c['lblAnaHint'].Text = 'Gruppe, Geraet oder Benutzer eingeben und Anzeigen klicken. Beruecksichtigt verschachtelte Gruppen, Alle Geraete / Alle Benutzer und Ausschluesse.'
     }

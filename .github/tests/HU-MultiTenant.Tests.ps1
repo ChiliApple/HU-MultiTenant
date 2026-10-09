@@ -677,3 +677,35 @@ Describe 'Wartung: vorhandene Skripte lesen' {
         ConvertTo-HUInstallStateText 'Installed' | Should -Be 'Installiert'
     }
 }
+
+Describe 'App-Updates: winget' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Winget.psm1') -Force -DisableNameChecking }
+    It 'Versionen vergleichen' {
+        Compare-HUVersion '24.08' '24.09' | Should -Be -1
+        Compare-HUVersion '1.10' '1.9' | Should -Be 1
+        Compare-HUVersion 'v3.0' '3.0.0.0' | Should -Be 0
+        Compare-HUVersion '131.0.6778.86' '131.0.6778.109' | Should -Be -1
+        Compare-HUVersion '2.0' '2.0-beta' | Should -Not -Be 0
+    }
+    It 'Suchtabelle zerlegen (deutsche Kopfzeile, Fortschritt davor)' {
+        $lines = @(
+            '   - ',
+            'Name                ID                 Version   Übereinstimmung  Quelle',
+            '-------------------------------------------------------------------------',
+            '7-Zip               7zip.7zip          24.09                      winget',
+            '7-Zip ZS            mcmilk.7zip-zstd   24.09.0.0 Tag: 7zip        winget'
+        )
+        $r = @(ConvertFrom-HUWingetTable $lines)
+        $r.Count | Should -Be 2
+        $r[0].Id | Should -Be '7zip.7zip'
+        $r[0].Version | Should -Be '24.09'
+        $r[1].Id | Should -Be 'mcmilk.7zip-zstd'
+    }
+    It 'neueste Version aus winget show (ohne Modul)' {
+        InModuleScope HU.Winget {
+            Mock Test-HUWingetModule { $false }
+            Mock Invoke-HUWinget { @('Gefunden 7-Zip [7zip.7zip]', 'Version: 24.09', 'Herausgeber: Igor Pavlov') }
+            Get-HUWingetLatest '7zip.7zip' | Should -Be '24.09'
+        }
+    }
+}

@@ -34,13 +34,20 @@ function Set-HUAppMode([string]$Mode) {
     $c = $script:Controls
     $script:AppMode = $Mode
     $int = ($Mode -eq 'int')
-    $c['pnlAppLibLeft'].Visibility = $(if ($int) { 'Collapsed' } else { 'Visible' })
-    $c['pnlAppLibRight'].Visibility = $c['pnlAppLibLeft'].Visibility
-    $c['pnlAppIntLeft'].Visibility = $(if ($int) { 'Visible' } else { 'Collapsed' })
-    $c['pnlAppIntRight'].Visibility = $c['pnlAppIntLeft'].Visibility
-    $c['btnAppModeLib'].Background = Get-HUBrush $(if ($int) { '#3E3E42' } else { '#1976D2' })
+    $upd = ($Mode -eq 'upd')
+    $lib = (-not $int -and -not $upd)
+    $vis = { param($b) if ($b) { 'Visible' } else { 'Collapsed' } }
+    $c['pnlAppLibLeft'].Visibility = & $vis $lib
+    $c['pnlAppLibRight'].Visibility = & $vis $lib
+    $c['pnlAppIntLeft'].Visibility = & $vis $int
+    $c['pnlAppIntRight'].Visibility = & $vis $int
+    $c['pnlAppUpdLeft'].Visibility = & $vis $upd
+    $c['pnlAppUpdRight'].Visibility = & $vis $upd
+    $c['btnAppModeLib'].Background = Get-HUBrush $(if ($lib) { '#1976D2' } else { '#3E3E42' })
     $c['btnAppModeInt'].Background = Get-HUBrush $(if ($int) { '#1976D2' } else { '#3E3E42' })
+    $c['btnAppModeUpd'].Background = Get-HUBrush $(if ($upd) { '#1976D2' } else { '#3E3E42' })
     Set-HUStateValue 'appMode' $Mode
+    if ($upd) { Update-HUUpdList }
     if ($int) {
         if (-not $c['spIntTenants'].Children.Count) { Update-HUIntTenantChecks }
         Start-HUIntLoad
@@ -586,6 +593,7 @@ function Register-HUIntAppHandlers {
     $c = $script:Controls
     $c['btnAppModeLib'].Add_Click({ Set-HUAppMode 'lib' })
     $c['btnAppModeInt'].Add_Click({ Save-HUAppForm; Save-HUAppLib; Set-HUAppMode 'int' })
+    $c['btnAppModeUpd'].Add_Click({ Save-HUAppForm; Save-HUAppLib; Set-HUAppMode 'upd' })
     $c['btnIntLoad'].Add_Click({ Start-HUIntLoad -Force })
     $c['txtIntFilter'].Add_TextChanged({ Update-HUIntList })
     $c['cmbIntType'].Add_SelectionChanged({ if ($script:AppMode -eq 'int') { Update-HUIntList } })

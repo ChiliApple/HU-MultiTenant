@@ -78,7 +78,7 @@ function ConvertTo-HUApp($Src = $null) {
         Detection = (New-HUAppDetection); StoreId = ''
         TargetKind = 'group'; TargetGroup = ''; Intent = 'required'; Pilot = $false; PilotGroup = ''; Deadline = ''; Notify = 'showAll'
         Tenants = @(); Deployments = @(); SandboxNote = ''; Created = (Get-Date -Format 'yyyy-MM-dd HH:mm'); Modified = ''
-        Dependencies = @(); IntuneDeps = @(); DepAuto = $true; DepsManaged = $false; NoDesktop = $false; Categories = @()
+        Dependencies = @(); IntuneDeps = @(); DepAuto = $true; DepsManaged = $false; NoDesktop = $false; Categories = @(); WingetId = ''
     }
     if ($Src) {
         foreach ($p in $a.PSObject.Properties.Name) { if ($Src.PSObject.Properties[$p] -and $null -ne $Src.$p) { $a.$p = $Src.$p } }

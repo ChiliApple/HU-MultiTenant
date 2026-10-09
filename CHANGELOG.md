@@ -6,6 +6,7 @@
 - **Wartung: Duplizieren** per Rechtsklick in der linken Liste - Bibliothek: lokale Kopie; In Intune: Kopie mit neuem Namen in denselben Tenants, ohne Zuweisungen
 - **Apps: Kategorien** fuer das Unternehmensportal (mit Komma getrennt oder "Auswahl ..." aus den angehakten Tenants); Kategorien in der Auswahl anlegen und loeschen (mit Rueckfrage); fehlende werden beim Hochladen je Tenant gemeldet; auch unter Apps > In Intune (Eigenschaften), mit Anzeige abweichender Kategorien je Tenant
 - **Neuer Reiter Analyse: "Was bekommt ...?"** - alle Apps, Profile, Richtlinien, Wartungs- und Plattformskripte, Feature-Updates und Autopilot-Profile, die eine Gruppe, ein Geraet oder ein Benutzer in den angehakten Tenants bekommt (Benutzer auch ohne Domain, inkl. seiner Intune-Geraete; verschachtelte Gruppen, Alle Geraete/Benutzer und Ausschluessen); Anzeigefilter (Text, Art) und Alle Geraete/Benutzer ausblendbar; Tabelle und Export
+- **Apps: Updates** (neben Bibliothek / In Intune) - prueft die Setup-Apps der Bibliothek gegen winget (winget-ID wird bei eindeutigem Namen automatisch zugeordnet, sonst per Suche), zeigt Bibliothek, neueste Version und Stand in Intune je Tenant; "Neue Version holen" laedt den Installer per winget und uebernimmt ihn als neue Version der App (eigene Installationsschalter bleiben) - danach wie gewohnt Testinstallation in der Sandbox und Hochladen mit Pilotgruppe
 
 ## v2.1.5 (2026-10-09)
 
