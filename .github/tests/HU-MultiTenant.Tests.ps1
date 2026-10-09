@@ -797,3 +797,12 @@ Describe 'Analyse: IDs je Tenant aufloesen' {
         }
     }
 }
+
+Describe 'Analyse: Listen im Vergleich' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'zeigt gemeinsame Anzahl und je Tenant nur das Zusaetzliche' {
+        $d = @(Get-HUCompareDiff @{ a = @{ r = 'A, B, C' }; b = @{ r = 'A, B, D, E' } } @('a', 'b'))
+        $d[0].T0 | Should -Be '(gleich: 2) + C'
+        $d[0].T1 | Should -Be '(gleich: 2) + D, E'
+    }
+}

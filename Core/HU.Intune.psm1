@@ -2342,6 +2342,17 @@ function Get-HUCompareDiff([hashtable]$Maps, [string[]]$Keys) {
     foreach ($p in $paths) {
         $vals = @($Keys | ForEach-Object { if ($Maps[$_] -and $Maps[$_].ContainsKey($p)) { "$($Maps[$_][$p])" } else { '(nicht gesetzt)' } })
         if (@($vals | Select-Object -Unique).Count -le 1) { continue }
+        # Listen: gemeinsame Eintraege zusammenfassen, je Tenant nur das Zusaetzliche zeigen
+        $lists = @($vals | ForEach-Object { ,@("$_" -split ', ' | Where-Object { $_ -and $_ -notin '(nicht gesetzt)', '(leer)' }) })
+        if (@($vals | Where-Object { "$_" -match ', ' }).Count) {
+            $common = @($lists[0] | Where-Object { $e = $_; @($lists | Where-Object { $_ -notcontains $e }).Count -eq 0 })
+            if ($common.Count) {
+                $vals = @(for ($i = 0; $i -lt $lists.Count; $i++) {
+                        $extra = @($lists[$i] | Where-Object { $common -notcontains $_ })
+                        "(gleich: $($common.Count))$(if ($extra.Count) { ' + ' + ($extra -join ', ') } else { '' })"
+                    })
+            }
+        }
         $o = [ordered]@{ Einstellung = ($p -replace '^device_vendor_msft_policy_config_', '' -replace '\[device_vendor_msft_policy_config_', '[') }
         for ($i = 0; $i -lt $Keys.Count; $i++) { $o["T$i"] = $vals[$i] }
         [pscustomobject]$o
@@ -2357,10 +2368,18 @@ function Resolve-HUFlatMapIds {
     if (-not $ids.Count) { return $Map }
     $names = @{}
     try { foreach ($l in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/identity/conditionalAccess/namedLocations?$select=id,displayName' -V1)) { $names["$($l.id)".ToLowerInvariant()] = "$($l.displayName) (Ort)" } } catch { }
+    # Rollen (Vorlagen-IDs, in allen Tenants gleich) - je nach Berechtigung ueber eine der beiden Listen
+    try { foreach ($r in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/roleManagement/directory/roleDefinitions?$select=id,templateId,displayName' -V1)) { foreach ($x in @($r.id, $r.templateId)) { if ($x -and -not $names.ContainsKey("$x".ToLowerInvariant())) { $names["$x".ToLowerInvariant()] = "$($r.displayName) (Rolle)" } } } } catch {
+        try { foreach ($r in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/directoryRoleTemplates?$select=id,displayName' -V1)) { if (-not $names.ContainsKey("$($r.id)".ToLowerInvariant())) { $names["$($r.id)".ToLowerInvariant()] = "$($r.displayName) (Rolle)" } } } catch { }
+    }
     foreach ($id in @($ids | Select-Object -First $Max)) {
         if ($names.ContainsKey($id)) { continue }
         foreach ($t in @(@{ P = 'groups'; S = 'displayName'; L = 'Gruppe' }, @{ P = 'users'; S = 'userPrincipalName'; L = 'Benutzer' }, @{ P = 'servicePrincipals'; S = 'displayName'; L = 'App' })) {
             try { $o = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/$($t.P)/$id`?`$select=$($t.S)" -V1 -NoRetry; if ($o) { $names[$id] = "$($o.($t.S)) ($($t.L))"; break } } catch { }
+        }
+        # Cloud-Apps in Conditional Access: Anwendungs-ID (appId), nicht Objekt-ID
+        if (-not $names.ContainsKey($id)) {
+            try { $o = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/servicePrincipals(appId='$id')?`$select=displayName" -V1 -NoRetry; if ($o -and $o.displayName) { $names[$id] = "$($o.displayName) (App)" } } catch { }
         }
     }
     foreach ($k in @($Map.Keys)) {
