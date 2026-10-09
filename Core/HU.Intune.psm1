@@ -1996,6 +1996,128 @@ function Start-HURemSandboxTest {
     return (Join-Path $WorkFolder 'Ergebnis.json')
 }
 
+# ============================================================================
+# Analyse: Was bekommt eine Gruppe / ein Geraet / ein Benutzer? (je Tenant)
+# ============================================================================
+# Objektarten mit Zuweisungen (beta, $expand=assignments). Name = Eigenschaft fuer den Anzeigenamen.
+function Get-HUAssignmentSources {
+    return @(
+        @{ Typ = 'App'; Ep = '/deviceAppManagement/mobileApps?$expand=assignments'; Name = 'displayName' }
+        @{ Typ = 'Konfiguration'; Ep = '/deviceManagement/deviceConfigurations?$expand=assignments'; Name = 'displayName' }
+        @{ Typ = 'Einstellungskatalog'; Ep = '/deviceManagement/configurationPolicies?$expand=assignments'; Name = 'name' }
+        @{ Typ = 'Administrative Vorlage'; Ep = '/deviceManagement/groupPolicyConfigurations?$expand=assignments'; Name = 'displayName' }
+        @{ Typ = 'Compliance'; Ep = '/deviceManagement/deviceCompliancePolicies?$expand=assignments'; Name = 'displayName' }
+        @{ Typ = 'Wartung'; Ep = '/deviceManagement/deviceHealthScripts?$expand=assignments'; Name = 'displayName' }
+        @{ Typ = 'Plattform-Skript'; Ep = '/deviceManagement/deviceManagementScripts?$expand=assignments'; Name = 'displayName' }
+        @{ Typ = 'Feature-Update'; Ep = '/deviceManagement/windowsFeatureUpdateProfiles?$expand=assignments'; Name = 'displayName' }
+        @{ Typ = 'Autopilot-Profil'; Ep = '/deviceManagement/windowsAutopilotDeploymentProfiles?$expand=assignments'; Name = 'displayName' }
+    )
+}
+
+# Ziel aufloesen: Gruppen (inkl. uebergeordneter), und ob "Alle Geraete"/"Alle Benutzer" greifen.
+# Kind: group | device | user. Rueckgabe: @{ Label; Groups = @{ id -> Name (Herkunft) }; AllDevices; AllUsers; Note }
+function Resolve-HUAssignmentTarget {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [ValidateSet('group', 'device', 'user')][string]$Kind, [Parameter(Mandatory)][string]$Name)
+    $esc = { param($s) [uri]::EscapeDataString("$s".Replace("'", "''")) }
+    $t = @{ Label = $Name; Groups = @{}; AllDevices = $false; AllUsers = $false; Note = '' }
+    $addParents = {
+        param($Path, $From)
+        foreach ($g in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$Path/transitiveMemberOf/microsoft.graph.group?`$select=id,displayName" -V1)) {
+            if (-not $t.Groups.ContainsKey("$($g.id)")) { $t.Groups["$($g.id)"] = "$($g.displayName) ($From)" }
+        }
+    }
+    switch ($Kind) {
+        'group' {
+            $g = @((Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/groups?`$filter=displayName eq '$(& $esc $Name)'&`$select=id,displayName" -V1).value)
+            if (-not $g.Count) { return $null }
+            $t.Groups["$($g[0].id)"] = "$($g[0].displayName)"
+            & $addParents "/groups/$($g[0].id)" "ueber $($g[0].displayName)"
+            $t.AllDevices = $true; $t.AllUsers = $true
+            $t.Note = 'Alle Geraete/Alle Benutzer gelten fuer die Mitglieder der Gruppe (je nachdem, ob Geraete oder Benutzer drin sind).'
+        }
+        'user' {
+            $u = $null
+            try { $u = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/users/$([uri]::EscapeDataString($Name))?`$select=id,displayName,userPrincipalName" -V1 } catch { }
+            if (-not $u) { $r = @((Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/users?`$filter=displayName eq '$(& $esc $Name)'&`$select=id,displayName,userPrincipalName" -V1).value); $u = $r | Select-Object -First 1 }
+            if (-not $u) { return $null }
+            $t.Label = "$($u.userPrincipalName)"
+            & $addParents "/users/$($u.id)" 'Benutzer'
+            $t.AllUsers = $true
+        }
+        'device' {
+            $md = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/managedDevices?`$filter=deviceName eq '$(& $esc $Name)'&`$select=id,deviceName,azureADDeviceId,userPrincipalName,userId")
+            $aad = ''; $uid = ''
+            if ($md.Count) { $aad = "$($md[0].azureADDeviceId)"; $uid = "$($md[0].userId)"; $t.Label = "$($md[0].deviceName)$(if ($md[0].userPrincipalName) { " / $($md[0].userPrincipalName)" })" }
+            $dev = $null
+            if ($aad -and $aad -ne '00000000-0000-0000-0000-000000000000') { $dev = @((Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/devices?`$filter=deviceId eq '$aad'&`$select=id" -V1).value) | Select-Object -First 1 }
+            if (-not $dev) { $dev = @((Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/devices?`$filter=displayName eq '$(& $esc $Name)'&`$select=id" -V1).value) | Select-Object -First 1 }
+            if (-not $md.Count -and -not $dev) { return $null }
+            if ($dev) { & $addParents "/devices/$($dev.id)" 'Geraet' }
+            $t.AllDevices = $true
+            if ($uid) { & $addParents "/users/$uid" 'Hauptbenutzer'; $t.AllUsers = $true }
+            if ($md.Count -gt 1) { $t.Note = "Geraetename gibt es $($md.Count)-mal - verwendet wird der erste Eintrag." }
+        }
+    }
+    return $t
+}
+
+# Zuweisungen eines Objekts gegen das Ziel pruefen -> $null oder @{ Via; Excluded; Intent; Filter }
+function Test-HUAssignmentMatch($Assignments, $Target) {
+    $via = @(); $excl = @(); $intent = @(); $filter = $false
+    foreach ($a in @($Assignments)) {
+        if (-not $a -or -not $a.target) { continue }
+        $tt = "$($a.target.'@odata.type')"
+        $gid = "$($a.target.groupId)"
+        $hit = $null
+        switch -Wildcard ($tt) {
+            '*exclusionGroupAssignmentTarget' { if ($Target.Groups.ContainsKey($gid)) { $excl += $Target.Groups[$gid] }; continue }
+            '*groupAssignmentTarget' { if ($Target.Groups.ContainsKey($gid)) { $hit = $Target.Groups[$gid] } }
+            '*allDevicesAssignmentTarget' { if ($Target.AllDevices) { $hit = 'Alle Geraete' } }
+            '*allLicensedUsersAssignmentTarget' { if ($Target.AllUsers) { $hit = 'Alle Benutzer' } }
+        }
+        if ($hit) {
+            $via += $hit
+            if ($a.PSObject.Properties['intent'] -and "$($a.intent)") { $intent += "$($a.intent)" }
+            if ("$($a.target.deviceAndAppManagementAssignmentFilterId)" -and "$($a.target.deviceAndAppManagementAssignmentFilterId)" -ne '00000000-0000-0000-0000-000000000000') { $filter = $true }
+        }
+    }
+    if (-not $via.Count -and -not $excl.Count) { return $null }
+    return @{ Via = @($via | Select-Object -Unique); Excluded = @($excl | Select-Object -Unique); Intent = @($intent | Select-Object -Unique); Filter = $filter }
+}
+
+function ConvertTo-HUIntentText([string]$Intent) {
+    switch ($Intent) { 'required' { 'Erforderlich' } 'available' { 'Verfuegbar' } 'availableWithoutEnrollment' { 'Verfuegbar (ohne Registrierung)' } 'uninstall' { 'Deinstallieren' } default { $Intent } }
+}
+
+# Bericht je Tenant: Zeilen @{ Tenant; Typ; Name; Absicht; Ueber; Status; Filter }
+function Get-HUAssignmentReport {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [ValidateSet('group', 'device', 'user')][string]$Kind, [Parameter(Mandatory)][string]$Name)
+    $t = Resolve-HUAssignmentTarget -TenantKey $TenantKey -Settings $Settings -Kind $Kind -Name $Name
+    if (-not $t) { Write-HULog -Message "'$Name' nicht gefunden" -Level 'WARN' -Tenant $TenantKey; return }
+    Write-HULog -Message "$($t.Label): $($t.Groups.Count) Gruppe(n) beruecksichtigt" -Level 'INFO' -Tenant $TenantKey
+    if ($t.Note) { Write-HULog -Message $t.Note -Level 'INFO' -Tenant $TenantKey }
+    foreach ($src in Get-HUAssignmentSources) {
+        $items = $null
+        try { $items = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint $src.Ep) }
+        catch { Write-HULog -Message "$($src.Typ): nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey; continue }
+        foreach ($o in $items) {
+            $m = Test-HUAssignmentMatch $o.assignments $t
+            if (-not $m) { continue }
+            [pscustomobject]@{
+                Tenant  = $TenantKey
+                Typ     = $src.Typ
+                Name    = "$($o.($src.Name))"
+                Absicht = (@($m.Intent | ForEach-Object { ConvertTo-HUIntentText $_ }) -join ', ')
+                Ueber   = (@($m.Via) -join ', ')
+                Status  = $(if ($m.Excluded.Count) { "ausgeschlossen ($(@($m.Excluded) -join ', '))" } else { 'zugewiesen' })
+                Filter  = $(if ($m.Filter) { 'ja' } else { '' })
+            }
+        }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups', 'ConvertTo-HUW32Row', 'Get-HUTenantWin32Apps', 'Find-HUWin32AppByName',
     'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo',
@@ -2008,7 +2130,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

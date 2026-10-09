@@ -52,6 +52,7 @@ function Open-HUSettings([string]$Tab = '', [string]$TenantKey = '') {
         # Tenant-Haken in Apps/Wartung neu aufbauen (Auswahl der offenen Eintraege bleibt)
         Save-HUAppForm; Update-HUAppTenantChecks; Show-HUAppForm $script:AppCurrent; Update-HUIntTenantChecks
         Save-HURemForm; Update-HURemTenantChecks; Show-HURemForm $script:RemCurrent
+        Update-HUAnaTenantChecks
     }
 }
 

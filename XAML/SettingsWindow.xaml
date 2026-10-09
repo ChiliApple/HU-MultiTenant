@@ -63,6 +63,7 @@
                                 <ComboBoxItem Content="Extensions" Tag="Extensions"/>
                                 <ComboBoxItem Content="Apps" Tag="Apps"/>
                                 <ComboBoxItem Content="Wartung" Tag="Wartung"/>
+                                <ComboBoxItem Content="Analyse" Tag="Analyse"/>
                                 <ComboBoxItem Content="Zuletzt verwendeter Reiter" Tag="Last"/>
                             </ComboBox>
                             <TextBlock Grid.Row="1" Text="Oberfl&#xE4;chengr&#xF6;&#xDF;e" Style="{StaticResource FieldLabel}"/>

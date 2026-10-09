@@ -1104,6 +1104,52 @@
                         </Grid>
                     </Grid>
                 </TabItem>
+                <TabItem Header="&#x1F50D; Analyse" x:Name="tabAnalyse" Style="{StaticResource DarkTabItem}">
+                    <DockPanel Margin="0,8,0,0">
+                        <Border DockPanel.Dock="Top" Background="#252526" CornerRadius="4" Padding="10" Margin="0,0,0,6">
+                            <StackPanel>
+                                <UniformGrid Rows="1" HorizontalAlignment="Left" Margin="0,0,0,8">
+                                    <Button x:Name="btnAnaModeAsg" Content="Was bekommt ...?" Style="{StaticResource ToolButton}" FontSize="11" Padding="10,3" Margin="0,0,2,0"
+                                            ToolTip="Alle Apps, Profile, Richtlinien und Skripte, die eine Gruppe, ein Geraet oder ein Benutzer bekommt"/>
+                                    <Button x:Name="btnAnaModeCmp" Content="Tenant-Vergleich" Style="{StaticResource ToolButton}" FontSize="11" Padding="10,3" Margin="2,0,0,0"
+                                            ToolTip="Profile, Richtlinien, Apps und Wartung der Tenants nebeneinander"/>
+                                </UniformGrid>
+                                <WrapPanel x:Name="spAnaTenants" Margin="0,0,0,6"/>
+                                <StackPanel x:Name="pnlAnaAsg">
+                                    <DockPanel>
+                                        <ComboBox x:Name="cmbAnaKind" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="110" Margin="0,0,6,0">
+                                            <ComboBoxItem Content="Gruppe" Tag="group" IsSelected="True"/>
+                                            <ComboBoxItem Content="Geraet" Tag="device"/>
+                                            <ComboBoxItem Content="Benutzer" Tag="user"/>
+                                        </ComboBox>
+                                        <Button x:Name="btnAnaTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                        <Button x:Name="btnAnaRun" DockPanel.Dock="Right" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0" IsDefault="False"/>
+                                        <Button x:Name="btnAnaPick" DockPanel.Dock="Right" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="6,0,0,0" ToolTip="Gruppe aus den angehakten Tenants suchen"/>
+                                        <TextBox x:Name="txtAnaName" Style="{StaticResource DarkTextBox}" FontSize="12"
+                                                 ToolTip="Gruppenname, Geraetename (wie in Intune) oder Benutzer (UPN bzw. Anzeigename)"/>
+                                    </DockPanel>
+                                </StackPanel>
+                                <TextBlock x:Name="lblAnaHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <RichTextBox x:Name="rtbAna" DockPanel.Dock="Bottom" Height="120" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
+                                     VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6" Margin="0,6,0,0">
+                            <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
+                        </RichTextBox>
+                        <DataGrid x:Name="gridAna" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
+                                  CanUserSortColumns="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Tenant" Binding="{Binding Tenant}" Width="120"/>
+                                <DataGridTextColumn Header="Typ" Binding="{Binding Typ}" Width="150"/>
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*"/>
+                                <DataGridTextColumn Header="Absicht" Binding="{Binding Absicht}" Width="110"/>
+                                <DataGridTextColumn Header="Ueber" Binding="{Binding Ueber}" Width="2*"/>
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
+                                <DataGridTextColumn Header="Filter" Binding="{Binding Filter}" Width="50"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </TabItem>
             </TabControl>
         </Grid>
     </DockPanel>

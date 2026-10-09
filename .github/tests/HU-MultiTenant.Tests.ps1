@@ -237,6 +237,36 @@ Describe 'Apps: Kategorien (Set-HUAppCategories)' {
     }
 }
 
+Describe 'Analyse: Zuweisungen' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'Gruppe, verschachtelt, Alle Geraete, Ausschluss' {
+        $t = @{ Groups = @{ 'g1' = 'Schueler'; 'p1' = 'Alle Schueler (ueber Schueler)' }; AllDevices = $true; AllUsers = $false }
+        $a = @([pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'p1' } })
+        $m = Test-HUAssignmentMatch $a $t
+        $m.Via | Should -Be @('Alle Schueler (ueber Schueler)'); $m.Intent | Should -Be @('required'); $m.Excluded.Count | Should -Be 0
+        $m2 = Test-HUAssignmentMatch @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allDevicesAssignmentTarget' } }, [pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.exclusionGroupAssignmentTarget'; groupId = 'g1' } }) $t
+        $m2.Via | Should -Be @('Alle Geraete'); $m2.Excluded | Should -Be @('Schueler')
+        Test-HUAssignmentMatch @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allLicensedUsersAssignmentTarget' } }) $t | Should -BeNullOrEmpty
+        Test-HUAssignmentMatch @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'zz' } }) $t | Should -BeNullOrEmpty
+    }
+    It 'Bericht: Zeilen je Objektart, Fehler einer Art bricht nicht ab' {
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+        InModuleScope HU.Intune {
+            Mock Resolve-HUAssignmentTarget { @{ Label = 'Schueler'; Groups = @{ 'g1' = 'Schueler' }; AllDevices = $true; AllUsers = $true; Note = '' } }
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '/deviceAppManagement/mobileApps*') { return @([pscustomobject]@{ displayName = '7-Zip'; assignments = @([pscustomobject]@{ intent = 'required'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'g1' } }) }) }
+                if ($Endpoint -like '*configurationPolicies*') { return @([pscustomobject]@{ name = 'Edge'; assignments = @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allDevicesAssignmentTarget' } }) }) }
+                if ($Endpoint -like '*deviceHealthScripts*') { throw '403' }
+                return @()
+            }
+            $r = @(Get-HUAssignmentReport -TenantKey 't' -Settings ([pscustomobject]@{}) -Kind group -Name 'Schueler')
+            $r.Count | Should -Be 2
+            ($r | Where-Object Typ -eq 'App').Absicht | Should -Be 'Erforderlich'
+            ($r | Where-Object Typ -eq 'Einstellungskatalog').Ueber | Should -Be 'Alle Geraete'
+        }
+    }
+}
+
 Describe 'Release-Texte' {
     It 'keine @-Erwaehnungen ausserhalb von Code (GitHub macht daraus Benutzer-Erwaehnungen/Contributors)' {
         $bad = @()

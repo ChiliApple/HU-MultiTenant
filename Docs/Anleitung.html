@@ -95,6 +95,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <div class="card p"><b>🧩 Extensions</b>Reports und Aktionen mit Parametern, Dry-Run und Excel-Ausgabe.</div>
     <div class="card b"><b>📦 Apps</b>MSI, EXE und Store-Apps testen und an mehrere Tenants verteilen.</div>
     <div class="card g"><b>🛠 Wartung</b>Remediations mit KI erstellen, verteilen und auswerten.</div>
+    <div class="card p"><b>🔍 Analyse</b>Was bekommt eine Gruppe, ein Gerät oder ein Benutzer – über alle Tenants.</div>
     <div class="card m"><b>🔑 Secrets</b>DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf.</div>
   </div>
   <div class="flow"><span>Einstellungen › Tenants</span><i>→</i><span>Secret eingeben</span><i>→</i><span>Snippet wählen</span><i>→</i><span>Strg + Enter</span></div>
@@ -264,8 +265,21 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <div class="note warn"><b class="h">Lizenz und Berechtigungen</b>Remediations brauchen Windows Enterprise/Education E3/A3 (oder höher) und einmal je Tenant im Intune Admin Center: <i>Mandantenverwaltung › Connectors und Token › Windows-Datenverarbeitung › Windows-Lizenzüberprüfung</i>. Berechtigungen: <code>DeviceManagementScripts.ReadWrite.All</code>, <code>Group.Read.All</code>; für <i>Jetzt auf Gerät</i> zusätzlich <code>DeviceManagementManagedDevices.PrivilegedOperations.All</code>.</div>
 </section>
 
+<section id="analyse">
+  <h2><span class="n">8</span>Analyse</h2>
+  <p>Nur lesend – ändert nichts in Intune. Oben die Tenants anhaken (Standard: alle).</p>
+  <h3 id="ana-asg">Was bekommt …?</h3>
+  <p>Zeigt alles, was eine <b>Gruppe</b>, ein <b>Gerät</b> oder ein <b>Benutzer</b> in den angehakten Tenants bekommt: Apps (mit Absicht erforderlich / verfügbar / deinstallieren), Konfigurationsprofile, Einstellungskatalog, Administrative Vorlagen, Compliance-Richtlinien, Wartungsskripte, Plattformskripte, Feature-Updates und Autopilot-Profile.</p>
+  <ol class="steps">
+    <li>Art wählen, Namen eingeben (Gruppe: 🔍 sucht in den angehakten Tenants; Gerät: Name wie in Intune; Benutzer: UPN oder Anzeigename) → <span class="ui b">▶ Anzeigen</span> oder Enter.</li>
+    <li>Die Tabelle füllt sich je Tenant, sobald er fertig ist. Spalte <i>Über</i>: über welche Gruppe (auch verschachtelt) bzw. <i>Alle Geräte</i> / <i>Alle Benutzer</i>; <i>Status</i> <b>ausgeschlossen</b>, wenn eine Ausschlussgruppe greift.</li>
+    <li><span class="ui">📊 Tabelle / Export</span>: Filter, CSV, Excel.</li>
+  </ol>
+  <div class="note"><b class="h">Grenzen</b>Zuweisungsfilter werden angezeigt (Spalte <i>Filter</i>), aber nicht ausgewertet – ob ein Filter das Gerät ausschließt, steht in Intune beim Gerät. Bei einer Gruppe zählen auch die Gruppen, in denen sie selbst Mitglied ist. Berechtigungen: <code>DeviceManagementConfiguration.Read.All</code>, <code>DeviceManagementApps.Read.All</code>, <code>DeviceManagementManagedDevices.Read.All</code>, <code>Group.Read.All</code>, <code>User.Read.All</code> (bzw. die vorhandenen ReadWrite-Rechte).</div>
+</section>
+
 <section id="secrets">
-  <h2><span class="n">8</span>Secrets und Ablaufdatum</h2>
+  <h2><span class="n">9</span>Secrets und Ablaufdatum</h2>
   <p>Bis wann das Client Secret gültig ist, steht in der Tenant-Leiste (Reiter Extensions) und unter Einstellungen › Tenants. Gewarnt wird ab 30 Tagen (einstellbar) in der Titelleiste – orange, ab 7 Tagen rot.</p>
   <table>
     <tr><th>Quelle</th><th>Wie</th></tr>
@@ -282,7 +296,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="update">
-  <h2><span class="n">9</span>Update</h2>
+  <h2><span class="n">10</span>Update</h2>
   <p>Beim Start wird im Hintergrund nach Updates gesucht; bei einer neuen Version wird <span class="ui">Update</span> gold. Klick: HU-MultiTenant schließt sich, <code>Pull.ps1</code> lädt alle Dateien, prüft jede gegen die SHA-256-Liste und die Signatur des Herausgebers und ersetzt erst dann. Danach startet das Tool neu.</p>
   <table>
     <tr><th>Rechtsklick auf Update</th><th>Wirkung</th></tr>
@@ -294,7 +308,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="dateien">
-  <h2><span class="n">10</span>Dateien</h2>
+  <h2><span class="n">11</span>Dateien</h2>
   <table>
     <tr><th>Pfad</th><th>Inhalt</th></tr>
     <tr><td><code>Config\settings.json</code></td><td>Tenants und Einstellungen (Sicherung <code>.bak</code>)</td></tr>
@@ -315,7 +329,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="tasten">
-  <h2><span class="n">11</span>Tastenkürzel</h2>
+  <h2><span class="n">12</span>Tastenkürzel</h2>
   <table>
     <tr><th>Taste</th><th>Wirkung</th></tr>
     <tr><td><kbd>F1</kbd></td><td>diese Anleitung</td></tr>
