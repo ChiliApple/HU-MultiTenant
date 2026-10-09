@@ -68,14 +68,23 @@ function Update-HUAnaHint {
         $c['lblAnaHint'].Text = "$($script:AnaLabel): $n Eintrag/Eintraege bisher - warte auf $(@($wait | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ') ..."
     } elseif ($script:AnaLabel) {
         $ex = @($script:AnaRows | Where-Object { "$($_.Status)" -like 'ausgeschlossen*' }).Count
-        $c['lblAnaHint'].Text = "$($script:AnaLabel): $n Eintrag/Eintraege$(if ($ex) { " (davon $ex ausgeschlossen)" }). Nur lesend - Filter (Spalte Filter) werden angezeigt, aber nicht ausgewertet."
+        $vis = @(Get-HUAnaVisibleRows).Count
+        $c['lblAnaHint'].Text = "$($script:AnaLabel): $n Eintrag/Eintraege$(if ($vis -ne $n) { ", $vis ueber Gruppen angezeigt" })$(if ($ex) { " (davon $ex ausgeschlossen)" }). Nur lesend - Filter (Spalte Filter) werden angezeigt, aber nicht ausgewertet."
     } else {
         $c['lblAnaHint'].Text = 'Gruppe, Geraet oder Benutzer eingeben und Anzeigen klicken. Beruecksichtigt verschachtelte Gruppen, Alle Geraete / Alle Benutzer und Ausschluesse.'
     }
 }
 
+function Get-HUAnaVisibleRows {
+    $rows = @($script:AnaRows)
+    if (-not $script:Controls['chkAnaAll'].IsChecked) {
+        $rows = @($rows | Where-Object { @("$($_.Ueber)" -split ', ' | Where-Object { $_ -and $_ -notin 'Alle Geraete', 'Alle Benutzer' }).Count })
+    }
+    return @($rows | Sort-Object Typ, Name, Tenant)
+}
+
 function Update-HUAnaGrid {
-    $sorted = @($script:AnaRows | Sort-Object Typ, Name, Tenant)
+    $sorted = @(Get-HUAnaVisibleRows)
     $script:Controls['gridAna'].ItemsSource = $sorted
     Update-HUAnaHint
 }
@@ -128,6 +137,9 @@ function Register-HUAnaHandlers {
     Update-HUAnaTenantChecks
     $kind = "$(Get-HUStateValue 'anaKind' 'group')"
     foreach ($it in @($c['cmbAnaKind'].Items)) { if ("$($it.Tag)" -eq $kind) { $c['cmbAnaKind'].SelectedItem = $it } }
+    $c['chkAnaAll'].IsChecked = [bool](Get-HUStateValue 'anaAll' $true)
+    $c['chkAnaAll'].Add_Checked({ Set-HUStateValue 'anaAll' $true; Update-HUAnaGrid })
+    $c['chkAnaAll'].Add_Unchecked({ Set-HUStateValue 'anaAll' $false; Update-HUAnaGrid })
     $c['btnAnaModeAsg'].Add_Click({ Set-HUAnaMode 'asg' })
     $c['btnAnaModeCmp'].Add_Click({ Set-HUAnaMode 'cmp' })
     $c['btnAnaRun'].Add_Click({ Start-HUAnaRun })
@@ -142,7 +154,7 @@ function Register-HUAnaHandlers {
         })
     $c['btnAnaTable'].Add_Click({
             if (-not $script:AnaRows.Count) { Show-HUMessage 'Noch keine Ergebnisse.' -Icon Info; return }
-            Show-HUQSTable -Title "Zuweisungen: $($script:AnaLabel)" -Objects @($script:AnaRows | Sort-Object Typ, Name, Tenant) -FilePrefix 'Zuweisungen'
+            Show-HUQSTable -Title "Zuweisungen: $($script:AnaLabel)" -Objects @(Get-HUAnaVisibleRows) -FilePrefix 'Zuweisungen'
         })
     Add-HUOutputMenu $c['rtbAna'] { $script:Controls['rtbAna'].Document.Blocks.Clear() }
     Set-HUAnaMode "$(Get-HUStateValue 'anaMode' 'asg')"
