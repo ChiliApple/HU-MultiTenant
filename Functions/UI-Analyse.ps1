@@ -538,7 +538,7 @@ function Register-HUBakHandlers {
             Show-HUQSTable -Title "Backup - $($script:BakInfo)" -Objects $rows -FilePrefix 'Backup-Verlauf'
         })
     # automatisch einmal taeglich (alle Tenants), kurz nach dem Start
-    if ([bool](Get-HUProp $script:Settings.ui 'backupDaily' $false)) {
+    if ([bool](Get-HUProp $script:Settings.ui 'backupDaily' $true)) {
         $last = $null; try { $last = [datetime](Get-HUStateValue 'bakLast' '') } catch { }
         if (-not $last -or ((Get-Date) - $last).TotalHours -ge 20) {
             Invoke-HUDelayed 30 { Start-HUBakNow -Keys @($script:Settings.tenants | ForEach-Object { "$($_.key)" }) -Auto }

@@ -86,7 +86,7 @@ function Show-HUSettingsDialog {
     $c.txtAuthor.Text = "$(Get-HUProp $S.ui 'author' '')"
     $c.txtBackupPath.Text = "$(Get-HUProp $S.ui 'backupPath' '')"
     $c.txtBackupKeep.Text = "$(Get-HUProp $S.ui 'backupKeep' 30)"
-    $c.chkBackupDaily.IsChecked = [bool](Get-HUProp $S.ui 'backupDaily' $false)
+    $c.chkBackupDaily.IsChecked = [bool](Get-HUProp $S.ui 'backupDaily' $true)
     # Quelle fuer App-Updates: Liste erst beim Aufklappen holen (winget braucht etwas)
     $ws = "$(Get-HUProp $S.ui 'wingetSource' 'winget')"; if (-not $ws) { $ws = 'winget' }
     foreach ($n in @('winget', $ws) | Select-Object -Unique) { [void]$c.cmbWingetSource.Items.Add($n) }
