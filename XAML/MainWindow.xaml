@@ -812,8 +812,8 @@
                                         <DataGridTextColumn Header="Bibliothek" Binding="{Binding Version}" Width="90"/>
                                         <DataGridTextColumn Header="Neueste" Binding="{Binding Latest}" Width="90"/>
                                         <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="2*"/>
-                                        <DataGridTextColumn Header="In Intune" Binding="{Binding Intune}" Width="2*"/>
-                                        <DataGridTextColumn Header="winget-ID" Binding="{Binding WingetId}" Width="*"/>
+                                        <DataGridTextColumn Header="winget-ID" Binding="{Binding WingetId}" Width="150"/>
+                                        <DataGridTextColumn Header="In Intune" Binding="{Binding Intune}" Width="3*"/>
                                     </DataGrid.Columns>
                                 </DataGrid>
                             </DockPanel>

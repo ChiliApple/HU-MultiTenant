@@ -97,6 +97,9 @@ function Start-HUUpdCheck {
             Add-HURtbLine $script:Controls['rtbApps'] "winget-ID automatisch zugeordnet (bitte pruefen): $($auto -join '; ')" '#FFB74D'
         }
         Update-HUUpdList
+        $n = @($Result | Where-Object { $_ -and $_.PSObject.Properties['Suggest'] }).Count
+        if (-not $n) { $script:Controls['lblUpdState'].Text = 'Pruefung ohne Ergebnis - Meldung unten in der Ausgabe (winget installiert?).' }
+        else { Add-HURtbLine $script:Controls['rtbApps'] "Updates geprueft: $($script:Controls['lblUpdState'].Text)" '#81C784' }
     }
     if (-not $ok) { $script:Controls['btnUpdCheck'].IsEnabled = $true }
 }
