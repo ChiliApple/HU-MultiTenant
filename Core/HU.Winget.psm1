@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     winget-Anbindung fuer App-Updates: neueste Version ermitteln, Pakete suchen, Installer herunterladen.
@@ -11,8 +11,10 @@
 
 # Versionen vergleichen: -1 (A aelter), 0 (gleich), 1 (A neuer). Ziffernbloecke numerisch, Rest als Text.
 function Compare-HUVersion([string]$A, [string]$B) {
-    $pa = @("$A".Trim() -replace '^[vV]', '' -split '[.\-+_ ]' | Where-Object { $_ -ne '' })
-    $pb = @("$B".Trim() -replace '^[vV]', '' -split '[.\-+_ ]' | Where-Object { $_ -ne '' })
+    # Build-Angaben nach '+' (z. B. 1.3.323+7f37e7) zaehlen nicht (wie bei SemVer)
+    $A = ("$A" -split '\+')[0]; $B = ("$B" -split '\+')[0]
+    $pa = @("$A".Trim() -replace '^[vV]', '' -split '[.\-_ ]' | Where-Object { $_ -ne '' })
+    $pb = @("$B".Trim() -replace '^[vV]', '' -split '[.\-_ ]' | Where-Object { $_ -ne '' })
     $n = [Math]::Max($pa.Count, $pb.Count)
     for ($i = 0; $i -lt $n; $i++) {
         $x = if ($i -lt $pa.Count) { $pa[$i] } else { '0' }

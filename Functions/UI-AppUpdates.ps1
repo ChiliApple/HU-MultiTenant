@@ -71,6 +71,9 @@ function Start-HUUpdCheck {
                     Write-HULog -Message "$($it.Name): $(if ($r.Latest) { "winget $($r.Latest)" } else { "'$($it.WingetId)' nicht gefunden" })" -Level 'INFO'
                 } else {
                     $r.Suggest = @(Find-HUWingetPackage $it.Query 8)
+                    # nichts gefunden (z. B. 'VLC Player' heisst bei winget 'VLC media player') -> erstes Wort
+                    $w1 = ("$($it.Query)" -split '\s+')[0]
+                    if (-not $r.Suggest.Count -and $w1 -and $w1 -ne $it.Query -and $w1.Length -ge 3) { $r.Suggest = @(Find-HUWingetPackage $w1 8) }
                     Write-HULog -Message "$($it.Name): keine winget-ID, $($r.Suggest.Count) Treffer fuer '$($it.Query)'" -Level 'INFO'
                 }
             } catch { $r.Error = $_.Exception.Message; Write-HULog -Message "$($it.Name): $($r.Error)" -Level 'WARN' }

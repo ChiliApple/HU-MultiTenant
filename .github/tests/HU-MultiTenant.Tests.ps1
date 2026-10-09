@@ -709,3 +709,11 @@ Describe 'App-Updates: winget' {
         }
     }
 }
+
+Describe 'App-Updates: Build-Angaben' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Winget.psm1') -Force -DisableNameChecking }
+    It '+Build zaehlt nicht' {
+        Compare-HUVersion '1.3.323+7f37e7a' '1.3.323' | Should -Be 0
+        Compare-HUVersion '1.3.323+7f37e7a' '1.3.324' | Should -Be -1
+    }
+}
