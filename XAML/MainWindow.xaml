@@ -1194,7 +1194,7 @@
                                         <Button x:Name="btnBakCmp" DockPanel.Dock="Left" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,0"/>
                                         <Button x:Name="btnBakTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
                                         <Button x:Name="btnBakRestore" DockPanel.Dock="Right" Content="Wiederherstellen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
-                                                ToolTip="Markierte Eintraege aus dem linken (aelteren) Stand neu anlegen - mit Zusatz im Namen, ohne Zuweisungen"/>
+                                                ToolTip="Markierte Eintraege aus dem aelteren der beiden Staende neu anlegen - mit Zusatz im Namen, ohne Zuweisungen"/>
                                         <CheckBox x:Name="chkBakChanges" DockPanel.Dock="Right" Content="Nur Aenderungen" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                         <TextBox x:Name="txtBakFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Filter: Text in Typ, Name, Aenderung, Geaendert von"/>
                                     </DockPanel>

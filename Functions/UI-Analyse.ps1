@@ -367,7 +367,7 @@ function Update-HUBakHint {
     if (-not $script:BakInfo) { $c['lblAnaHint'].Text = 'Backup jetzt sichert die angehakten Tenants. Danach im Verlauf zwei Staende waehlen und Anzeigen: neu, geloescht, Einstellungen/Zuweisungen geaendert, umbenannt - mit Benutzer aus dem Intune-Protokoll. Doppelklick zeigt die Unterschiede.'; return }
     $all = @($script:BakRows); $vis = @(Get-HUBakVisibleRows).Count
     $chg = @($all | Where-Object { $_.Aenderung -and $_.Aenderung -ne 'gleich' }).Count
-    $c['lblAnaHint'].Text = "$($script:BakInfo): $($all.Count) Eintraege$(if ($script:BakInfo -match '->') { ", $chg geaendert" })$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Wiederherstellen legt den Eintrag aus dem linken Stand neu an (Name mit Zusatz, ohne Zuweisungen; Conditional Access deaktiviert)."
+    $c['lblAnaHint'].Text = "$($script:BakInfo): $($all.Count) Eintraege$(if ($script:BakInfo -match '->') { ", $chg geaendert" })$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Wiederherstellen legt den Eintrag aus dem aelteren Stand ($(if ($script:BakA) { [datetime]::ParseExact((Split-Path $script:BakA -Leaf), 'yyyy-MM-dd_HHmmss', $null).ToString('dd.MM. HH:mm') })) neu an (Name mit Zusatz, ohne Zuweisungen; Conditional Access deaktiviert)."
 }
 
 function Update-HUBakView {
@@ -504,7 +504,7 @@ function Show-HUBakDetail {
 function Start-HUBakRestore {
     $c = $script:Controls
     $sel = @($c['gridBak'].SelectedItems | Where-Object { $_.FileA })
-    if (-not $sel.Count) { Show-HUMessage 'Bitte Eintraege markieren, die es im linken (aelteren) Stand gibt.' -Icon Info; return }
+    if (-not $sel.Count) { Show-HUMessage 'Bitte Eintraege markieren, die es im aelteren Stand gibt (neue Eintraege gibt es dort noch nicht).' -Icon Info; return }
     $k = $script:BakTenant
     $stamp = (Split-Path $script:BakA -Leaf).Substring(0, 10)
     $lines = @($sel | Select-Object -First 15 | ForEach-Object { "  $($_.Typ): $($_.Name)" })
