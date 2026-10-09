@@ -2324,10 +2324,15 @@ function Get-HUCompareObject {
     $q = switch ($Typ) {
         'Einstellungskatalog' { '?$expand=settings' }
         'Compliance' { '?$expand=scheduledActionsForRule($expand=scheduledActionConfigurations)' }
-        'Administrative Vorlage' { '?$expand=definitionValues($expand=definition,presentationValues($expand=presentation))' }
         default { '' }
     }
-    return (Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$Id$q" -V1:($Typ -eq 'Conditional Access'))
+    $o = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$Id$q" -V1:($Typ -eq 'Conditional Access')
+    if ($Typ -eq 'Administrative Vorlage') {
+        # eigener Aufruf: $expand darf hoechstens 2 Ebenen tief sein
+        $dv = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$Id/definitionValues?`$expand=definition,presentationValues(`$expand=presentation)")
+        $o | Add-Member -NotePropertyName 'definitionValues' -NotePropertyValue $dv -Force
+    }
+    return $o
 }
 
 # Objekt zu Pfad -> Wert flach machen. Listenelemente mit settingDefinitionId/definition werden darueber benannt (Reihenfolge egal).
