@@ -204,6 +204,21 @@ Describe 'Snippet-Parameter' {
     }
 }
 
+Describe 'Release-Texte' {
+    It 'keine @-Erwaehnungen ausserhalb von Code (GitHub macht daraus Benutzer-Erwaehnungen/Contributors)' {
+        $bad = @()
+        foreach ($f in 'CHANGELOG.md', 'README.md') {
+            $n = 0
+            foreach ($ln in Get-Content -LiteralPath (Join-Path $script:AppRoot $f) -Encoding UTF8) {
+                $n++
+                $plain = [regex]::Replace($ln, '`[^`]*`', '')
+                if ($plain -match '(?<![\w.])@[A-Za-z0-9][A-Za-z0-9-]*') { $bad += "${f}:$n $($Matches[0])" }
+            }
+        }
+        $bad | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Wartung: @param-Felder' {
     It 'Wert setzen und wieder lesen (Sonderzeichen, Zahl, Ja/Nein)' {
         $code = "# @param Pw|string|Passwort|`n# @param Max|int|Max|3`n# @param On|bool|An|true`nexit 0"
