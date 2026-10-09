@@ -508,14 +508,14 @@ function Get-HUAppBaseName([string]$Name) {
 }
 
 # -Target: als neue Version dieser Bibliotheks-App uebernehmen ("Andere Datei ...")
-function Add-HUAppFromFile([string]$Path, $Target = $null) {
+function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck) {
     if ($Path -notmatch '(?i)\.(msi|exe)$') { Show-HUMessage "Nur .msi- und .exe-Dateien.`n`n$Path" -Icon Warning; return }
     try { $info = Get-HUSetupInfo -Path $Path } catch { Show-HUMessage "Datei nicht lesbar:`n$($_.Exception.Message)" -Icon Error; return }
     Save-HUAppForm
     $a = $null
     if ($Target) {
         $a = $Target
-        if ($info.Name -and (Get-HUAppBaseName $info.Name) -ne (Get-HUAppBaseName $a.Name) -and -not (Confirm-HU "Die Datei meldet sich als '$($info.Name)'.`n`nTrotzdem als neue Version von '$($a.Name)' uebernehmen?")) { return }
+        if (-not $NoNameCheck -and $info.Name -and (Get-HUAppBaseName $info.Name) -ne (Get-HUAppBaseName $a.Name) -and -not (Confirm-HU "Die Datei meldet sich als '$($info.Name)'.`n`nTrotzdem als neue Version von '$($a.Name)' uebernehmen?")) { return }
     } else {
         $existing = $script:AppLib | Where-Object { $_.Type -eq 'win32' -and $info.Name -and $_.Name -eq $info.Name } | Select-Object -First 1
         $sameText = "'$($info.Name)' gibt es schon in der Bibliothek"
@@ -542,6 +542,8 @@ function Add-HUAppFromFile([string]$Path, $Target = $null) {
         $a.TargetGroup = "$(Get-HUStateValue 'appLastGroup' '')"
     }
     $a.Kind = $info.Kind; $a.InstallerType = $info.InstallerType
+    # neue Version: alte Testinstallation gilt nicht mehr
+    if (-not $isNew -and "$($a.Version)" -ne "$($info.Version)") { $a.SandboxNote = '' }
     $a.Version = $info.Version
     $a.SetupPath = (Get-Item -LiteralPath $Path).FullName
     $a.InstallCmd = $info.InstallCmd

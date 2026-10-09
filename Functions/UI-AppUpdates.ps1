@@ -221,7 +221,7 @@ function Start-HUUpdGet {
         $oldLeaf = if ($a.SetupPath) { Split-Path $a.SetupPath -Leaf } else { '' }
         $oldCmd = "$($a.InstallCmd)"
         Set-HUAppMode 'lib'
-        Add-HUAppFromFile $r.__UpdPath -Target $a
+        Add-HUAppFromFile $r.__UpdPath -Target $a -NoNameCheck
         # abgebrochen (z. B. Rueckfrage wegen anderem Namen) -> nichts weiter
         if ("$($a.SetupPath)" -ne (Get-Item -LiteralPath $r.__UpdPath).FullName) { return }
         if ($a.Kind -eq 'exe') {
