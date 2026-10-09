@@ -301,7 +301,7 @@ function Show-HUCmpDetail {
     [void](Start-HUJob -Name 'CmpDetail' -Quiet -Output $script:Controls['rtbAna'] -Vars @{ Items = $items } -Code {
             $maps = @{}
             foreach ($it in $Items) {
-                try { $maps[$it.Tenant] = ConvertTo-HUFlatMap (Get-HUCompareObject -TenantKey $it.Tenant -Settings $Settings -Typ $it.Typ -Id $it.Id) }
+                try { $maps[$it.Tenant] = Resolve-HUFlatMapIds -TenantKey $it.Tenant -Settings $Settings -Map (ConvertTo-HUFlatMap (Get-HUCompareObject -TenantKey $it.Tenant -Settings $Settings -Typ $it.Typ -Id $it.Id)) }
                 catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $it.Tenant }
             }
             [pscustomobject]@{ __Diff = @(Get-HUCompareDiff $maps @($Items | ForEach-Object { $_.Tenant })); Count = $maps.Count }

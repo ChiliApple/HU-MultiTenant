@@ -2163,7 +2163,7 @@ function Get-HUCompareSources {
 $script:HUCmpSkip = @('id', 'createdDateTime', 'lastModifiedDateTime', 'version', 'assignments', 'roleScopeTagIds', 'supportsScopeTags', 'isAssigned',
     'deviceManagementApplicabilityRuleOsEdition', 'deviceManagementApplicabilityRuleOsVersion', 'deviceManagementApplicabilityRuleDeviceMode',
     'settingCount', 'creationSource', 'priorityMetaData', 'isGlobalScript', 'highestAvailableVersion', 'deviceHealthScriptType', 'detectionScriptParameters',
-    'remediationScriptParameters', 'scheduledActionsForRule', 'deployableContentDisplayName', 'endOfSupportDate', 'templateId')
+    'remediationScriptParameters', 'scheduledActionsForRule', 'deployableContentDisplayName', 'endOfSupportDate', 'templateId', 'modifiedDateTime')
 
 function ConvertTo-HUCleanObject($Obj, [string[]]$Skip = $script:HUCmpSkip) {
     if ($null -eq $Obj) { return $null }
@@ -2348,6 +2348,32 @@ function Get-HUCompareDiff([hashtable]$Maps, [string[]]$Keys) {
     }
 }
 
+# GUIDs in den Werten (Gruppen, Benutzer, benannte Orte) durch Namen ersetzen - IDs sind je Tenant verschieden
+function Resolve-HUFlatMapIds {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][hashtable]$Map, [int]$Max = 80)
+    $rx = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+    $ids = @($Map.Keys | Where-Object { $_ -notmatch '(?i)(definitionId|templateId|@odata)' } | ForEach-Object { [regex]::Matches("$($Map[$_])", $rx) | ForEach-Object { $_.Value.ToLowerInvariant() } } | Select-Object -Unique)
+    if (-not $ids.Count) { return $Map }
+    $names = @{}
+    try { foreach ($l in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/identity/conditionalAccess/namedLocations?$select=id,displayName' -V1)) { $names["$($l.id)".ToLowerInvariant()] = "$($l.displayName) (Ort)" } } catch { }
+    foreach ($id in @($ids | Select-Object -First $Max)) {
+        if ($names.ContainsKey($id)) { continue }
+        foreach ($t in @(@{ P = 'groups'; S = 'displayName'; L = 'Gruppe' }, @{ P = 'users'; S = 'userPrincipalName'; L = 'Benutzer' }, @{ P = 'servicePrincipals'; S = 'displayName'; L = 'App' })) {
+            try { $o = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/$($t.P)/$id`?`$select=$($t.S)" -V1 -NoRetry; if ($o) { $names[$id] = "$($o.($t.S)) ($($t.L))"; break } } catch { }
+        }
+    }
+    foreach ($k in @($Map.Keys)) {
+        if ($k -match '(?i)(definitionId|templateId|@odata)') { continue }
+        $v = "$($Map[$k])"
+        if ($v -notmatch $rx) { continue }
+        $Map[$k] = [regex]::Replace($v, $rx, { param($m) $n = $names[$m.Value.ToLowerInvariant()]; if ($n) { $n } else { $m.Value } })
+        # Listen neu sortieren (Namen statt IDs)
+        if ($Map[$k] -match ', ') { $Map[$k] = (@($Map[$k] -split ', ' | Sort-Object) -join ', ') }
+    }
+    return $Map
+}
+
 Export-ModuleMember -Function @(
     'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups', 'ConvertTo-HUW32Row', 'Get-HUTenantWin32Apps', 'Find-HUWin32AppByName',
     'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo',
@@ -2360,7 +2386,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

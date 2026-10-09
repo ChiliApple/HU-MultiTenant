@@ -782,3 +782,18 @@ Describe 'Analyse: Vergleich-Details' {
         $d.Count | Should -Be 2
     }
 }
+
+Describe 'Analyse: IDs je Tenant aufloesen' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'gleiche Gruppe mit verschiedenen IDs ist kein Unterschied' {
+        InModuleScope HU.Intune {
+            Mock Get-HUIntuneGraphAll { @([pscustomobject]@{ id = '11111111-1111-1111-1111-111111111111'; displayName = 'Oesterreich' }) }
+            Mock Invoke-HUIntuneGraph { if ($Endpoint -like '/groups/*') { [pscustomobject]@{ displayName = 'Lehrer' } } else { throw '404' } }
+            $m1 = Resolve-HUFlatMapIds -TenantKey 'a' -Settings ([pscustomobject]@{}) -Map @{ 'conditions.users.includeGroups' = 'aaaaaaaa-0000-0000-0000-000000000001'; 'conditions.locations.excludeLocations' = '11111111-1111-1111-1111-111111111111' }
+            $m2 = Resolve-HUFlatMapIds -TenantKey 'b' -Settings ([pscustomobject]@{}) -Map @{ 'conditions.users.includeGroups' = 'bbbbbbbb-0000-0000-0000-000000000002'; 'conditions.locations.excludeLocations' = '11111111-1111-1111-1111-111111111111' }
+            $m1['conditions.users.includeGroups'] | Should -Be 'Lehrer (Gruppe)'
+            $m1['conditions.locations.excludeLocations'] | Should -Be 'Oesterreich (Ort)'
+            @(Get-HUCompareDiff @{ a = $m1; b = $m2 } @('a', 'b')).Count | Should -Be 0
+        }
+    }
+}
