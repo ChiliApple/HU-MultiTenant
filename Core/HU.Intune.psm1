@@ -783,6 +783,39 @@ function Get-HUInstallPlan($Def, [switch]$Sandbox) {
 }
 
 # Bibliotheks-Eintrag -> Def fuer ConvertTo-HUWin32Payload
+# App-Kategorien (Unternehmensportal) per Name setzen. Fehlende Kategorien werden im Tenant angelegt.
+# Gesetzt wird genau die Liste; leere Liste = nichts aendern. Rueckgabe: Text fuer das Protokoll.
+function Get-HUTenantAppCategories([string]$TenantKey, $Settings) {
+    return @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceAppManagement/mobileAppCategories' | ForEach-Object { [pscustomobject]@{ Id = "$($_.id)"; Name = "$($_.displayName)" } })
+}
+
+function Set-HUAppCategories {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId, [string[]]$Names = @())
+    $want = @($Names | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -Unique)
+    if (-not $want.Count) { return '' }
+    $all = @(Get-HUTenantAppCategories $TenantKey $Settings)
+    $ids = @(); $created = @()
+    foreach ($n in $want) {
+        $hit = @($all | Where-Object { $_.Name -eq $n })[0]
+        if (-not $hit) {
+            $new = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceAppManagement/mobileAppCategories' -Method POST -Body @{ '@odata.type' = '#microsoft.graph.mobileAppCategory'; displayName = $n }
+            $hit = [pscustomobject]@{ Id = "$($new.id)"; Name = $n }; $created += $n
+        }
+        $ids += $hit.Id
+    }
+    $cur = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/categories" | ForEach-Object { "$($_.id)" })
+    foreach ($id in $ids) {
+        if ($cur -notcontains $id) {
+            [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/categories/`$ref" -Method POST -Body @{ '@odata.id' = "https://graph.microsoft.com/beta/deviceAppManagement/mobileAppCategories/$id" })
+        }
+    }
+    foreach ($id in $cur) {
+        if ($ids -notcontains $id) { [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/categories/$id/`$ref" -Method DELETE) }
+    }
+    return "Kategorien: $($want -join ', ')$(if ($created.Count) { " (neu angelegt: $($created -join ', '))" })"
+}
+
 # Autor aus den Einstellungen (ui.author) - fuer Besitzer der Apps und Herausgeber der Wartungsskripte
 function Get-HUAuthor($Settings, [string]$Default = '') {
     $a = ''
@@ -1959,7 +1992,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUTenantAppCategories', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

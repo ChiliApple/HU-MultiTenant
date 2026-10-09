@@ -2,6 +2,10 @@
 
 ## v2.1.6 (in Arbeit)
 
+### Neu
+- **Wartung: Duplizieren** per Rechtsklick in der linken Liste - Bibliothek: lokale Kopie; In Intune: Kopie mit neuem Namen in denselben Tenants, ohne Zuweisungen
+- **Apps: Kategorien** fuer das Unternehmensportal (mit Komma getrennt oder "Auswahl ..." aus den angehakten Tenants); fehlende Kategorien werden beim Hochladen angelegt
+
 ## v2.1.5 (2026-10-09)
 
 ### Neu

@@ -473,7 +473,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
                                             <TextBlock Grid.Row="0" Text="Name" Style="{StaticResource FieldLabel}"/>
                                             <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtAppName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
@@ -484,6 +484,13 @@
                                             <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtAppVersion" Style="{StaticResource DarkTextBox}" Margin="0,2" Width="160" HorizontalAlignment="Left"/>
                                             <TextBlock Grid.Row="3" Text="Beschreibung" Style="{StaticResource FieldLabel}"/>
                                             <TextBox Grid.Row="3" Grid.Column="1" x:Name="txtAppDesc" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
+                                            <TextBlock Grid.Row="4" Text="Kategorien" Style="{StaticResource FieldLabel}"/>
+                                            <DockPanel Grid.Row="4" Grid.Column="1" Margin="0,2">
+                                                <Button x:Name="btnAppCategories" DockPanel.Dock="Right" Content="Auswahl ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"
+                                                        ToolTip="Kategorien der angehakten Tenants laden und auswaehlen"/>
+                                                <TextBox x:Name="txtAppCategories" Style="{StaticResource DarkTextBox}"
+                                                         ToolTip="Kategorien im Unternehmensportal, mit Komma getrennt. Leer = in Intune nichts aendern. Fehlende Kategorien werden beim Hochladen im Tenant angelegt."/>
+                                            </DockPanel>
                                             <StackPanel Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Orientation="Horizontal" Margin="10,2,0,2" VerticalAlignment="Top">
                                                 <Border Width="72" Height="72" Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="4"
                                                         ToolTip="Symbol im Unternehmensportal">

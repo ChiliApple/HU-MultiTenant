@@ -204,6 +204,33 @@ Describe 'Snippet-Parameter' {
     }
 }
 
+Describe 'Apps: Kategorien (Set-HUAppCategories)' {
+    BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
+    It 'legt fehlende an, fuegt hinzu und entfernt ueberzaehlige' {
+        InModuleScope HU.Intune {
+            $script:calls = New-Object System.Collections.Generic.List[string]
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '*/mobileAppCategories') { return @([pscustomobject]@{ id = 'c1'; displayName = 'Schule' }, [pscustomobject]@{ id = 'c2'; displayName = 'Alt' }) }
+                return @([pscustomobject]@{ id = 'c2' })
+            }
+            Mock Invoke-HUIntuneGraph { $script:calls.Add("$Method $Endpoint"); if ($Method -eq 'POST' -and $Endpoint -like '*/mobileAppCategories') { return [pscustomobject]@{ id = 'c3' } } }
+            $r = Set-HUAppCategories -TenantKey 't' -Settings ([pscustomobject]@{}) -AppId 'a1' -Names @('Schule', 'Neu', 'Schule')
+            $r | Should -Match 'neu angelegt: Neu'
+            $script:calls | Should -Contain 'POST /deviceAppManagement/mobileAppCategories'
+            $script:calls | Should -Contain 'POST /deviceAppManagement/mobileApps/a1/categories/$ref'
+            $script:calls | Should -Contain 'DELETE /deviceAppManagement/mobileApps/a1/categories/c2/$ref'
+            @($script:calls | Where-Object { $_ -like 'POST */categories/$ref' }).Count | Should -Be 2
+        }
+    }
+    It 'leere Liste aendert nichts' {
+        InModuleScope HU.Intune {
+            Mock Invoke-HUIntuneGraph { throw 'darf nicht aufgerufen werden' }
+            Mock Get-HUIntuneGraphAll { throw 'darf nicht aufgerufen werden' }
+            Set-HUAppCategories -TenantKey 't' -Settings ([pscustomobject]@{}) -AppId 'a1' -Names @(' ', '') | Should -Be ''
+        }
+    }
+}
+
 Describe 'Release-Texte' {
     It 'keine @-Erwaehnungen ausserhalb von Code (GitHub macht daraus Benutzer-Erwaehnungen/Contributors)' {
         $bad = @()

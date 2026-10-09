@@ -208,6 +208,23 @@ function Select-HURem([string]$Id) {
     Show-HURemForm (Get-HURemById $Id)
 }
 
+# Bibliothek: ausgewaehltes Paket als Kopie anlegen (ohne Verteilungen - die Kopie ist noch nirgends in Intune)
+function Copy-HURemCurrent {
+    Save-HURemForm
+    $r = $script:RemCurrent
+    if (-not $r) { return }
+    $n = ConvertTo-HURem $r
+    $n.Id = [guid]::NewGuid().ToString()
+    $n.Name = "$($r.Name) (Kopie)"
+    $n.Deployments = @()
+    $n.Created = Get-Date -Format 'yyyy-MM-dd HH:mm'; $n.Modified = ''
+    $script:RemLib.Add($n)
+    Save-HURemLib
+    Update-HURemList $n.Id
+    Show-HURemForm $n
+    Add-HURtbLine $script:Controls['rtbRem'] "Kopie angelegt: $($n.Name) - noch nicht in Intune. Namen anpassen, dann hochladen." '#81C784'
+}
+
 function Add-HURem($Template = $null) {
     Save-HURemForm
     $r = ConvertTo-HURem $Template
@@ -601,6 +618,7 @@ function Register-HURemHandlers {
     $c['btnRemAiPaste'].Add_Click({ Import-HURemAnswer })
     $c['btnRemCheck'].Add_Click({ [void](Invoke-HURemCheck) })
     $c['btnRemTestLocal'].Add_Click({ Start-HURemLocalTest })
+    Set-HUListMenu $c['lstRem'] @(@{ Header = 'Duplizieren'; Action = { Copy-HURemCurrent } })
     $c['btnRemSandbox'].Add_Click({ Save-HURemForm; $r = $script:RemCurrent; if ($r) { Start-HURemSandbox -Name $r.Name -Detection $r.Detection -Remediation $r.Remediation -RunAs $r.RunAs -Use32 ([bool]$r.RunAs32) -KeepOpen ([bool]$script:Controls['chkRemSandboxKeep'].IsChecked) } })
     $c['cmbRemSchedule'].Add_SelectionChanged({ Update-HURemScheduleUi })
     $c['cmbRemTarget'].Add_SelectionChanged({ Update-HURemScheduleUi })
