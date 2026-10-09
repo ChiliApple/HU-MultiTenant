@@ -864,13 +864,18 @@ Describe 'Backup und Verlauf' {
 
 Describe 'Backup: Administrative Vorlagen' {
     BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
-    It 'liest Einstellungen getrennt (expand hoechstens 2 Ebenen)' {
+    It 'liest Einstellungen getrennt (expand hoechstens 1 Ebene)' {
         InModuleScope HU.Intune {
             Mock Invoke-HUIntuneGraph { if ($Endpoint -match 'expand') { throw 'zu tief' }; [pscustomobject]@{ id = 'a1'; displayName = 'Zeitsync' } }
-            Mock Get-HUIntuneGraphAll { @([pscustomobject]@{ enabled = $true; definition = [pscustomobject]@{ id = 'd1'; displayName = 'NTP' } }) }
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '*/presentationValues*') { return @([pscustomobject]@{ value = 'pool.ntp.org'; presentation = [pscustomobject]@{ id = 'p1' } }) }
+                @([pscustomobject]@{ id = 'v1'; enabled = $true; definition = [pscustomobject]@{ id = 'd1'; displayName = 'NTP' } })
+            }
             $o = Get-HUCompareObject -TenantKey 't' -Settings ([pscustomobject]@{}) -Typ 'Administrative Vorlage' -Id 'a1'
             @($o.definitionValues).Count | Should -Be 1
-            Should -Invoke Get-HUIntuneGraphAll -ParameterFilter { $Endpoint -like '*/definitionValues?$expand=definition,presentationValues($expand=presentation)' }
+            @($o.definitionValues)[0].presentationValues[0].presentation.id | Should -Be 'p1'
+            Should -Invoke Get-HUIntuneGraphAll -ParameterFilter { $Endpoint -like '*/definitionValues?$expand=definition' }
+            Should -Invoke Get-HUIntuneGraphAll -ParameterFilter { $Endpoint -like '*/definitionValues/v1/presentationValues?$expand=presentation' }
         }
     }
 }

@@ -2328,8 +2328,13 @@ function Get-HUCompareObject {
     }
     $o = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$Id$q" -V1:($Typ -eq 'Conditional Access')
     if ($Typ -eq 'Administrative Vorlage') {
-        # eigener Aufruf: $expand darf hoechstens 2 Ebenen tief sein
-        $dv = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$Id/definitionValues?`$expand=definition,presentationValues(`$expand=presentation)")
+        # $expand nur 1 Ebene tief erlaubt: Einstellungen mit Definition, dann je Einstellung die Werte mit Praesentation
+        $dv = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$Id/definitionValues?`$expand=definition")
+        foreach ($d in $dv) {
+            $pv = @()
+            try { $pv = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$Id/definitionValues/$($d.id)/presentationValues?`$expand=presentation") } catch { }
+            $d | Add-Member -NotePropertyName 'presentationValues' -NotePropertyValue $pv -Force
+        }
         $o | Add-Member -NotePropertyName 'definitionValues' -NotePropertyValue $dv -Force
     }
     return $o
