@@ -1,6 +1,6 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.1.3 (in Arbeit)
+## v2.1.3 (2026-10-09)
 
 ### Behoben
 - Wartung > In Intune: "Aenderungen speichern", "In andere Tenants kopieren" und "In Bibliothek uebernehmen" blieben nach dem Laden der Details gesperrt (seit 2.1.1)
