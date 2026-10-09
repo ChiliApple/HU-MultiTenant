@@ -82,6 +82,7 @@ function Show-HUSettingsDialog {
     $c.txtReports.Text = "$(Get-HUProp $S.reporting 'outputPath' './Reports')"
     $c.chkSecretCheckStart.IsChecked = [bool](Get-HUProp $S.ui 'checkSecretsOnStart' $true)
     $c.txtWarnDays.Text = "$(Get-HUSecretWarnDays)"
+    $c.txtAuthor.Text = "$(Get-HUProp $S.ui 'author' '')"
     # Sperre
     $lc = Get-HULockConfig
     $c.chkLockEnabled.IsChecked = $lc.Enabled
@@ -340,6 +341,7 @@ function Show-HUSettingsDialog {
         Set-HUProp $S.ui 'startTab' "$($c.cmbStartTab.SelectedItem.Tag)"
         Set-HUProp $S.ui 'secretWarnDays' $wd
         Set-HUProp $S.ui 'checkSecretsOnStart' ([bool]$c.chkSecretCheckStart.IsChecked)
+        Set-HUProp $S.ui 'author' $c.txtAuthor.Text.Trim()
         Set-HUProp $S.ui 'lockEnabled' ([bool]$c.chkLockEnabled.IsChecked)
         Set-HUProp $S.ui 'lockMinutes' $lm
         Set-HUProp $S.ui 'lockOnStart' ([bool]$c.chkLockOnStart.IsChecked)

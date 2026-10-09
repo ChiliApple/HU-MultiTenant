@@ -410,6 +410,7 @@ function ConvertTo-HUWin32Payload($Def, [string]$IntuneWinName = '') {
         applicableArchitectures        = 'x64'
         minimumSupportedWindowsRelease = '1903'
     }
+    if ($Def.PSObject.Properties['Owner'] -and "$($Def.Owner)".Trim()) { $p.owner = "$($Def.Owner)".Trim() }
     if ($IntuneWinName) { $p.fileName = $IntuneWinName }
     if ($Def.PSObject.Properties['IconFile']) { $ic = Get-HUIconContent "$($Def.IconFile)"; if ($ic) { $p.largeIcon = $ic } }
     if ("$($Def.Kind)" -eq 'msi' -and "$($Def.Detection.ProductCode)") {
@@ -782,6 +783,14 @@ function Get-HUInstallPlan($Def, [switch]$Sandbox) {
 }
 
 # Bibliotheks-Eintrag -> Def fuer ConvertTo-HUWin32Payload
+# Autor aus den Einstellungen (ui.author) - fuer Besitzer der Apps und Herausgeber der Wartungsskripte
+function Get-HUAuthor($Settings, [string]$Default = '') {
+    $a = ''
+    try { if ($Settings -and $Settings.ui -and $Settings.ui.PSObject.Properties['author']) { $a = "$($Settings.ui.author)".Trim() } } catch { }
+    if ($a) { return $a }
+    return $Default
+}
+
 function New-HUWin32Def($Def) {
     return [pscustomobject]@{
         Name = $Def.Name; Publisher = $Def.Publisher; Description = $Def.Description; Version = $Def.Version
@@ -797,6 +806,7 @@ function Publish-HUWin32App {
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)]$Def, [Parameter(Mandatory)]$Package,
         [string]$AppId = '', [string]$LastSignature = '')
     $w32 = New-HUWin32Def $Def
+    $w32 | Add-Member -NotePropertyName Owner -NotePropertyValue (Get-HUAuthor $Settings) -Force
     $existing = if ($AppId) { Get-HUIntuneApp -TenantKey $TenantKey -Settings $Settings -AppId $AppId } else { $null }
     if ($AppId -and -not $existing) { Write-HULog -Message "$($Def.Name): frueher hochgeladene App gibt es in Intune nicht mehr - wird neu angelegt" -Level 'WARN' -Tenant $TenantKey; $AppId = '' }
     if ($existing) {
@@ -855,6 +865,8 @@ function New-HUStoreApp {
         packageIdentifier = "$($Def.StoreId)".ToUpper()
         installExperience = @{ '@odata.type' = '#microsoft.graph.winGetAppInstallExperience'; runAsAccount = $(if ("$($Def.RunAs)" -eq 'user') { 'user' } else { 'system' }) }
     }
+    $own = Get-HUAuthor $Settings
+    if ($own) { $body.owner = $own }
     if ($Def.PSObject.Properties['IconFile']) { $ic = Get-HUIconContent "$($Def.IconFile)"; if ($ic) { $body.largeIcon = $ic } }
     return (Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceAppManagement/mobileApps' -Method POST -Body $body)
 }
@@ -1441,6 +1453,9 @@ function Remove-HURemediation {
 # ============================================================================
 # Pruefung eines Wartungsskripts (ohne Ausfuehrung)
 # ============================================================================
+# @param-Felder der Wartungsskripte (gemeinsam mit Quick Script)
+. (Join-Path $PSScriptRoot 'HU.QSParams.ps1')
+
 function Test-HURemediationScript {
     [CmdletBinding()]
     param([string]$Code, [ValidateSet('detection', 'remediation')][string]$Kind = 'detection', [string]$RunAs = 'system')
@@ -1454,12 +1469,14 @@ function Test-HURemediationScript {
     $tok = $null; $err = $null
     [void][System.Management.Automation.Language.Parser]::ParseInput($Code, [ref]$tok, [ref]$err)
     foreach ($e in @($err)) { & $add 'Fehler' "${name}: Zeile $($e.Extent.StartLineNumber): $($e.Message)" }
+    foreach ($x in @(Test-HURemParams $Code $name)) { & $add $x.Stufe $x.Hinweis }
     $rx = @(
         @{ P = '(?im)\b(Restart-Computer|Stop-Computer)\b|\bshutdown(\.exe)?\s+[/-][rs]'; L = 'Fehler'; T = 'Kein Neustart/Herunterfahren in Wartungsskripten (Intune-Vorgabe).' }
         @{ P = '(?im)\b(Read-Host|Out-GridView|Pause)\b|\[Console\]::ReadKey'; L = 'Fehler'; T = 'Keine Eingaben/Fenster - das Skript laeuft unbeaufsichtigt.' }
         @{ P = '(?im)\?\?|\?\.\w'; L = 'Warnung'; T = 'Moeglicherweise PowerShell-7-Syntax (?? / ?.) - Intune nutzt Windows PowerShell 5.1.' }
         @{ P = '(?im)\bInvoke-Expression\b|\biex\b'; L = 'Warnung'; T = 'Invoke-Expression vermeiden.' }
         @{ P = '[A-Za-z0-9_.\-]{3}\dQ~[A-Za-z0-9_.\-~]{30,}|(?im)\$\w*secret\w*\s*=\s*["''][^"'']{16,}'; L = 'Warnung'; T = 'Enthaelt offenbar ein App-Secret im Klartext - liegt auf jedem Geraet lesbar (Intune-Cache, Protokolle). Besser ohne Secret loesen oder ein Zertifikat/eine eigene App mit minimalen Rechten verwenden.' }
+        @{ P = '(?im)\$\w*(pw|pwd|pass|passwort|password|kennwort)\w*\s*=\s*["''](?![a-z]:\\|\\\\|https?:)[^"'']{4,}["'']|ConvertTo-SecureString\s+(-String\s+)?["''][^"'']+["'']\s+-AsPlainText|\bnet(\.exe)?\s+user\s+\S+\s+["'']?[^\s/*"'']{4,}'; L = 'Warnung'; T = 'Enthaelt offenbar ein Passwort im Klartext - lesbar fuer alle mit Leserecht auf Wartungsskripte in Intune und fuer lokale Administratoren auf den Geraeten (Intune-Cache). Wenn bewusst so gewollt: Hinweis ignorieren.' }
     )
     foreach ($r in $rx) { if ($Code -match $r.P) { & $add $r.L "${name}: $($r.T)" } }
     if ($Kind -eq 'detection') {
@@ -1500,11 +1517,17 @@ Regeln fuer beide Skripte:
 - Laufen als SYSTEM (64 Bit) auf Windows 11 Education. Kein Neustart, kein Herunterfahren.
 - Ausgabe kurz halten (unter 2.000 Zeichen), eine aussagekraeftige Zeile mit Write-Output.
 - Fehler mit try/catch abfangen.
+- Eigene Funktionen nur in Verb-Nomen-Form benennen (z. B. Test-AdminMember), keine Kurznamen - sonst kann ein Alias greifen.
+- Werte, die man spaeter aendern moechte (Namen, Passwoerter, Pfade, Zahlen, Ja/Nein), ganz oben in BEIDEN Skripten gleich als Feld anlegen - je zwei Zeilen, vor jeder Verwendung und ausserhalb von Funktionen:
+  # @param Name|Typ|Beschriftung|Standard
+  `$Name = 'Wert'  # @value
+  Typ ist string, int, bool oder choice (bei choice: # @param Name|choice|Beschriftung|Standard|A;B;C). Bei int steht der Wert ohne Anfuehrungszeichen, bei bool als `$true/`$false. Keinen param()-Block verwenden.
 Pruefskript:
 - exit 1, wenn das Problem vorliegt (dann laeuft die Reparatur), sonst exit 0.
 - Vor dem exit eine kurze Statusmeldung ausgeben.
 Reparaturskript:
 - Behebt das Problem; exit 0 bei Erfolg, exit 1 bei Fehler, mit kurzer Meldung.
+- Bei Fehlern die Meldung zusaetzlich mit [Console]::Error.WriteLine() ausgeben - Intune zeigt von der Reparatur nur die Fehlerausgabe an.
 Gib die beiden Skripte getrennt aus, ueberschrieben mit "### Pruefskript" und "### Reparaturskript", ohne weitere Erklaerung.
 "@
 }
@@ -1936,7 +1959,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

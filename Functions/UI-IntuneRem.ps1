@@ -172,6 +172,7 @@ function Update-HURintButtons {
     foreach ($n in 'txtRintDetect', 'txtRintFix') { $c[$n].IsReadOnly = -not $edit }
     foreach ($b in 'btnRintAssignAdd', 'btnRintAssignRemove') { $c[$b].IsEnabled = $has -and -not $busy }
     $c['btnRintSandbox'].IsEnabled = $has -and -not $it.Global -and -not (Test-HURemSandboxBusy)
+    $c['pnlRintParams'].IsEnabled = $edit
 }
 
 function Update-HURintScheduleUi {
@@ -404,6 +405,7 @@ function Remove-HURintAssignment {
 function Save-HURintChanges {
     $c = $script:Controls; $it = $script:RintCurrent
     if (-not $it -or $it.Global -or -not $script:RintDetail.Count) { return }
+    Complete-HURemParams 'Int'
     $d0 = Get-HURintEditorDetail
     $v = @{}
     $name = $c['txtRintName'].Text.Trim(); $desc = $c['txtRintDesc'].Text.Trim()
@@ -674,13 +676,14 @@ function Register-HURintHandlers {
     $c['btnRintAssignRemove'].Add_Click({ Remove-HURintAssignment })
     $c['btnRintCheck'].Add_Click({
             $c = $script:Controls; $rtb = $c['rtbRem']
+            if (-not $c['txtRintDetect'].IsReadOnly) { Complete-HURemParams 'Int' }
             $ra = Get-HUComboTag $c['cmbRintRunAs']
             $all = @(Test-HURemediationScript -Code $c['txtRintDetect'].Text -Kind detection -RunAs $ra) + @(Test-HURemediationScript -Code $c['txtRintFix'].Text -Kind remediation -RunAs $ra)
             Add-HURtbLine $rtb "--- Pruefung: $($c['txtRintName'].Text) ---" '#4FC3F7'
             foreach ($x in $all) { Add-HURtbLine $rtb "[$($x.Stufe)] $($x.Hinweis)" $(switch ($x.Stufe) { 'Fehler' { '#FF5252' } 'Warnung' { '#FFB74D' } 'OK' { '#81C784' } default { '#90CAF9' } }) }
         })
     $c['btnRintSave'].Add_Click({ Save-HURintChanges })
-    $c['btnRintSandbox'].Add_Click({ $c = $script:Controls; Start-HURemSandbox -Name $c['txtRintName'].Text -Detection $c['txtRintDetect'].Text -Remediation $c['txtRintFix'].Text -RunAs (Get-HUComboTag $c['cmbRintRunAs']) -Use32 ([bool]$c['chkRint32'].IsChecked) -KeepOpen ([bool]$c['chkRintSandboxKeep'].IsChecked) })
+    $c['btnRintSandbox'].Add_Click({ $c = $script:Controls; if (-not $c['txtRintDetect'].IsReadOnly) { Complete-HURemParams 'Int' }; Start-HURemSandbox -Name $c['txtRintName'].Text -Detection $c['txtRintDetect'].Text -Remediation $c['txtRintFix'].Text -RunAs (Get-HUComboTag $c['cmbRintRunAs']) -Use32 ([bool]$c['chkRint32'].IsChecked) -KeepOpen ([bool]$c['chkRintSandboxKeep'].IsChecked) })
     $c['btnRintResults'].Add_Click({ Start-HURintResults })
     $c['btnRintRunNow'].Add_Click({ Show-HURintRunNow })
     $c['btnRintToLib'].Add_Click({ Copy-HURintToLib })
