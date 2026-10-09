@@ -1794,6 +1794,136 @@ function Select-HUSandboxEntry([object[]]$Entries, [string]$AppName = '') {
     return (@($scored | Sort-Object N -Descending)[0].E)
 }
 
+# ----------------------------------------------------------------------------
+# Wartungsskripte (Remediations) in der Windows Sandbox testen - Ablauf wie Intune:
+# Erkennung -> bei exit 1 Reparatur -> Erkennung erneut; als SYSTEM (geplanter Task) bzw. als Benutzer,
+# 64- oder 32-Bit-PowerShell, ohne Netzwerk, Zeitlimit je Skript mit Abbruch des ganzen Prozessbaums.
+# ----------------------------------------------------------------------------
+$script:RemSandboxStep = @'
+param([string]$Tag, [string]$Script, [int]$Use32 = 0, [int]$Timeout = 300)
+$ErrorActionPreference = 'Continue'
+$o = [ordered]@{ Tag = $Tag; User = ''; Sid = ''; ExitCode = $null; Out = ''; Err = ''; Seconds = 0; TimedOut = $false; Bits = $(if ($Use32) { 32 } else { 64 }); Error = '' }
+try {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent(); $o.User = "$($id.Name)"; $o.Sid = "$($id.User.Value)"
+    $exe = if ($Use32) { Join-Path $env:windir 'SysWOW64\WindowsPowerShell\v1.0\powershell.exe' } else { Join-Path $env:windir 'System32\WindowsPowerShell\v1.0\powershell.exe' }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $exe
+    $psi.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$Script`""
+    $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $so = $p.StandardOutput.ReadToEndAsync(); $se = $p.StandardError.ReadToEndAsync()
+    if (-not $p.WaitForExit($Timeout * 1000)) {
+        $o.TimedOut = $true
+        & "$env:windir\System32\taskkill.exe" /PID $p.Id /T /F 2>&1 | Out-Null
+        [void]$p.WaitForExit(10000)
+    } else { $o.ExitCode = $p.ExitCode }
+    $o.Seconds = [Math]::Round($sw.Elapsed.TotalSeconds, 1)
+    if ($so.Wait(5000)) { $o.Out = "$($so.Result)" }
+    if ($se.Wait(5000)) { $o.Err = "$($se.Result)" }
+} catch { $o.Error = "$($_.Exception.Message)" }
+$tmp = "C:\HURun\step-$Tag.tmp"
+[IO.File]::WriteAllText($tmp, ($o | ConvertTo-Json -Depth 3), (New-Object System.Text.UTF8Encoding $false))
+Move-Item -LiteralPath $tmp -Destination "C:\HURun\step-$Tag.json" -Force
+'@
+
+$script:RemSandboxRunner = @'
+$ErrorActionPreference = 'Continue'
+try { Start-Transcript -LiteralPath 'C:\HUTest\Protokoll.txt' -Force | Out-Null } catch { }
+$res = [ordered]@{ Steps = @(); Error = ''; RunAs = ''; Bits = 64; Started = (Get-Date).ToString('s'); Finished = '' }
+trap { $res.Error += "Zeile $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message) "; continue }
+$cfg = Get-Content -LiteralPath 'C:\HUTest\config.json' -Raw | ConvertFrom-Json
+$res.RunAs = "$($cfg.RunAs)"; $res.Bits = $(if ($cfg.Use32) { 32 } else { 64 })
+$ps = Join-Path $env:windir 'System32\WindowsPowerShell\v1.0\powershell.exe'
+# Skripte auf die lokale Platte kopieren - der eingebundene Host-Ordner ist fuer SYSTEM evtl. nicht lesbar
+New-Item -ItemType Directory -Path 'C:\HURun' -Force | Out-Null
+foreach ($f in 'Detection.ps1', 'Remediation.ps1', 'HUStep.ps1') { Copy-Item -LiteralPath "C:\HUTest\$f" -Destination "C:\HURun\$f" -Force }
+
+function Invoke-HUTestStep([string]$Tag, [string]$File) {
+    $out = "C:\HURun\step-$Tag.json"
+    Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+    $arg = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\HURun\HUStep.ps1 -Tag $Tag -Script $File -Use32 $([int][bool]$cfg.Use32) -Timeout $($cfg.Timeout)"
+    Write-Host ""
+    Write-Host "--- $Tag ($File) ---" -ForegroundColor Cyan
+    if ($cfg.RunAs -eq 'system') {
+        $name = "HU-Test-$Tag"
+        $act = New-ScheduledTaskAction -Execute $ps -Argument $arg
+        $pri = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+        $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds ([int]$cfg.Timeout + 120))
+        Register-ScheduledTask -TaskName $name -Action $act -Principal $pri -Settings $set -Force | Out-Null
+        Start-ScheduledTask -TaskName $name | Out-Null
+    } else {
+        Start-Process -FilePath $ps -ArgumentList $arg -WindowStyle Hidden | Out-Null
+    }
+    $end = (Get-Date).AddSeconds([int]$cfg.Timeout + 60)
+    while (-not (Test-Path -LiteralPath $out) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 500 }
+    if ($cfg.RunAs -eq 'system') { try { Unregister-ScheduledTask -TaskName "HU-Test-$Tag" -Confirm:$false } catch { } }
+    if (-not (Test-Path -LiteralPath $out)) {
+        $s = [pscustomobject]@{ Tag = $Tag; User = ''; ExitCode = $null; Out = ''; Err = ''; Seconds = 0; TimedOut = $true; Bits = $res.Bits; Error = 'Kein Ergebnis vom Schritt (Task nicht gestartet oder haengt)' }
+    } else { $s = Get-Content -LiteralPath $out -Raw -Encoding UTF8 | ConvertFrom-Json }
+    Write-Host ("Exit {0} - {1} s - als {2}{3}" -f $s.ExitCode, $s.Seconds, $s.User, $(if ($s.TimedOut) { ' - ZEITLIMIT' } else { '' }))
+    if ("$($s.Out)".Trim()) { Write-Host "$($s.Out)".Trim() }
+    if ("$($s.Err)".Trim()) { Write-Host "$($s.Err)".Trim() -ForegroundColor Yellow }
+    return $s
+}
+
+$d1 = Invoke-HUTestStep 'Erkennung' 'C:\HURun\Detection.ps1'
+$res.Steps += $d1
+if ($d1.ExitCode -eq 1 -and $cfg.HasFix) {
+    $res.Steps += (Invoke-HUTestStep 'Reparatur' 'C:\HURun\Remediation.ps1')
+    $res.Steps += (Invoke-HUTestStep 'Erkennung-danach' 'C:\HURun\Detection.ps1')
+}
+$res.Finished = (Get-Date).ToString('s')
+$lines = foreach ($s in $res.Steps) { "[$($s.Tag)] Exit $($s.ExitCode), $($s.Seconds) s, als $($s.User)$(if ($s.TimedOut) { ', ZEITLIMIT' })`r`n$("$($s.Out)".Trim())`r`n$("$($s.Err)".Trim())`r`n" }
+try { Stop-Transcript | Out-Null } catch { }
+[IO.File]::WriteAllText('C:\HUTest\Ergebnis.txt', ($lines -join "`r`n"), (New-Object System.Text.UTF8Encoding $true))
+[IO.File]::WriteAllText('C:\HUTest\Ergebnis.tmp', ($res | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding $false))
+Move-Item -LiteralPath 'C:\HUTest\Ergebnis.tmp' -Destination 'C:\HUTest\Ergebnis.json' -Force
+Write-Host ""
+Write-Host 'Fertig. Ergebnis: C:\HUTest\Ergebnis.txt (beim ersten Lauf auch in HU-MultiTenant). Erneut testen: & C:\HUTest\HURemTest.ps1' -ForegroundColor Green
+'@
+
+function Start-HURemSandboxTest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$WorkFolder,
+        [Parameter(Mandatory)][string]$Detection,
+        [string]$Remediation = '',
+        [ValidateSet('system', 'user')][string]$RunAs = 'system',
+        [switch]$Use32,
+        [int]$TimeoutSeconds = 300,
+        [switch]$KeepOpen
+    )
+    if (-not (Test-HUSandboxAvailable)) { throw 'Windows Sandbox ist nicht aktiviert' }
+    if (Get-Process -Name 'WindowsSandbox', 'WindowsSandboxClient', 'WindowsSandboxRemoteSession' -ErrorAction SilentlyContinue) { throw 'Es laeuft bereits eine Windows Sandbox - bitte zuerst schliessen (nur eine gleichzeitig moeglich).' }
+    if (Test-Path -LiteralPath $WorkFolder) { Remove-Item -LiteralPath $WorkFolder -Recurse -Force }
+    New-Item -ItemType Directory -Path $WorkFolder -Force | Out-Null
+    # Skripte wie beim Hochladen nach Intune: UTF-8 ohne BOM
+    $noBom = New-Object System.Text.UTF8Encoding $false
+    [IO.File]::WriteAllText((Join-Path $WorkFolder 'Detection.ps1'), $Detection, $noBom)
+    [IO.File]::WriteAllText((Join-Path $WorkFolder 'Remediation.ps1'), $Remediation, $noBom)
+    $bom = New-Object System.Text.UTF8Encoding $true
+    [IO.File]::WriteAllText((Join-Path $WorkFolder 'HURemTest.ps1'), $script:RemSandboxRunner, $bom)
+    [IO.File]::WriteAllText((Join-Path $WorkFolder 'HUStep.ps1'), $script:RemSandboxStep, $bom)
+    $cfg = [ordered]@{ RunAs = $RunAs; Use32 = [bool]$Use32; Timeout = $TimeoutSeconds; HasFix = [bool]"$Remediation".Trim() }
+    [IO.File]::WriteAllText((Join-Path $WorkFolder 'config.json'), ($cfg | ConvertTo-Json), $noBom)
+    $esc = { param($s) [System.Security.SecurityElement]::Escape($s) }
+    $wsb = @"
+<Configuration>
+  <Networking>Disable</Networking>
+  <MappedFolders>
+    <MappedFolder><HostFolder>$(& $esc $WorkFolder)</HostFolder><SandboxFolder>C:\HUTest</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>
+  </MappedFolders>
+  <LogonCommand><Command>cmd.exe /c start "HU-MultiTenant Wartungstest" powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass -File C:\HUTest\HURemTest.ps1</Command></LogonCommand>
+</Configuration>
+"@
+    $wsbFile = Join-Path $WorkFolder 'HURemTest.wsb'
+    [IO.File]::WriteAllText($wsbFile, $wsb, $noBom)
+    Start-Process -FilePath $wsbFile
+    return (Join-Path $WorkFolder 'Ergebnis.json')
+}
+
 Export-ModuleMember -Function @(
     'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups', 'ConvertTo-HUW32Row', 'Get-HUTenantWin32Apps', 'Find-HUWin32AppByName',
     'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo',
@@ -1805,7 +1935,7 @@ Export-ModuleMember -Function @(
     'Get-HUAppIconBytes', 'Get-HUAppInstallSummary', 'Get-HUAppRelationRows', 'Set-HUAppRelations', 'Remove-HUIntuneApp', 'Invoke-HUExportReport', 'Get-HUErrorText', 'ConvertTo-HUInstallStateText', 'Get-HUAppInstallStatus',
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
-    'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
+    'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
     'Get-HUWorkPath', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
