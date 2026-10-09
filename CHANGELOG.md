@@ -1,5 +1,10 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.5 (in Arbeit)
+
+### Verbessert
+- Wartung > Pruefen: warnt jetzt auch bei Passwoertern im Klartext (Variablen wie $Password/$Kennwort, ConvertTo-SecureString mit festem Text, net user) - nur Hinweis, blockiert nichts
+
 ## v2.1.4 (2026-10-09)
 
 ### Neu
