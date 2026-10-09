@@ -9,6 +9,9 @@
 - **Analyse: Tenant-Vergleich** - Profile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot, Conditional Access und Apps der angehakten Tenants nebeneinander (fehlt / nur in einem / doppelt / Einstellungen abweichend), Filter und Export; Doppelklick zeigt die abweichenden Einstellungen je Tenant (Gruppen, Benutzer, Rollen, Cloud-Apps und Orte mit Namen statt ID; Listen als gemeinsam + Zusaetzliches); markierte fehlende Eintraege in die anderen Tenants kopieren (ohne Zuweisungen)
 - **Apps: Updates** (neben Bibliothek / In Intune) - prueft die Setup-Apps der Bibliothek gegen winget (winget-ID wird bei eindeutigem Namen automatisch zugeordnet, sonst per Suche), zeigt Bibliothek, neueste Version und Stand in Intune je Tenant; "Neue Version holen" laedt den Installer per winget und uebernimmt ihn als neue Version der App (eigene Installationsschalter bleiben); bei neuer Version wird der alte Sandbox-Hinweis geleert (Hochladen erinnert wieder an den Test); Quelle in Einstellungen > Allgemein waehlbar (Standard winget) - danach wie gewohnt Testinstallation in der Sandbox und Hochladen mit Pilotgruppe
 
+### Verbessert
+- Ergebnis-Tabelle: lange Werte werden umgebrochen, Spalten lassen sich beliebig breit ziehen
+
 ## v2.1.5 (2026-10-09)
 
 ### Neu
