@@ -599,7 +599,7 @@ function Register-HURemHandlers {
     $c['btnRemAiPaste'].Add_Click({ Import-HURemAnswer })
     $c['btnRemCheck'].Add_Click({ [void](Invoke-HURemCheck) })
     $c['btnRemTestLocal'].Add_Click({ Start-HURemLocalTest })
-    $c['btnRemSandbox'].Add_Click({ Save-HURemForm; $r = $script:RemCurrent; if ($r) { Start-HURemSandbox -Name $r.Name -Detection $r.Detection -Remediation $r.Remediation -RunAs $r.RunAs -Use32 ([bool]$r.RunAs32) } })
+    $c['btnRemSandbox'].Add_Click({ Save-HURemForm; $r = $script:RemCurrent; if ($r) { Start-HURemSandbox -Name $r.Name -Detection $r.Detection -Remediation $r.Remediation -RunAs $r.RunAs -Use32 ([bool]$r.RunAs32) -KeepOpen ([bool]$script:Controls['chkRemSandboxKeep'].IsChecked) } })
     $c['cmbRemSchedule'].Add_SelectionChanged({ Update-HURemScheduleUi })
     $c['cmbRemTarget'].Add_SelectionChanged({ Update-HURemScheduleUi })
     $c['chkRemPilot'].Add_Checked({ Update-HURemScheduleUi })

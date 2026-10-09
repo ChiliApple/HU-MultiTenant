@@ -18,7 +18,7 @@ function Update-HURemSandboxButtons {
     try { Update-HURintButtons } catch { }
 }
 
-function Start-HURemSandbox([string]$Name, [string]$Detection, [string]$Remediation, [string]$RunAs = 'system', [bool]$Use32 = $false) {
+function Start-HURemSandbox([string]$Name, [string]$Detection, [string]$Remediation, [string]$RunAs = 'system', [bool]$Use32 = $false, [bool]$KeepOpen = $false) {
     if ($script:RemSbWatch) { Show-HUMessage 'Es laeuft bereits ein Sandbox-Test.' -Icon Info; return }
     if (-not "$Detection".Trim()) { Show-HUMessage 'Das Pruefskript ist leer.' -Icon Warning; return }
     if (-not (Test-HUSandboxAvailable)) { Show-HUSandboxSetup; return }
@@ -32,7 +32,7 @@ function Start-HURemSandbox([string]$Name, [string]$Detection, [string]$Remediat
         $file = Start-HURemSandboxTest -WorkFolder $work -Detection $Detection -Remediation $Remediation -RunAs $RunAs -Use32:$Use32 -TimeoutSeconds $script:RemSbTimeout
     } catch { Add-HURtbLine $rtb "Sandbox nicht gestartet: $($_.Exception.Message)" '#FF5252'; return }
     Add-HURtbLine $rtb 'Windows Sandbox startet - der Ablauf ist dort im Fenster zu sehen ...' '#81C784'
-    $script:RemSbWatch = @{ File = $file; Work = $work; Started = Get-Date; Seen = $false; RunAs = $RunAs; HasFix = [bool]"$Remediation".Trim(); Name = $Name }
+    $script:RemSbWatch = @{ File = $file; Work = $work; Started = Get-Date; Seen = $false; RunAs = $RunAs; HasFix = [bool]"$Remediation".Trim(); Name = $Name; KeepOpen = $KeepOpen }
     if (-not $script:RemSbTimer) {
         $script:RemSbTimer = [System.Windows.Threading.DispatcherTimer]::new()
         $script:RemSbTimer.Interval = [TimeSpan]::FromSeconds(3)
@@ -58,7 +58,7 @@ function Update-HURemSandboxWatch {
         try { $res = Get-Content -LiteralPath $w.File -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return }
         if (-not $res) { return }
         Stop-HURemSandboxWatch ''
-        Stop-HUSandbox
+        if (-not $w.KeepOpen) { Stop-HUSandbox }
         Show-HURemSandboxResult $res $w
         return
     }

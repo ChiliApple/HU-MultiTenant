@@ -680,7 +680,7 @@ function Register-HURintHandlers {
             foreach ($x in $all) { Add-HURtbLine $rtb "[$($x.Stufe)] $($x.Hinweis)" $(switch ($x.Stufe) { 'Fehler' { '#FF5252' } 'Warnung' { '#FFB74D' } 'OK' { '#81C784' } default { '#90CAF9' } }) }
         })
     $c['btnRintSave'].Add_Click({ Save-HURintChanges })
-    $c['btnRintSandbox'].Add_Click({ $c = $script:Controls; Start-HURemSandbox -Name $c['txtRintName'].Text -Detection $c['txtRintDetect'].Text -Remediation $c['txtRintFix'].Text -RunAs (Get-HUComboTag $c['cmbRintRunAs']) -Use32 ([bool]$c['chkRint32'].IsChecked) })
+    $c['btnRintSandbox'].Add_Click({ $c = $script:Controls; Start-HURemSandbox -Name $c['txtRintName'].Text -Detection $c['txtRintDetect'].Text -Remediation $c['txtRintFix'].Text -RunAs (Get-HUComboTag $c['cmbRintRunAs']) -Use32 ([bool]$c['chkRint32'].IsChecked) -KeepOpen ([bool]$c['chkRintSandboxKeep'].IsChecked) })
     $c['btnRintResults'].Add_Click({ Start-HURintResults })
     $c['btnRintRunNow'].Add_Click({ Show-HURintRunNow })
     $c['btnRintToLib'].Add_Click({ Copy-HURintToLib })
