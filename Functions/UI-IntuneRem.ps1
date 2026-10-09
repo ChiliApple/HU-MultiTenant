@@ -274,7 +274,7 @@ function Start-HURintDetail {
     Update-HURintButtons
 }
 
-function Test-HURintDetailComplete { return ($script:RintCurrent -and $script:RintDetailWait -and $script:RintDetailWait.Count -eq 0 -and $script:RintDetail.Count) }
+function Test-HURintDetailComplete { return ($script:RintCurrent -and $null -ne $script:RintDetailWait -and $script:RintDetailWait.Count -eq 0 -and $script:RintDetail.Count) }
 
 # Detailansicht aus den bisher geladenen Tenants
 function Show-HURintDetail {
