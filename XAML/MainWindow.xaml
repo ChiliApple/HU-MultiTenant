@@ -761,14 +761,24 @@
                                         <TextBlock Text="Eigenschaften" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
                                         <Grid>
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                             <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
                                             <TextBox Grid.Column="1" x:Name="txtIntName" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
                                             <TextBlock Grid.Row="1" Text="Hersteller" Style="{StaticResource FieldLabel}"/>
                                             <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtIntPublisher" Style="{StaticResource DarkTextBox}" Margin="0,2"/>
                                             <TextBlock Grid.Row="2" Text="Beschreibung" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,6,8,0"/>
                                             <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtIntDesc" Style="{StaticResource DarkTextBox}" Margin="0,2" AcceptsReturn="True" TextWrapping="Wrap" Height="54" VerticalScrollBarVisibility="Auto"/>
-                                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
+                                            <TextBlock Grid.Row="3" Text="Kategorien" Style="{StaticResource FieldLabel}"/>
+                                            <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,2">
+                                                <DockPanel>
+                                                    <Button x:Name="btnIntCategories" DockPanel.Dock="Right" Content="Auswahl ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"
+                                                            ToolTip="Kategorien der Tenants dieser App laden und auswaehlen"/>
+                                                    <TextBox x:Name="txtIntCategories" Style="{StaticResource DarkTextBox}"
+                                                             ToolTip="Kategorien im Unternehmensportal, mit Komma getrennt - nur vorhandene. Wird mit 'Eigenschaften speichern' gesetzt."/>
+                                                </DockPanel>
+                                                <TextBlock x:Name="lblIntCats" Style="{StaticResource HintText}" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0" x:Name="pnlIntPropBtns">
                                                 <Button x:Name="btnIntIcon" Content="Symbol ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,0"
                                                         ToolTip="Neues Symbol (Bild, ICO, EXE) - wird mit 'Eigenschaften speichern' gesetzt"/>
                                                 <TextBlock x:Name="lblIntIcon" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="0,0,12,0"/>

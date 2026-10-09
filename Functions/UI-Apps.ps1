@@ -97,9 +97,10 @@ function ConvertTo-HUApp($Src = $null) {
 function ConvertTo-HUCategoryList([string]$Text) { return @("$Text" -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique) }
 
 # Kategorien aus den angehakten Tenants laden und zum Anhaken anbieten
-function Show-HUAppCategoryPicker {
+function Show-HUAppCategoryPicker([string[]]$Keys = @(), [string]$Box = 'txtAppCategories') {
     $c = $script:Controls
-    $keys = @(Get-HUCheckedTenants $c['spAppTenants'])
+    $script:AppCatBox = $Box
+    $keys = if ($Keys.Count) { @($Keys) } else { @(Get-HUCheckedTenants $c['spAppTenants']) }
     if (-not $keys.Count) { $keys = @($script:Settings.tenants | Select-Object -First 1 | ForEach-Object { "$($_.key)" }) }
     if (-not $keys.Count) { return }
     if (Test-HUJobRunning 'AppCats') { return }
@@ -141,7 +142,8 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
     $w = $d.Window; $dc = $d.C
     try { $w.Owner = $script:Window } catch { }
-    $cur = @(ConvertTo-HUCategoryList $script:Controls['txtAppCategories'].Text)
+    $box = if ($script:AppCatBox) { $script:AppCatBox } else { 'txtAppCategories' }
+    $cur = @(ConvertTo-HUCategoryList $script:Controls[$box].Text)
     $all = @($Rows | Group-Object Cat | Sort-Object Name)
     $tenantCount = @($Rows | Select-Object -ExpandProperty Tenant -Unique).Count
     $names = @($all | ForEach-Object { $_.Name }) + @($cur | Where-Object { @($all | ForEach-Object { $_.Name }) -notcontains $_ })
@@ -161,9 +163,8 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
     [void]$w.ShowDialog()
     if (-not $st.Ok) { return }
     $sel = @($dc.spCats.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
-    $script:Controls['txtAppCategories'].Text = (@($sel | Select-Object -Unique) -join ', ')
-    Save-HUAppForm
-    try { Save-HUAppLib } catch { }
+    $script:Controls[$box].Text = (@($sel | Select-Object -Unique) -join ', ')
+    if ($box -eq 'txtAppCategories') { Save-HUAppForm; try { Save-HUAppLib } catch { } }
 }
 
 function Import-HUAppLib {

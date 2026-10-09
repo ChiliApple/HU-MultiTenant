@@ -4,7 +4,7 @@
 
 ### Neu
 - **Wartung: Duplizieren** per Rechtsklick in der linken Liste - Bibliothek: lokale Kopie; In Intune: Kopie mit neuem Namen in denselben Tenants, ohne Zuweisungen
-- **Apps: Kategorien** fuer das Unternehmensportal (mit Komma getrennt oder "Auswahl ..." aus den angehakten Tenants); nur vorhandene Kategorien, fehlende werden je Tenant gemeldet
+- **Apps: Kategorien** fuer das Unternehmensportal (mit Komma getrennt oder "Auswahl ..." aus den angehakten Tenants); nur vorhandene Kategorien, fehlende werden je Tenant gemeldet; auch unter Apps > In Intune (Eigenschaften), mit Anzeige abweichender Kategorien je Tenant
 
 ## v2.1.5 (2026-10-09)
 

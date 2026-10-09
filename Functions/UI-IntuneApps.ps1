@@ -212,6 +212,7 @@ function Show-HUIntApp([switch]$KeepRel) {
         $c['txtIntPublisher'].Text = "$($first.Publisher)"
         $c['txtIntDesc'].Text = "$($first.Description)"
         $script:IntIconFile = ''; $c['lblIntIcon'].Text = ''
+        $c['txtIntCategories'].Text = ''; $script:IntCatsOrig = $null; $c['lblIntCats'].Visibility = 'Collapsed'
         $c['gridIntRel'].ItemsSource = $null
         $c['imgIntIcon'].Source = $null
         $c['txtIntSummary'].Text = 'Lade Zuweisungen und Installationsstand ...'
@@ -260,7 +261,8 @@ function Start-HUIntDetail {
         $script:IntDetWait.Add($k)
         [void](Start-HUJob -Name "IntDetail-$gen-$k" -Quiet -Output $script:Controls['rtbApps'] -Vars @{ K = $k; Id = $it.Per[$k].Id; Gen = $gen; Win32 = ($it.Kind -eq 'win32'); WithIcon = ($k -eq $first) } -Code {
                 $sw = [Diagnostics.Stopwatch]::StartNew()
-                $o = [ordered]@{ Gen = $Gen; Tenant = $K; Icon = $null; Rel = @(); Assign = $null; Summary = '' }
+                $o = [ordered]@{ Gen = $Gen; Tenant = $K; Icon = $null; Rel = @(); Assign = $null; Summary = ''; Cats = $null }
+                try { $o.Cats = @(Get-HUAppCategoryNames -TenantKey $K -Settings $Settings -AppId $Id) } catch { Write-HULog -Message "Kategorien: $($_.Exception.Message)" -Level 'WARN' -Tenant $K }
                 if ($WithIcon) { try { $o.Icon = Get-HUAppIconBytes -TenantKey $K -Settings $Settings -AppId $Id } catch { Write-HULog -Message "Symbol: $($_.Exception.Message)" -Level 'WARN' -Tenant $K } }
                 if ($Win32) {
                     try { $o.Rel = @(foreach ($r in @(Get-HUAppRelationRows -TenantKey $K -Settings $Settings -AppId $Id)) { $r | Add-Member -NotePropertyName Tenant -NotePropertyValue $K -PassThru }) }
@@ -299,6 +301,19 @@ function Show-HUIntDetail {
                 $script:IntIconShown = $true
             } catch { }
         }
+    }
+    # Kategorien: Feld einmal aus dem ersten geladenen Tenant fuellen, Abweichungen darunter anzeigen
+    $catDone = @($done | Where-Object { $null -ne $script:IntDet[$_].Cats })
+    if ($catDone.Count) {
+        if ($null -eq $script:IntCatsOrig) {
+            $script:IntCatsOrig = (@($script:IntDet[$catDone[0]].Cats) -join ', ')
+            $c['txtIntCategories'].Text = $script:IntCatsOrig
+        }
+        $sets = @($catDone | ForEach-Object { (@($script:IntDet[$_].Cats) -join ', ') } | Select-Object -Unique)
+        if ($sets.Count -gt 1) {
+            $c['lblIntCats'].Text = 'Unterschiedlich: ' + (@($catDone | ForEach-Object { "$(Get-HUTenantDisplayName $_): $(if (@($script:IntDet[$_].Cats).Count) { @($script:IntDet[$_].Cats) -join ', ' } else { '(keine)' })" }) -join ' | ')
+            $c['lblIntCats'].Visibility = 'Visible'
+        } else { $c['lblIntCats'].Visibility = 'Collapsed' }
     }
     # Installationsstand je Tenant
     $multi = (@($it.Per.Keys).Count -gt 1)
@@ -433,17 +448,25 @@ function Save-HUIntProperties {
         Publisher = $(if ($pub -and $pub -ne "$($first.Publisher)") { $pub } else { '' })
         Description = $(if ($desc -and $desc -ne "$($first.Description)") { $desc } else { '' })
         IconFile = $script:IntIconFile
+        Cats = @()
     }
-    if (-not ($v.Name -or $v.Publisher -or $v.Description -or $v.IconFile)) { Show-HUMessage 'Nichts geaendert.' -Icon Info; return }
-    $what = @(); if ($v.Name) { $what += "Name -> $($v.Name)" }; if ($v.Publisher) { $what += 'Hersteller' }; if ($v.Description) { $what += 'Beschreibung' }; if ($v.IconFile) { $what += 'Symbol' }
+    $catText = (@(ConvertTo-HUCategoryList $c['txtIntCategories'].Text) -join ', ')
+    if ($null -ne $script:IntCatsOrig -and $catText -and $catText -ne $script:IntCatsOrig) { $v.Cats = @(ConvertTo-HUCategoryList $catText) }
+    if (-not ($v.Name -or $v.Publisher -or $v.Description -or $v.IconFile -or $v.Cats.Count)) { Show-HUMessage 'Nichts geaendert.' -Icon Info; return }
+    $what = @(); if ($v.Name) { $what += "Name -> $($v.Name)" }; if ($v.Publisher) { $what += 'Hersteller' }; if ($v.Description) { $what += 'Beschreibung' }; if ($v.IconFile) { $what += 'Symbol' }; if ($v.Cats.Count) { $what += "Kategorien -> $($v.Cats -join ', ')" }
     if (-not (Confirm-HU "$($it.Name)`n`nAendern: $($what -join ', ')`nTenants: $(@($it.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nSpeichern?")) { return }
     if ($v.Name) { $it.Key = "$($v.Name.ToLower())|$($it.OType)"; $script:IntCurrent = $it }
     Start-HUIntAction 'Eigenschaften' -Vars @{ V = $v } -Code {
         foreach ($k in $Per.Keys) {
             try { Update-HUAppProperties -TenantKey $k -Settings $Settings -AppId $Per[$k] -OType $OType -Name $V.Name -Description $V.Description -Publisher $V.Publisher -IconFile $V.IconFile; Write-HULog -Message 'Gespeichert' -Level 'OK' -Tenant $k }
             catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $k }
+            if (@($V.Cats).Count) {
+                try { $ct = Set-HUAppCategories -TenantKey $k -Settings $Settings -AppId $Per[$k] -Names @($V.Cats); Write-HULog -Message $ct -Level 'OK' -Tenant $k }
+                catch { Write-HULog -Message "Kategorien: $($_.Exception.Message)" -Level 'ERROR' -Tenant $k }
+            }
         }
     }
+    if ($v.Cats.Count) { $script:IntCatsOrig = $catText }
 }
 
 # Auswahl der Tenants fuer eine Aktion (z. B. Loeschen); Notes = TenantKey -> Zusatztext. Rueckgabe: gewaehlte Keys
@@ -602,6 +625,7 @@ function Register-HUIntAppHandlers {
             } catch { }
         })
     $c['btnIntPropSave'].Add_Click({ Save-HUIntProperties })
+    $c['btnIntCategories'].Add_Click({ if ($script:IntCurrent) { Show-HUAppCategoryPicker -Keys @($script:IntCurrent.Per.Keys) -Box 'txtIntCategories' } })
     $c['btnIntStatus'].Add_Click({ Start-HUIntStatus })
     $c['btnIntReloadOne'].Add_Click({ if ($script:IntCurrent) { Start-HUIntLoad -Keys @($script:IntCurrent.Per.Keys) -Force -Then { if ($script:IntCurrent) { Show-HUIntApp } } } })
     $c['btnIntPortal'].Add_Click({ Open-HUIntPortal })

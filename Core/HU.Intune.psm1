@@ -789,6 +789,10 @@ function Get-HUTenantAppCategories([string]$TenantKey, $Settings) {
     return @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceAppManagement/mobileAppCategories' | ForEach-Object { [pscustomobject]@{ Id = "$($_.id)"; Name = "$($_.displayName)" } })
 }
 
+function Get-HUAppCategoryNames([string]$TenantKey, $Settings, [string]$AppId) {
+    return @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/categories" | ForEach-Object { "$($_.displayName)" } | Sort-Object)
+}
+
 function Set-HUAppCategories {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId, [string[]]$Names = @())
@@ -1990,7 +1994,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUTenantAppCategories', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUTenantAppCategories', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )
