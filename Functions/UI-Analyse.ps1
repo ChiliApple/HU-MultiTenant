@@ -69,7 +69,7 @@ function Update-HUAnaHint {
     } elseif ($script:AnaLabel) {
         $ex = @($script:AnaRows | Where-Object { "$($_.Status)" -like 'ausgeschlossen*' }).Count
         $vis = @(Get-HUAnaVisibleRows).Count
-        $c['lblAnaHint'].Text = "$($script:AnaLabel): $n Eintrag/Eintraege$(if ($vis -ne $n) { ", $vis ueber Gruppen angezeigt" })$(if ($ex) { " (davon $ex ausgeschlossen)" }). Nur lesend - Filter (Spalte Filter) werden angezeigt, aber nicht ausgewertet."
+        $c['lblAnaHint'].Text = "$($script:AnaLabel): $n Eintrag/Eintraege$(if ($vis -ne $n) { ", $vis angezeigt" })$(if ($ex) { " (davon $ex ausgeschlossen)" }). Nur lesend - Filter (Spalte Filter) werden angezeigt, aber nicht ausgewertet."
     } else {
         $c['lblAnaHint'].Text = 'Gruppe, Geraet oder Benutzer eingeben und Anzeigen klicken. Beruecksichtigt verschachtelte Gruppen, Alle Geraete / Alle Benutzer und Ausschluesse.'
     }
@@ -80,10 +80,28 @@ function Get-HUAnaVisibleRows {
     if (-not $script:Controls['chkAnaAll'].IsChecked) {
         $rows = @($rows | Where-Object { @("$($_.Ueber)" -split ', ' | Where-Object { $_ -and $_ -notin 'Alle Geraete', 'Alle Benutzer' }).Count })
     }
+    $typ = "$($script:Controls['cmbAnaType'].SelectedItem)"
+    if ($typ -and $typ -ne '(alle Arten)') { $rows = @($rows | Where-Object { "$($_.Typ)" -eq $typ }) }
+    foreach ($w in @("$($script:Controls['txtAnaFilter'].Text)" -split '\s+' | Where-Object { $_ })) {
+        $rows = @($rows | Where-Object { ("$($_.Tenant) $($_.Typ) $($_.Name) $($_.Absicht) $($_.Ueber) $($_.Status)").IndexOf($w, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
+    }
     return @($rows | Sort-Object Typ, Name, Tenant)
 }
 
+function Update-HUAnaTypes {
+    $cb = $script:Controls['cmbAnaType']
+    $cur = "$($cb.SelectedItem)"
+    $types = @('(alle Arten)') + @($script:AnaRows | ForEach-Object { "$($_.Typ)" } | Sort-Object -Unique)
+    if ((@($cb.Items) -join '|') -eq ($types -join '|')) { return }
+    $script:AnaTypeBusy = $true
+    $cb.Items.Clear()
+    foreach ($t in $types) { [void]$cb.Items.Add($t) }
+    $cb.SelectedItem = $(if ($types -contains $cur) { $cur } else { '(alle Arten)' })
+    $script:AnaTypeBusy = $false
+}
+
 function Update-HUAnaGrid {
+    Update-HUAnaTypes
     $sorted = @(Get-HUAnaVisibleRows)
     $script:Controls['gridAna'].ItemsSource = $sorted
     Update-HUAnaHint
@@ -140,6 +158,9 @@ function Register-HUAnaHandlers {
     $c['chkAnaAll'].IsChecked = [bool](Get-HUStateValue 'anaAll' $true)
     $c['chkAnaAll'].Add_Checked({ Set-HUStateValue 'anaAll' $true; Update-HUAnaGrid })
     $c['chkAnaAll'].Add_Unchecked({ Set-HUStateValue 'anaAll' $false; Update-HUAnaGrid })
+    $c['txtAnaFilter'].Add_TextChanged({ Update-HUAnaGrid })
+    $c['cmbAnaType'].Add_SelectionChanged({ if (-not $script:AnaTypeBusy) { Update-HUAnaGrid } })
+    Update-HUAnaTypes
     $c['btnAnaModeAsg'].Add_Click({ Set-HUAnaMode 'asg' })
     $c['btnAnaModeCmp'].Add_Click({ Set-HUAnaMode 'cmp' })
     $c['btnAnaRun'].Add_Click({ Start-HUAnaRun })

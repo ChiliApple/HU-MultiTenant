@@ -1124,11 +1124,16 @@
                                         </ComboBox>
                                         <Button x:Name="btnAnaTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
                                         <Button x:Name="btnAnaRun" DockPanel.Dock="Right" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0" IsDefault="False"/>
-                                        <CheckBox x:Name="chkAnaAll" DockPanel.Dock="Right" Content="Alle Geraete/Benutzer" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
-                                                  ToolTip="Auch Zuweisungen an Alle Geraete / Alle Benutzer zeigen (aus: nur ueber Gruppen)"/>
                                         <Button x:Name="btnAnaPick" DockPanel.Dock="Right" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="6,0,0,0" ToolTip="Gruppe aus den angehakten Tenants suchen"/>
                                         <TextBox x:Name="txtAnaName" Style="{StaticResource DarkTextBox}" FontSize="12"
                                                  ToolTip="Gruppenname, Geraetename (wie in Intune) oder Benutzer (Benutzername ohne Domain, UPN oder Anzeigename - inkl. seiner Intune-Geraete)"/>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,6,0,0">
+                                        <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <CheckBox x:Name="chkAnaAll" DockPanel.Dock="Right" Content="Alle Geraete/Benutzer" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
+                                                  ToolTip="Auch Zuweisungen an Alle Geraete / Alle Benutzer zeigen (aus: nur ueber Gruppen)"/>
+                                        <ComboBox x:Name="cmbAnaType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,0" ToolTip="Nur eine Art anzeigen"/>
+                                        <TextBox x:Name="txtAnaFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Name, Typ, Absicht, Ueber, Status oder Tenant (mehrere Woerter: alle muessen vorkommen)"/>
                                     </DockPanel>
                                 </StackPanel>
                                 <TextBlock x:Name="lblAnaHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
