@@ -1141,6 +1141,8 @@
                                             ToolTip="Alle Apps, Profile, Richtlinien und Skripte, die eine Gruppe, ein Geraet oder ein Benutzer bekommt"/>
                                     <Button x:Name="btnAnaModeCmp" Content="Tenant-Vergleich" Style="{StaticResource ToolButton}" FontSize="11" Padding="10,3" Margin="2,0,0,0"
                                             ToolTip="Profile, Richtlinien, Apps und Wartung der Tenants nebeneinander"/>
+                                    <Button x:Name="btnAnaModeBak" Content="Backup &amp; Verlauf" Style="{StaticResource ToolButton}" FontSize="11" Padding="10,3" Margin="2,0,0,0"
+                                            ToolTip="Konfiguration sichern, zwei Staende vergleichen (was hat sich geaendert, wer war es), einzelne Eintraege wiederherstellen"/>
                                 </UniformGrid>
                                 <WrapPanel x:Name="spAnaTenants" Margin="0,0,0,6"/>
                                 <StackPanel x:Name="pnlAnaAsg">
@@ -1176,6 +1178,27 @@
                                         <TextBox x:Name="txtCmpFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Typ, Name oder Status (mehrere Woerter: alle muessen vorkommen)"/>
                                     </DockPanel>
                                 </StackPanel>
+                                <StackPanel x:Name="pnlAnaBak" Visibility="Collapsed">
+                                    <DockPanel>
+                                        <Button x:Name="btnBakNow" DockPanel.Dock="Left" Content="&#x1F4BE; Backup jetzt" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,0"
+                                                ToolTip="Stand der angehakten Tenants sichern (Profile, Richtlinien, Skripte, Conditional Access ... mit Zuweisungen; Apps nur als Liste)"/>
+                                        <Button x:Name="btnBakFolder" DockPanel.Dock="Left" Content="Ordner" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,10,0"/>
+                                        <TextBlock x:Name="lblBakRoot" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,6,0,0">
+                                        <TextBlock DockPanel.Dock="Left" Text="Verlauf:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <ComboBox x:Name="cmbBakTenant" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="140" Margin="0,0,6,0"/>
+                                        <ComboBox x:Name="cmbBakA" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="150" Margin="0,0,4,0" ToolTip="Aelterer Stand"/>
+                                        <TextBlock DockPanel.Dock="Left" Text="&#x2192;" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <ComboBox x:Name="cmbBakB" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="170" Margin="0,0,6,0" ToolTip="Neuerer Stand - oder nur den linken Stand anzeigen"/>
+                                        <Button x:Name="btnBakCmp" DockPanel.Dock="Left" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,0"/>
+                                        <Button x:Name="btnBakTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                        <Button x:Name="btnBakRestore" DockPanel.Dock="Right" Content="Wiederherstellen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                                ToolTip="Markierte Eintraege aus dem linken (aelteren) Stand neu anlegen - mit Zusatz im Namen, ohne Zuweisungen"/>
+                                        <CheckBox x:Name="chkBakChanges" DockPanel.Dock="Right" Content="Nur Aenderungen" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                        <TextBox x:Name="txtBakFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Filter: Text in Typ, Name, Aenderung, Geaendert von"/>
+                                    </DockPanel>
+                                </StackPanel>
                                 <TextBlock x:Name="lblAnaHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
@@ -1184,6 +1207,15 @@
                             <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
                         </RichTextBox>
                         <Grid>
+                        <DataGrid x:Name="gridBak" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
+                                  CanUserSortColumns="True" Visibility="Collapsed">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Typ" Binding="{Binding Typ}" Width="150"/>
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*"/>
+                                <DataGridTextColumn Header="Aenderung" Binding="{Binding Aenderung}" Width="2*"/>
+                                <DataGridTextColumn Header="Geaendert von (Intune-Protokoll)" Binding="{Binding Wer}" Width="2*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
                         <DataGrid x:Name="gridCmp" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
                                   CanUserSortColumns="True" Visibility="Collapsed"/>
                         <DataGrid x:Name="gridAna" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"

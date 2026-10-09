@@ -51,20 +51,26 @@ function Get-HUAnaKind {
 
 function Set-HUAnaMode([string]$Mode) {
     $c = $script:Controls
-    $asg = ($Mode -ne 'cmp')
-    $script:AnaMode = $(if ($asg) { 'asg' } else { 'cmp' })
-    $c['pnlAnaAsg'].Visibility = $(if ($asg) { 'Visible' } else { 'Collapsed' })
-    $c['pnlAnaCmp'].Visibility = $(if ($asg) { 'Collapsed' } else { 'Visible' })
+    if ($Mode -notin 'asg', 'cmp', 'bak') { $Mode = 'asg' }
+    $script:AnaMode = $Mode
+    $vis = { param($b) if ($b) { 'Visible' } else { 'Collapsed' } }
+    $c['pnlAnaAsg'].Visibility = & $vis ($Mode -eq 'asg')
+    $c['pnlAnaCmp'].Visibility = & $vis ($Mode -eq 'cmp')
+    $c['pnlAnaBak'].Visibility = & $vis ($Mode -eq 'bak')
     $c['gridAna'].Visibility = $c['pnlAnaAsg'].Visibility
     $c['gridCmp'].Visibility = $c['pnlAnaCmp'].Visibility
-    $c['btnAnaModeAsg'].Background = Get-HUBrush $(if ($asg) { '#1976D2' } else { '#3E3E42' })
-    $c['btnAnaModeCmp'].Background = Get-HUBrush $(if ($asg) { '#3E3E42' } else { '#1976D2' })
+    $c['gridBak'].Visibility = $c['pnlAnaBak'].Visibility
+    $c['btnAnaModeAsg'].Background = Get-HUBrush $(if ($Mode -eq 'asg') { '#1976D2' } else { '#3E3E42' })
+    $c['btnAnaModeCmp'].Background = Get-HUBrush $(if ($Mode -eq 'cmp') { '#1976D2' } else { '#3E3E42' })
+    $c['btnAnaModeBak'].Background = Get-HUBrush $(if ($Mode -eq 'bak') { '#1976D2' } else { '#3E3E42' })
     Set-HUStateValue 'anaMode' $Mode
+    if ($Mode -eq 'bak') { Update-HUBakView }
     Update-HUAnaHint
 }
 
 function Update-HUAnaHint {
     if ($script:AnaMode -eq 'cmp') { Update-HUCmpHint; return }
+    if ($script:AnaMode -eq 'bak') { Update-HUBakHint; return }
     $c = $script:Controls
     $wait = @($script:AnaWait.Keys)
     $n = $script:AnaRows.Count
@@ -260,7 +266,7 @@ function Start-HUCmpCopy {
     if (-not $sel.Count) { Show-HUMessage 'Bitte Eintraege markieren, die in einem Tenant fehlen (Strg/Shift fuer mehrere).' -Icon Info; return }
     $no = @($sel | Where-Object { -not $_.Copy })
     $todo = @($sel | Where-Object { $_.Copy })
-    if (-not $todo.Count) { Show-HUMessage "Diese Arten koennen nicht kopiert werden: $(@($no | ForEach-Object { $_.Typ } | Select-Object -Unique) -join ', ').`n`nApps ueber die Bibliothek verteilen; Conditional Access, Administrative Vorlagen und Autopilot im Portal anlegen (Gruppen-IDs unterscheiden sich je Tenant)." -Icon Info; return }
+    if (-not $todo.Count) { Show-HUMessage "Diese Arten koennen nicht kopiert werden: $(@($no | ForEach-Object { $_.Typ } | Select-Object -Unique) -join ', ').`n`nApps ueber die Bibliothek verteilen; Conditional Access und Autopilot im Portal anlegen (Gruppen-IDs unterscheiden sich je Tenant)." -Icon Info; return }
     $jobs = foreach ($m in $todo) {
         $srcItem = @($m.Items)[0]
         foreach ($t in $m.Missing) { [pscustomobject]@{ Typ = $m.Typ; Name = $m.Name; From = $srcItem.Tenant; Id = $srcItem.Id; To = $t } }
@@ -346,6 +352,200 @@ function Register-HUCmpHandlers {
         })
 }
 
+# ----------------------------------------------------------------------------
+# Backup und Verlauf
+# ----------------------------------------------------------------------------
+$script:BakRows = @()
+$script:BakInfo = $null
+$script:BakBusy = $false
+
+function Get-HUBakRootSafe { try { return (Get-HUBackupRoot $script:Settings) } catch { return '' } }
+
+function Update-HUBakHint {
+    $c = $script:Controls
+    if ($script:BakBusy) { return }
+    if (-not $script:BakInfo) { $c['lblAnaHint'].Text = 'Backup jetzt sichert die angehakten Tenants. Danach im Verlauf zwei Staende waehlen und Anzeigen: neu, geloescht, Einstellungen/Zuweisungen geaendert, umbenannt - mit Benutzer aus dem Intune-Protokoll. Doppelklick zeigt die Unterschiede.'; return }
+    $all = @($script:BakRows); $vis = @(Get-HUBakVisibleRows).Count
+    $chg = @($all | Where-Object { $_.Aenderung -and $_.Aenderung -ne 'gleich' }).Count
+    $c['lblAnaHint'].Text = "$($script:BakInfo): $($all.Count) Eintraege$(if ($script:BakInfo -match '->') { ", $chg geaendert" })$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Wiederherstellen legt den Eintrag aus dem linken Stand neu an (Name mit Zusatz, ohne Zuweisungen; Conditional Access deaktiviert)."
+}
+
+function Update-HUBakView {
+    $c = $script:Controls
+    $c['lblBakRoot'].Text = "Ablage: $(Get-HUBakRootSafe)"
+    $cb = $c['cmbBakTenant']
+    $cur = if ($cb.SelectedItem) { "$($cb.SelectedItem.Tag)" } else { "$(Get-HUStateValue 'bakTenant' '')" }
+    $script:BakTenantBusy = $true
+    $cb.Items.Clear()
+    foreach ($t in @($script:Settings.tenants)) { $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = "$($t.displayName)"; $i.Tag = "$($t.key)"; [void]$cb.Items.Add($i) }
+    $sel = @($cb.Items | Where-Object { "$($_.Tag)" -eq $cur }) | Select-Object -First 1
+    if (-not $sel -and $cb.Items.Count) { $sel = $cb.Items[0] }
+    $cb.SelectedItem = $sel
+    $script:BakTenantBusy = $false
+    Update-HUBakSnapshots
+    Update-HUBakHint
+}
+
+function Update-HUBakSnapshots {
+    $c = $script:Controls
+    $k = if ($c['cmbBakTenant'].SelectedItem) { "$($c['cmbBakTenant'].SelectedItem.Tag)" } else { '' }
+    $list = @(); $root = Get-HUBakRootSafe
+    if ($k -and $root) { $list = @(Get-HUBackupList -Root $root -TenantKey $k) }
+    foreach ($n in 'cmbBakA', 'cmbBakB') { $c[$n].Items.Clear() }
+    $only = New-Object System.Windows.Controls.ComboBoxItem; $only.Content = '(nur linken Stand zeigen)'; $only.Tag = ''
+    [void]$c['cmbBakB'].Items.Add($only)
+    foreach ($s in $list) {
+        foreach ($n in 'cmbBakA', 'cmbBakB') { $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = $s.Label; $i.Tag = $s.Folder; [void]$c[$n].Items.Add($i) }
+    }
+    if ($list.Count -ge 2) { $c['cmbBakA'].SelectedIndex = 1; $c['cmbBakB'].SelectedIndex = 1 }
+    elseif ($list.Count -eq 1) { $c['cmbBakA'].SelectedIndex = 0; $c['cmbBakB'].SelectedIndex = 0 }
+    $c['btnBakCmp'].IsEnabled = ($list.Count -gt 0)
+    if (-not $list.Count -and $k) { $c['lblAnaHint'].Text = "Fuer $(Get-HUAnaTenantName $k) gibt es noch kein Backup - Tenant anhaken und Backup jetzt." }
+}
+
+function Get-HUBakVisibleRows {
+    $rows = @($script:BakRows)
+    if ($script:Controls['chkBakChanges'].IsChecked -and $script:BakInfo -match '->') { $rows = @($rows | Where-Object { $_.Aenderung -ne 'gleich' }) }
+    foreach ($w in @("$($script:Controls['txtBakFilter'].Text)" -split '\s+' | Where-Object { $_ })) {
+        $rows = @($rows | Where-Object { ("$($_.Typ) $($_.Name) $($_.Aenderung) $($_.Wer)").IndexOf($w, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
+    }
+    return @($rows | Sort-Object Typ, Name)
+}
+
+function Update-HUBakGrid { $script:Controls['gridBak'].ItemsSource = @(Get-HUBakVisibleRows); Update-HUBakHint }
+
+function Start-HUBakNow([string[]]$Keys = @(), [switch]$Auto) {
+    $c = $script:Controls
+    if (-not $Keys.Count) { $Keys = @(Get-HUCheckedTenants $c['spAnaTenants']) }
+    if (-not $Keys.Count) { Show-HUMessage 'Bitte mindestens einen Tenant anhaken.' -Icon Warning; return }
+    if (Test-HUJobRunning 'Backup') { if (-not $Auto) { Show-HUMessage 'Es laeuft bereits ein Backup.' -Icon Info }; return }
+    $keep = [int](Get-HUProp $script:Settings.ui 'backupKeep' 30)
+    $script:BakBusy = $true
+    $c['btnBakNow'].IsEnabled = $false
+    $c['lblAnaHint'].Text = "Backup laeuft ($($Keys.Count) Tenant(s)) - je Tenant 1-3 Minuten ..."
+    Add-HURtbLine $c['rtbAna'] "$(if ($Auto) { 'Automatisches ' })Backup: $(@($Keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" '#90CAF9'
+    [void](Start-HUJob -Name 'Backup' -Output $c['rtbAna'] -Vars @{ Keys = $Keys; Keep = $keep } -Code {
+            $root = Get-HUBackupRoot $Settings
+            foreach ($k in $Keys) {
+                try {
+                    $r = Save-HUTenantBackup -TenantKey $k -Settings $Settings -Root $root
+                    $del = Remove-HUOldBackups -Root $root -TenantKey $k -Keep $Keep
+                    Write-HULog -Message "Backup fertig: $($r.Count) Eintraege$(if ($r.Errors) { ", $($r.Errors) nicht lesbar" })$(if ($del) { ", $del alte Staende entfernt" })" -Level 'OK' -Tenant $k
+                } catch { Write-HULog -Message "Backup: $($_.Exception.Message)" -Level 'ERROR' -Tenant $k }
+            }
+        } -OnDone {
+            param($Result, $Errors)
+            $script:BakBusy = $false
+            $script:Controls['btnBakNow'].IsEnabled = $true
+            Set-HUStateValue 'bakLast' (Get-Date).ToString('s')
+            if ($script:AnaMode -eq 'bak') { Update-HUBakSnapshots; Update-HUBakHint }
+        })
+}
+
+function Start-HUBakCompare {
+    $c = $script:Controls
+    $k = "$($c['cmbBakTenant'].SelectedItem.Tag)"
+    $a = $c['cmbBakA'].SelectedItem; $b = $c['cmbBakB'].SelectedItem
+    if (-not $a) { return }
+    $fa = "$($a.Tag)"; $fb = if ($b) { "$($b.Tag)" } else { '' }
+    if ($fb -and $fa -eq $fb) { $fb = '' }
+    if ($fb -and (Split-Path $fb -Leaf) -lt (Split-Path $fa -Leaf)) { $t = $fa; $fa = $fb; $fb = $t }
+    $la = [datetime]::ParseExact((Split-Path $fa -Leaf), 'yyyy-MM-dd_HHmmss', $null)
+    $script:BakA = $fa; $script:BakB = $fb; $script:BakTenant = $k
+    if (-not $fb) {
+        $ix = Read-HUJsonFile (Join-Path $fa 'index.json')
+        $script:BakRows = @(@($ix.Items) | ForEach-Object { [pscustomobject]@{ Typ = $_.Typ; Name = $_.Name; Aenderung = ''; Wer = ''; Id = $_.Id; FileA = $(if ($_.File) { Join-Path $fa $_.File } else { '' }); FileB = '' } })
+        $script:BakInfo = "$(Get-HUAnaTenantName $k), Stand $($la.ToString('dd.MM.yyyy HH:mm'))"
+        Update-HUBakGrid
+        return
+    }
+    $lb = [datetime]::ParseExact((Split-Path $fb -Leaf), 'yyyy-MM-dd_HHmmss', $null)
+    $rows = @(Compare-HUBackups -FolderA $fa -FolderB $fb | ForEach-Object { $_ | Add-Member -NotePropertyName Wer -NotePropertyValue '' -PassThru })
+    $script:BakRows = $rows
+    $script:BakInfo = "$(Get-HUAnaTenantName $k), $($la.ToString('dd.MM. HH:mm')) -> $($lb.ToString('dd.MM. HH:mm'))"
+    Update-HUBakGrid
+    # wer hat geaendert: Intune-Protokoll zwischen den beiden Staenden
+    $ids = @($rows | Where-Object { $_.Aenderung -ne 'gleich' } | ForEach-Object { "$($_.Id)" })
+    if (-not $ids.Count) { return }
+    [void](Start-HUJob -Name 'BakAudit' -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; From = $la.AddMinutes(-1); To = $lb.AddMinutes(1); Ids = $ids } -Code {
+            try { $ev = @(Get-HUAuditEvents -TenantKey $TK -Settings $Settings -From $From -To $To) }
+            catch { Write-HULog -Message "Intune-Protokoll nicht lesbar ($($_.Exception.Message)) - Berechtigung DeviceManagementConfiguration.Read.All bzw. DeviceManagementApps.Read.All" -Level 'WARN' -Tenant $TK; return }
+            foreach ($g in @($ev | Where-Object { $Ids -contains $_.ResourceId } | Group-Object ResourceId)) {
+                [pscustomobject]@{ __Audit = $g.Name; Text = (@($g.Group | Sort-Object Time | ForEach-Object { "$($_.Actor) ($($_.Time.ToLocalTime().ToString('dd.MM. HH:mm')))" } | Select-Object -Unique) -join '; ') }
+            }
+        } -OnDone {
+            param($Result, $Errors)
+            foreach ($x in @($Result | Where-Object { $_ -and $_.PSObject.Properties['__Audit'] })) {
+                foreach ($r in @($script:BakRows | Where-Object { "$($_.Id)" -eq "$($x.__Audit)" })) { $r.Wer = $x.Text }
+            }
+            Update-HUBakGrid
+        })
+}
+
+function Show-HUBakDetail {
+    $r = $script:Controls['gridBak'].SelectedItem
+    if (-not $r) { return }
+    if (-not $r.FileA -and -not $r.FileB) { Show-HUMessage 'Apps sind nur als Liste gesichert.' -Icon Info; return }
+    if ($r.FileA -and $r.FileB) {
+        $la = Split-Path $script:BakA -Leaf; $lb = Split-Path $script:BakB -Leaf
+        $d = @(Get-HUBackupItemDiff $r.FileA $r.FileB)
+        if (-not $d.Count) { Show-HUMessage "$($r.Typ): $($r.Name)`n`nKeine Unterschiede in Einstellungen und Zuweisungen." -Icon Info; return }
+        $rows = @($d | ForEach-Object { [pscustomobject][ordered]@{ Einstellung = $_.Einstellung; "Stand $la" = $_.T0; "Stand $lb" = $_.T1 } })
+        Show-HUQSTable -Title "Aenderungen - $($r.Typ): $($r.Name)" -Objects $rows -FilePrefix 'Backup-Aenderungen'
+        return
+    }
+    # nur ein Stand: alle Einstellungen anzeigen
+    $f = if ($r.FileA) { $r.FileA } else { $r.FileB }
+    $m = ConvertTo-HUFlatMap (Read-HUJsonFile $f) -WithAssignments
+    $rows = @($m.Keys | Sort-Object | ForEach-Object { [pscustomobject]@{ Einstellung = $_; Wert = $m[$_] } })
+    Show-HUQSTable -Title "$($r.Typ): $($r.Name)" -Objects $rows -FilePrefix 'Backup-Eintrag'
+}
+
+function Start-HUBakRestore {
+    $c = $script:Controls
+    $sel = @($c['gridBak'].SelectedItems | Where-Object { $_.FileA })
+    if (-not $sel.Count) { Show-HUMessage 'Bitte Eintraege markieren, die es im linken (aelteren) Stand gibt.' -Icon Info; return }
+    $k = $script:BakTenant
+    $stamp = (Split-Path $script:BakA -Leaf).Substring(0, 10)
+    $lines = @($sel | Select-Object -First 15 | ForEach-Object { "  $($_.Typ): $($_.Name)" })
+    if (-not (Confirm-HU "$($sel.Count) Eintrag/Eintraege aus dem Stand $stamp in $(Get-HUAnaTenantName $k) NEU anlegen:`n`n$($lines -join "`n")$(if ($sel.Count -gt 15) { "`n  ..." })`n`nName mit Zusatz '(wiederhergestellt $stamp)', OHNE Zuweisungen - der bestehende Eintrag bleibt unveraendert. Conditional Access wird deaktiviert angelegt.`n`nDanach vergleichen, zuweisen und den alten Eintrag selbst entfernen.")) { return }
+    $jobs = @($sel | ForEach-Object { [pscustomobject]@{ Typ = $_.Typ; Name = $_.Name; File = $_.FileA } })
+    [void](Start-HUJob -Name 'BakRestore' -Output $c['rtbAna'] -Vars @{ TK = $k; Jobs = $jobs; Stamp = $stamp } -Code {
+            foreach ($j in $Jobs) {
+                try {
+                    [void](Restore-HUBackupItem -TenantKey $TK -Settings $Settings -Typ $j.Typ -File $j.File -Name "$($j.Name) (wiederhergestellt $Stamp)")
+                    Write-HULog -Message "$($j.Typ) '$($j.Name)' wiederhergestellt (ohne Zuweisungen)" -Level 'OK' -Tenant $TK
+                } catch { Write-HULog -Message "$($j.Typ) '$($j.Name)': $($_.Exception.Message)" -Level 'ERROR' -Tenant $TK }
+            }
+        })
+}
+
+function Register-HUBakHandlers {
+    $c = $script:Controls
+    $c['btnAnaModeBak'].Add_Click({ Set-HUAnaMode 'bak' })
+    $c['btnBakNow'].Add_Click({ Start-HUBakNow })
+    $c['btnBakFolder'].Add_Click({ $p = Get-HUBakRootSafe; if ($p) { Start-Process explorer.exe -ArgumentList "`"$p`"" } })
+    $c['cmbBakTenant'].Add_SelectionChanged({ if (-not $script:BakTenantBusy -and $script:Controls['cmbBakTenant'].SelectedItem) { Set-HUStateValue 'bakTenant' "$($script:Controls['cmbBakTenant'].SelectedItem.Tag)"; Update-HUBakSnapshots } })
+    $c['btnBakCmp'].Add_Click({ Start-HUBakCompare })
+    $c['chkBakChanges'].Add_Checked({ Update-HUBakGrid })
+    $c['chkBakChanges'].Add_Unchecked({ Update-HUBakGrid })
+    $c['txtBakFilter'].Add_TextChanged({ Update-HUBakGrid })
+    $c['gridBak'].Add_MouseDoubleClick({ Show-HUBakDetail })
+    $c['btnBakRestore'].Add_Click({ Start-HUBakRestore })
+    $c['btnBakTable'].Add_Click({
+            $rows = @(Get-HUBakVisibleRows | Select-Object Typ, Name, Aenderung, Wer)
+            if (-not $rows.Count) { Show-HUMessage 'Noch keine Eintraege.' -Icon Info; return }
+            Show-HUQSTable -Title "Backup - $($script:BakInfo)" -Objects $rows -FilePrefix 'Backup-Verlauf'
+        })
+    # automatisch einmal taeglich (alle Tenants), kurz nach dem Start
+    if ([bool](Get-HUProp $script:Settings.ui 'backupDaily' $false)) {
+        $last = $null; try { $last = [datetime](Get-HUStateValue 'bakLast' '') } catch { }
+        if (-not $last -or ((Get-Date) - $last).TotalHours -ge 20) {
+            Invoke-HUDelayed 30 { Start-HUBakNow -Keys @($script:Settings.tenants | ForEach-Object { "$($_.key)" }) -Auto }
+        }
+    }
+}
+
 function Register-HUAnaHandlers {
     $c = $script:Controls
     Update-HUAnaTenantChecks
@@ -375,5 +575,6 @@ function Register-HUAnaHandlers {
         })
     Add-HUOutputMenu $c['rtbAna'] { $script:Controls['rtbAna'].Document.Blocks.Clear() }
     Register-HUCmpHandlers
+    Register-HUBakHandlers
     Set-HUAnaMode "$(Get-HUStateValue 'anaMode' 'asg')"
 }

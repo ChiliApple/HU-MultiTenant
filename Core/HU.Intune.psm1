@@ -2436,7 +2436,7 @@ function Resolve-HUFlatMapIds {
 # ============================================================================
 function Get-HUBackupRoot($Settings) {
     $p = ''
-    try { if ($Settings.PSObject.Properties['backup'] -and $Settings.backup) { $p = "$($Settings.backup.path)" } } catch { }
+    try { if ($Settings.PSObject.Properties['ui'] -and $Settings.ui -and $Settings.ui.PSObject.Properties['backupPath']) { $p = "$($Settings.ui.backupPath)" } } catch { }
     if (-not $p) { $p = Join-Path (Get-HUWorkPath) 'Backups' }
     $p = [Environment]::ExpandEnvironmentVariables($p)
     if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
