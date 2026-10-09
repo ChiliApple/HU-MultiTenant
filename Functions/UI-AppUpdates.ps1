@@ -23,7 +23,7 @@ function Get-HUUpdRow($App) {
     # echter Stand aus Intune (beim Pruefen gelesen), sonst die Notiz aus der Bibliothek
     $real = if ($i -and $i.Intune) { @($i.Intune) } else { @() }
     if ($real.Count) {
-        $intune = (@($real | ForEach-Object { "$(Get-HUTenantDisplayName $_.Tenant) $(if ($_.Missing) { 'fehlt in Intune' } elseif ($_.Version) { "v$($_.Version)" } else { '(ohne Version)' })".Trim() }) -join '; ')
+        $intune = (@($real | ForEach-Object { "$(Get-HUTenantDisplayName $_.Tenant) $(if ($_.Missing) { 'fehlt in Intune' } elseif ($_.Error) { '(nicht lesbar)' } elseif ($_.Version) { "v$($_.Version)" } else { '(ohne Version)' })".Trim() }) -join '; ')
     } else {
         $intune = (@($dep | ForEach-Object { "$(Get-HUTenantDisplayName $_.Tenant) $(if ($_.Version) { "v$($_.Version)" })$(if ($_.Stage -eq 'pilot') { ' Pilot' })".Trim() }) -join '; ')
         if ($intune) { $intune += '  (laut Bibliothek)' }
@@ -88,10 +88,16 @@ function Start-HUUpdCheck {
             $r.Intune = @(foreach ($d in @($it.Deps)) {
                     try {
                         $ia = Invoke-HUIntuneGraph -TenantKey $d.Tenant -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$($d.AppId)"
-                        [pscustomobject]@{ Tenant = $d.Tenant; Version = "$($ia.displayVersion)"; Missing = $false }
+                        [pscustomobject]@{ Tenant = $d.Tenant; Version = "$($ia.displayVersion)"; Missing = $false; Error = '' }
                     } catch {
-                        if ("$($_.Exception.Message)" -match '404|NotFound|ResourceNotFound|does not exist') { [pscustomobject]@{ Tenant = $d.Tenant; Version = ''; Missing = $true } }
-                        else { Write-HULog -Message "$($it.Name): Intune-Stand nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $d.Tenant }
+                        $em = "$($_.Exception.Message)"
+                        if ($em -match '404|NotFound|not found|ResourceNotFound|does not exist|nicht gefunden') {
+                            Write-HULog -Message "$($it.Name): App gibt es in Intune nicht mehr" -Level 'WARN' -Tenant $d.Tenant
+                            [pscustomobject]@{ Tenant = $d.Tenant; Version = ''; Missing = $true; Error = '' }
+                        } else {
+                            Write-HULog -Message "$($it.Name): Intune-Stand nicht lesbar ($em)" -Level 'WARN' -Tenant $d.Tenant
+                            [pscustomobject]@{ Tenant = $d.Tenant; Version = ''; Missing = $false; Error = $em }
+                        }
                     }
                 })
             try {
@@ -112,10 +118,17 @@ function Start-HUUpdCheck {
         param($Result, $Errors)
         $script:Controls['btnUpdCheck'].IsEnabled = $true
         $auto = @()
+        $script:UpdCleaned = @()
         foreach ($r in @($Result | Where-Object { $_ -and $_.PSObject.Properties['Suggest'] })) {
             $a = Get-HUAppById $r.Id
             if (-not $a) { continue }
             $info = @{ Latest = "$($r.Latest)"; Error = "$($r.Error)"; Suggest = @($r.Suggest); Intune = @($r.Intune); Time = Get-Date }
+            # in Intune geloescht -> Verteilungs-Notiz in der Bibliothek entfernen (sonst gilt die App dort weiter als verteilt)
+            $gone = @(@($r.Intune) | Where-Object { $_.Missing } | ForEach-Object { $_.Tenant })
+            if ($gone.Count) {
+                $a.Deployments = @(@($a.Deployments) | Where-Object { $gone -notcontains $_.Tenant })
+                $script:UpdCleaned += "$($a.Name): $(@($gone | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')"
+            }
             if (-not $a.WingetId -and @($r.Suggest).Count) {
                 # eindeutiger Treffer mit gleichem Namen -> zuordnen
                 $base = Get-HUAppBaseName $a.Name
@@ -123,6 +136,11 @@ function Start-HUUpdCheck {
                 if ($same.Count -eq 1) { $a.WingetId = $same[0].Id; $info.Latest = "$($same[0].Version)"; $auto += "$($a.Name) = $($a.WingetId)" }
             }
             $script:UpdInfo[$r.Id] = $info
+        }
+        if ($script:UpdCleaned.Count) {
+            Save-HUAppLib
+            if ($script:AppCurrent) { Show-HUAppForm $script:AppCurrent }
+            Add-HURtbLine $script:Controls['rtbApps'] "In Intune geloescht - Verteilung in der Bibliothek zurueckgesetzt: $($script:UpdCleaned -join '; ')" '#FFB74D'
         }
         if ($auto.Count) {
             Save-HUAppLib
