@@ -2148,7 +2148,7 @@ function Get-HUCompareSources {
     return @(
         @{ Typ = 'Konfiguration'; Ep = '/deviceManagement/deviceConfigurations'; Base = '/deviceManagement/deviceConfigurations'; Name = 'displayName'; Copy = 'generic'; Hash = $true }
         @{ Typ = 'Einstellungskatalog'; Ep = '/deviceManagement/configurationPolicies'; Base = '/deviceManagement/configurationPolicies'; Name = 'name'; Copy = 'catalog'; Hash = $false }
-        @{ Typ = 'Administrative Vorlage'; Ep = '/deviceManagement/groupPolicyConfigurations'; Base = ''; Name = 'displayName'; Copy = ''; Hash = $false }
+        @{ Typ = 'Administrative Vorlage'; Ep = '/deviceManagement/groupPolicyConfigurations'; Base = '/deviceManagement/groupPolicyConfigurations'; Name = 'displayName'; Copy = 'admx'; Hash = $false }
         @{ Typ = 'Compliance'; Ep = '/deviceManagement/deviceCompliancePolicies'; Base = '/deviceManagement/deviceCompliancePolicies'; Name = 'displayName'; Copy = 'compliance'; Hash = $true }
         @{ Typ = 'Wartung'; Ep = '/deviceManagement/deviceHealthScripts'; Base = '/deviceManagement/deviceHealthScripts'; Name = 'displayName'; Copy = 'generic'; Hash = $false }
         @{ Typ = 'Plattform-Skript'; Ep = '/deviceManagement/deviceManagementScripts'; Base = '/deviceManagement/deviceManagementScripts'; Name = 'displayName'; Copy = 'generic'; Hash = $false }
@@ -2240,42 +2240,78 @@ function ConvertTo-HUHashtable($Obj) {
     $h = @{}; foreach ($p in $Obj.PSObject.Properties) { $h[$p.Name] = ConvertTo-HUHashtable $p.Value }; return $h
 }
 
-# Objekt aus einem Tenant in einen anderen kopieren (ohne Zuweisungen) -> neue Id
-function Copy-HUIntuneObject {
+# Objekt neu anlegen aus einem vollstaendig gelesenen Objekt (Get-HUCompareObject / Backup-Datei), ohne Zuweisungen -> neue Id
+# -Name: anderer Name (z. B. "... (wiederhergestellt)"). Conditional Access nur mit -AllowCA (wird deaktiviert angelegt).
+function New-HUIntuneObject {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Typ, [Parameter(Mandatory)][string]$SourceTenant, [Parameter(Mandatory)][string]$SourceId, [Parameter(Mandatory)][string]$TargetTenant, [Parameter(Mandatory)]$Settings)
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [Parameter(Mandatory)]$Obj, [string]$Name = '', [switch]$AllowCA)
     $src = Get-HUCompareSources | Where-Object { $_.Typ -eq $Typ } | Select-Object -First 1
-    if (-not $src -or -not $src.Copy) { throw "$Typ kann nicht kopiert werden" }
-    $base = $src.Base
-    switch ($src.Copy) {
-        'catalog' {
-            $o = Invoke-HUIntuneGraph -TenantKey $SourceTenant -Settings $Settings -Endpoint "$base/$SourceId`?`$expand=settings"
+    if (-not $src) { throw "Unbekannte Art: $Typ" }
+    $o = $Obj
+    $base = ($src.Ep -replace '\?.*$', '')
+    $nameProp = $src.Name
+    switch ($Typ) {
+        'Einstellungskatalog' {
             $body = @{
                 name = "$($o.name)"; description = "$($o.description)"; platforms = "$($o.platforms)"; technologies = "$($o.technologies)"; roleScopeTagIds = @('0')
                 settings = @(@($o.settings) | ForEach-Object { @{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationSetting'; settingInstance = (ConvertTo-HUHashtable (ConvertTo-HUCleanObject $_.settingInstance @())) } })
             }
             if ($o.templateReference -and "$($o.templateReference.templateId)") { $body.templateReference = @{ templateId = "$($o.templateReference.templateId)" } }
         }
-        'compliance' {
-            $o = Invoke-HUIntuneGraph -TenantKey $SourceTenant -Settings $Settings -Endpoint "$base/$SourceId`?`$expand=scheduledActionsForRule(`$expand=scheduledActionConfigurations)"
+        'Compliance' {
             $body = ConvertTo-HUHashtable (ConvertTo-HUCleanObject $o)
             $acts = @(@($o.scheduledActionsForRule) | ForEach-Object { @($_.scheduledActionConfigurations) } | Where-Object { $_ } | ForEach-Object {
                     @{ actionType = "$($_.actionType)"; gracePeriodHours = [int]$_.gracePeriodHours; notificationTemplateId = ''; notificationMessageCCList = @() } })
-            if (-not $acts.Count) { $acts = @(@{ actionType = 'block'; gracePeriodHours = 0; notificationTemplateId = ''; notificationMessageCCList = @() }) }
             # Benachrichtigungsvorlagen gibt es nur im Quell-Tenant -> nur Sperren/Markieren uebernehmen
             $acts = @($acts | Where-Object { $_.actionType -ne 'notification' -and $_.actionType -ne 'pushNotification' })
             if (-not $acts.Count) { $acts = @(@{ actionType = 'block'; gracePeriodHours = 0; notificationTemplateId = ''; notificationMessageCCList = @() }) }
             $body.scheduledActionsForRule = @(@{ ruleName = 'PasswordRequired'; scheduledActionConfigurations = $acts })
             $body.roleScopeTagIds = @('0')
         }
+        'Administrative Vorlage' {
+            $body = @{ displayName = "$($o.displayName)"; description = "$($o.description)"; roleScopeTagIds = @('0') }
+        }
+        'Conditional Access' {
+            if (-not $AllowCA) { throw 'Conditional Access wird nicht in andere Tenants kopiert (Gruppen-IDs verschieden)' }
+            $body = ConvertTo-HUHashtable (ConvertTo-HUCleanObject $o)
+            $body.state = 'disabled'
+        }
         default {
-            $o = Invoke-HUIntuneGraph -TenantKey $SourceTenant -Settings $Settings -Endpoint "$base/$SourceId"
+            if (-not $src.Copy) { throw "$Typ kann nicht angelegt werden" }
             $body = ConvertTo-HUHashtable (ConvertTo-HUCleanObject $o)
             $body.roleScopeTagIds = @('0')
         }
     }
-    $r = Invoke-HUIntuneGraph -TenantKey $TargetTenant -Settings $Settings -Endpoint $base -Method POST -Body $body
-    return "$($r.id)"
+    if ($Typ -eq 'Conditional Access') { $body.Remove('roleScopeTagIds') }
+    if ($Name) { $body[$nameProp] = $Name }
+    foreach ($k in @('definitionValues', 'settings@odata.context')) { if ($Typ -ne 'Einstellungskatalog' -and $body.ContainsKey($k)) { $body.Remove($k) } }
+    $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint $base -Method POST -Body $body -V1:($Typ -eq 'Conditional Access')
+    $newId = "$($r.id)"
+    if ($Typ -eq 'Administrative Vorlage') {
+        $gb = 'https://graph.microsoft.com/beta/deviceManagement/groupPolicyDefinitions'
+        foreach ($dv in @($o.definitionValues)) {
+            $defId = "$($dv.definition.id)"
+            if (-not $defId) { continue }
+            $pv = @(@($dv.presentationValues) | Where-Object { $_.presentation -and $_.presentation.id } | ForEach-Object {
+                    $h = ConvertTo-HUHashtable (ConvertTo-HUCleanObject $_ @('id', 'createdDateTime', 'lastModifiedDateTime', 'presentation', 'definitionValue'))
+                    $h['presentation@odata.bind'] = "$gb('$defId')/presentations('$($_.presentation.id)')"
+                    $h })
+            $dvb = @{ enabled = [bool]$dv.enabled; 'definition@odata.bind' = "$gb('$defId')"; presentationValues = $pv }
+            try { [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$newId/definitionValues" -Method POST -Body $dvb) }
+            catch { Write-HULog -Message "Administrative Vorlage '$($o.displayName)': Einstellung '$($dv.definition.displayName)' nicht uebernommen ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey }
+        }
+    }
+    return $newId
+}
+
+# Objekt aus einem Tenant in einen anderen kopieren (ohne Zuweisungen) -> neue Id
+function Copy-HUIntuneObject {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Typ, [Parameter(Mandatory)][string]$SourceTenant, [Parameter(Mandatory)][string]$SourceId, [Parameter(Mandatory)][string]$TargetTenant, [Parameter(Mandatory)]$Settings)
+    $src = Get-HUCompareSources | Where-Object { $_.Typ -eq $Typ } | Select-Object -First 1
+    if (-not $src -or -not $src.Copy) { throw "$Typ kann nicht kopiert werden" }
+    $o = Get-HUCompareObject -TenantKey $SourceTenant -Settings $Settings -Typ $Typ -Id $SourceId
+    return (New-HUIntuneObject -TenantKey $TargetTenant -Settings $Settings -Typ $Typ -Obj $o)
 }
 
 # Objekt vollstaendig holen (fuer die Detail-Ansicht im Vergleich)
@@ -2288,16 +2324,16 @@ function Get-HUCompareObject {
     $q = switch ($Typ) {
         'Einstellungskatalog' { '?$expand=settings' }
         'Compliance' { '?$expand=scheduledActionsForRule($expand=scheduledActionConfigurations)' }
-        'Administrative Vorlage' { '?$expand=definitionValues($expand=definition($select=displayName,categoryPath),presentationValues)' }
+        'Administrative Vorlage' { '?$expand=definitionValues($expand=definition,presentationValues($expand=presentation))' }
         default { '' }
     }
     return (Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$Id$q" -V1:($Typ -eq 'Conditional Access'))
 }
 
 # Objekt zu Pfad -> Wert flach machen. Listenelemente mit settingDefinitionId/definition werden darueber benannt (Reihenfolge egal).
-function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null) {
+function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null, [switch]$WithAssignments) {
     if ($null -eq $Map) { $Map = @{} }
-    $skip = $script:HUCmpSkip + @('displayName', 'name', 'description', '@odata.context', 'settingInstanceTemplateReference', 'settingValueTemplateReference', 'definition@odata.bind', 'presentation@odata.bind')
+    $skip = @($script:HUCmpSkip | Where-Object { -not $WithAssignments -or $_ -ne 'assignments' }) + @('displayName', 'name', 'description', '@odata.context', 'settingInstanceTemplateReference', 'settingValueTemplateReference', 'definition@odata.bind', 'presentation@odata.bind')
     if ($null -eq $Obj) { return $Map }
     if ($Obj -is [string] -or $Obj -is [ValueType]) {
         $v = "$Obj"
@@ -2321,7 +2357,8 @@ function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null
             elseif ($e.PSObject.Properties['settingInstance'] -and $e.settingInstance.settingDefinitionId) { $k = "$($e.settingInstance.settingDefinitionId)" }
             elseif ($e.PSObject.Properties['definition'] -and $e.definition.displayName) { $k = "$($e.definition.displayName)" }
             elseif ($e.PSObject.Properties['actionType']) { $k = "$($e.actionType)" }
-            [void](ConvertTo-HUFlatMap $e "$Prefix[$k]" $Map)
+            elseif ($e.PSObject.Properties['target'] -and $e.target) { $k = "$(("$($e.target.'@odata.type')" -replace '^#microsoft\.graph\.', '' -replace 'AssignmentTarget$', '')) $($e.target.groupId)".Trim() }
+            [void](ConvertTo-HUFlatMap $e "$Prefix[$k]" $Map -WithAssignments:$WithAssignments)
             $i++
         }
         return $Map
@@ -2331,7 +2368,7 @@ function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null
         if ($p.Name -in $skip -or $p.Name -match '@odata\.(context|navigationLink|associationLink|etag)$|^id$') { continue }
         if ($null -eq $p.Value) { continue }
         if ($p.Name -eq '@odata.type' -and $Prefix) { continue }
-        [void](ConvertTo-HUFlatMap $p.Value $(if ($Prefix) { "$Prefix.$($p.Name)" } else { $p.Name }) $Map)
+        [void](ConvertTo-HUFlatMap $p.Value $(if ($Prefix) { "$Prefix.$($p.Name)" } else { $p.Name }) $Map -WithAssignments:$WithAssignments)
     }
     return $Map
 }
@@ -2393,6 +2430,165 @@ function Resolve-HUFlatMapIds {
     return $Map
 }
 
+# ============================================================================
+# Konfigurations-Backup: Stand je Tenant als JSON-Dateien, Verlauf vergleichen, einzelne Eintraege wiederherstellen
+# Ablage: <Root>\<Tenant>\<yyyy-MM-dd_HHmmss>\<Typ>\<Name>__<Id>.json + index.json
+# ============================================================================
+function Get-HUBackupRoot($Settings) {
+    $p = ''
+    try { if ($Settings.PSObject.Properties['backup'] -and $Settings.backup) { $p = "$($Settings.backup.path)" } } catch { }
+    if (-not $p) { $p = Join-Path (Get-HUWorkPath) 'Backups' }
+    $p = [Environment]::ExpandEnvironmentVariables($p)
+    if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
+    return $p
+}
+
+function ConvertTo-HUSafeFileName([string]$Name, [int]$Max = 80) {
+    $n = ("$Name" -replace '[\\/:*?"<>|\x00-\x1f]', '_').Trim(' ', '.')
+    if (-not $n) { $n = '_' }
+    if ($n.Length -gt $Max) { $n = $n.Substring(0, $Max) }
+    return $n
+}
+
+function Write-HUJsonFile([string]$Path, $Obj) {
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    [IO.File]::WriteAllText($Path, ($Obj | ConvertTo-Json -Depth 60), (New-Object Text.UTF8Encoding($false)))
+}
+
+function Read-HUJsonFile([string]$Path) { return ([IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8) | ConvertFrom-Json) }
+
+# Fingerabdruck der Zuweisungen (Ziel, Absicht, Filter) - Reihenfolge egal
+function Get-HUAssignmentHash($Assignments) {
+    $parts = @(@($Assignments) | Where-Object { $_ -and $_.target } | ForEach-Object {
+            "$($_.target.'@odata.type')|$($_.target.groupId)|$($_.intent)|$($_.target.deviceAndAppManagementAssignmentFilterId)|$($_.target.deviceAndAppManagementAssignmentFilterType)" } | Sort-Object)
+    return ($parts -join ';')
+}
+
+# Backup eines Tenants -> Ordner des Stands
+function Save-HUTenantBackup {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [string]$Root = '', [string[]]$Types = @())
+    if (-not $Root) { $Root = Get-HUBackupRoot $Settings }
+    $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
+    $dir = Join-Path (Join-Path $Root (ConvertTo-HUSafeFileName $TenantKey)) $stamp
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $index = New-Object System.Collections.Generic.List[object]
+    $errors = 0
+    foreach ($src in Get-HUCompareSources) {
+        if (@($Types).Count -and $Types -notcontains $src.Typ) { continue }
+        $items = $null
+        try { $items = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint $src.Ep -V1:($src.Typ -eq 'Conditional Access')) }
+        catch { Write-HULog -Message "$($src.Typ): nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey; $errors++; continue }
+        if ($src.Typ -eq 'App') {
+            # Apps nur als Liste (Inhalte liegen in der Bibliothek bzw. im Store)
+            $rows = @($items | ForEach-Object { [pscustomobject]@{ id = "$($_.id)"; displayName = "$($_.displayName)" } })
+            Write-HUJsonFile (Join-Path $dir 'App\_liste.json') $rows
+            foreach ($a in $rows) { $index.Add([pscustomobject]@{ Typ = 'App'; Name = $a.displayName; Id = $a.id; File = ''; Hash = ''; AHash = '' }) }
+            Write-HULog -Message "App: $($rows.Count) (nur Liste)" -Level 'INFO' -Tenant $TenantKey
+            continue
+        }
+        $n = 0
+        foreach ($it in $items) {
+            if ($src.Typ -eq 'Wartung' -and $it.isGlobalScript) { continue }
+            $name = "$($it.($src.Name))"
+            try {
+                $full = Get-HUCompareObject -TenantKey $TenantKey -Settings $Settings -Typ $src.Typ -Id "$($it.id)"
+                $asg = @()
+                if ($src.Typ -ne 'Conditional Access') {
+                    try { $asg = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$($src.Ep -replace '\?.*$', '')/$($it.id)/assignments") } catch { }
+                }
+                $full | Add-Member -NotePropertyName 'assignments' -NotePropertyValue $asg -Force
+                $rel = "$(ConvertTo-HUSafeFileName $src.Typ)\$(ConvertTo-HUSafeFileName $name 60)__$("$($it.id)".Substring(0, [Math]::Min(8, "$($it.id)".Length))).json"
+                Write-HUJsonFile (Join-Path $dir $rel) $full
+                $index.Add([pscustomobject]@{ Typ = $src.Typ; Name = $name; Id = "$($it.id)"; File = $rel; Hash = (Get-HUCompareHash $full); AHash = (Get-HUAssignmentHash $asg) })
+                $n++
+            } catch { Write-HULog -Message "$($src.Typ) '$name': $($_.Exception.Message)" -Level 'WARN' -Tenant $TenantKey; $errors++ }
+        }
+        Write-HULog -Message "$($src.Typ): $n gesichert" -Level 'INFO' -Tenant $TenantKey
+    }
+    Write-HUJsonFile (Join-Path $dir 'index.json') ([pscustomobject]@{ Tenant = $TenantKey; Time = (Get-Date).ToString('s'); Errors = $errors; Items = $index.ToArray() })
+    return [pscustomobject]@{ Tenant = $TenantKey; Folder = $dir; Count = $index.Count; Errors = $errors }
+}
+
+# Staende eines Tenants (neueste zuerst)
+function Get-HUBackupList {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$TenantKey)
+    $d = Join-Path $Root (ConvertTo-HUSafeFileName $TenantKey)
+    if (-not (Test-Path -LiteralPath $d)) { return @() }
+    $list = foreach ($f in @(Get-ChildItem -LiteralPath $d -Directory | Sort-Object Name -Descending)) {
+        $ix = Join-Path $f.FullName 'index.json'
+        if (-not (Test-Path -LiteralPath $ix)) { continue }
+        $t = $null; try { $t = [datetime]::ParseExact($f.Name, 'yyyy-MM-dd_HHmmss', $null) } catch { $t = $f.CreationTime }
+        [pscustomobject]@{ Name = $f.Name; Folder = $f.FullName; Time = $t; Label = $t.ToString('dd.MM.yyyy HH:mm') }
+    }
+    return @($list)
+}
+
+# alte Staende entfernen (die neuesten $Keep bleiben)
+function Remove-HUOldBackups {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$TenantKey, [int]$Keep = 30)
+    if ($Keep -lt 1) { return 0 }
+    $old = @(Get-HUBackupList -Root $Root -TenantKey $TenantKey | Select-Object -Skip $Keep)
+    foreach ($o in $old) { Remove-Item -LiteralPath $o.Folder -Recurse -Force -ErrorAction SilentlyContinue }
+    return $old.Count
+}
+
+# zwei Staende vergleichen (A = aelter, B = neuer) -> Zeilen Typ, Name, Aenderung, FileA, FileB
+function Compare-HUBackups {
+    param([Parameter(Mandatory)][string]$FolderA, [Parameter(Mandatory)][string]$FolderB)
+    $a = @((Read-HUJsonFile (Join-Path $FolderA 'index.json')).Items)
+    $b = @((Read-HUJsonFile (Join-Path $FolderB 'index.json')).Items)
+    $byIdA = @{}; foreach ($x in $a) { $byIdA["$($x.Typ)|$($x.Id)"] = $x }
+    $seen = @{}
+    foreach ($y in $b) {
+        $k = "$($y.Typ)|$($y.Id)"; $seen[$k] = $true
+        $x = $byIdA[$k]
+        $ch = if (-not $x) { 'neu' } else {
+            $c = @()
+            if ("$($x.Name)" -ne "$($y.Name)") { $c += "umbenannt (vorher '$($x.Name)')" }
+            if ("$($x.Hash)" -ne "$($y.Hash)") { $c += 'Einstellungen geaendert' }
+            if ("$($x.AHash)" -ne "$($y.AHash)") { $c += 'Zuweisungen geaendert' }
+            if ($c.Count) { $c -join ', ' } else { 'gleich' }
+        }
+        [pscustomobject]@{ Typ = $y.Typ; Name = $y.Name; Aenderung = $ch; Id = $y.Id; FileA = $(if ($x -and $x.File) { Join-Path $FolderA $x.File } else { '' }); FileB = $(if ($y.File) { Join-Path $FolderB $y.File } else { '' }) }
+    }
+    foreach ($x in $a) {
+        if ($seen["$($x.Typ)|$($x.Id)"]) { continue }
+        [pscustomobject]@{ Typ = $x.Typ; Name = $x.Name; Aenderung = 'geloescht'; Id = $x.Id; FileA = $(if ($x.File) { Join-Path $FolderA $x.File } else { '' }); FileB = '' }
+    }
+}
+
+# Unterschiede zwischen zwei Backup-Dateien desselben Objekts (inkl. Zuweisungen)
+function Get-HUBackupItemDiff {
+    param([string]$FileA, [string]$FileB)
+    $ma = if ($FileA -and (Test-Path -LiteralPath $FileA)) { ConvertTo-HUFlatMap (Read-HUJsonFile $FileA) -WithAssignments } else { @{} }
+    $mb = if ($FileB -and (Test-Path -LiteralPath $FileB)) { ConvertTo-HUFlatMap (Read-HUJsonFile $FileB) -WithAssignments } else { @{} }
+    return @(Get-HUCompareDiff @{ A = $ma; B = $mb } @('A', 'B'))
+}
+
+# einen Eintrag aus einer Backup-Datei neu anlegen (ohne Zuweisungen)
+function Restore-HUBackupItem {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [Parameter(Mandatory)][string]$File, [string]$Name = '')
+    $o = Read-HUJsonFile $File
+    return (New-HUIntuneObject -TenantKey $TenantKey -Settings $Settings -Typ $Typ -Obj $o -Name $Name -AllowCA)
+}
+
+# Intune-Ueberwachungsprotokoll (wer hat wann was geaendert) - fuer den Verlauf
+function Get-HUAuditEvents {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [datetime]$From, [datetime]$To)
+    $f = "activityDateTime ge $($From.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')) and activityDateTime le $($To.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+    $ev = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/auditEvents?`$filter=$([uri]::EscapeDataString($f))")
+    foreach ($e in $ev) {
+        $who = "$($e.actor.userPrincipalName)"; if (-not $who) { $who = "$($e.actor.applicationDisplayName)" }
+        foreach ($r in @($e.resources)) {
+            [pscustomobject]@{ Time = [datetime]$e.activityDateTime; Actor = $who; Activity = "$($e.activity)"; Operation = "$($e.activityOperationType)"; ResourceId = "$($r.resourceId)"; Resource = "$($r.displayName)" }
+        }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups', 'ConvertTo-HUW32Row', 'Get-HUTenantWin32Apps', 'Find-HUWin32AppByName',
     'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo',
@@ -2405,7 +2601,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'New-HUIntuneObject', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUBackupRoot', 'ConvertTo-HUSafeFileName', 'Write-HUJsonFile', 'Read-HUJsonFile', 'Get-HUAssignmentHash', 'Save-HUTenantBackup', 'Get-HUBackupList', 'Remove-HUOldBackups', 'Compare-HUBackups', 'Get-HUBackupItemDiff', 'Restore-HUBackupItem', 'Get-HUAuditEvents', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

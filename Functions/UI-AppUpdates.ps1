@@ -20,7 +20,14 @@ function Get-HUUpdApps { return @($script:AppLib | Where-Object { $_.Type -eq 'w
 function Get-HUUpdRow($App) {
     $i = $script:UpdInfo[$App.Id]
     $dep = @($App.Deployments | Where-Object { $_.AppId })
-    $intune = (@($dep | ForEach-Object { "$(Get-HUTenantDisplayName $_.Tenant) $(if ($_.Version) { "v$($_.Version)" })$(if ($_.Stage -eq 'pilot') { ' Pilot' })".Trim() }) -join '; ')
+    # echter Stand aus Intune (beim Pruefen gelesen), sonst die Notiz aus der Bibliothek
+    $real = if ($i -and $i.Intune) { @($i.Intune) } else { @() }
+    if ($real.Count) {
+        $intune = (@($real | ForEach-Object { "$(Get-HUTenantDisplayName $_.Tenant) $(if ($_.Missing) { 'fehlt in Intune' } elseif ($_.Version) { "v$($_.Version)" } else { '(ohne Version)' })".Trim() }) -join '; ')
+    } else {
+        $intune = (@($dep | ForEach-Object { "$(Get-HUTenantDisplayName $_.Tenant) $(if ($_.Version) { "v$($_.Version)" })$(if ($_.Stage -eq 'pilot') { ' Pilot' })".Trim() }) -join '; ')
+        if ($intune) { $intune += '  (laut Bibliothek)' }
+    }
     $status = ''; $latest = ''; $upd = $false
     if (-not $App.WingetId) {
         $status = if ($i -and @($i.Suggest).Count) { "keine winget-ID - $(@($i.Suggest).Count) Vorschlag/Vorschlaege" } elseif ($i) { 'keine winget-ID - bitte zuordnen' } else { 'keine winget-ID' }
@@ -37,8 +44,14 @@ function Get-HUUpdRow($App) {
         elseif ($cmp -eq 0) { $status = 'aktuell' }
         else { $status = 'neuer als winget' }
     }
-    $old = @($dep | Where-Object { $_.Version -and $App.Version -and (Compare-HUVersion $_.Version $App.Version) -lt 0 })
-    if ($old.Count) { $status += " | Intune noch alt: $(@($old | ForEach-Object { Get-HUTenantDisplayName $_.Tenant }) -join ', ')" }
+    if ($real.Count) {
+        $gone = @($real | Where-Object Missing)
+        $old = @($real | Where-Object { -not $_.Missing -and $_.Version -and $App.Version -and (Compare-HUVersion $_.Version $App.Version) -lt 0 })
+        if ($gone.Count) { $status += " | in Intune geloescht: $(@($gone | ForEach-Object { Get-HUTenantDisplayName $_.Tenant }) -join ', ')" }
+    } else {
+        $old = @($dep | Where-Object { $_.Version -and $App.Version -and (Compare-HUVersion $_.Version $App.Version) -lt 0 })
+    }
+    if ($old.Count) { $status += " | Intune noch alt: $(@($old | ForEach-Object { Get-HUTenantDisplayName $_.Tenant }) -join ', ')"; $upd = $true }
     return [pscustomobject]@{ Id = $App.Id; App = "$($App.Name)"; Version = "$($App.Version)"; Latest = $latest; Status = $status; Intune = $intune; WingetId = "$($App.WingetId)"; Update = $upd }
 }
 
@@ -63,14 +76,24 @@ function Update-HUUpdList([string]$SelectId = '') {
 function Start-HUUpdCheck {
     $apps = @(Get-HUUpdApps)
     if (-not $apps.Count) { Show-HUMessage 'Keine Setup-Apps (MSI/EXE) in der Bibliothek.' -Icon Info; return }
-    $items = @($apps | ForEach-Object { [pscustomobject]@{ Id = $_.Id; WingetId = "$($_.WingetId)"; Name = "$($_.Name)"; Query = (Get-HUAppBaseName $_.Name) } })
+    $items = @($apps | ForEach-Object { [pscustomobject]@{ Id = $_.Id; WingetId = "$($_.WingetId)"; Name = "$($_.Name)"; Query = (Get-HUAppBaseName $_.Name); Deps = @(@($_.Deployments) | Where-Object { $_.AppId } | ForEach-Object { [pscustomobject]@{ Tenant = "$($_.Tenant)"; AppId = "$($_.AppId)" } }) } })
     $script:Controls['lblUpdState'].Text = "Pruefe $($items.Count) App(s) bei winget ... (je App einige Sekunden)"
     $script:Controls['btnUpdCheck'].IsEnabled = $false
     $ok = Start-HUJob -Name 'AppUpd' -Output $script:Controls['rtbApps'] -Vars @{ Items = $items; Src = (Get-HUUpdSource) } -Code {
         if (-not (Get-HUWingetExe) -and -not (Test-HUWingetModule)) { Write-HULog -Message 'winget fehlt - App-Installer aus dem Microsoft Store installieren.' -Level 'ERROR'; return }
         Write-HULog -Message "winget: $(if (Test-HUWingetModule) { 'Modul Microsoft.WinGet.Client' } else { 'winget.exe' }), Quelle '$Src'" -Level 'INFO'
         foreach ($it in $Items) {
-            $r = [pscustomobject]@{ Id = $it.Id; Latest = ''; Error = ''; Suggest = @() }
+            $r = [pscustomobject]@{ Id = $it.Id; Latest = ''; Error = ''; Suggest = @(); Intune = @() }
+            # tatsaechlicher Stand in Intune je Tenant (Version bzw. geloescht)
+            $r.Intune = @(foreach ($d in @($it.Deps)) {
+                    try {
+                        $ia = Invoke-HUIntuneGraph -TenantKey $d.Tenant -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$($d.AppId)"
+                        [pscustomobject]@{ Tenant = $d.Tenant; Version = "$($ia.displayVersion)"; Missing = $false }
+                    } catch {
+                        if ("$($_.Exception.Message)" -match '404|NotFound|ResourceNotFound|does not exist') { [pscustomobject]@{ Tenant = $d.Tenant; Version = ''; Missing = $true } }
+                        else { Write-HULog -Message "$($it.Name): Intune-Stand nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $d.Tenant }
+                    }
+                })
             try {
                 if ($it.WingetId) {
                     $r.Latest = Get-HUWingetLatest $it.WingetId $Src
@@ -92,7 +115,7 @@ function Start-HUUpdCheck {
         foreach ($r in @($Result | Where-Object { $_ -and $_.PSObject.Properties['Suggest'] })) {
             $a = Get-HUAppById $r.Id
             if (-not $a) { continue }
-            $info = @{ Latest = "$($r.Latest)"; Error = "$($r.Error)"; Suggest = @($r.Suggest); Time = Get-Date }
+            $info = @{ Latest = "$($r.Latest)"; Error = "$($r.Error)"; Suggest = @($r.Suggest); Intune = @($r.Intune); Time = Get-Date }
             if (-not $a.WingetId -and @($r.Suggest).Count) {
                 # eindeutiger Treffer mit gleichem Namen -> zuordnen
                 $base = Get-HUAppBaseName $a.Name

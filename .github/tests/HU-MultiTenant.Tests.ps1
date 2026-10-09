@@ -806,3 +806,58 @@ Describe 'Analyse: Listen im Vergleich' {
         $d[0].T1 | Should -Be '(gleich: 2) + D, E'
     }
 }
+
+Describe 'Backup und Verlauf' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+        $script:bakRoot = Join-Path ([IO.Path]::GetTempPath()) ("hu-bak-" + [guid]::NewGuid().ToString('N').Substring(0, 6))
+    }
+    AfterAll { Remove-Item -LiteralPath $script:bakRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    It 'sichert, vergleicht zwei Staende (geaendert, neu, geloescht, Zuweisung) und zeigt Details' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:bakRoot } {
+            param($Root)
+            $script:val = 1; $script:grp = 'g1'; $script:extra = $false
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -like '*/assignments') { return @([pscustomobject]@{ intent = 'apply'; target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = $script:grp } }) }
+                if ($Endpoint -eq '/deviceManagement/deviceHealthScripts') {
+                    $l = @([pscustomobject]@{ id = 'r1'; displayName = 'Disk' })
+                    if ($script:extra) { $l += [pscustomobject]@{ id = 'r2'; displayName = 'Neu' } }
+                    return $l
+                }
+                if ($Endpoint -eq '/deviceManagement/deviceCompliancePolicies' -and -not $script:extra) { return @([pscustomobject]@{ id = 'c1'; displayName = 'Alt' }) }
+                return @()
+            }
+            Mock Invoke-HUIntuneGraph { [pscustomobject]@{ id = ($Endpoint -split '/')[-1] -replace '\?.*$', ''; displayName = 'x'; detectionScriptContent = 'QQ=='; runAsAccount = 'system'; value = $script:val } }
+            $b1 = Save-HUTenantBackup -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Root $Root
+            Start-Sleep -Milliseconds 1100
+            $script:val = 2; $script:grp = 'g2'; $script:extra = $true
+            $b2 = Save-HUTenantBackup -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Root $Root
+            @(Get-HUBackupList -Root $Root -TenantKey 'T1').Count | Should -Be 2
+            $rows = @(Compare-HUBackups -FolderA $b1.Folder -FolderB $b2.Folder)
+            ($rows | Where-Object Id -eq 'r1').Aenderung | Should -Match 'Einstellungen geaendert'
+            ($rows | Where-Object Id -eq 'r1').Aenderung | Should -Match 'Zuweisungen geaendert'
+            ($rows | Where-Object Id -eq 'r2').Aenderung | Should -Be 'neu'
+            ($rows | Where-Object Id -eq 'c1').Aenderung | Should -Be 'geloescht'
+            $r1 = $rows | Where-Object Id -eq 'r1'
+            $d = @(Get-HUBackupItemDiff $r1.FileA $r1.FileB)
+            ($d | Where-Object Einstellung -eq 'value').T1 | Should -Be '2'
+            @($d | Where-Object { $_.Einstellung -like 'assignments*' }).Count | Should -BeGreaterThan 0
+            Remove-HUOldBackups -Root $Root -TenantKey 'T1' -Keep 1 | Should -Be 1
+        }
+    }
+    It 'Wiederherstellen legt neu an (Name mit Zusatz, ohne Zuweisungen, CA deaktiviert)' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:bakRoot } {
+            param($Root)
+            $f = Join-Path $Root 'ca.json'
+            Write-HUJsonFile $f ([pscustomobject]@{ id = 'p1'; displayName = '201 - MFA'; state = 'enabled'; assignments = @(); conditions = [pscustomobject]@{ users = [pscustomobject]@{ includeGroups = @('g1') } } })
+            $script:posted = $null
+            Mock Invoke-HUIntuneGraph { $script:posted = @{ E = $Endpoint; B = $Body }; [pscustomobject]@{ id = 'neu' } }
+            Restore-HUBackupItem -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Typ 'Conditional Access' -File $f -Name '201 - MFA (wiederhergestellt)' | Should -Be 'neu'
+            $script:posted.B.state | Should -Be 'disabled'
+            $script:posted.B.displayName | Should -Be '201 - MFA (wiederhergestellt)'
+            $script:posted.B.ContainsKey('id') | Should -BeFalse
+            $script:posted.B.ContainsKey('assignments') | Should -BeFalse
+        }
+    }
+}
