@@ -125,12 +125,10 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
     </Window.Resources>
     <StackPanel Margin="18">
         <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"
-                   Text="Kategorien im Unternehmensportal. Fehlt eine Kategorie in einem Tenant, wird sie dort beim Hochladen angelegt."/>
+                   Text="Kategorien im Unternehmensportal (aus den angehakten Tenants). Fehlt eine Kategorie in einem Tenant, wird sie dort beim Hochladen uebersprungen."/>
         <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="spCats"/>
         </ScrollViewer>
-        <TextBlock Text="Neue Kategorie" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
-        <TextBox x:Name="txtNew" Style="{StaticResource DarkTextBox}" FontSize="12"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button x:Name="btnOk" Content="Uebernehmen" Width="110" Background="#4CAF50" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
             <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
@@ -152,7 +150,7 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
         $g = @($all | Where-Object { $_.Name -eq $n })[0]
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Style = $w.FindResource('DarkCheckBox')
-        $cb.Content = $(if ($g -and $tenantCount -gt 1 -and $g.Count -lt $tenantCount) { "$n  (nur in $($g.Count) von $tenantCount Tenants)" } elseif (-not $g) { "$n  (neu)" } else { $n })
+        $cb.Content = $(if ($g -and $tenantCount -gt 1 -and $g.Count -lt $tenantCount) { "$n  (nur in $($g.Count) von $tenantCount Tenants)" } elseif (-not $g) { "$n  (in keinem Tenant vorhanden)" } else { $n })
         $cb.Tag = $n
         $cb.IsChecked = ($cur -contains $n)
         $cb.Margin = [System.Windows.Thickness]::new(0, 2, 0, 2)
@@ -163,7 +161,6 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
     [void]$w.ShowDialog()
     if (-not $st.Ok) { return }
     $sel = @($dc.spCats.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
-    $sel += @(ConvertTo-HUCategoryList $dc.txtNew.Text)
     $script:Controls['txtAppCategories'].Text = (@($sel | Select-Object -Unique) -join ', ')
     Save-HUAppForm
     try { Save-HUAppLib } catch { }

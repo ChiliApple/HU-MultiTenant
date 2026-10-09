@@ -489,7 +489,7 @@
                                                 <Button x:Name="btnAppCategories" DockPanel.Dock="Right" Content="Auswahl ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"
                                                         ToolTip="Kategorien der angehakten Tenants laden und auswaehlen"/>
                                                 <TextBox x:Name="txtAppCategories" Style="{StaticResource DarkTextBox}"
-                                                         ToolTip="Kategorien im Unternehmensportal, mit Komma getrennt. Leer = in Intune nichts aendern. Fehlende Kategorien werden beim Hochladen im Tenant angelegt."/>
+                                                         ToolTip="Kategorien im Unternehmensportal, mit Komma getrennt - nur vorhandene (Auswahl ...). Leer = in Intune nichts aendern."/>
                                             </DockPanel>
                                             <StackPanel Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Orientation="Horizontal" Margin="10,2,0,2" VerticalAlignment="Top">
                                                 <Border Width="72" Height="72" Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="4"

@@ -783,7 +783,7 @@ function Get-HUInstallPlan($Def, [switch]$Sandbox) {
 }
 
 # Bibliotheks-Eintrag -> Def fuer ConvertTo-HUWin32Payload
-# App-Kategorien (Unternehmensportal) per Name setzen. Fehlende Kategorien werden im Tenant angelegt.
+# App-Kategorien (Unternehmensportal) per Name setzen. Nur vorhandene Kategorien - fehlende werden gemeldet, nicht angelegt.
 # Gesetzt wird genau die Liste; leere Liste = nichts aendern. Rueckgabe: Text fuer das Protokoll.
 function Get-HUTenantAppCategories([string]$TenantKey, $Settings) {
     return @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceAppManagement/mobileAppCategories' | ForEach-Object { [pscustomobject]@{ Id = "$($_.id)"; Name = "$($_.displayName)" } })
@@ -795,15 +795,13 @@ function Set-HUAppCategories {
     $want = @($Names | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -Unique)
     if (-not $want.Count) { return '' }
     $all = @(Get-HUTenantAppCategories $TenantKey $Settings)
-    $ids = @(); $created = @()
+    $ids = @(); $missing = @(); $set = @()
     foreach ($n in $want) {
         $hit = @($all | Where-Object { $_.Name -eq $n })[0]
-        if (-not $hit) {
-            $new = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceAppManagement/mobileAppCategories' -Method POST -Body @{ '@odata.type' = '#microsoft.graph.mobileAppCategory'; displayName = $n }
-            $hit = [pscustomobject]@{ Id = "$($new.id)"; Name = $n }; $created += $n
-        }
-        $ids += $hit.Id
+        if ($hit) { $ids += $hit.Id; $set += $n } else { $missing += $n }
     }
+    # keine einzige passende Kategorie -> nichts aendern (sonst wuerden vorhandene entfernt)
+    if (-not $ids.Count) { return "Kategorien: in diesem Tenant nicht vorhanden: $($missing -join ', ') - nichts geaendert" }
     $cur = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/categories" | ForEach-Object { "$($_.id)" })
     foreach ($id in $ids) {
         if ($cur -notcontains $id) {
@@ -813,7 +811,7 @@ function Set-HUAppCategories {
     foreach ($id in $cur) {
         if ($ids -notcontains $id) { [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId/categories/$id/`$ref" -Method DELETE) }
     }
-    return "Kategorien: $($want -join ', ')$(if ($created.Count) { " (neu angelegt: $($created -join ', '))" })"
+    return "Kategorien: $($set -join ', ')$(if ($missing.Count) { " (in diesem Tenant nicht vorhanden: $($missing -join ', '))" })"
 }
 
 # Autor aus den Einstellungen (ui.author) - fuer Besitzer der Apps und Herausgeber der Wartungsskripte
