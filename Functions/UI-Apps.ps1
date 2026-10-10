@@ -1276,13 +1276,18 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
         $lines.Add("ACHTUNG: installiert nur ins Benutzerprofil - unter Intune als 'System' landet es nicht beim Benutzer. Schalter fuer 'alle Benutzer' verwenden (Inno: /ALLUSERS, MSI: ALLUSERS=1) oder 'Ausfuehren als: Benutzer'.")
     }
     $lines.Add("Neue Programme in 'Apps & Features': $($entries.Count)$(if ($entries.Count) { ' - ' + (@($entries | Select-Object -First 4 | ForEach-Object { "$($_.DisplayName) $($_.DisplayVersion)".Trim() }) -join '; ') })")
+    $nfAll = @($Res.NewFiles | Where-Object { $_ })
+    if (-not $entries.Count -and $nfAll.Count) { $lines.Add("Neue Programmdateien: $($nfAll.Count) - $(@($nfAll | Select-Object -First 3 | ForEach-Object { $_.Path }) -join '; ')") }
     if ($Res.UninstallTested) {
         $winU = @($Res.UninstallWindows | Where-Object { $_ })
         # ohne Eintrag in Apps & Features (z. B. Skript/Plugin) zaehlt die Erkennungsregel
         $noEntry = -not $entries.Count -and $null -ne $Res.DetectUninstall
-        $unOk = $(if ($noEntry) { -not $Res.DetectUninstall } else { $Res.UninstallRemoved }) -and -not $winU.Count
+        $nf = @($Res.NewFiles | Where-Object { $_ })
+        $byFiles = -not $entries.Count -and $null -eq $Res.DetectUninstall -and $nf.Count -and $null -ne $Res.FilesLeft
+        $unknown = -not $entries.Count -and $null -eq $Res.DetectUninstall -and -not $byFiles
+        $unOk = $(if ($noEntry) { -not $Res.DetectUninstall } elseif ($byFiles) { $Res.FilesLeft -eq 0 } else { $Res.UninstallRemoved -and -not $unknown }) -and -not $winU.Count
         if (-not $unOk) { $warn = $true }
-        $lines.Add("Deinstallation: $(if ($unOk -and $noEntry) { 'OK - Erkennung danach nicht mehr gefunden, ohne Fenster' } elseif ($noEntry -and -not $winU.Count) { 'Erkennung danach NOCH gefunden - Befehl pruefen' } elseif ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
+        $lines.Add("Deinstallation: $(if ($unOk -and $noEntry) { 'OK - Erkennung danach nicht mehr gefunden, ohne Fenster' } elseif ($noEntry -and -not $winU.Count) { 'Erkennung danach NOCH gefunden - Befehl pruefen' } elseif ($unOk -and $byFiles) { "OK - alle $($nf.Count) neuen Programmdateien entfernt, ohne Fenster" } elseif ($byFiles -and -not $winU.Count) { "$($Res.FilesLeft) von $($nf.Count) neuen Programmdateien noch vorhanden - Befehl pruefen" } elseif ($unknown -and -not $winU.Count) { 'nicht pruefbar (kein Eintrag in Apps & Features, keine Erkennung festgelegt)' } elseif ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
     } elseif (-not $TestUn) { $lines.Add('Deinstallation nicht getestet.') }
     # Gesamtergebnis: fehlgeschlagen / mit Hinweisen / OK
     $lines.Add($(if (-not $ok) { 'Ergebnis: Installation fehlgeschlagen - so nicht hochladen.' } elseif ($warn) { 'Ergebnis: installiert, aber mit Hinweisen (siehe ACHTUNG) - vor dem Hochladen pruefen.' } else { 'Ergebnis: OK - bereit zum Hochladen.' }))
@@ -1306,7 +1311,12 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     $iconSrc = ''
     if ($prop -and $prop.IconFile) { $f = Join-Path (Join-Path (Get-HUWorkPath 'Sandbox') $AppId) $prop.IconFile; if (Test-Path -LiteralPath $f) { $iconSrc = $f } }
     $folders = @($Res.NewFolders | Where-Object { $_ -match '(?i)\\Program Files' })
-    if ($ok -and ($prop -or $folders.Count)) {
+    # ohne Eintrag und ohne neuen Ordner (z. B. Plugin in einem vorhandenen Programmordner): neue DLL/EXE als Erkennung
+    $newFile = $null
+    if (-not $prop -and -not $folders.Count) {
+        $newFile = @($Res.NewFiles | Where-Object { $_ -and $_.Path } | Sort-Object { ($_.Path -split '\\').Count }, { if ($_.Path -match '(?i)\.dll$') { 0 } else { 1 } } | Select-Object -First 1)[0]
+    }
+    if ($ok -and ($prop -or $folders.Count -or $newFile)) {
         $msg = "Testinstallation $codeText.`n`nVorschlag:`n"
         if ($prop) {
             $det = $prop.Detection
@@ -1314,6 +1324,8 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
             if ($prop.UninstallCmd) { $msg += "  Deinstallation: $($prop.UninstallCmd)`n" }
             if ($prop.HKCU) { $msg += "`n  Achtung: die App installiert sich nur fuer den Benutzer - 'Ausfuehren als: Benutzer' waehlen.`n" }
             if ($iconSrc) { $msg += "  Symbol: aus der installierten App`n" }
+        } elseif ($newFile) {
+            $msg += "  Erkennung: Datei $($newFile.Path)$(if ($newFile.Version) { ", Version >= $($newFile.Version)" }) (kein Eintrag in 'Apps & Features' gefunden)`n"
         } else {
             $f = $folders[0]
             $msg += "  Erkennung: Ordner $f vorhanden (kein Eintrag in 'Apps & Features' gefunden)`n"
@@ -1327,6 +1339,8 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
                 if (-not $a.Publisher -and $prop.Publisher) { $a.Publisher = $prop.Publisher }
                 if ($prop.HKCU) { $a.RunAs = 'user' }
                 if ($iconSrc) { [void](Set-HUAppIcon $a $iconSrc -Quiet) }
+            } elseif ($newFile) {
+                $a.Detection = New-HUAppDetection ([pscustomobject]@{ Type = 'file'; Path = (Split-Path $newFile.Path -Parent); FileName = (Split-Path $newFile.Path -Leaf); VersionCheck = [bool]$newFile.Version; Version = "$($newFile.Version)" })
             } else {
                 $a.Detection = New-HUAppDetection ([pscustomobject]@{ Type = 'file'; Path = (Split-Path $folders[0] -Parent); FileName = (Split-Path $folders[0] -Leaf) })
             }
