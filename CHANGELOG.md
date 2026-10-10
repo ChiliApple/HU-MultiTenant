@@ -2,6 +2,9 @@
 
 ## v2.1.9 (in Arbeit)
 
+### Neu
+- **Startbildschirm** wie bei HUMig: Logo, Name und Version erscheinen sofort beim Start, darunter was gerade geladen wird; schliesst sich, sobald das Hauptfenster da ist
+
 ### Behoben
 - **Absturz bei "+ Setup ..."** (vorher "+ MSI / EXE ..."): das Programm beendete sich nach der Dateiauswahl; die neue Datei wird jetzt immer als neue App hinzugefuegt (gleicher Name in der Bibliothek wird weiterhin als neue Version erkannt)
 - Fehler in einer Schaltflaeche beenden nicht mehr das ganze Programm - sie werden protokolliert, das Programm laeuft weiter
