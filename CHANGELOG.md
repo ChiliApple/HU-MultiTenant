@@ -1,5 +1,24 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.8 (2026-10-10)
+
+### Update (Pull.ps1)
+- Wiederherstellung nach einem abgebrochenen Update funktionierte unter Windows PowerShell 5.1 nicht, sobald mehr als eine
+  Datei im Journal stand (`ConvertFrom-Json` gibt ein Array als ein einziges Objekt aus - die Schleife lief einmal mit allen
+  Pfaden zusammen und stellte nichts zurueck, das Journal wurde trotzdem geloescht). Jetzt wird jede Datei einzeln
+  zurueckgestellt; das Journal wird nur geloescht, wenn das gelungen ist.
+- Abschluss in der richtigen Reihenfolge: zuerst das Journal loeschen, dann die Sicherungen (vorher umgekehrt - ein Abbruch
+  mitten im Aufraeumen konnte beim naechsten Start einen Mischstand herstellen). Laesst sich das Journal nicht schreiben, wird
+  abgebrochen, bevor etwas ersetzt wird.
+- Wiederholungen beim Ersetzen sichern die bisherige Datei nicht mehr doppelt; scheitert eine Datei endgueltig, wird ihre
+  Sicherung sofort zurueckgestellt. Absolute Pfade in der Dateiliste werden beim Aufraeumen ignoriert.
+- Update-Bibliothek auf dem Stand von HUMig: Release-Liste ohne Zwischenspeicher (ein gerade signiertes Release erscheint
+  sofort), Ausweichweg beim Laden von Pruefsumme/Signatur (bei HTTP 503 von github.com ueber die API).
+- Automatischer Test des Update-Wegs jetzt mit abgebrochenem Update (zwei Dateien im Journal), eigenen Dateien und Pfad
+  ausserhalb.
+- **Wirkt verzoegert:** Ein Update laeuft immer mit dem bisher installierten Pull.ps1 - die Korrektur greift ab dem naechsten
+  Update nach 2.1.8.
+
 ## v2.1.7 (in Arbeit)
 
 Sicherheits- und Robustheits-Update nach einer gezielten Code-Pruefung.
