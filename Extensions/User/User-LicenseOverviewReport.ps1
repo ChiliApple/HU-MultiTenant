@@ -205,14 +205,6 @@ function Invoke-LicenseOverviewReport {
             $totalUnlicensed = ($unlicensedUsers | Measure-Object).Count
             $totalMultiLicensed = ($multiLicensedUsers | Measure-Object).Count
 
-            $dashboardMetrics = [PSCustomObject]@{
-                'SKUs gesamt'           = $totalSKUs
-                'Lizenzen gesamt'       = $totalEnabled
-                'Verbrauchte Lizenzen'  = $totalConsumed
-                'Auslastung (%)'        = "$overallUsagePercent%"
-                'Unlizenzierte User'    = $totalUnlicensed
-                'Mehrfach-lizenziert'   = $totalMultiLicensed
-            }
 
             # 7. DRY-RUN CHECK
             if ($DryRun) {

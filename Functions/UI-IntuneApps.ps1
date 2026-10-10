@@ -126,7 +126,9 @@ function Get-HUIntMerged {
         if (-not $e) { continue }
         foreach ($r in @($e.Rows)) {
             $key = "$($r.Name.ToLower())|$($r.OType)"
-            if (-not $map.Contains($key)) { $map[$key] = [pscustomobject]@{ Key = $key; Name = $r.Name; Typ = $r.Typ; OType = $r.OType; Kind = $r.Kind; Per = [ordered]@{} } }
+            if (-not $map.Contains($key)) { $map[$key] = [pscustomobject]@{ Key = $key; Name = $r.Name; Typ = $r.Typ; OType = $r.OType; Kind = $r.Kind; Per = [ordered]@{}; Dup = [ordered]@{} } }
+            # gleicher Name zweimal im selben Tenant: merken - Aktionen fuer diesen Tenant werden gesperrt (sonst traefe es ein zufaelliges Objekt)
+            if ($map[$key].Per.Contains($k)) { $map[$key].Dup[$k] = 1 + [int]$map[$key].Dup[$k]; continue }
             $map[$key].Per[$k] = $r
         }
     }
@@ -150,6 +152,7 @@ function Update-HUIntList {
         $pr = Get-HUIntPresenceText @($it.Per.Keys) $keys
         if ($pr.Short) { $sub += " | $($pr.Short)" }
         $sub += $(if ($assigned) { ' | zugewiesen' } else { ' | nicht zugewiesen' })
+        if ($it.Dup.Count) { $sub = "DOPPELT in $(@($it.Dup.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') | $sub" }
         [pscustomobject]@{ Title = $it.Name; Sub = $sub; Key = $it.Key; Tip = $(if ($pr.Tip) { $pr.Tip } else { $null }) }
     }
     $sel = if ($script:IntCurrent) { $script:IntCurrent.Key } else { '' }
@@ -348,6 +351,12 @@ function Start-HUIntAction([string]$Title, [scriptblock]$Code, [hashtable]$Vars 
     if (-not $it) { return }
     if (Test-HUJobRunning 'IntAct') { Show-HUMessage 'Es laeuft bereits eine Aktion - bitte warten.' -Icon Warning; return }
     $per = @{}; foreach ($k in $it.Per.Keys) { if (-not $Only.Count -or $Only -contains $k) { $per[$k] = $it.Per[$k].Id } }
+    $dup = @($per.Keys | Where-Object { $it.Dup.Contains($_) })
+    if ($dup.Count) {
+        foreach ($k in $dup) { $per.Remove($k) }
+        Show-HUMessage "'$($it.Name)' gibt es in $(@($dup | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ') mehrfach - dort wird nichts geaendert (es ist nicht eindeutig, welche gemeint ist).`n`nBitte im Intune-Portal eine umbenennen oder loeschen und neu laden.$(if ($per.Count) { "`n`nIn den anderen Tenants wird ausgefuehrt." })" -Icon Warning
+        if (-not $per.Count) { return }
+    }
     $Vars.Per = $per; $Vars.OType = $it.OType; $Vars.Kind = $it.Kind; $Vars.AppName = $it.Name
     $script:IntActKeys = @($per.Keys)
     $script:IntActKeysLocal = $Local

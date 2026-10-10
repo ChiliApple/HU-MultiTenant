@@ -382,7 +382,7 @@ function Register-HUTenantHandlers {
             $script:CurrentToken = Connect-HUTenant $k
             if (-not $script:CurrentToken) {
                 Write-HULogError 'Kein Token - Secret pruefen (Einstellungen > Tenants > Secret eingeben).' -Tenant $k
-                Update-TenantStatusCache -TenantKey $k -Connected $false -Error 'Token'
+                Update-TenantStatusCache -TenantKey $k -Connected $false -ErrorMessage 'Token'
                 Update-TenantStatus -TenantKey $k
                 Update-HUTenantItemSuffixes
                 return

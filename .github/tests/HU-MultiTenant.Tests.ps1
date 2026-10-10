@@ -852,7 +852,7 @@ Describe 'Backup und Verlauf' {
         InModuleScope HU.Intune -Parameters @{ Root = $script:bakRoot } {
             param($Root)
             $f = Join-Path $Root 'ca.json'
-            Write-HUJsonFile $f ([pscustomobject]@{ id = 'p1'; displayName = '201 - MFA'; state = 'enabled'; assignments = @(); conditions = [pscustomobject]@{ users = [pscustomobject]@{ includeGroups = @('g1') } } })
+            Write-HUBackupJson $f ([pscustomobject]@{ id = 'p1'; displayName = '201 - MFA'; state = 'enabled'; assignments = @(); conditions = [pscustomobject]@{ users = [pscustomobject]@{ includeGroups = @('g1') } } })
             $script:posted = $null
             Mock Invoke-HUIntuneGraph { $script:posted = @{ E = $Endpoint; B = $Body }; [pscustomobject]@{ id = 'neu' } }
             Restore-HUBackupItem -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Typ 'Conditional Access' -File $f -Name '201 - MFA (wiederhergestellt)' | Should -Be 'neu'
@@ -879,5 +879,110 @@ Describe 'Backup: Administrative Vorlagen' {
             Should -Invoke Get-HUIntuneGraphAll -ParameterFilter { $Endpoint -like '*/definitionValues?$expand=definition' }
             Should -Invoke Get-HUIntuneGraphAll -ParameterFilter { $Endpoint -like '*/definitionValues/v1/presentationValues?$expand=presentation' }
         }
+    }
+}
+
+Describe 'Pruefbefunde 2.1.7' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ("hu-217-" + [guid]::NewGuid().ToString('N').Substring(0, 6))
+        New-Item -ItemType Directory -Path $script:tmp | Out-Null
+    }
+    AfterAll { Remove-Item -LiteralPath $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'H1: kaputte JSON wird erkannt und ersetzt die Sicherung nicht' {
+        $f = Join-Path $script:tmp 'apps.json'
+        Set-Content -LiteralPath "$f.bak" -Value '{"apps":[{"Name":"gut"}]}' -Encoding UTF8
+        Set-Content -LiteralPath $f -Value '{"apps":[{"Name":' -Encoding UTF8
+        (Read-HUJsonFileChecked $f).Error | Should -Not -BeNullOrEmpty
+        (Read-HUJsonFileChecked (Join-Path $script:tmp 'fehlt.json')).Error | Should -BeNullOrEmpty
+        Write-HUJsonFile -Path $f -Object ([pscustomobject]@{ apps = @() }) -Backup
+        (Get-Content -LiteralPath "$f.bak" -Raw) | Should -Match 'gut'
+    }
+    It 'H2: nichts lesbar -> kein Stand, Fehler; unvollstaendige Staende verdraengen keine vollstaendigen' {
+        InModuleScope HU.Intune -Parameters @{ Root = (Join-Path $script:tmp 'bak') } {
+            param($Root)
+            Mock Get-HUIntuneGraphAll { throw '401' }
+            { Save-HUTenantBackup -TenantKey 'T' -Settings ([pscustomobject]@{}) -Root $Root } | Should -Throw '*nichts lesbar*'
+            @(Get-HUBackupList -Root $Root -TenantKey 'T').Count | Should -Be 0
+            # 2 vollstaendige alt, 3 unvollstaendige neu, Keep 2 -> nichts Vollstaendiges loeschen
+            $d = Join-Path $Root 'T'
+            $mk = { param($n, $c) $p = Join-Path $d $n; New-Item -ItemType Directory -Path $p -Force | Out-Null; Write-HUBackupJson (Join-Path $p 'index.json') ([pscustomobject]@{ Errors = $(if ($c) { 0 } else { 3 }); Complete = $c; Items = @() }) }
+            & $mk '2026-10-01_080000' $true; & $mk '2026-10-02_080000' $true
+            & $mk '2026-10-03_080000' $false; & $mk '2026-10-04_080000' $false; & $mk '2026-10-05_080000' $false
+            Remove-HUOldBackups -Root $Root -TenantKey 'T' -Keep 2 | Out-Null
+            $left = @(Get-HUBackupList -Root $Root -TenantKey 'T')
+            @($left | Where-Object Complete).Count | Should -Be 2
+            ($left | Where-Object { -not $_.Complete } | Select-Object -First 1).Label | Should -Match 'unvollst'
+        }
+    }
+    It 'M2: Eintraege einer nicht gelesenen Art sind "unbekannt", nicht "geloescht"' {
+        InModuleScope HU.Intune -Parameters @{ Root = (Join-Path $script:tmp 'cmp') } {
+            param($Root)
+            $a = Join-Path $Root 'A'; $b = Join-Path $Root 'B'
+            New-Item -ItemType Directory -Path $a, $b -Force | Out-Null
+            Write-HUBackupJson (Join-Path $a 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Items = @([pscustomobject]@{ Typ = 'Compliance'; Name = 'Win'; Id = 'c1'; File = ''; Hash = 'h'; AHash = '' }) })
+            Write-HUBackupJson (Join-Path $b 'index.json') ([pscustomobject]@{ Errors = 1; Complete = $false; FailedTypes = @('Compliance'); Items = @() })
+            (@(Compare-HUBackups -FolderA $a -FolderB $b))[0].Aenderung | Should -Match 'unbekannt'
+        }
+    }
+    It 'M1: nicht lesbare Art im Vergleich = "?" statt "fehlt"' {
+        $rows = @(
+            [pscustomobject]@{ Tenant = 't1'; Typ = 'Compliance'; Name = 'Win'; Id = 'a'; Hash = ''; Copy = 'compliance' }
+            [pscustomobject]@{ Tenant = 't2'; Typ = 'Compliance'; Name = ''; Id = ''; Hash = ''; Copy = ''; Error = '403' }
+        )
+        $m = @(Get-HUCompareMatrix $rows @('t1', 't2'))
+        $m.Count | Should -Be 1
+        $m[0].Missing.Count | Should -Be 0
+        $m[0].Unknown | Should -Be @('t2')
+        $m[0].Status | Should -Match 'nicht lesbar'
+    }
+    It 'M4: POST wird bei 502 nicht wiederholt, GET schon' {
+        InModuleScope HU.Intune {
+            Mock Get-GraphToken { 'tok' }
+            Mock Start-Sleep { }
+            Mock Invoke-HUGraphRaw { [pscustomobject]@{ IsError = $true; StatusCode = 502; ErrorMessage = '502 - Bad Gateway'; RetryAfter = 0 } }
+            { Invoke-HUIntuneGraph -TenantKey t -Settings ([pscustomobject]@{}) -Endpoint '/x' -Method POST -Body @{ a = 1 } } | Should -Throw
+            Should -Invoke Invoke-HUGraphRaw -Times 1 -Exactly
+            { Invoke-HUIntuneGraph -TenantKey t -Settings ([pscustomobject]@{}) -Endpoint '/x' } | Should -Throw
+            Should -Invoke Invoke-HUGraphRaw -Times 5 -Exactly
+        }
+    }
+    It 'Fehler tragen den Statuscode' {
+        InModuleScope HU.Intune {
+            Mock Get-GraphToken { 'tok' }
+            Mock Invoke-HUGraphRaw { [pscustomobject]@{ IsError = $true; StatusCode = 404; ErrorMessage = '404 - NotFound'; RetryAfter = 0 } }
+            $code = 0
+            try { Invoke-HUIntuneGraph -TenantKey t -Settings ([pscustomobject]@{}) -Endpoint '/x' } catch { $code = [int]$_.Exception.Data['StatusCode'] }
+            $code | Should -Be 404
+        }
+    }
+    It 'M5: haengender nextLink bricht mit Fehler ab statt Teilergebnis' {
+        InModuleScope HU.Intune {
+            Mock Invoke-HUIntuneGraph { [pscustomobject]@{ value = @(1); '@odata.nextLink' = 'https://graph/next' } }
+            { Get-HUIntuneGraphAll -TenantKey t -Settings ([pscustomobject]@{}) -Endpoint '/x' } | Should -Throw '*unvollstaendig*'
+        }
+    }
+    It 'H4: gleichnamige Gruppen - nicht raten, nicht entfernen' {
+        InModuleScope HU.Intune {
+            Mock Invoke-HUIntuneGraph { [pscustomobject]@{ value = @([pscustomobject]@{ id = 'g1'; displayName = 'Schueler' }, [pscustomobject]@{ id = 'g2'; displayName = 'Schueler' }) } }
+            { Find-HUGroup -TenantKey t -Settings ([pscustomobject]@{}) -Name 'Schueler' } | Should -Throw '*2-mal*'
+            $rows = @([pscustomobject]@{ Key = 'group|schueler'; GroupId = 'g1' }, [pscustomobject]@{ Key = 'group|schueler'; GroupId = 'g2' })
+            { Assert-HUAssignmentKeysUnique -Rows $rows -Keys @('group|schueler') } | Should -Throw '*gleichnamige*'
+            { Assert-HUAssignmentKeysUnique -Rows @($rows[0]) -Keys @('group|schueler') } | Should -Not -Throw
+        }
+    }
+    It 'M7: Administrative Vorlage mit fehlenden Einstellungen gilt nicht als OK' {
+        InModuleScope HU.Intune {
+            Mock Invoke-HUIntuneGraph { if ($Endpoint -like '*/definitionValues') { throw '400' }; [pscustomobject]@{ id = 'neu' } }
+            $o = [pscustomobject]@{ displayName = 'Zeit'; description = ''; definitionValues = @([pscustomobject]@{ enabled = $true; definition = [pscustomobject]@{ id = 'd1'; displayName = 'NTP' }; presentationValues = @() }) }
+            { New-HUIntuneObject -TenantKey t -Settings ([pscustomobject]@{}) -Typ 'Administrative Vorlage' -Obj $o } | Should -Throw '*UNVOLLSTAENDIG*'
+        }
+    }
+    It 'N5: Entra-Client-Secret wird im Protokoll maskiert' {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Logging.psm1') -Force -DisableNameChecking
+        $s = 'abc8Q~' + ('Ab1_-.' * 6)
+        Protect-LogMessage -Message "Secret: $s" | Should -Not -Match ([regex]::Escape($s))
     }
 }

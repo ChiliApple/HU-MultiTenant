@@ -82,6 +82,8 @@ function ConvertTo-HUApp($Src = $null) {
     }
     if ($Src) {
         foreach ($p in $a.PSObject.Properties.Name) { if ($Src.PSObject.Properties[$p] -and $null -ne $Src.$p) { $a.$p = $Src.$p } }
+        # Id wird als Ordnername verwendet (Pakete, Sandbox) - nur eine GUID zulassen
+        if ("$($a.Id)" -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { $a.Id = [guid]::NewGuid().ToString() }
         $a.Detection = New-HUAppDetection $Src.Detection
         $a.Tenants = @($a.Tenants | Where-Object { $_ } | ForEach-Object { "$_" })
         $a.Deployments = @($a.Deployments | Where-Object { $_ } | ForEach-Object { [pscustomobject][ordered]@{ Tenant = "$($_.Tenant)"; AppId = "$($_.AppId)"; Version = "$($_.Version)"; Signature = "$($_.Signature)"; Stage = "$($_.Stage)"; Time = "$($_.Time)" } })
@@ -222,11 +224,19 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
 
 function Import-HUAppLib {
     $script:AppLib.Clear()
-    $j = Read-HUJsonFile (Get-HUAppLibPath)
+    $rd = Read-HUJsonFileChecked (Get-HUAppLibPath)
+    $script:AppLibReadError = "$($rd.Error)"
+    if ($rd.Error) {
+        Write-HULogError "Config\apps.json nicht lesbar - Bibliothek wird nicht gespeichert: $($rd.Error)"
+        Show-HUMessage "Config\apps.json ist nicht lesbar - die App-Bibliothek bleibt leer und wird NICHT gespeichert, damit nichts verloren geht.`n`n$($rd.Error)`n`nDatei pruefen (z. B. OneDrive-Konflikt) oder apps.json.bak zurueckkopieren und HU-MultiTenant neu starten." -Icon Error
+        return
+    }
+    $j = $rd.Data
     if ($j -and $j.PSObject.Properties['apps']) { foreach ($a in @($j.apps)) { if ($a) { $script:AppLib.Add((ConvertTo-HUApp $a)) } } }
 }
 
 function Save-HUAppLib {
+    if ($script:AppLibReadError) { Write-HULogWarn 'App-Bibliothek nicht gespeichert (apps.json war beim Start nicht lesbar).'; return }
     try { Write-HUJsonFile -Path (Get-HUAppLibPath) -Object ([pscustomobject]@{ version = 1; apps = @($script:AppLib.ToArray()) }) -Depth 8 -Backup }
     catch { Write-HULogError "Apps speichern fehlgeschlagen: $($_.Exception.Message)" }
 }
@@ -807,6 +817,12 @@ $script:AppDeployCode = {
             $r.Ok = $true
         } catch {
             $r.Error = $_.Exception.Message
+            # angelegt, aber Paket-Upload gescheitert: AppId trotzdem merken (sonst legt der naechste Versuch eine zweite App an)
+            $failId = "$($_.Exception.Data['AppId'])"
+            if ($failId) {
+                if ($d -and $d.Id -ne $MainId) { $r.Deps.Add([pscustomobject]@{ Id = $d.Id; AppId = $failId; Signature = ''; Version = '' }) }
+                elseif (-not $r.AppId) { $r.AppId = $failId }
+            }
             $hint = ''
             if ($r.Error -match '403|Forbidden|Authorization') { $hint = ' -> Berechtigung DeviceManagementApps.ReadWrite.All (und Group.Read.All) in der App-Registrierung erteilen' }
             Write-HULog -Message "$($r.Error)$hint" -Level 'ERROR' -Tenant $tk
@@ -818,6 +834,7 @@ $script:AppDeployCode = {
 }
 
 function Start-HUAppDeploy([switch]$Release) {
+    if (Test-HUJobRunning 'AppUpd') { Show-HUMessage 'Updates werden gerade geprueft - bitte warten, bis das fertig ist.' -Icon Info; return }
     Save-HUAppForm
     $a = $script:AppCurrent
     if (-not $a) { return }
@@ -1120,6 +1137,7 @@ function Start-HUAppSandbox {
             $file = "$(@($Result) | Where-Object { $_ } | Select-Object -Last 1)"
             if (@($Errors).Count -or -not $file) { $script:Controls['txtAppSandbox'].Text = 'Sandbox nicht gestartet - siehe Ausgabe.'; Update-HUAppButtons; return }
             Start-HUSandboxWatch $file
+            Start-HUSandboxWindowKeeper
         })
     Update-HUAppButtons
 }
@@ -1218,7 +1236,9 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
         if (-not $unOk) { $warn = $true }
         $lines.Add("Deinstallation: $(if ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
     } elseif (-not $TestUn) { $lines.Add('Deinstallation nicht getestet.') }
-    foreach ($l in $lines) { Add-HURtbLine $rtb $l $(if ($l -match '^ACHTUNG|nicht still|noch vorhanden') { '#FFB74D' } elseif ($ok) { '#CCCCCC' } else { '#FFB74D' }) }
+    # Gesamtergebnis: fehlgeschlagen / mit Hinweisen / OK
+    $lines.Add($(if (-not $ok) { 'Ergebnis: Installation fehlgeschlagen - so nicht hochladen.' } elseif ($warn) { 'Ergebnis: installiert, aber mit Hinweisen (siehe ACHTUNG) - vor dem Hochladen pruefen.' } else { 'Ergebnis: OK - bereit zum Hochladen.' }))
+    foreach ($l in $lines) { Add-HURtbLine $rtb $l $(if ($l -match '^Ergebnis: OK') { '#81C784' } elseif ($l -match '^ACHTUNG|nicht still|noch vorhanden|^Ergebnis') { '#FFB74D' } elseif ($ok) { '#CCCCCC' } else { '#FFB74D' }) }
     # Protokolle bei Problemen direkt anzeigen (vollstaendig im Ordner logs)
     $logDir = Join-Path (Join-Path (Get-HUWorkPath 'Sandbox') $AppId) 'logs'
     $badUn = $Res.UninstallTested -and -not ($Res.UninstallRemoved -and -not @($Res.UninstallWindows | Where-Object { $_ }).Count)

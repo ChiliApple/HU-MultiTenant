@@ -57,7 +57,6 @@ function Get-HURatio([double]$A, [double]$B) {
 function Restore-HUWindowState {
     $w = $script:Window
     $c = $script:Controls
-    $s = Get-HUUIState
     # alte Felder (v1.x) uebernehmen
     $left = Get-HUStateValue 'Left' (Get-HUStateValue 'windowLeft')
     $top = Get-HUStateValue 'Top' (Get-HUStateValue 'windowTop')

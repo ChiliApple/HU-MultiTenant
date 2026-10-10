@@ -144,9 +144,20 @@ function Write-HUJsonFile {
     $json = $Object | ConvertTo-Json -Depth $Depth
     $tmp = "$Path.tmp"
     [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding $false))
-    if ($Backup -and (Test-Path -LiteralPath $Path)) { Copy-Item -LiteralPath $Path -Destination "$Path.bak" -Force }
+    # Sicherung nur von einer gueltigen Datei (sonst ersetzt eine kaputte Datei die letzte gute Sicherung)
+    if ($Backup -and (Test-Path -LiteralPath $Path) -and -not (Read-HUJsonFileChecked $Path).Error) { Copy-Item -LiteralPath $Path -Destination "$Path.bak" -Force }
     Move-Item -LiteralPath $tmp -Destination $Path -Force
 }
+# wie Read-HUJsonFile, unterscheidet aber 'fehlt' (Data $null, Error '') von 'nicht lesbar' (Error gesetzt)
+function Read-HUJsonFileChecked([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return @{ Data = $null; Error = '' } }
+    try {
+        $txt = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop
+        if (-not "$txt".Trim()) { return @{ Data = $null; Error = 'Datei ist leer' } }
+        return @{ Data = ($txt | ConvertFrom-Json -ErrorAction Stop); Error = '' }
+    } catch { return @{ Data = $null; Error = $_.Exception.Message } }
+}
+
 function Read-HUJsonFile([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     try { return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { return $null }
@@ -197,4 +208,126 @@ function Add-HUOutputMenu($RichTextBox, [scriptblock]$Clear) {
     [void]$menu.Items.Add($miClear)
     $menu.Add_Opened({ $this.Items[0].IsEnabled = ($this.PlacementTarget -and -not $this.PlacementTarget.Selection.IsEmpty) })
     $RichTextBox.ContextMenu = $menu
+}
+
+# ----------------------------------------------------------------------------
+# Windows Sandbox: Fenstergroesse und -position merken und beim naechsten Start wiederherstellen
+# (die Sandbox selbst kennt dafuer keine Einstellung - daher ueber das Fenster)
+# ----------------------------------------------------------------------------
+$script:SbWinTimer = $null   # StrictMode: vor dem ersten Lesen setzen
+$script:SbWin = $null
+
+function Initialize-HUWin32Window {
+    if ('HU.SbWin' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+namespace HU {
+    public static class SbWin {
+        [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+        delegate bool EnumProc(IntPtr h, IntPtr l);
+        [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr l);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+        [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+        [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int cx, int cy, bool repaint);
+        [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+        [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
+        [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+        // sichtbare Hauptfenster, deren Titel den Text enthaelt -> "hwnd|pid|titel|klasse"
+        public static List<string> Find(string part) {
+            var res = new List<string>();
+            EnumWindows(delegate (IntPtr h, IntPtr l) {
+                if (!IsWindowVisible(h)) return true;
+                var t = new StringBuilder(256); GetWindowText(h, t, 256);
+                if (t.ToString().IndexOf(part, StringComparison.OrdinalIgnoreCase) < 0) return true;
+                var c = new StringBuilder(256); GetClassName(h, c, 256);
+                uint pid; GetWindowThreadProcessId(h, out pid);
+                res.Add(h.ToInt64() + "|" + pid + "|" + t + "|" + c);
+                return true;
+            }, IntPtr.Zero);
+            return res;
+        }
+    }
+}
+'@
+}
+
+# Sandbox-Fenster suchen: sichtbares Fenster mit "Sandbox" im Titel, das zu einem Sandbox-Prozess gehoert
+function Get-HUSandboxWindow {
+    $pids = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'WindowsSandbox*' -or $_.ProcessName -like 'vmconnect*' } | ForEach-Object { $_.Id })
+    foreach ($e in @([HU.SbWin]::Find('Sandbox'))) {
+        $f = $e -split '\|', 4
+        if ($pids -contains [int]$f[1] -or $f[2] -match '^Windows[- ]Sandbox') {
+            return [pscustomobject]@{ Hwnd = [IntPtr][long]$f[0]; Pid = [int]$f[1]; Title = $f[2]; Class = $f[3]; Proc = "$((Get-Process -Id ([int]$f[1]) -ErrorAction SilentlyContinue).ProcessName)" }
+        }
+    }
+    return $null
+}
+
+function Start-HUSandboxWindowKeeper {
+    try { Initialize-HUWin32Window } catch { return }
+    $script:SbWin = @{ Started = Get-Date; Found = $null; Hwnd = [IntPtr]::Zero; Applied = 0; Last = '' }
+    if (-not $script:SbWinTimer) {
+        $script:SbWinTimer = [System.Windows.Threading.DispatcherTimer]::new()
+        $script:SbWinTimer.Interval = [TimeSpan]::FromSeconds(1)
+        $script:SbWinTimer.Add_Tick({ try { Update-HUSandboxWindowKeeper } catch { $script:SbWinTimer.Stop() } })
+    }
+    $script:SbWinTimer.Start()
+}
+
+function Update-HUSandboxWindowKeeper {
+    $s = $script:SbWin
+    $wi = Get-HUSandboxWindow
+    $h = if ($wi) { $wi.Hwnd } else { [IntPtr]::Zero }
+    if ($h -eq [IntPtr]::Zero) {
+        # noch nicht da (max. 3 Min. warten) bzw. geschlossen
+        if ($s.Found) { $script:SbWinTimer.Stop() }
+        elseif (((Get-Date) - $s.Started).TotalMinutes -gt 3) {
+            $script:SbWinTimer.Stop()
+            $all = @([HU.SbWin]::Find('Sandbox') | ForEach-Object { ($_ -split '\|', 4)[2..3] -join ' / ' })
+            Write-HULogWarn "Sandbox-Fenster nicht gefunden (Fenster mit 'Sandbox' im Titel: $(if ($all.Count) { $all -join '; ' } else { 'keine' }))"
+        }
+        return
+    }
+    if (-not $s.Found) {
+        $s.Found = Get-Date; $s.Hwnd = $h
+        Write-HULogInfo "Sandbox-Fenster gefunden: '$($wi.Title)' ($($wi.Proc), Klasse $($wi.Class))"
+    }
+    $age = ((Get-Date) - $s.Found).TotalSeconds
+    $saved = Get-HUStateValue 'sandboxWindow' $null
+    # die Sandbox passt ihr Fenster beim Hochfahren noch an - daher mehrmals setzen (sofort, nach 5 und nach 12 s)
+    $due = @(0, 5, 12)
+    if ($saved -and $s.Applied -lt $due.Count -and $age -ge $due[$s.Applied]) {
+        $s.Applied++
+        $x = [int]$saved.X; $y = [int]$saved.Y; $w = [int]$saved.W; $hh = [int]$saved.H
+        $vis = [System.Windows.Forms.SystemInformation]::VirtualScreen
+        if ($w -ge 400 -and $hh -ge 300 -and $x -lt $vis.Right - 50 -and $y -lt $vis.Bottom - 50 -and $x + $w -gt $vis.Left + 50 -and $y -gt $vis.Top - 50) {
+            if ($saved.Max) { [void][HU.SbWin]::ShowWindow($h, 3) }
+            else {
+                [void][HU.SbWin]::ShowWindow($h, 9)
+                $ok = [HU.SbWin]::SetWindowPos($h, [IntPtr]::Zero, $x, $y, $w, $hh, 0x0014)
+                if (-not $ok) { $ok = [HU.SbWin]::MoveWindow($h, $x, $y, $w, $hh, $true) }
+                if ($s.Applied -eq 1) { Write-HULogInfo "Sandbox-Fenster auf $x,$y ${w}x$hh gesetzt: $ok" }
+            }
+        }
+        return
+    }
+    # danach die aktuelle Lage merken (auch wenn der Benutzer das Fenster verschiebt)
+    if ($age -lt 15 -or [HU.SbWin]::IsIconic($h)) { return }
+    $max = [HU.SbWin]::IsZoomed($h)
+    $r = New-Object HU.SbWin+RECT
+    if (-not [HU.SbWin]::GetWindowRect($h, [ref]$r)) { return }
+    $cur = [pscustomobject]@{ X = $r.Left; Y = $r.Top; W = $r.Right - $r.Left; H = $r.Bottom - $r.Top; Max = [bool]$max }
+    if ($max -and $saved) { $cur.X = [int]$saved.X; $cur.Y = [int]$saved.Y; $cur.W = [int]$saved.W; $cur.H = [int]$saved.H }
+    $key = "$($cur.X)|$($cur.Y)|$($cur.W)|$($cur.H)|$($cur.Max)"
+    if ($key -ne $s.Last) {
+        if (-not $s.Last) { Write-HULogInfo "Sandbox-Fenster: Lage wird gemerkt ($($cur.X),$($cur.Y) $($cur.W)x$($cur.H)$(if ($cur.Max) { ', maximiert' }))" }
+        $s.Last = $key; Set-HUStateValue 'sandboxWindow' $cur; Save-HUUIState
+    }
 }

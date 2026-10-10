@@ -76,6 +76,7 @@ function Update-HUUpdList([string]$SelectId = '') {
 function Start-HUUpdCheck {
     $apps = @(Get-HUUpdApps)
     if (-not $apps.Count) { Show-HUMessage 'Keine Setup-Apps (MSI/EXE) in der Bibliothek.' -Icon Info; return }
+    if (Test-HUJobRunning 'Apps') { Show-HUMessage 'Es wird gerade hochgeladen - bitte warten, bis das fertig ist.' -Icon Info; return }
     $items = @($apps | ForEach-Object { [pscustomobject]@{ Id = $_.Id; WingetId = "$($_.WingetId)"; Name = "$($_.Name)"; Query = (Get-HUAppBaseName $_.Name); Deps = @(@($_.Deployments) | Where-Object { $_.AppId } | ForEach-Object { [pscustomobject]@{ Tenant = "$($_.Tenant)"; AppId = "$($_.AppId)" } }) } })
     $script:Controls['lblUpdState'].Text = "Pruefe $($items.Count) App(s) bei winget ... (je App einige Sekunden)"
     $script:Controls['btnUpdCheck'].IsEnabled = $false
@@ -88,15 +89,16 @@ function Start-HUUpdCheck {
             $r.Intune = @(foreach ($d in @($it.Deps)) {
                     try {
                         $ia = Invoke-HUIntuneGraph -TenantKey $d.Tenant -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$($d.AppId)"
-                        [pscustomobject]@{ Tenant = $d.Tenant; Version = "$($ia.displayVersion)"; Missing = $false; Error = '' }
+                        [pscustomobject]@{ Tenant = $d.Tenant; AppId = $d.AppId; Version = "$($ia.displayVersion)"; Missing = $false; Error = '' }
                     } catch {
                         $em = "$($_.Exception.Message)"
-                        if ($em -match '404|NotFound|not found|ResourceNotFound|does not exist|nicht gefunden') {
+                        # nur echtes 404 gilt als geloescht (Textvergleich koennte andere Fehler treffen)
+                        if ([int]$_.Exception.Data['StatusCode'] -eq 404) {
                             Write-HULog -Message "$($it.Name): App gibt es in Intune nicht mehr" -Level 'WARN' -Tenant $d.Tenant
-                            [pscustomobject]@{ Tenant = $d.Tenant; Version = ''; Missing = $true; Error = '' }
+                            [pscustomobject]@{ Tenant = $d.Tenant; AppId = $d.AppId; Version = ''; Missing = $true; Error = '' }
                         } else {
                             Write-HULog -Message "$($it.Name): Intune-Stand nicht lesbar ($em)" -Level 'WARN' -Tenant $d.Tenant
-                            [pscustomobject]@{ Tenant = $d.Tenant; Version = ''; Missing = $false; Error = $em }
+                            [pscustomobject]@{ Tenant = $d.Tenant; AppId = $d.AppId; Version = ''; Missing = $false; Error = $em }
                         }
                     }
                 })
@@ -124,9 +126,11 @@ function Start-HUUpdCheck {
             if (-not $a) { continue }
             $info = @{ Latest = "$($r.Latest)"; Error = "$($r.Error)"; Suggest = @($r.Suggest); Intune = @($r.Intune); Time = Get-Date }
             # in Intune geloescht -> Verteilungs-Notiz in der Bibliothek entfernen (sonst gilt die App dort weiter als verteilt)
-            $gone = @(@($r.Intune) | Where-Object { $_.Missing } | ForEach-Object { $_.Tenant })
+            # nur den Eintrag mit genau der geprueften AppId (inzwischen neu hochgeladen -> andere AppId -> bleibt)
+            $goneSet = @{}; foreach ($g in @(@($r.Intune) | Where-Object { $_.Missing })) { $goneSet["$($g.Tenant)|$($g.AppId)"] = $true }
+            $gone = @(@($a.Deployments) | Where-Object { $goneSet.ContainsKey("$($_.Tenant)|$($_.AppId)") } | ForEach-Object { $_.Tenant })
             if ($gone.Count) {
-                $a.Deployments = @(@($a.Deployments) | Where-Object { $gone -notcontains $_.Tenant })
+                $a.Deployments = @(@($a.Deployments) | Where-Object { -not $goneSet.ContainsKey("$($_.Tenant)|$($_.AppId)") })
                 $script:UpdCleaned += "$($a.Name): $(@($gone | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')"
             }
             if (-not $a.WingetId -and @($r.Suggest).Count) {

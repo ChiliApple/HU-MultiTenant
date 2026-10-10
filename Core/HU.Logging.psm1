@@ -69,7 +69,8 @@ $script:TokenPatterns = @(
     '(?i)(Bearer\s+)[A-Za-z0-9_\-\.+/=]{20,}'                                  # Bearer Header
     '(?i)(client_secret[=:]\s*)[^\s&"'']{8,}'                                   # Client Secret in Body
     '(?i)(password[=:]\s*)[^\s&"'']{8,}'                                         # Password
-    '(?i)([A-Za-z0-9]{8}~[A-Za-z0-9_\-\.]{30,})'                              # Azure Client Secret Format
+    '(?i)([A-Za-z0-9]{8}~[A-Za-z0-9_\-\.]{30,})'                              # Azure Client Secret Format (alt)
+    '((?<![A-Za-z0-9])[A-Za-z0-9_\-\.]{3,8}\dQ~[A-Za-z0-9_\-\.~]{30,})'         # Entra Client Secret (xxx8Q~...)
 )
 
 # ============================================================================

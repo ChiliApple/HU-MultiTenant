@@ -353,6 +353,13 @@ function Show-HUSettingsDialog {
         if ($st.Cur -ge 0 -and $et -and -not [datetime]::TryParseExact($et, @('dd.MM.yyyy', 'd.M.yyyy', 'yyyy-MM-dd'), [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$dtx)) {
             $c.tabSettings.SelectedItem = $c.tabTenants; Show-HUMessage "'Secret gueltig bis' bitte als TT.MM.JJJJ eingeben (oder leer lassen)." -Icon Warning -Owner $w; return
         }
+        # Backup-Ordner: Backups enthalten Skripte im Klartext - nicht in OneDrive/Programmordner ohne Rueckfrage
+        $bp = $c.txtBackupPath.Text.Trim()
+        if ($bp -and $bp -ne "$(Get-HUProp $S.ui 'backupPath' '')") {
+            $full = try { [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($bp)).TrimEnd('\') + '\' } catch { $bp }
+            $risky = @(@($env:OneDrive, $env:OneDriveCommercial, $env:OneDriveConsumer, $script:AppRoot) | Where-Object { $_ } | Where-Object { $full.StartsWith(($_.TrimEnd('\') + '\'), [StringComparison]::OrdinalIgnoreCase) })
+            if ($risky.Count -and -not (Confirm-HU "Der Backup-Ordner liegt in OneDrive bzw. im Programmordner:`n$bp`n`nBackups enthalten Skripte und Richtlinien im Klartext (auch Kennwoerter aus Wartungsskripten) und wuerden damit synchronisiert bzw. mitkopiert.`n`nTrotzdem verwenden?" 'Backup-Ordner' -Warning -Owner $w)) { $c.tabSettings.SelectedItem = $c.tabGeneral; return }
+        }
         $lm = 0
         if ($c.chkLockEnabled.IsChecked) {
             if (-not [int]::TryParse($c.txtLockMinutes.Text.Trim(), [ref]$lm) -or $lm -lt 1 -or $lm -gt 240) { $c.tabSettings.SelectedItem = $c.tabGeneral; Show-HUMessage 'Sperre: Minuten als Zahl zwischen 1 und 240.' -Icon Warning -Owner $w; return }

@@ -149,3 +149,17 @@ jobs:
           if ("$($i.Version)" -ne $v) { throw "installiert: $($i.Version), erwartet $v" }
           if ("$($i.Check)" -notlike 'Pruefsumme*') { throw "nicht geprueft: $($i.Check)" }
           "Pull OK: $($i.Version) - $($i.Check) - $($i.Files) Dateien"
+          # zweiter Lauf = Update ueber bestehende Installation: veraltete Datei muss weg, Config bleibt, keine Reste
+          $old = Join-Path $t 'Core\Alt-Entfernt.ps1'; 'alt' | Set-Content -LiteralPath $old -Encoding UTF8
+          $keep = Join-Path $t 'Config\behalten.txt'; 'bleibt' | Set-Content -LiteralPath $keep -Encoding UTF8
+          $i.FileList = @($i.FileList) + @('Core/Alt-Entfernt.ps1', 'Config/behalten.txt', '../ausserhalb.txt')
+          $i | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $t 'Config\installed.json') -Encoding UTF8
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\Pull.ps1 -Target $t -Version $v -NoStart -NonInteractive -Owner $env:GITHUB_REPOSITORY_OWNER -Repo ($env:GITHUB_REPOSITORY -split '/')[1]
+          if ($LASTEXITCODE -ne 0) { throw "Pull.ps1 (Update) Exitcode $LASTEXITCODE" }
+          if (Test-Path -LiteralPath $old) { throw 'veraltete Datei nicht entfernt' }
+          if (-not (Test-Path -LiteralPath $keep)) { throw 'Datei in Config wurde entfernt' }
+          $rest = @(Get-ChildItem -LiteralPath $t -Recurse -File -Force | Where-Object { $_.Name -match '\.(pullold|pulltmp)$' -or $_.Name -eq 'pull-journal.json' })
+          if ($rest.Count) { throw "Reste: $(($rest | ForEach-Object Name) -join ', ')" }
+          $i = Get-Content (Join-Path $t 'Config\installed.json') -Raw | ConvertFrom-Json
+          if ("$($i.Version)" -ne $v -or -not @($i.FileList).Count) { throw "installed.json nach Update falsch: $($i.Version)" }
+          "Update OK: veraltete Datei entfernt, Config unberuehrt, keine Reste"

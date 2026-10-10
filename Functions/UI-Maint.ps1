@@ -34,6 +34,7 @@ function ConvertTo-HURem($Src = $null) {
     }
     if ($Src) {
         foreach ($p in $r.PSObject.Properties.Name) { if ($Src.PSObject.Properties[$p] -and $null -ne $Src.$p) { $r.$p = $Src.$p } }
+        if ("$($r.Id)" -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { $r.Id = [guid]::NewGuid().ToString() }
         $r.Tenants = @($r.Tenants | Where-Object { $_ } | ForEach-Object { "$_" })
         $r.Deployments = @($r.Deployments | Where-Object { $_ } | ForEach-Object { [pscustomobject][ordered]@{ Tenant = "$($_.Tenant)"; ScriptId = "$($_.ScriptId)"; Stage = "$($_.Stage)"; Time = "$($_.Time)"; Version = '' } })
         $r.RunAs32 = [bool]$r.RunAs32; $r.Pilot = [bool]$r.Pilot
@@ -44,11 +45,19 @@ function ConvertTo-HURem($Src = $null) {
 
 function Import-HURemLib {
     $script:RemLib.Clear()
-    $j = Read-HUJsonFile (Get-HURemLibPath)
+    $rd = Read-HUJsonFileChecked (Get-HURemLibPath)
+    $script:RemLibReadError = "$($rd.Error)"
+    if ($rd.Error) {
+        Write-HULogError "Config\remediations.json nicht lesbar - Wartungs-Bibliothek wird nicht gespeichert: $($rd.Error)"
+        Show-HUMessage "Config\remediations.json ist nicht lesbar - die Wartungs-Bibliothek bleibt leer und wird NICHT gespeichert, damit nichts verloren geht.`n`n$($rd.Error)`n`nDatei pruefen (z. B. OneDrive-Konflikt) oder remediations.json.bak zurueckkopieren und HU-MultiTenant neu starten." -Icon Error
+        return
+    }
+    $j = $rd.Data
     if ($j -and $j.PSObject.Properties['remediations']) { foreach ($r in @($j.remediations)) { if ($r) { $script:RemLib.Add((ConvertTo-HURem $r)) } } }
 }
 
 function Save-HURemLib {
+    if ($script:RemLibReadError) { Write-HULogWarn 'Wartungs-Bibliothek nicht gespeichert (remediations.json war beim Start nicht lesbar).'; return }
     try { Write-HUJsonFile -Path (Get-HURemLibPath) -Object ([pscustomobject]@{ version = 1; remediations = @($script:RemLib.ToArray()) }) -Depth 8 -Backup }
     catch { Write-HULogError "Wartung speichern fehlgeschlagen: $($_.Exception.Message)" }
 }
