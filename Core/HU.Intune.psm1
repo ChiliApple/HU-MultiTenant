@@ -1670,7 +1670,7 @@ function Enable-HUSandbox {
 $script:SandboxScript = @'
 $ErrorActionPreference = 'Continue'
 $cfg = Get-Content -LiteralPath 'C:\HUTest\config.json' -Raw | ConvertFrom-Json
-$result = [ordered]@{ Deps = @(); DetectInstall = $null; DetectUninstall = $null; ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @(); InstallLog = ''; UninstallLog = ''; DesktopLinks = @(); WrapperLog = @() }
+$result = [ordered]@{ Deps = @(); DetectInstall = $null; DetectUninstall = $null; NewFiles = @(); FilesLeft = $null; ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @(); InstallLog = ''; UninstallLog = ''; DesktopLinks = @(); WrapperLog = @() }
 function Get-Snap {
     $l = @()
     foreach ($p in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall') {
@@ -1713,6 +1713,8 @@ function Test-Det {
     }
     return $null
 }
+# Programmdateien (exe/dll) - fuer Apps ohne Eintrag in Apps & Features (Skripte, Plugins)
+function Get-ProgFiles { @(Get-ChildItem $env:ProgramFiles, ${env:ProgramFiles(x86)} -Recurse -File -Include *.exe, *.dll -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
 function Get-Dirs { @(Get-ChildItem $env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:ProgramData" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
 $script:Windows = @()
 # Fenstergroesse pruefen: Inno/Delphi-Setups haben auch bei /VERYSILENT ein unsichtbares 0x0-Hauptfenster
@@ -1798,7 +1800,7 @@ try {
         $result.Deps += [pscustomobject]@{ Name = "$($d.Name)"; ExitCode = $dx; Log = $(if ($dx -notin 0, 1707, 3010, 1641) { Get-LogText $dt "dep$di" } else { '' }) }
         if ($dx -notin 0, 1707, 3010, 1641) { throw "Abhaengigkeit '$($d.Name)' fehlgeschlagen (Exitcode $dx) - App selbst nicht installiert" }
     }
-    $before = @(Get-Snap); $dirsBefore = Get-Dirs
+    $before = @(Get-Snap); $dirsBefore = Get-Dirs; $filesBefore = @{}; foreach ($f in Get-ProgFiles) { $filesBefore[$f] = $true }
     $lnkDirs = @("$env:PUBLIC\Desktop", [Environment]::GetFolderPath('Desktop'))
     $lnkBefore = @(Get-ChildItem -Path $lnkDirs -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
     Write-Host "Installiere: $($cfg.Install)" -ForegroundColor Yellow
@@ -1837,6 +1839,10 @@ try {
         }
     } catch { }
     $result.NewFolders = @(Get-Dirs | Where-Object { $dirsBefore -notcontains $_ })
+    $result.NewFiles = @(Get-ProgFiles | Where-Object { -not $filesBefore.ContainsKey($_) } | Select-Object -First 200 | ForEach-Object {
+            $v = ''; try { $v = "$((Get-Item -LiteralPath $_).VersionInfo.FileVersion)".Trim() } catch { }
+            [pscustomobject]@{ Path = $_; Version = $v }
+        })
     Start-Sleep -Seconds 5
     $result.DesktopLinks = @(Get-ChildItem -Path $lnkDirs -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $lnkBefore -notcontains $_.FullName } | ForEach-Object { $_.Name })
     $wl = Join-Path $env:ProgramData 'HU-MultiTenant\Logs\HU-Install.log'
@@ -1857,6 +1863,7 @@ try {
         }
         $result.UninstallLog = Get-LogText $t1 'uninstall'
         $result.DetectUninstall = Test-Det
+        $result.FilesLeft = @($result.NewFiles | Where-Object { Test-Path -LiteralPath $_.Path }).Count
     }
 } catch { $result.Error = $_.Exception.Message }
 $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'C:\HUTest\result.json' -Encoding UTF8
