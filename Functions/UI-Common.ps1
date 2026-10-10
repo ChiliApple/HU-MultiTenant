@@ -214,6 +214,9 @@ function Add-HUOutputMenu($RichTextBox, [scriptblock]$Clear) {
 # Windows Sandbox: Fenstergroesse und -position merken und beim naechsten Start wiederherstellen
 # (die Sandbox selbst kennt dafuer keine Einstellung - daher ueber das Fenster)
 # ----------------------------------------------------------------------------
+$script:SbWinTimer = $null   # StrictMode: vor dem ersten Lesen setzen
+$script:SbWin = $null
+
 function Initialize-HUWin32Window {
     if ('HU.SbWin' -as [type]) { return }
     Add-Type -TypeDefinition @'
