@@ -394,7 +394,7 @@
                             <DockPanel x:Name="pnlAppLibLeft">
                                 <TextBlock DockPanel.Dock="Top" Text="App-Bibliothek" Style="{StaticResource SectionTitle}"/>
                                 <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                                    <Button x:Name="btnAppAdd" Content="+ MSI / EXE ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                    <Button x:Name="btnAppAdd" Content="+ Setup ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
                                             ToolTip="Setup-Datei waehlen - Name, Version, Befehle und Erkennung werden ausgelesen"/>
                                     <Button x:Name="btnAppAddStore" Content="+ Store-App" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
                                             ToolTip="Microsoft Store App (neu) - nur die Store-ID, kein Paket"/>

@@ -1,5 +1,22 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.9 (in Arbeit)
+
+### Neu
+- **Startbildschirm** wie bei HUMig: Logo, Name und Version erscheinen sofort beim Start, darunter was gerade geladen wird; schliesst sich, sobald das Hauptfenster da ist
+
+### Behoben
+- **Absturz bei "+ Setup ..."** (vorher "+ MSI / EXE ..."): das Programm beendete sich nach der Dateiauswahl; die neue Datei wird jetzt immer als neue App hinzugefuegt (gleicher Name in der Bibliothek wird weiterhin als neue Version erkannt)
+- Fehler in einer Schaltflaeche beenden nicht mehr das ganze Programm - sie werden protokolliert, das Programm laeuft weiter
+- Sperre: Meldung "Verzoegerte Aktion: Die Variable $state ..." 30 s nach dem Entsperren entfernt
+
+### Apps
+- **Skript als Setup:** neben MSI und EXE jetzt auch PowerShell-Skripte (`.ps1`) und Batch-Dateien (`.cmd`, `.bat`) - z. B. Plugin-Installer ohne eigenes Setup. Name und Version kommen aus dem Ordnernamen (`HUScroll-0.5.2` ergibt HUScroll, 0.5.2), der ganze Ordner wird mitgepackt. Hat das Skript die Schalter `-AllUsers`/`-Uninstall`, werden Installations- und Deinstallationsbefehl damit vorgeschlagen
+- **Setup-Ordner:** Setups werden beim Hinzufuegen nach `<Setup-Ordner>\<App>\<Version>` kopiert (letzte zwei Versionen je App bleiben) - Downloads kann danach aufgeraeumt werden. Vorschlag OneDrive\HU-MultiTenant-Setups, aenderbar unter Einstellungen > Allgemein; "Vorhandene uebernehmen" holt bestehende Bibliotheks-Apps nach
+- **Testinstallation mit Abhaengigkeiten:** Abhaengigkeiten aus der Bibliothek werden in der Sandbox vorher installiert (z. B. Greenshot vor einem Greenshot-Plugin); Abhaengigkeiten nur aus Intune werden als Hinweis genannt
+- **Testinstallation prueft die Erkennungsregel:** nach der Installation und nach der Deinstallation (Datei/Ordner, Registry, MSI-Produktcode) - "NICHT gefunden" heisst, Intune wuerde die Installation als fehlgeschlagen melden. Bei Apps ohne Eintrag in "Apps & Features" (Skripte, Plugins) zaehlt fuer den Deinstallationstest die Erkennungsregel
+- **Testinstallation ohne Eintrag in "Apps & Features"** (Skripte, Plugins): neue Programmdateien (EXE/DLL) werden erkannt und als Datei-Erkennung mit Version vorgeschlagen; der Deinstallationstest prueft, ob sie wieder weg sind - "nicht pruefbar" statt eines falschen "OK", wenn es weder Eintrag noch Erkennung gibt
+
 ## v2.1.8 (2026-10-10)
 
 ### Update (Pull.ps1)
@@ -19,7 +36,7 @@
 - **Wirkt verzoegert:** Ein Update laeuft immer mit dem bisher installierten Pull.ps1 - die Korrektur greift ab dem naechsten
   Update nach 2.1.8.
 
-## v2.1.7 (in Arbeit)
+## v2.1.7 (2026-10-10)
 
 Sicherheits- und Robustheits-Update nach einer gezielten Code-Pruefung.
 
