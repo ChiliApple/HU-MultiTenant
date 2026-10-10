@@ -1137,6 +1137,7 @@ function Start-HUAppSandbox {
             $file = "$(@($Result) | Where-Object { $_ } | Select-Object -Last 1)"
             if (@($Errors).Count -or -not $file) { $script:Controls['txtAppSandbox'].Text = 'Sandbox nicht gestartet - siehe Ausgabe.'; Update-HUAppButtons; return }
             Start-HUSandboxWatch $file
+            Start-HUSandboxWindowKeeper
         })
     Update-HUAppButtons
 }

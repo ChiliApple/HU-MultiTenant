@@ -209,3 +209,73 @@ function Add-HUOutputMenu($RichTextBox, [scriptblock]$Clear) {
     $menu.Add_Opened({ $this.Items[0].IsEnabled = ($this.PlacementTarget -and -not $this.PlacementTarget.Selection.IsEmpty) })
     $RichTextBox.ContextMenu = $menu
 }
+
+# ----------------------------------------------------------------------------
+# Windows Sandbox: Fenstergroesse und -position merken und beim naechsten Start wiederherstellen
+# (die Sandbox selbst kennt dafuer keine Einstellung - daher ueber das Fenster)
+# ----------------------------------------------------------------------------
+function Initialize-HUWin32Window {
+    if ('HU.Win32Win' -as [type]) { return }
+    Add-Type -Namespace HU -Name Win32Win -MemberDefinition @'
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool GetWindowRect(System.IntPtr hWnd, out RECT r);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetWindowPos(System.IntPtr hWnd, System.IntPtr after, int x, int y, int cx, int cy, uint flags);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int cmd);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsZoomed(System.IntPtr hWnd);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsIconic(System.IntPtr hWnd);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsWindowVisible(System.IntPtr hWnd);
+'@
+}
+
+function Get-HUSandboxWindow {
+    foreach ($p in @(Get-Process -Name 'WindowsSandboxRemoteSession', 'WindowsSandboxClient', 'WindowsSandbox' -ErrorAction SilentlyContinue)) {
+        try { $h = $p.MainWindowHandle; if ($h -ne [IntPtr]::Zero -and [HU.Win32Win]::IsWindowVisible($h)) { return $h } } catch { }
+    }
+    return [IntPtr]::Zero
+}
+
+function Start-HUSandboxWindowKeeper {
+    try { Initialize-HUWin32Window } catch { return }
+    $script:SbWin = @{ Started = Get-Date; Found = $null; Hwnd = [IntPtr]::Zero; Applied = 0; Last = '' }
+    if (-not $script:SbWinTimer) {
+        $script:SbWinTimer = [System.Windows.Threading.DispatcherTimer]::new()
+        $script:SbWinTimer.Interval = [TimeSpan]::FromSeconds(1)
+        $script:SbWinTimer.Add_Tick({ try { Update-HUSandboxWindowKeeper } catch { $script:SbWinTimer.Stop() } })
+    }
+    $script:SbWinTimer.Start()
+}
+
+function Update-HUSandboxWindowKeeper {
+    $s = $script:SbWin
+    $h = Get-HUSandboxWindow
+    if ($h -eq [IntPtr]::Zero) {
+        # noch nicht da (max. 3 Min. warten) bzw. geschlossen
+        if ($s.Found -or ((Get-Date) - $s.Started).TotalMinutes -gt 3) { $script:SbWinTimer.Stop() }
+        return
+    }
+    if (-not $s.Found) { $s.Found = Get-Date; $s.Hwnd = $h }
+    $age = ((Get-Date) - $s.Found).TotalSeconds
+    $saved = Get-HUStateValue 'sandboxWindow' $null
+    # die Sandbox passt ihr Fenster beim Hochfahren noch an - daher mehrmals setzen (sofort, nach 5 und nach 12 s)
+    $due = @(0, 5, 12)
+    if ($saved -and $s.Applied -lt $due.Count -and $age -ge $due[$s.Applied]) {
+        $s.Applied++
+        $x = [int]$saved.X; $y = [int]$saved.Y; $w = [int]$saved.W; $hh = [int]$saved.H
+        $vis = [System.Windows.Forms.SystemInformation]::VirtualScreen
+        if ($w -ge 400 -and $hh -ge 300 -and $x -lt $vis.Right - 50 -and $y -lt $vis.Bottom - 50 -and $x + $w -gt $vis.Left + 50 -and $y -gt $vis.Top - 50) {
+            if ($saved.Max) { [void][HU.Win32Win]::ShowWindow($h, 3) }
+            else { [void][HU.Win32Win]::ShowWindow($h, 9); [void][HU.Win32Win]::SetWindowPos($h, [IntPtr]::Zero, $x, $y, $w, $hh, 0x0014) }
+        }
+        return
+    }
+    # danach die aktuelle Lage merken (auch wenn der Benutzer das Fenster verschiebt)
+    if ($age -lt 15 -or [HU.Win32Win]::IsIconic($h)) { return }
+    $max = [HU.Win32Win]::IsZoomed($h)
+    $r = New-Object HU.Win32Win+RECT
+    if (-not [HU.Win32Win]::GetWindowRect($h, [ref]$r)) { return }
+    $cur = [pscustomobject]@{ X = $r.Left; Y = $r.Top; W = $r.Right - $r.Left; H = $r.Bottom - $r.Top; Max = [bool]$max }
+    if ($max -and $saved) { $cur.X = [int]$saved.X; $cur.Y = [int]$saved.Y; $cur.W = [int]$saved.W; $cur.H = [int]$saved.H }
+    $key = "$($cur.X)|$($cur.Y)|$($cur.W)|$($cur.H)|$($cur.Max)"
+    if ($key -ne $s.Last) { $s.Last = $key; Set-HUStateValue 'sandboxWindow' $cur; Save-HUUIState }
+}

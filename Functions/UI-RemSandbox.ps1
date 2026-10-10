@@ -32,6 +32,7 @@ function Start-HURemSandbox([string]$Name, [string]$Detection, [string]$Remediat
         $file = Start-HURemSandboxTest -WorkFolder $work -Detection $Detection -Remediation $Remediation -RunAs $RunAs -Use32:$Use32 -TimeoutSeconds $script:RemSbTimeout
     } catch { Add-HURtbLine $rtb "Sandbox nicht gestartet: $($_.Exception.Message)" '#FF5252'; return }
     Add-HURtbLine $rtb 'Windows Sandbox startet - der Ablauf ist dort im Fenster zu sehen ...' '#81C784'
+    Start-HUSandboxWindowKeeper
     $script:RemSbWatch = @{ File = $file; Work = $work; Started = Get-Date; Seen = $false; RunAs = $RunAs; HasFix = [bool]"$Remediation".Trim(); Name = $Name; KeepOpen = $KeepOpen }
     if (-not $script:RemSbTimer) {
         $script:RemSbTimer = [System.Windows.Threading.DispatcherTimer]::new()

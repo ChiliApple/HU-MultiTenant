@@ -18,6 +18,7 @@ Sicherheits- und Robustheits-Update nach einer gezielten Code-Pruefung.
 
 ### Verbessert
 - Apps: Testinstallation in der Sandbox endet mit einem Gesamtergebnis (OK / mit Hinweisen / fehlgeschlagen), farbig markiert
+- Windows Sandbox (Apps und Wartung): Fenstergroesse und -position werden gemerkt und beim naechsten Test wiederhergestellt
 - Wartungsskript aktualisieren laesst Bereichsmarkierungen (Scope-Tags) aus dem Portal unveraendert
 - Compliance kopieren: nicht uebernommene Benachrichtigungs-Aktionen werden gemeldet
 - Kategorie loeschen: bei mehreren gleichnamigen wird nichts geloescht
