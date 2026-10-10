@@ -280,7 +280,7 @@ function Start-HUCmpCopy {
     $ok = Start-HUJob -Name 'CmpCopy' -Output $c['rtbAna'] -Vars @{ Jobs = $jobs } -Code {
         foreach ($j in $Jobs) {
             try {
-                $id = Copy-HUIntuneObject -Typ $j.Typ -SourceTenant $j.From -SourceId $j.Id -TargetTenant $j.To -Settings $Settings
+                [void](Copy-HUIntuneObject -Typ $j.Typ -SourceTenant $j.From -SourceId $j.Id -TargetTenant $j.To -Settings $Settings)
                 Write-HULog -Message "$($j.Typ) '$($j.Name)' kopiert (ohne Zuweisungen)" -Level 'OK' -Tenant $j.To
             } catch { Write-HULog -Message "$($j.Typ) '$($j.Name)': $($_.Exception.Message)" -Level 'ERROR' -Tenant $j.To }
         }

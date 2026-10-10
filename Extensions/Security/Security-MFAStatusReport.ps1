@@ -152,19 +152,6 @@ function Invoke-MFAStatusReport {
         $mfaRate = if ($enrichedUsers.Count -gt 0) { [math]::Round(($mfaRegisteredCount / $enrichedUsers.Count) * 100, 1) } else { 0 }
         $passwordlessCapableCount = @($enrichedUsers | Where-Object { $_.PasswordlessCapable -eq 'Ja' }).Count
 
-        # Bereite Dashboard-Daten vor
-        $dashboardData = [PSCustomObject]@{
-            TenantKey              = $TenantKey
-            ReportDate             = Get-Date -Format 'dd.MM.yyyy HH:mm:ss'
-            TotalUsers             = $enrichedUsers.Count
-            MfaRegistered          = $mfaRegisteredCount
-            MfaNotRegistered       = $notMfaRegistered.Count
-            MfaRegistrationRate    = "$mfaRate%"
-            AdminCount             = $admins.Count
-            AdminsMfaRegistered    = @($admins | Where-Object { $_.MfaRegistered -eq 'Ja' }).Count
-            PasswordlessCapable    = $passwordlessCapableCount
-            UniqueMethodsCount     = $methodSummary.Count
-        }
 
         # Excel-Export vorbereiten
         $dateStamp = Get-Date -Format 'yyyy-MM-dd'

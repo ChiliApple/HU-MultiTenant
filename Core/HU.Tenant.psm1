@@ -279,14 +279,14 @@ function Test-TenantConnection {
         if ([string]::IsNullOrWhiteSpace($Token)) {
             if (-not $script:Settings) {
                 $result.ErrorMessage = 'Settings nicht geladen'
-                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -Error $result.ErrorMessage
+                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -ErrorMessage $result.ErrorMessage
                 return $result
             }
 
             $Token = Get-GraphToken -TenantKey $TenantKey -Settings $script:Settings
             if (-not $Token) {
                 $result.ErrorMessage = 'Token konnte nicht abgerufen werden. Secret prüfen.'
-                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -Error $result.ErrorMessage
+                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -ErrorMessage $result.ErrorMessage
                 return $result
             }
         }
@@ -296,7 +296,7 @@ function Test-TenantConnection {
         $headers = @{ Authorization = "Bearer $Token" }
 
         try {
-            $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
+            $null = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -ErrorAction Stop
 
             $result.IsConnected = $true
             Update-TenantStatusCache -TenantKey $TenantKey -Connected $true
@@ -311,15 +311,15 @@ function Test-TenantConnection {
 
             if ($statusCode -eq 403) {
                 $result.ErrorMessage = "403 Forbidden - Permissions fehlen"
-                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -Error $result.ErrorMessage -PermissionsOk $false
+                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -ErrorMessage $result.ErrorMessage -PermissionsOk $false
             }
             elseif ($statusCode -eq 401) {
                 $result.ErrorMessage = "401 Unauthorized - Token/Secret ungültig"
-                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -Error $result.ErrorMessage
+                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -ErrorMessage $result.ErrorMessage
             }
             else {
                 $result.ErrorMessage = "Verbindungsfehler: $($_.Exception.Message)"
-                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -Error $result.ErrorMessage
+                Update-TenantStatusCache -TenantKey $TenantKey -Connected $false -ErrorMessage $result.ErrorMessage
             }
         }
 
@@ -393,7 +393,7 @@ function Update-TenantStatusCache {
     param(
         [string]$TenantKey,
         [bool]$Connected,
-        [string]$Error = '',
+        [string]$ErrorMessage = '',
         [Nullable[bool]]$PermissionsOk = $null
     )
 
@@ -404,7 +404,7 @@ function Update-TenantStatusCache {
 
         $script:TenantStatus[$TenantKey].isConnected = $Connected
         $script:TenantStatus[$TenantKey].lastChecked = Get-Date
-        $script:TenantStatus[$TenantKey].errorMessage = $Error
+        $script:TenantStatus[$TenantKey].errorMessage = $ErrorMessage
 
         if ($null -ne $PermissionsOk) {
             $script:TenantStatus[$TenantKey].permissionsOk = $PermissionsOk

@@ -1,5 +1,13 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.7 (in Arbeit)
+
+### Verbessert
+- Apps: Testinstallation in der Sandbox endet mit einem Gesamtergebnis (OK / mit Hinweisen / fehlgeschlagen), farbig markiert
+
+### Intern
+- Code-Pruefung: Parameter `-Error` in `Update-TenantStatusCache` heisst jetzt `-ErrorMessage` (ueberdeckte die automatische Variable), ungenutzte Variablen und doppelte Dashboard-Daten in zwei Extensions entfernt
+
 ## v2.1.6 (2026-10-09)
 
 ### Neu: Reiter Analyse

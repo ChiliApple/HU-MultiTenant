@@ -1218,7 +1218,9 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
         if (-not $unOk) { $warn = $true }
         $lines.Add("Deinstallation: $(if ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
     } elseif (-not $TestUn) { $lines.Add('Deinstallation nicht getestet.') }
-    foreach ($l in $lines) { Add-HURtbLine $rtb $l $(if ($l -match '^ACHTUNG|nicht still|noch vorhanden') { '#FFB74D' } elseif ($ok) { '#CCCCCC' } else { '#FFB74D' }) }
+    # Gesamtergebnis: fehlgeschlagen / mit Hinweisen / OK
+    $lines.Add($(if (-not $ok) { 'Ergebnis: Installation fehlgeschlagen - so nicht hochladen.' } elseif ($warn) { 'Ergebnis: installiert, aber mit Hinweisen (siehe ACHTUNG) - vor dem Hochladen pruefen.' } else { 'Ergebnis: OK - bereit zum Hochladen.' }))
+    foreach ($l in $lines) { Add-HURtbLine $rtb $l $(if ($l -match '^Ergebnis: OK') { '#81C784' } elseif ($l -match '^ACHTUNG|nicht still|noch vorhanden|^Ergebnis') { '#FFB74D' } elseif ($ok) { '#CCCCCC' } else { '#FFB74D' }) }
     # Protokolle bei Problemen direkt anzeigen (vollstaendig im Ordner logs)
     $logDir = Join-Path (Join-Path (Get-HUWorkPath 'Sandbox') $AppId) 'logs'
     $badUn = $Res.UninstallTested -and -not ($Res.UninstallRemoved -and -not @($Res.UninstallWindows | Where-Object { $_ }).Count)
