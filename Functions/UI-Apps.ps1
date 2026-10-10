@@ -558,6 +558,7 @@ function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck)
     $a.Version = $info.Version
     $a.SetupPath = (Get-Item -LiteralPath $Path).FullName
     $a.InstallCmd = $info.InstallCmd
+    if ($info.Kind -eq 'script' -and $info.UninstallCmd -and (-not $a.UninstallCmd -or $isNew)) { $a.UninstallCmd = $info.UninstallCmd }
     if ($info.Kind -eq 'msi') {
         $a.UninstallCmd = $info.UninstallCmd; $a.UpgradeCode = $info.UpgradeCode
         $a.Detection = New-HUAppDetection $info.Detection
@@ -584,7 +585,7 @@ function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck)
     Show-HUAppForm $a
     $hint = $info.Hint
     if ($info.Kind -eq 'exe') { $hint += ' Tipp: "Testinstallation in der Windows Sandbox" ermittelt Erkennung und Deinstallation.' }
-    if ($a.WholeFolder) { $hint += " Im Ordner liegen Zusatzdateien ($(@($others | Select-Object -First 3 | ForEach-Object Name) -join ', ')) - der ganze Ordner wird mitgepackt." }
+    if ($a.WholeFolder -and $others.Count) { $hint += " Im Ordner liegen Zusatzdateien ($(@($others | Select-Object -First 3 | ForEach-Object Name) -join ', ')) - der ganze Ordner wird mitgepackt." }
     $script:Controls['txtAppInfo'].Text = $hint
     Add-HURtbLine $script:Controls['rtbApps'] "$(if ($isNew) { 'Hinzugefuegt' } else { 'Neue Version' }): $($a.Name) v$($a.Version) ($(Get-HUAppKindText $a))" '#81C784'
 }
@@ -1360,7 +1361,8 @@ function Register-HUAppHandlers {
             $dlg = New-Object Microsoft.Win32.OpenFileDialog
             $dlg.Filter = 'Setup (*.msi;*.exe)|*.msi;*.exe|Skript (*.ps1;*.cmd;*.bat)|*.ps1;*.cmd;*.bat|Alle Setups|*.msi;*.exe;*.ps1;*.cmd;*.bat'
             $dlg.Title = 'Setup-Datei waehlen'
-            if ($dlg.ShowDialog($script:Window)) { Add-HUAppFromFile $dlg.FileName -Target $(if ($a.Type -eq 'win32') { $a } else { $null }) }
+            # neue App - gleicher Name in der Bibliothek wird in Add-HUAppFromFile als neue Version erkannt
+            if ($dlg.ShowDialog($script:Window)) { Add-HUAppFromFile $dlg.FileName }
         })
     $c['btnAppBrowse'].Add_Click({
             $a = $script:AppCurrent

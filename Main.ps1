@@ -122,6 +122,12 @@ try {
     $d = New-HUWindow 'MainWindow'
 } catch { Show-HUFatal "Oberflaeche konnte nicht geladen werden (XAML\MainWindow.xaml):`n$($_.Exception.Message)" }
 $script:Window = $d.Window
+# Fehler in einem Klick-Handler (z. B. StrictMode: Variable nicht gesetzt) beendet sonst das ganze Programm -> protokollieren und weiterlaufen
+$script:Window.Dispatcher.Add_UnhandledException({
+        param($s, $e)
+        try { Write-HULogError "Unerwarteter Fehler (Programm laeuft weiter): $($e.Exception.Message)" } catch { }
+        $e.Handled = $true
+    })
 $script:Controls = $d.C
 if ($script:AppIcon) { $script:Window.Icon = $script:AppIcon; $script:Controls['imgLogo'].Source = $script:AppIcon }
 $script:Window.Add_SourceInitialized({ Set-HUWindowTaskbar $script:Window })
