@@ -26,6 +26,7 @@ Sicherheits- und Robustheits-Update nach einer gezielten Code-Pruefung.
 - Kategorie loeschen: bei mehreren gleichnamigen wird nichts geloescht
 - Protokoll und Support-ZIP maskieren auch Entra-Client-Secrets im aktuellen Format; Support-ZIP: App-Bibliothek standardmaessig nicht mehr dabei
 - Anleitung: Testinstallation in der Sandbox auch ohne Intune nutzbar - Setups vor der Installation am eigenen PC gefahrlos ausprobieren
+- Release signieren / freigeben (Herausgeber): Ablauf steht sichtbar im Protokoll (Reiter wird angezeigt) - Zertifikat, neuestes Release, Releases ohne Pruefsumme, Ergebnis; am Ende zusaetzlich eine Meldung (auch wenn es nichts zu signieren gibt)
 - Einstellungen: Warnung, wenn der Backup-Ordner in OneDrive oder im Programmordner liegt
 
 ### Intern
