@@ -583,6 +583,42 @@ function Get-HUWorkPath([string]$Sub = '') {
     return $p
 }
 
+# Dauerhafte Ablage der Setups der App-Bibliothek: Einstellung ui.setupPath, sonst OneDrive\HU-MultiTenant-Setups
+# (gesichert, auf jedem PC da), ohne OneDrive lokal. Aufbau: <Root>\<App>\<Version>\
+function Get-HUSetupRoot($Settings, [switch]$NoCreate) {
+    $p = ''
+    try { if ($Settings -and $Settings.PSObject.Properties['ui'] -and $Settings.ui -and $Settings.ui.PSObject.Properties['setupPath']) { $p = "$($Settings.ui.setupPath)".Trim() } } catch { }
+    if (-not $p) {
+        $od = @($env:OneDriveCommercial, $env:OneDrive) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+        $p = if ($od) { Join-Path $od 'HU-MultiTenant-Setups' } else { Join-Path (Join-Path $env:LOCALAPPDATA 'HU-MultiTenant') 'Setups' }
+    }
+    $p = [Environment]::ExpandEnvironmentVariables($p)
+    if (-not $NoCreate -and -not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
+    return $p
+}
+
+# Setup (Datei oder ganzen Ordner) in die Ablage kopieren -> neuer Pfad der Setup-Datei.
+# Liegt es schon in der Ablage, bleibt alles wie es ist. Je App bleiben die letzten $Keep Versionen.
+function Copy-HUSetupToStore {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$AppName, [string]$Version = '',
+        [Parameter(Mandatory)][string]$SetupPath, [bool]$WholeFolder = $false, [int]$Keep = 2)
+    $setup = Get-Item -LiteralPath $SetupPath
+    $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
+    if ($setup.FullName.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) { return $setup.FullName }
+    $appDir = Join-Path $Root (ConvertTo-HUSafeFileName $AppName 60)
+    $ver = if ("$Version".Trim()) { ConvertTo-HUSafeFileName "$Version" 40 } else { Get-Date -Format 'yyyy-MM-dd_HHmm' }
+    $dest = Join-Path $appDir $ver
+    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    if ($WholeFolder) { Copy-Item -Path (Join-Path $setup.DirectoryName '*') -Destination $dest -Recurse -Force }
+    else { Copy-Item -LiteralPath $setup.FullName -Destination $dest -Force }
+    (Get-Item -LiteralPath $dest).LastWriteTime = Get-Date
+    $old = @(Get-ChildItem -LiteralPath $appDir -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -Skip ([Math]::Max(1, $Keep)))
+    foreach ($o in $old) { try { Remove-Item -LiteralPath $o.FullName -Recurse -Force } catch { } }
+    return (Join-Path $dest $setup.Name)
+}
+
 # Setup-Datei (oder ganzen Ordner) in einen lokalen Quellordner spiegeln. Kennung aus Pfad/Groesse/Zeit:
 # unveraendert -> nichts kopieren. Liefert @{ Folder; SetupFile; Signature }.
 function Sync-HUAppSource {
@@ -2770,7 +2806,7 @@ function Get-HUAuditEvents {
 
 Export-ModuleMember -Function @(
     'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'Assert-HUAssignmentKeysUnique', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups', 'ConvertTo-HUW32Row', 'Get-HUTenantWin32Apps', 'Find-HUWin32AppByName',
-    'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo',
+    'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo', 'Get-HUSetupRoot', 'Copy-HUSetupToStore',
     'Get-HUIntuneWinAppUtil', 'New-HUIntuneWinPackage',
     'Get-HUDefaultReturnCodes', 'ConvertTo-HUDetectionRule', 'ConvertTo-HUWin32Payload',
     'Get-HUIntuneApp', 'New-HUWin32App', 'Update-HUWin32App', 'Publish-HUWin32Content', 'New-HUStoreApp',

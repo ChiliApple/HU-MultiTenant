@@ -605,6 +605,32 @@ Describe 'Intune: Skript als Setup (Get-HUSetupInfo)' {
     }
 }
 
+Describe 'Apps: Setup-Ordner (Copy-HUSetupToStore)' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        $script:T = Join-Path ([IO.Path]::GetTempPath()) "hu-store-$([guid]::NewGuid().ToString('N'))"
+        $script:Src = Join-Path $script:T 'dl\Plugin-1.0'
+        New-Item -ItemType Directory -Path (Join-Path $script:Src 'sub') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:Src 'Install.ps1') -Value 'x'
+        Set-Content -LiteralPath (Join-Path $script:Src 'sub\a.dll') -Value 'y'
+        $script:Root = Join-Path $script:T 'store'
+    }
+    AfterAll { Remove-Item -LiteralPath $script:T -Recurse -Force -ErrorAction SilentlyContinue }
+    It 'kopiert den ganzen Ordner nach <App>\<Version>' {
+        $p = Copy-HUSetupToStore -Root $script:Root -AppName 'Plugin' -Version '1.0' -SetupPath (Join-Path $script:Src 'Install.ps1') -WholeFolder $true
+        $p | Should -Be (Join-Path $script:Root 'Plugin\1.0\Install.ps1')
+        Test-Path -LiteralPath (Join-Path $script:Root 'Plugin\1.0\sub\a.dll') | Should -BeTrue
+    }
+    It 'liegt es schon in der Ablage, bleibt der Pfad' {
+        $in = Join-Path $script:Root 'Plugin\1.0\Install.ps1'
+        Copy-HUSetupToStore -Root $script:Root -AppName 'Plugin' -Version '1.0' -SetupPath $in -WholeFolder $true | Should -Be $in
+    }
+    It 'behaelt nur die letzten zwei Versionen' {
+        foreach ($v in '1.1', '1.2') { Start-Sleep -Milliseconds 50; [void](Copy-HUSetupToStore -Root $script:Root -AppName 'Plugin' -Version $v -SetupPath (Join-Path $script:Src 'Install.ps1')) }
+        @(Get-ChildItem -LiteralPath (Join-Path $script:Root 'Plugin') -Directory | ForEach-Object Name | Sort-Object) | Should -Be @('1.1', '1.2')
+    }
+}
+
 Describe 'Intune: Abhaengigkeiten' {
     BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
     It 'ersetzt Abhaengigkeiten, behaelt Ersetzungen (Supersedence)' {
