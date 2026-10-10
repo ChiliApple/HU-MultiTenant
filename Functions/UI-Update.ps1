@@ -237,27 +237,37 @@ function Get-HUSignTokenOrPrompt([object]$Cfg) {
     return (Read-HUSignToken)
 }
 
-# Protokoll sichtbar machen (liegt im Reiter Extensions) - Signieren/Freigeben schreiben dorthin
-function Show-HUProtocolTab {
-    try { $c = $script:Controls; if ($c['tabMain'] -and $c['tabExtensions'] -and $c['tabMain'].SelectedItem -ne $c['tabExtensions']) { $c['tabMain'].SelectedItem = $c['tabExtensions'] } } catch { }
+# Signieren/Freigeben: ins Protokoll UND in die Ausgabe des gerade offenen Reiters (ohne Reiterwechsel)
+function Write-HUPub([string]$Text, [ValidateSet('OK', 'WARN', 'ERROR', 'INFO')][string]$Level = 'INFO') {
+    switch ($Level) { 'OK' { Write-HULogOK $Text } 'WARN' { Write-HULogWarn $Text } 'ERROR' { Write-HULogError $Text } default { Write-HULogInfo $Text } }
+    try {
+        $c = $script:Controls
+        $map = @{ tabQuickScript = 'rtbQSOutput'; tabApps = 'rtbApps'; tabMaint = 'rtbRem'; tabAnalyse = 'rtbAna' }
+        $sel = $c['tabMain'].SelectedItem
+        foreach ($k in $map.Keys) {
+            if ($c[$k] -and $sel -eq $c[$k] -and $c[$map[$k]]) {
+                $col = switch ($Level) { 'OK' { '#81C784' } 'WARN' { '#FFB74D' } 'ERROR' { '#FF5252' } default { '#CCCCCC' } }
+                Add-HURtbLine $c[$map[$k]] "[$((Get-Date).ToString('HH:mm:ss'))] $Text" $col
+            }
+        }
+    } catch { }
 }
 
 function Start-HUReleaseSigning {
     $cfg = Update-UpdateConfig
     if (-not $cfg) { return }
-    Show-HUProtocolTab
-    Write-HULogInfo "=== Release signieren ($($cfg.Owner)/$($cfg.Repo)) ==="
+    Write-HUPub "=== Release signieren ($($cfg.Owner)/$($cfg.Repo)) ===" INFO
     $cert = Get-HMSigningCert $cfg.SignerThumbprint
     if (-not $cert) {
-        Write-HULogError "Signatur-Zertifikat $($cfg.SignerThumbprint) mit privatem Schluessel ist auf diesem PC nicht vorhanden (oder abgelaufen)."
+        Write-HUPub "Signatur-Zertifikat $($cfg.SignerThumbprint) mit privatem Schluessel ist auf diesem PC nicht vorhanden (oder abgelaufen)." ERROR
         Show-HUMessage "Signatur-Zertifikat $($cfg.SignerThumbprint) mit privatem Schluessel ist auf diesem PC nicht vorhanden (oder abgelaufen)." 'Release signieren' -Icon Error
         return
     }
-    Write-HULogInfo "Zertifikat: $($cert.Subject) - gueltig bis $($cert.NotAfter.ToString('dd.MM.yyyy'))"
+    Write-HUPub "Zertifikat: $($cert.Subject) - gueltig bis $($cert.NotAfter.ToString('dd.MM.yyyy'))" INFO
     $tok = Get-HUSignTokenOrPrompt $cfg
-    if (-not $tok) { Write-HULogWarn 'Abgebrochen: kein GitHub-Token mit Schreibrecht.'; return }
+    if (-not $tok) { Write-HUPub 'Abgebrochen: kein GitHub-Token mit Schreibrecht.' WARN; return }
     $script:SignCtx = [pscustomobject]@{ Owner = $cfg.Owner; Repo = $cfg.Repo; Thumb = $cfg.SignerThumbprint; Token = $tok }
-    Write-HULogInfo 'Releases werden gelesen ...'
+    Write-HUPub 'Releases werden gelesen ...' INFO
     Invoke-AsyncCommand -ScriptBlock {
         param($lib, $tok, $owner, $repo)
         try {
@@ -274,21 +284,21 @@ function Start-HUReleaseSigning {
         $r = "$result".Trim()
         if ($r -notmatch '^TAGS:([^|]*)\|([^|]*)\|(.*)$') {
             $msg = "Releases nicht lesbar: $($r -replace '^(ERR:|FEHLER:)\s*', '')"
-            Write-HULogError $msg; Show-HUMessage $msg 'Release signieren' -Icon Error
+            Write-HUPub $msg ERROR; Show-HUMessage $msg 'Release signieren' -Icon Error
             $script:SignCtx = $null; return
         }
         $tags = @($Matches[1] -split ',' | Where-Object { $_ }); $noMan = "$($Matches[2])"; $newest = "$($Matches[3])"
-        Write-HULogInfo "Neuestes Release: $newest"
-        if ($noMan) { Write-HULogWarn "Ohne Pruefsummen-Datei (automatische Tests noch nicht fertig oder fehlgeschlagen): $noMan" }
+        Write-HUPub "Neuestes Release: $newest" INFO
+        if ($noMan) { Write-HUPub "Ohne Pruefsummen-Datei (automatische Tests noch nicht fertig oder fehlgeschlagen): $noMan" WARN }
         if (-not $tags.Count) {
             $msg = "Nichts zu signieren - alle Releases mit Pruefsumme sind bereits signiert.`n`nNeuestes Release: $newest$(if ($noMan) { "`nOhne Pruefsumme: $noMan" })`n`nEine neue Version entsteht erst mit dem Merge nach main (danach ein paar Minuten warten, bis die automatischen Tests die Pruefsummen-Datei angehaengt haben)."
-            Write-HULogOK 'Nichts zu signieren - alle Releases mit Pruefsumme sind bereits signiert.'
+            Write-HUPub 'Nichts zu signieren - alle Releases mit Pruefsumme sind bereits signiert.' OK
             Show-HUMessage $msg 'Release signieren'
             $script:SignCtx = $null; return
         }
-        Write-HULogInfo "Nicht signiert: $($tags -join ', ')"
-        if (-not (Confirm-HU "Diese Releases jetzt signieren?`n`n$($tags -join ', ')`n`nDanach werden sie allen Installationen angeboten (je nach Kanal Stabil/Test)." 'Release signieren')) { Write-HULogWarn 'Signieren abgebrochen.'; $script:SignCtx = $null; return }
-        Write-HULogInfo "Signiere $($tags -join ', ') ... (Pruefsumme laden, signieren, Signatur pruefen, hochladen)"
+        Write-HUPub "Nicht signiert: $($tags -join ', ')" INFO
+        if (-not (Confirm-HU "Diese Releases jetzt signieren?`n`n$($tags -join ', ')`n`nDanach werden sie allen Installationen angeboten (je nach Kanal Stabil/Test)." 'Release signieren')) { Write-HUPub 'Signieren abgebrochen.' WARN; $script:SignCtx = $null; return }
+        Write-HUPub "Signiere $($tags -join ', ') ... (Pruefsumme laden, signieren, Signatur pruefen, hochladen)" INFO
         $sc = $script:SignCtx
         Invoke-AsyncCommand -ScriptBlock {
             param($lib, $owner, $repo, $tp, $tok, $tags)
@@ -303,17 +313,17 @@ function Start-HUReleaseSigning {
             $s = "$res".Trim()
             if ($s -notmatch '^RES:') {
                 $msg = "Signieren fehlgeschlagen: $($s -replace '^(ERR:|FEHLER:)\s*', '')"
-                Write-HULogError $msg; Show-HUMessage $msg 'Release signieren' -Icon Error; return
+                Write-HUPub $msg ERROR; Show-HUMessage $msg 'Release signieren' -Icon Error; return
             }
             $items = @(($s.Substring(4) | ConvertFrom-Json) | Where-Object { $_ })
-            foreach ($x in $items) { if ($x.Ok) { Write-HULogOK "$($x.Tag): $($x.Text)" } else { Write-HULogError "$($x.Tag): $($x.Text)" } }
+            foreach ($x in $items) { if ($x.Ok) { Write-HUPub "$($x.Tag): $($x.Text)" OK } else { Write-HUPub "$($x.Tag): $($x.Text)" ERROR } }
             $bad = @($items | Where-Object { -not $_.Ok })
             $sum = ($items | ForEach-Object { "$($_.Tag): $($_.Text)" }) -join "`n"
             if ($bad.Count) { Show-HUMessage "Signieren mit Fehlern:`n`n$sum" 'Release signieren' -Icon Error }
             else { Show-HUMessage "Signiert:`n`n$sum`n`nNaechster Schritt: Rechtsklick auf Update > Release freigeben." 'Release signieren' }
             if (@($items | Where-Object { -not $_.Ok -and "$($_.Text)" -match 'Schreibrecht' }).Count) {
                 Remove-Item -LiteralPath (Get-HUSignTokenFile) -Force -ErrorAction SilentlyContinue
-                Write-HULogWarn 'Gespeicherter Schreib-Token geloescht - beim naechsten Signieren neu eingeben.'
+                Write-HUPub 'Gespeicherter Schreib-Token geloescht - beim naechsten Signieren neu eingeben.' WARN
             }
             Invoke-UpdateCheck
         }
@@ -323,12 +333,11 @@ function Start-HUReleaseSigning {
 function Start-HUReleasePublish {
     $cfg = Update-UpdateConfig
     if (-not $cfg) { return }
-    Show-HUProtocolTab
-    Write-HULogInfo "=== Release freigeben ($($cfg.Owner)/$($cfg.Repo)) ==="
+    Write-HUPub "=== Release freigeben ($($cfg.Owner)/$($cfg.Repo)) ===" INFO
     $tok = Get-HUSignTokenOrPrompt $cfg
-    if (-not $tok) { Write-HULogWarn 'Abgebrochen: kein GitHub-Token mit Schreibrecht.'; return }
+    if (-not $tok) { Write-HUPub 'Abgebrochen: kein GitHub-Token mit Schreibrecht.' WARN; return }
     $script:PubCtx = [pscustomobject]@{ Owner = $cfg.Owner; Repo = $cfg.Repo; Thumb = $cfg.SignerThumbprint; Token = $tok }
-    Write-HULogInfo 'Signierte Vorab-Releases werden gesucht ...'
+    Write-HUPub 'Signierte Vorab-Releases werden gesucht ...' INFO
     Invoke-AsyncCommand -ScriptBlock {
         param($lib, $tok, $owner, $repo)
         try {
@@ -344,19 +353,19 @@ function Start-HUReleasePublish {
         $r = "$result".Trim()
         if ($r -notmatch '^PUB:([^|]*)\|([^|]*)\|(.*)$') {
             $msg = "Releases nicht lesbar: $($r -replace '^(ERR:|FEHLER:)\s*', '')"
-            Write-HULogError $msg; Show-HUMessage $msg 'Release freigeben' -Icon Error
+            Write-HUPub $msg ERROR; Show-HUMessage $msg 'Release freigeben' -Icon Error
             $script:PubCtx = $null; return
         }
         $tag = $Matches[1]; $stable = $Matches[2]; $uns = $Matches[3]
-        Write-HULogInfo "Bisher freigegeben: $(if ($stable) { $stable } else { '-' })"
+        Write-HUPub "Bisher freigegeben: $(if ($stable) { $stable } else { '-' })" INFO
         if (-not $tag) {
             $msg = "Kein signiertes Vorab-Release neuer als $(if ($stable) { $stable } else { '(keines)' }).$(if ($uns) { " Noch nicht signiert: $uns - zuerst 'Release signieren'." })"
-            Write-HULogWarn $msg; Show-HUMessage $msg 'Release freigeben' -Icon Warning
+            Write-HUPub $msg WARN; Show-HUMessage $msg 'Release freigeben' -Icon Warning
             $script:PubCtx = $null; return
         }
-        Write-HULogInfo "Kandidat: $tag (signiert)"
-        if (-not (Confirm-HU "$tag jetzt freigeben?`n`nDanach ist es im Kanal Stabil die neueste Version und wird ALLEN Installationen als Update angeboten.`nBisher freigegeben: $(if ($stable) { $stable } else { '-' })" 'Release freigeben')) { Write-HULogWarn 'Freigabe abgebrochen.'; $script:PubCtx = $null; return }
-        Write-HULogInfo "Gebe $tag frei ... (Signatur wird vorher erneut geprueft)"
+        Write-HUPub "Kandidat: $tag (signiert)" INFO
+        if (-not (Confirm-HU "$tag jetzt freigeben?`n`nDanach ist es im Kanal Stabil die neueste Version und wird ALLEN Installationen als Update angeboten.`nBisher freigegeben: $(if ($stable) { $stable } else { '-' })" 'Release freigeben')) { Write-HUPub 'Freigabe abgebrochen.' WARN; $script:PubCtx = $null; return }
+        Write-HUPub "Gebe $tag frei ... (Signatur wird vorher erneut geprueft)" INFO
         $pc = $script:PubCtx
         Invoke-AsyncCommand -ScriptBlock {
             param($lib, $owner, $repo, $tag, $tp, $tok)
@@ -370,9 +379,9 @@ function Start-HUReleasePublish {
             param($res)
             $script:PubCtx = $null
             $s = "$res".Trim()
-            if ($s -match '^OK:(.+)$') { $t = $Matches[1]; Write-HULogOK "${t}: freigegeben (Kanal Stabil)"; Show-HUMessage "$t ist freigegeben (Kanal Stabil) und wird allen Installationen als Update angeboten." 'Release freigeben'; Invoke-UpdateCheck }
-            elseif ($s -match '^AUTH:(.+)$') { $msg = "Freigabe fehlgeschlagen: $($Matches[1])"; Write-HULogError $msg; Remove-Item -LiteralPath (Get-HUSignTokenFile) -Force -ErrorAction SilentlyContinue; Show-HUMessage "$msg`n`nGespeicherter Token wurde geloescht - beim naechsten Versuch neu eingeben." 'Release freigeben' -Icon Error }
-            else { $msg = "Freigabe fehlgeschlagen: $($s -replace '^(ERR:|FEHLER:)\s*', '')"; Write-HULogError $msg; Show-HUMessage $msg 'Release freigeben' -Icon Error }
+            if ($s -match '^OK:(.+)$') { $t = $Matches[1]; Write-HUPub "${t}: freigegeben (Kanal Stabil)" OK; Show-HUMessage "$t ist freigegeben (Kanal Stabil) und wird allen Installationen als Update angeboten." 'Release freigeben'; Invoke-UpdateCheck }
+            elseif ($s -match '^AUTH:(.+)$') { $msg = "Freigabe fehlgeschlagen: $($Matches[1])"; Write-HUPub $msg ERROR; Remove-Item -LiteralPath (Get-HUSignTokenFile) -Force -ErrorAction SilentlyContinue; Show-HUMessage "$msg`n`nGespeicherter Token wurde geloescht - beim naechsten Versuch neu eingeben." 'Release freigeben' -Icon Error }
+            else { $msg = "Freigabe fehlgeschlagen: $($s -replace '^(ERR:|FEHLER:)\s*', '')"; Write-HUPub $msg ERROR; Show-HUMessage $msg 'Release freigeben' -Icon Error }
         }
     }
 }
