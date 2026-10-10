@@ -14,6 +14,8 @@ Sicherheits- und Robustheits-Update nach einer gezielten Code-Pruefung.
 - **Unvollstaendige Abfragen:** Graph-Abfragen mit sehr vielen Seiten oder haengendem Seitenlink brechen mit Fehler ab statt ein Teilergebnis zu liefern
 - **App-Updates:** "in Intune geloescht" nur bei echtem 404 und nur fuer genau die gepruefte App-Id; Pruefen und Hochladen laufen nicht gleichzeitig
 - **Administrative Vorlagen kopieren/wiederherstellen:** fehlen Einstellungen, wird das als Fehler gemeldet ("UNVOLLSTAENDIG - nicht zuweisen") statt als OK
+- **Update nie halb fertig:** Pull.ps1 sichert jede bisherige Datei vor dem Ersetzen; ist eine Datei gesperrt, wird alles zurueckgestellt. Ein abgebrochenes Update wird beim naechsten Pull automatisch zurueckgesetzt, das Programm startet bis dahin nicht (Hinweis). Wirkt ab dem Update **nach** 2.1.7 (das Update laeuft immer mit dem bisher installierten Pull.ps1)
+- **Veraltete Programmdateien:** Dateien, die es in der neuen Version nicht mehr gibt, werden beim Update entfernt (nur fruehere Programmdateien, nie `Config`, `Logs`, `Reports`, `Backups`, `Templates`, `Tools`); greift ab dem zweiten Update nach 2.1.7 (die Liste der installierten Dateien entsteht erst beim ersten)
 - **Nur eine Instanz:** ein zweiter Start aus demselben Ordner wird abgelehnt (zwei Instanzen ueberschrieben sich Bibliothek und Einstellungen)
 
 ### Verbessert
@@ -23,9 +25,11 @@ Sicherheits- und Robustheits-Update nach einer gezielten Code-Pruefung.
 - Compliance kopieren: nicht uebernommene Benachrichtigungs-Aktionen werden gemeldet
 - Kategorie loeschen: bei mehreren gleichnamigen wird nichts geloescht
 - Protokoll und Support-ZIP maskieren auch Entra-Client-Secrets im aktuellen Format; Support-ZIP: App-Bibliothek standardmaessig nicht mehr dabei
+- Anleitung: Testinstallation in der Sandbox auch ohne Intune nutzbar - Setups vor der Installation am eigenen PC gefahrlos ausprobieren
 - Einstellungen: Warnung, wenn der Backup-Ordner in OneDrive oder im Programmordner liegt
 
 ### Intern
+- CI testet den Update-Weg jetzt auch als Update ueber eine bestehende Installation (veraltete Datei entfernt, Config unberuehrt, keine Reste)
 - Code-Pruefung: Parameter `-Error` in `Update-TenantStatusCache` heisst jetzt `-ErrorMessage` (ueberdeckte die automatische Variable), ungenutzte Variablen und doppelte Dashboard-Daten in zwei Extensions entfernt
 
 ## v2.1.6 (2026-10-09)

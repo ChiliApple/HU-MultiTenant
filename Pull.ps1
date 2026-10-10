@@ -182,6 +182,20 @@ $Target = $Target.TrimEnd('\')
 
 # --- Quelle, Kanal, Signaturpflicht ---
 $cfgDir = Join-Path $Target 'Config'
+# abgebrochenes Update (Journal vorhanden): bisherige Dateien aus *.pullold zuruecksetzen
+$jr = Join-Path $cfgDir 'pull-journal.json'
+if (Test-Path -LiteralPath $jr) {
+    Write-Host '[WARN] Letztes Update wurde abgebrochen - stelle bisherige Dateien wieder her...' -ForegroundColor Yellow
+    try {
+        foreach ($jp in @(Get-Content -LiteralPath $jr -Raw -Encoding UTF8 | ConvertFrom-Json)) {
+            if (-not $jp) { continue }
+            $jo = "$jp.pullold"
+            if (Test-Path -LiteralPath $jo) { try { Move-Item -LiteralPath $jo -Destination "$jp" -Force } catch { Write-Host "  [WARN] $($jp): $($_.Exception.Message)" -ForegroundColor Yellow } }
+            Remove-Item -LiteralPath "$jp.pulltmp" -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $jr -Force -ErrorAction SilentlyContinue
+    } catch { Write-Host "  [WARN] Journal nicht lesbar: $($_.Exception.Message)" -ForegroundColor Yellow }
+}
 $cfg = Get-HMUpdateConfig $cfgDir
 if (-not $Owner) { $Owner = $cfg.Owner }
 if (-not $Repo)  { $Repo = $cfg.Repo }
@@ -355,22 +369,65 @@ if ($fail) {
     Stop-HMPull "$fail Datei(en) nicht geladen oder Pruefsumme falsch - es wurde NICHTS veraendert, HU-MultiTenant bleibt auf der bisherigen Version."
 }
 
-# --- 5. ersetzen
-$ok = 0; $repl = 0
+# --- 5. ersetzen - mit Ruecksicherung: jede bisherige Datei wird erst zu *.pullold umbenannt;
+#        scheitert ein Schritt, wird alles zurueckgestellt (nie halb aktualisiert)
+$journal = Join-Path $cfgDir 'pull-journal.json'
+$moved = New-Object System.Collections.Generic.List[object]   # @(Ziel, Sicherung oder '')
+$repl = 0; $lastErr = ''
+try { if (-not (Test-Path -LiteralPath $cfgDir)) { New-Item -ItemType Directory -Path $cfgDir -Force | Out-Null } } catch { }
+@($staged | ForEach-Object { $_[1] }) | ConvertTo-Json | Set-Content -LiteralPath $journal -Encoding UTF8
 foreach ($s in $staged) {
-    $done = $false; $lastErr = ''
+    $old = "$($s[1]).pullold"
+    $done = $false
     for ($try = 1; $try -le 5 -and -not $done; $try++) {
-        try { Move-Item -LiteralPath $s[0] -Destination $s[1] -Force; $done = $true } catch { $lastErr = $_.Exception.Message; Start-Sleep -Seconds 1 }
+        try {
+            $had = Test-Path -LiteralPath $s[1]
+            if ($had) { Move-Item -LiteralPath $s[1] -Destination $old -Force }
+            try { Move-Item -LiteralPath $s[0] -Destination $s[1] -Force }
+            catch { if ($had) { Move-Item -LiteralPath $old -Destination $s[1] -Force }; throw }
+            $moved.Add(@($s[1], $(if ($had) { $old } else { '' })))
+            $done = $true
+        } catch { $lastErr = $_.Exception.Message; Start-Sleep -Seconds 1 }
     }
-    if ($done) { try { Unblock-File -LiteralPath $s[1] -ErrorAction SilentlyContinue } catch { }; $ok++ }
-    else { Remove-Item -LiteralPath $s[0] -Force -ErrorAction SilentlyContinue; Write-Host "  $($s[1]): nicht ersetzbar ($lastErr)" -ForegroundColor Red; $repl++ }
+    if (-not $done) { Write-Host "  $($s[1]): nicht ersetzbar ($lastErr)" -ForegroundColor Red; $repl++; break }
+}
+if ($repl) {
+    # zurueckstellen: neue Dateien entfernen, Sicherungen zurueck
+    foreach ($m in @($moved.ToArray())[($moved.Count - 1)..0]) {
+        if (-not $m) { continue }
+        try { if ($m[1]) { Move-Item -LiteralPath $m[1] -Destination $m[0] -Force } else { Remove-Item -LiteralPath $m[0] -Force } } catch { Write-Host "  [WARN] $($m[0]): nicht zurueckgestellt ($($_.Exception.Message))" -ForegroundColor Yellow }
+    }
+    foreach ($s in $staged) { Remove-Item -LiteralPath $s[0] -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $journal -Force -ErrorAction SilentlyContinue
+    Stop-HMPull "Eine Datei war gesperrt ($lastErr) - alles wurde zurueckgestellt, HU-MultiTenant bleibt auf der bisherigen Version. Programm schliessen und erneut versuchen."
+}
+foreach ($m in $moved) {
+    try { Unblock-File -LiteralPath $m[0] -ErrorAction SilentlyContinue } catch { }
+    if ($m[1]) { Remove-Item -LiteralPath $m[1] -Force -ErrorAction SilentlyContinue }
+}
+Remove-Item -LiteralPath $journal -Force -ErrorAction SilentlyContinue
+$ok = $moved.Count
+
+# --- 6. Dateien entfernen, die es im neuen Stand nicht mehr gibt (nur solche, die frueher per Pull installiert wurden)
+$newFiles = @($files | ForEach-Object { "$($_.path)" })
+$instFile = Join-Path $cfgDir 'installed.json'
+$prevFiles = @()
+try { if (Test-Path -LiteralPath $instFile) { $pi = Get-Content -LiteralPath $instFile -Raw -Encoding UTF8 | ConvertFrom-Json; if ($pi.PSObject.Properties['FileList']) { $prevFiles = @($pi.FileList) } } } catch { }
+$removedOld = 0
+$keepDirs = '^(Config|Logs|Reports|Backups|Templates|Tools)/'
+$rootFull = [IO.Path]::GetFullPath($Target).TrimEnd('\') + '\'
+foreach ($oldPath in @($prevFiles | Where-Object { $_ -and $newFiles -notcontains $_ -and $_ -notmatch $keepDirs -and $_ -notmatch '(^|/)\.\.(/|$)' })) {
+    $p = [IO.Path]::GetFullPath((Join-Path $Target ($oldPath -replace '/', '\')))
+    if (-not $p.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) { continue }
+    if (Test-Path -LiteralPath $p -PathType Leaf) {
+        try { Remove-Item -LiteralPath $p -Force; $removedOld++; Write-Host "  entfernt (nicht mehr im Programm): $oldPath" -ForegroundColor DarkGray } catch { }
+    }
 }
 try {
-    if (-not (Test-Path -LiteralPath $cfgDir)) { New-Item -ItemType Directory -Path $cfgDir -Force | Out-Null }
     [pscustomobject][ordered]@{
         Version = $(if ($useBranch) { "Branch $Branch" } else { "$($rel.Version)" }); Ref = "$ref"; Channel = $(if ($useBranch) { 'Branch' } elseif ($rel.Prerelease) { 'Test' } else { 'Stable' })
-        Check = $verified; Date = (Get-Date).ToString('yyyy-MM-dd HH:mm'); Files = $ok
-    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $cfgDir 'installed.json') -Encoding UTF8
+        Check = $verified; Date = (Get-Date).ToString('yyyy-MM-dd HH:mm'); Files = $ok; FileList = $newFiles
+    } | ConvertTo-Json | Set-Content -LiteralPath $instFile -Encoding UTF8
 } catch { }
 Write-Host "`n=== Pull fertig === $ok Dateien ($verified)$(if ($repl) { " | $repl NICHT ersetzt" })" -ForegroundColor Cyan
 if ($NoStart) { if ($repl) { exit 1 } else { exit 0 } }

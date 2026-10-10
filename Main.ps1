@@ -66,6 +66,11 @@ if (-not $SmokeTest) {
     } catch { $script:InstanceMutex = $null }
 }
 
+# Update laeuft gerade oder wurde abgebrochen (Pull.ps1 schreibt das Journal waehrend des Ersetzens)
+if (Test-Path -LiteralPath (Join-Path $script:AppRoot 'Config\pull-journal.json')) {
+    Show-HUFatal "Ein Update laeuft gerade oder wurde abgebrochen.`n`nBitte warten, bis das Update fertig ist - oder im Programmordner Pull.ps1 erneut ausfuehren (stellt die bisherigen Dateien wieder her und aktualisiert neu)."
+}
+
 # ============================================================================
 # 1. VERSION, CORE-MODULE, FUNKTIONEN
 # ============================================================================
