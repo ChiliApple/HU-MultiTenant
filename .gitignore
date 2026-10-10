@@ -19,6 +19,7 @@ Config/GitHubToken_*.xml
 # === LAUFZEIT ===
 Logs/
 Reports/
+Backups/
 Templates/
 HU-MultiTenant.exe
 HU-MultiTenant.exe.*.old

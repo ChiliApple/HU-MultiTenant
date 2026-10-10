@@ -49,6 +49,23 @@ function Show-HUFatal([string]$Text) {
     exit 1
 }
 
+# nur eine Instanz je Programmordner (zwei Instanzen wuerden sich Bibliothek und Einstellungen gegenseitig ueberschreiben)
+$script:InstanceMutex = $null
+if (-not $SmokeTest) {
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $hid = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("$($script:AppRoot)".ToLowerInvariant()))) -replace '-', '').Substring(0, 16)
+        $sha.Dispose()
+        $script:InstanceMutex = New-Object System.Threading.Mutex($false, "Local\HU-MultiTenant_$hid")
+        $got = $false
+        try { $got = $script:InstanceMutex.WaitOne(8000) } catch [System.Threading.AbandonedMutexException] { $got = $true }
+        if (-not $got) {
+            [void][System.Windows.MessageBox]::Show("HU-MultiTenant laeuft bereits (aus diesem Ordner).`n`nBitte das offene Fenster verwenden - zwei gleichzeitig wuerden sich Bibliothek und Einstellungen gegenseitig ueberschreiben.", 'HU-MultiTenant', 'OK', 'Information')
+            exit 0
+        }
+    } catch { $script:InstanceMutex = $null }
+}
+
 # ============================================================================
 # 1. VERSION, CORE-MODULE, FUNKTIONEN
 # ============================================================================
@@ -362,4 +379,5 @@ Restore-HUWindowState
 Select-HUStartTab
 Write-HULogOK "Bereit - $(@($script:Settings.tenants).Count) Tenant(s), $($script:ExtensionItems.Count) Extension(s)."
 
-[void]$script:Window.ShowDialog()
+try { [void]$script:Window.ShowDialog() }
+finally { if ($script:InstanceMutex) { try { $script:InstanceMutex.ReleaseMutex() } catch { }; $script:InstanceMutex.Dispose() } }

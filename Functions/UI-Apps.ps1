@@ -82,6 +82,8 @@ function ConvertTo-HUApp($Src = $null) {
     }
     if ($Src) {
         foreach ($p in $a.PSObject.Properties.Name) { if ($Src.PSObject.Properties[$p] -and $null -ne $Src.$p) { $a.$p = $Src.$p } }
+        # Id wird als Ordnername verwendet (Pakete, Sandbox) - nur eine GUID zulassen
+        if ("$($a.Id)" -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { $a.Id = [guid]::NewGuid().ToString() }
         $a.Detection = New-HUAppDetection $Src.Detection
         $a.Tenants = @($a.Tenants | Where-Object { $_ } | ForEach-Object { "$_" })
         $a.Deployments = @($a.Deployments | Where-Object { $_ } | ForEach-Object { [pscustomobject][ordered]@{ Tenant = "$($_.Tenant)"; AppId = "$($_.AppId)"; Version = "$($_.Version)"; Signature = "$($_.Signature)"; Stage = "$($_.Stage)"; Time = "$($_.Time)" } })
@@ -222,11 +224,19 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
 
 function Import-HUAppLib {
     $script:AppLib.Clear()
-    $j = Read-HUJsonFile (Get-HUAppLibPath)
+    $rd = Read-HUJsonFileChecked (Get-HUAppLibPath)
+    $script:AppLibReadError = "$($rd.Error)"
+    if ($rd.Error) {
+        Write-HULogError "Config\apps.json nicht lesbar - Bibliothek wird nicht gespeichert: $($rd.Error)"
+        Show-HUMessage "Config\apps.json ist nicht lesbar - die App-Bibliothek bleibt leer und wird NICHT gespeichert, damit nichts verloren geht.`n`n$($rd.Error)`n`nDatei pruefen (z. B. OneDrive-Konflikt) oder apps.json.bak zurueckkopieren und HU-MultiTenant neu starten." -Icon Error
+        return
+    }
+    $j = $rd.Data
     if ($j -and $j.PSObject.Properties['apps']) { foreach ($a in @($j.apps)) { if ($a) { $script:AppLib.Add((ConvertTo-HUApp $a)) } } }
 }
 
 function Save-HUAppLib {
+    if ($script:AppLibReadError) { Write-HULogWarn 'App-Bibliothek nicht gespeichert (apps.json war beim Start nicht lesbar).'; return }
     try { Write-HUJsonFile -Path (Get-HUAppLibPath) -Object ([pscustomobject]@{ version = 1; apps = @($script:AppLib.ToArray()) }) -Depth 8 -Backup }
     catch { Write-HULogError "Apps speichern fehlgeschlagen: $($_.Exception.Message)" }
 }
@@ -807,6 +817,12 @@ $script:AppDeployCode = {
             $r.Ok = $true
         } catch {
             $r.Error = $_.Exception.Message
+            # angelegt, aber Paket-Upload gescheitert: AppId trotzdem merken (sonst legt der naechste Versuch eine zweite App an)
+            $failId = "$($_.Exception.Data['AppId'])"
+            if ($failId) {
+                if ($d -and $d.Id -ne $MainId) { $r.Deps.Add([pscustomobject]@{ Id = $d.Id; AppId = $failId; Signature = ''; Version = '' }) }
+                elseif (-not $r.AppId) { $r.AppId = $failId }
+            }
             $hint = ''
             if ($r.Error -match '403|Forbidden|Authorization') { $hint = ' -> Berechtigung DeviceManagementApps.ReadWrite.All (und Group.Read.All) in der App-Registrierung erteilen' }
             Write-HULog -Message "$($r.Error)$hint" -Level 'ERROR' -Tenant $tk
@@ -818,6 +834,7 @@ $script:AppDeployCode = {
 }
 
 function Start-HUAppDeploy([switch]$Release) {
+    if (Test-HUJobRunning 'AppUpd') { Show-HUMessage 'Updates werden gerade geprueft - bitte warten, bis das fertig ist.' -Icon Info; return }
     Save-HUAppForm
     $a = $script:AppCurrent
     if (-not $a) { return }

@@ -144,9 +144,20 @@ function Write-HUJsonFile {
     $json = $Object | ConvertTo-Json -Depth $Depth
     $tmp = "$Path.tmp"
     [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding $false))
-    if ($Backup -and (Test-Path -LiteralPath $Path)) { Copy-Item -LiteralPath $Path -Destination "$Path.bak" -Force }
+    # Sicherung nur von einer gueltigen Datei (sonst ersetzt eine kaputte Datei die letzte gute Sicherung)
+    if ($Backup -and (Test-Path -LiteralPath $Path) -and -not (Read-HUJsonFileChecked $Path).Error) { Copy-Item -LiteralPath $Path -Destination "$Path.bak" -Force }
     Move-Item -LiteralPath $tmp -Destination $Path -Force
 }
+# wie Read-HUJsonFile, unterscheidet aber 'fehlt' (Data $null, Error '') von 'nicht lesbar' (Error gesetzt)
+function Read-HUJsonFileChecked([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return @{ Data = $null; Error = '' } }
+    try {
+        $txt = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop
+        if (-not "$txt".Trim()) { return @{ Data = $null; Error = 'Datei ist leer' } }
+        return @{ Data = ($txt | ConvertFrom-Json -ErrorAction Stop); Error = '' }
+    } catch { return @{ Data = $null; Error = $_.Exception.Message } }
+}
+
 function Read-HUJsonFile([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     try { return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { return $null }

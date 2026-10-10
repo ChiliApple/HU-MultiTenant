@@ -214,7 +214,7 @@ function Update-HUCmpGrid {
     }
     $items = foreach ($m in @(Get-HUCmpVisibleRows)) {
         $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
-        for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = $(if ($m.Have -contains $keys[$i]) { "$([char]0x2714)" } else { "$([char]0x2014)" }) }
+        for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = $(if ($m.Have -contains $keys[$i]) { "$([char]0x2714)" } elseif (@($m.Unknown) -contains $keys[$i]) { '?' } else { "$([char]0x2014)" }) }
         $o.Status = "$($m.Status)$(if ($m.Missing.Count -and -not $m.Copy) { ' (nur anzeigen)' })"
         $o.Ref = $m
         [pscustomobject]$o
@@ -241,7 +241,10 @@ function Start-HUCmpRun {
         $ok = Start-HUJob -Name "Cmp-$gen-$k" -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; Gen = $gen } -Code {
             $rows = @()
             try { $rows = @(Get-HUCompareInventory -TenantKey $TK -Settings $Settings) }
-            catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $TK }
+            catch {
+                Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $TK
+                $rows = @([pscustomobject]@{ Tenant = $TK; Typ = '*'; Name = ''; Id = ''; Hash = ''; Copy = ''; Error = "$($_.Exception.Message)" })
+            }
             [pscustomobject]@{ __CmpDone = $TK; __CmpGen = $Gen; Rows = $rows }
         } -OnDone {
             param($Result, $Errors)
@@ -264,6 +267,10 @@ function Start-HUCmpCopy {
     $c = $script:Controls
     $sel = @($c['gridCmp'].SelectedItems | ForEach-Object { $_.Ref } | Where-Object { $_ -and $_.Missing.Count })
     if (-not $sel.Count) { Show-HUMessage 'Bitte Eintraege markieren, die in einem Tenant fehlen (Strg/Shift fuer mehrere).' -Icon Info; return }
+    $dupSel = @($sel | Where-Object { $_.Dupe })
+    if ($dupSel.Count) { Show-HUMessage "$($dupSel.Count) markierte(r) Eintrag/Eintraege ist in einem Tenant doppelt - wird nicht kopiert (unklar, welche Fassung die richtige ist):`n`n$(@($dupSel | ForEach-Object { "  $($_.Typ): $($_.Name)" }) -join "`n")" -Icon Warning }
+    $sel = @($sel | Where-Object { -not $_.Dupe })
+    if (-not $sel.Count) { return }
     $no = @($sel | Where-Object { -not $_.Copy })
     $todo = @($sel | Where-Object { $_.Copy })
     if (-not $todo.Count) { Show-HUMessage "Diese Arten koennen nicht kopiert werden: $(@($no | ForEach-Object { $_.Typ } | Select-Object -Unique) -join ', ').`n`nApps ueber die Bibliothek verteilen; Conditional Access und Autopilot im Portal anlegen (Gruppen-IDs unterscheiden sich je Tenant)." -Icon Info; return }
@@ -430,7 +437,8 @@ function Start-HUBakNow([string[]]$Keys = @(), [switch]$Auto) {
                 try {
                     $r = Save-HUTenantBackup -TenantKey $k -Settings $Settings -Root $root
                     $del = Remove-HUOldBackups -Root $root -TenantKey $k -Keep $Keep
-                    Write-HULog -Message "Backup fertig: $($r.Count) Eintraege$(if ($r.Errors) { ", $($r.Errors) nicht lesbar" })$(if ($del) { ", $del alte Staende entfernt" })" -Level 'OK' -Tenant $k
+                    if ($r.Errors) { Write-HULog -Message "Backup UNVOLLSTAENDIG: $($r.Count) Eintraege, $($r.Errors) nicht lesbar - Stand ist markiert und zaehlt nicht als vollstaendiges Backup$(if ($del) { ", $del alte Staende entfernt" })" -Level 'WARN' -Tenant $k }
+                    else { Write-HULog -Message "Backup fertig: $($r.Count) Eintraege$(if ($del) { ", $del alte Staende entfernt" })" -Level 'OK' -Tenant $k }
                 } catch { Write-HULog -Message "Backup: $($_.Exception.Message)" -Level 'ERROR' -Tenant $k }
             }
         } -OnDone {
@@ -461,6 +469,8 @@ function Start-HUBakCompare {
     }
     $lb = [datetime]::ParseExact((Split-Path $fb -Leaf), 'yyyy-MM-dd_HHmmss', $null)
     $rows = @(Compare-HUBackups -FolderA $fa -FolderB $fb | ForEach-Object { $_ | Add-Member -NotePropertyName Wer -NotePropertyValue '' -PassThru })
+    $inc = @(@($fa, $fb) | Where-Object { $ixc = Read-HUJsonFile (Join-Path $_ 'index.json'); $ixc -and (($ixc.PSObject.Properties['Complete'] -and -not $ixc.Complete) -or [int]$ixc.Errors -gt 0) })
+    if ($inc.Count) { Add-HURtbLine $c['rtbAna'] "Achtung: $($inc.Count) der beiden Staende ist unvollstaendig - betroffene Eintraege stehen als 'unbekannt', nicht als 'neu'/'geloescht'." '#FFB74D' }
     $script:BakRows = $rows
     $script:BakInfo = "$(Get-HUAnaTenantName $k), $($la.ToString('dd.MM. HH:mm')) -> $($lb.ToString('dd.MM. HH:mm'))"
     Update-HUBakGrid

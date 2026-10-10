@@ -31,6 +31,8 @@ function ConvertTo-HURedacted([string]$Text, [object[]]$Map = @()) {
     if (-not $Text) { return $Text }
     $t = $Text
     $t = [regex]::Replace($t, 'eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]*', '<token>')
+    # Entra-Client-Secret (z. B. abc8Q~...)
+    $t = [regex]::Replace($t, '(?<![A-Za-z0-9])[A-Za-z0-9_\-\.]{3,8}\dQ~[A-Za-z0-9_\-\.~]{30,}', '<secret>')
     $t = [regex]::Replace($t, '(?i)(sig|secret|password|passwort|token|key)=([^&\s"]+)', '$1=<entfernt>')
     $t = [regex]::Replace($t, '[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}', '<mail>')
     foreach ($m in @($Map | Sort-Object { "$($_.From)".Length } -Descending)) { $t = [regex]::Replace($t, [regex]::Escape("$($m.From)"), "$($m.To)", 'IgnoreCase') }
@@ -165,7 +167,7 @@ function Show-HUSupport {
             <CheckBox x:Name="chkLogs" Content="Protokolle (3 Tage) und Ausgaben" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
             <CheckBox x:Name="chkSandbox" Content="Testinstallationen (Sandbox)" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
             <CheckBox x:Name="chkSettings" Content="Einstellungen (ohne Secrets)" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
-            <CheckBox x:Name="chkLibrary" Content="App-Bibliothek (Befehle, Erkennung)" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
+            <CheckBox x:Name="chkLibrary" Content="App-Bibliothek (Befehle, Erkennung - koennen Lizenzschluessel enthalten)" IsChecked="False" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
             <CheckBox x:Name="chkMaint" Content="Wartungsskripte" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
         </WrapPanel>
         <CheckBox x:Name="chkAnon" Content="Anonymisieren (empfohlen)" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,8,0,0"/>

@@ -2,8 +2,27 @@
 
 ## v2.1.7 (in Arbeit)
 
+Sicherheits- und Robustheits-Update nach einer gezielten Code-Pruefung.
+
+### Behoben (wichtig)
+- **Bibliothek bei kaputter Datei:** ist `apps.json` oder `remediations.json` nicht lesbar (z. B. OneDrive-Konflikt), erscheint eine Meldung und die Bibliothek wird **nicht** leer ueberschrieben; die Sicherung `.bak` wird nur noch von einer gueltigen Datei erneuert
+- **Backup:** ist gar nichts lesbar (z. B. Secret abgelaufen), entsteht kein leerer Stand; teilweise gelesene Staende sind als "unvollstaendig" markiert und verdraengen beim Aufraeumen keine vollstaendigen; im Verlauf erscheinen nicht gelesene Eintraege als "unbekannt" statt "geloescht"/"neu", nicht lesbare Zuweisungen als "Zuweisungen nicht lesbar"
+- **Gleichnamige Apps/Wartungsskripte in einem Tenant:** in der Liste als "DOPPELT in ..." markiert; Aenderungen und Loeschen werden in diesem Tenant gesperrt (sonst traefe es ein zufaelliges Objekt)
+- **Gleichnamige Gruppen:** Zuweisen bricht mit Hinweis ab statt die erste zu nehmen; Zuweisung entfernen wird verweigert, wenn der Name auf mehrere Gruppen zeigt
+- **Tenant-Vergleich:** nicht lesbare Arten/Tenants stehen als "?" bzw. "nicht lesbar" statt "fehlt" - so wird nichts doppelt kopiert; im Tenant doppelte Eintraege werden nicht kopiert
+- **Keine Duplikate in Intune:** Anlegen wird bei Serverfehler 500/502/504 nicht mehr automatisch wiederholt; scheitert nur der Paket-Upload, merkt sich die Bibliothek die angelegte App und der naechste Versuch aktualisiert sie
+- **Unvollstaendige Abfragen:** Graph-Abfragen mit sehr vielen Seiten oder haengendem Seitenlink brechen mit Fehler ab statt ein Teilergebnis zu liefern
+- **App-Updates:** "in Intune geloescht" nur bei echtem 404 und nur fuer genau die gepruefte App-Id; Pruefen und Hochladen laufen nicht gleichzeitig
+- **Administrative Vorlagen kopieren/wiederherstellen:** fehlen Einstellungen, wird das als Fehler gemeldet ("UNVOLLSTAENDIG - nicht zuweisen") statt als OK
+- **Nur eine Instanz:** ein zweiter Start aus demselben Ordner wird abgelehnt (zwei Instanzen ueberschrieben sich Bibliothek und Einstellungen)
+
 ### Verbessert
 - Apps: Testinstallation in der Sandbox endet mit einem Gesamtergebnis (OK / mit Hinweisen / fehlgeschlagen), farbig markiert
+- Wartungsskript aktualisieren laesst Bereichsmarkierungen (Scope-Tags) aus dem Portal unveraendert
+- Compliance kopieren: nicht uebernommene Benachrichtigungs-Aktionen werden gemeldet
+- Kategorie loeschen: bei mehreren gleichnamigen wird nichts geloescht
+- Protokoll und Support-ZIP maskieren auch Entra-Client-Secrets im aktuellen Format; Support-ZIP: App-Bibliothek standardmaessig nicht mehr dabei
+- Einstellungen: Warnung, wenn der Backup-Ordner in OneDrive oder im Programmordner liegt
 
 ### Intern
 - Code-Pruefung: Parameter `-Error` in `Update-TenantStatusCache` heisst jetzt `-ErrorMessage` (ueberdeckte die automatische Variable), ungenutzte Variablen und doppelte Dashboard-Daten in zwei Extensions entfernt
