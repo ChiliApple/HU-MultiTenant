@@ -574,6 +574,37 @@ Describe 'Intune: stille Deinstallation' {
     }
 }
 
+Describe 'Intune: Skript als Setup (Get-HUSetupInfo)' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        $script:SDir = Join-Path ([IO.Path]::GetTempPath()) "hu-setup-$([guid]::NewGuid().ToString('N'))\MeinPlugin-1.2.3"
+        New-Item -ItemType Directory -Path $script:SDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:SDir 'Install.ps1') -Value 'param([switch]$AllUsers, [switch]$Uninstall)' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $script:SDir 'Simple.ps1') -Value 'Write-Host hi' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $script:SDir 'run.cmd') -Value '@echo off' -Encoding ASCII
+    }
+    AfterAll { Remove-Item -LiteralPath (Split-Path $script:SDir -Parent) -Recurse -Force -ErrorAction SilentlyContinue }
+    It 'PowerShell-Skript: Name/Version aus dem Ordner, -AllUsers und -Uninstall uebernommen' {
+        $i = Get-HUSetupInfo -Path (Join-Path $script:SDir 'Install.ps1')
+        $i.Kind | Should -Be 'script'
+        $i.Name | Should -Be 'MeinPlugin'
+        $i.Version | Should -Be '1.2.3'
+        $i.InstallCmd | Should -Be 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Install.ps1" -AllUsers'
+        $i.UninstallCmd | Should -Be 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Install.ps1" -AllUsers -Uninstall'
+    }
+    It 'Skript ohne Parameter: kein Deinstallationsbefehl' {
+        $i = Get-HUSetupInfo -Path (Join-Path $script:SDir 'Simple.ps1')
+        $i.InstallCmd | Should -Be 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Simple.ps1"'
+        $i.UninstallCmd | Should -Be ''
+    }
+    It 'Batch-Datei ueber cmd.exe' {
+        $i = Get-HUSetupInfo -Path (Join-Path $script:SDir 'run.cmd')
+        $i.Kind | Should -Be 'script'
+        $i.InstallerType | Should -Be 'Batch'
+        $i.InstallCmd | Should -Be 'cmd.exe /c "run.cmd"'
+    }
+}
+
 Describe 'Intune: Abhaengigkeiten' {
     BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
     It 'ersetzt Abhaengigkeiten, behaelt Ersetzungen (Supersedence)' {

@@ -1,5 +1,12 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.9 (in Arbeit)
+
+### Apps
+- **Skript als Setup:** neben MSI und EXE jetzt auch PowerShell-Skripte (`.ps1`) und Batch-Dateien (`.cmd`, `.bat`) - z. B. Plugin-Installer ohne eigenes Setup. Name und Version kommen aus dem Ordnernamen (`HUScroll-0.5.2` ergibt HUScroll, 0.5.2), der ganze Ordner wird mitgepackt. Hat das Skript die Schalter `-AllUsers`/`-Uninstall`, werden Installations- und Deinstallationsbefehl damit vorgeschlagen
+- **Testinstallation mit Abhaengigkeiten:** Abhaengigkeiten aus der Bibliothek werden in der Sandbox vorher installiert (z. B. Greenshot vor einem Greenshot-Plugin); Abhaengigkeiten nur aus Intune werden als Hinweis genannt
+- **Testinstallation prueft die Erkennungsregel:** nach der Installation und nach der Deinstallation (Datei/Ordner, Registry, MSI-Produktcode) - "NICHT gefunden" heisst, Intune wuerde die Installation als fehlgeschlagen melden. Bei Apps ohne Eintrag in "Apps & Features" (Skripte, Plugins) zaehlt fuer den Deinstallationstest die Erkennungsregel
+
 ## v2.1.8 (2026-10-10)
 
 ### Update (Pull.ps1)
@@ -19,7 +26,7 @@
 - **Wirkt verzoegert:** Ein Update laeuft immer mit dem bisher installierten Pull.ps1 - die Korrektur greift ab dem naechsten
   Update nach 2.1.8.
 
-## v2.1.7 (in Arbeit)
+## v2.1.7 (2026-10-10)
 
 Sicherheits- und Robustheits-Update nach einer gezielten Code-Pruefung.
 
