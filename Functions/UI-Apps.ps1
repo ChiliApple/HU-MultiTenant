@@ -577,6 +577,11 @@ function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck)
         $a.WholeFolder = -not $big
         if ($big) { $info.Hint += " ACHTUNG: Das Skript liegt direkt in '$(Split-Path $dir -Leaf)' - bitte in einen eigenen Ordner (mit seinen Dateien) legen, sonst fehlen sie im Paket." }
     }
+    # dauerhafte Ablage (Einstellungen > Setup-Ordner) - Downloads darf danach aufgeraeumt werden
+    try {
+        $stored = Copy-HUSetupToStore -Root (Get-HUSetupRoot $script:Settings) -AppName $a.Name -Version $a.Version -SetupPath $a.SetupPath -WholeFolder ([bool]$a.WholeFolder)
+        if ($stored -ne $a.SetupPath) { $a.SetupPath = $stored; $info.Hint += " Setup abgelegt in: $(Split-Path $stored -Parent)" }
+    } catch { $info.Hint += " Setup konnte nicht in den Setup-Ordner kopiert werden ($($_.Exception.Message)) - es bleibt am bisherigen Ort." }
     if ($isNew) { $script:AppLib.Add($a) }
     # Symbol aus der Setup-EXE (spaeter ersetzt die Testinstallation es durch das der installierten App)
     if ($info.Kind -eq 'exe' -and -not (Test-Path -LiteralPath (Get-HUAppIconPath $a))) { [void](Set-HUAppIcon $a $a.SetupPath -Quiet) }
