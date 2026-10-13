@@ -45,6 +45,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 
 function Show-HUFatal([string]$Text) {
     if ($SmokeTest) { "FEHLER $Text" | Set-Content -LiteralPath $SmokeTest -Encoding UTF8; exit 1 }
+    if (Get-Command Close-HUSplash -ErrorAction SilentlyContinue) { Close-HUSplash }
     [void][System.Windows.MessageBox]::Show($Text, 'HU-MultiTenant - Fehler', 'OK', 'Error')
     exit 1
 }
@@ -72,11 +73,70 @@ if (Test-Path -LiteralPath (Join-Path $script:AppRoot 'Config\pull-journal.json'
 }
 
 # ============================================================================
+# STARTBILDSCHIRM - erscheint sofort, waehrend Module und Oberflaeche laden
+# ============================================================================
+$script:Splash = $null; $script:SplashShown = Get-Date; $script:SplashStatus = $null
+function Update-HUSplash {
+    # Oberflaeche kurz zeichnen lassen (der UI-Thread ist waehrend des Ladens sonst blockiert)
+    $frame = New-Object System.Windows.Threading.DispatcherFrame
+    [void][System.Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [System.Windows.Threading.DispatcherOperationCallback] { param($f) $f.Continue = $false; $null }, $frame)
+    [System.Windows.Threading.Dispatcher]::PushFrame($frame)
+}
+function Set-HUSplashStatus([string]$Text) {
+    if (-not $script:Splash -or -not $script:SplashStatus) { return }
+    try { $script:SplashStatus.Text = $Text; Update-HUSplash } catch { }
+}
+function Close-HUSplash([int]$MinMs = 0) {
+    if (-not $script:Splash) { return }
+    $rest = $MinMs - ((Get-Date) - $script:SplashShown).TotalMilliseconds
+    if ($rest -gt 0) { Start-Sleep -Milliseconds ([int]$rest) }
+    try { $script:Splash.Close() } catch { }
+    $script:Splash = $null; $script:SplashStatus = $null
+}
+if (-not $SmokeTest) {
+    try {
+        $ver = '?'
+        try { $ver = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
+        $sx = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" Width="440" Height="310"
+        WindowStartupLocation="CenterScreen" Topmost="True" ShowInTaskbar="False" Title="HU-MultiTenant">
+  <Border Background="#FF1E1E1E" CornerRadius="12" BorderBrush="#FFB9A88A" BorderThickness="2">
+    <Grid>
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+        <Image x:Name="img" Width="112" Height="112" RenderOptions.BitmapScalingMode="HighQuality"/>
+        <TextBlock Text="HU-MultiTenant" FontSize="32" FontWeight="Bold" Foreground="#FFEDEDED" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+        <TextBlock Text="Intune und Microsoft 365 f&#xFC;r mehrere Tenants" FontSize="14" Foreground="#FFB9A88A" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+        <TextBlock x:Name="status" Text="wird geladen ..." FontSize="11" Foreground="#FF8A8A8A" HorizontalAlignment="Center" Margin="0,14,0,0"/>
+      </StackPanel>
+      <TextBlock Text="v$ver" FontSize="11" Foreground="#FF6A6A6A" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,12,8"/>
+    </Grid>
+  </Border>
+</Window>
+"@
+        $script:Splash = [System.Windows.Markup.XamlReader]::Parse($sx)
+        $script:SplashStatus = $script:Splash.FindName('status')
+        # Logo: groesstes Bild aus Assets\icon.ico (ueber Bytes geladen - Datei bleibt fuer Updates frei)
+        $ip = Join-Path $script:AppRoot 'Assets\icon.ico'
+        if (Test-Path -LiteralPath $ip) {
+            $ms = New-Object System.IO.MemoryStream (, [System.IO.File]::ReadAllBytes($ip))
+            $dec = [System.Windows.Media.Imaging.BitmapDecoder]::Create($ms, [System.Windows.Media.Imaging.BitmapCreateOptions]::None, [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
+            $big = @($dec.Frames | Sort-Object PixelWidth -Descending)[0]
+            if ($big) { $script:Splash.FindName('img').Source = $big; $script:Splash.Icon = $big }
+        }
+        $script:Splash.Show()
+        Update-HUSplash
+    } catch { $script:Splash = $null; $script:SplashStatus = $null }
+    $script:SplashShown = Get-Date
+}
+
+# ============================================================================
 # 1. VERSION, CORE-MODULE, FUNKTIONEN
 # ============================================================================
 $script:Version = '0.0.0'
 try { $script:Version = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
 
+Set-HUSplashStatus 'Module werden geladen ...'
 foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget')) {
     $modPath = Join-Path $script:AppRoot "Core\$mod.psm1"
     if (-not (Test-Path -LiteralPath $modPath)) { Show-HUFatal "Core-Modul fehlt: $modPath`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
@@ -96,6 +156,7 @@ foreach ($f in @('Core-Async', 'Core-Update', 'UI-Common', 'UI-State', 'UI-Tenan
 # ============================================================================
 # 2. EINSTELLUNGEN (Erststart: leere settings.json anlegen)
 # ============================================================================
+Set-HUSplashStatus 'Einstellungen ...'
 $settingsPath = Join-Path $script:AppRoot 'Config\settings.json'
 $script:FirstRun = $false
 if (-not (Test-Path -LiteralPath $settingsPath)) {
@@ -118,10 +179,17 @@ if (-not $script:FirstRun -and -not $SmokeTest) { [void](Show-SecretSetupDialog)
 # ============================================================================
 # 3. HAUPTFENSTER
 # ============================================================================
+Set-HUSplashStatus "Oberfl$([char]0xE4)che wird aufgebaut ..."
 try {
     $d = New-HUWindow 'MainWindow'
 } catch { Show-HUFatal "Oberflaeche konnte nicht geladen werden (XAML\MainWindow.xaml):`n$($_.Exception.Message)" }
 $script:Window = $d.Window
+# Fehler in einem Klick-Handler (z. B. StrictMode: Variable nicht gesetzt) beendet sonst das ganze Programm -> protokollieren und weiterlaufen
+$script:Window.Dispatcher.Add_UnhandledException({
+        param($s, $e)
+        try { Write-HULogError "Unerwarteter Fehler (Programm laeuft weiter): $($e.Exception.Message)" } catch { }
+        $e.Handled = $true
+    })
 $script:Controls = $d.C
 if ($script:AppIcon) { $script:Window.Icon = $script:AppIcon; $script:Controls['imgLogo'].Source = $script:AppIcon }
 $script:Window.Add_SourceInitialized({ Set-HUWindowTaskbar $script:Window })
@@ -189,6 +257,8 @@ $script:Window.Add_PreviewMouseWheel({
 $script:Window.Add_ContentRendered({
     if ($script:StartupDone) { return }
     $script:StartupDone = $true
+    Close-HUSplash 1200
+    try { [void]$script:Window.Activate() } catch { }
     if (-not $script:SmokeTestFile) {
         Start-HULockTimer
         if ((Get-HULockConfig).Enabled -and (Get-HULockConfig).OnStart) { Lock-HUApp -AtStart }

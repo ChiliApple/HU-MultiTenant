@@ -574,6 +574,63 @@ Describe 'Intune: stille Deinstallation' {
     }
 }
 
+Describe 'Intune: Skript als Setup (Get-HUSetupInfo)' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        $script:SDir = Join-Path ([IO.Path]::GetTempPath()) "hu-setup-$([guid]::NewGuid().ToString('N'))\MeinPlugin-1.2.3"
+        New-Item -ItemType Directory -Path $script:SDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:SDir 'Install.ps1') -Value 'param([switch]$AllUsers, [switch]$Uninstall)' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $script:SDir 'Simple.ps1') -Value 'Write-Host hi' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $script:SDir 'run.cmd') -Value '@echo off' -Encoding ASCII
+    }
+    AfterAll { Remove-Item -LiteralPath (Split-Path $script:SDir -Parent) -Recurse -Force -ErrorAction SilentlyContinue }
+    It 'PowerShell-Skript: Name/Version aus dem Ordner, -AllUsers und -Uninstall uebernommen' {
+        $i = Get-HUSetupInfo -Path (Join-Path $script:SDir 'Install.ps1')
+        $i.Kind | Should -Be 'script'
+        $i.Name | Should -Be 'MeinPlugin'
+        $i.Version | Should -Be '1.2.3'
+        $i.InstallCmd | Should -Be 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Install.ps1" -AllUsers'
+        $i.UninstallCmd | Should -Be 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Install.ps1" -AllUsers -Uninstall'
+    }
+    It 'Skript ohne Parameter: kein Deinstallationsbefehl' {
+        $i = Get-HUSetupInfo -Path (Join-Path $script:SDir 'Simple.ps1')
+        $i.InstallCmd | Should -Be 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Simple.ps1"'
+        $i.UninstallCmd | Should -Be ''
+    }
+    It 'Batch-Datei ueber cmd.exe' {
+        $i = Get-HUSetupInfo -Path (Join-Path $script:SDir 'run.cmd')
+        $i.Kind | Should -Be 'script'
+        $i.InstallerType | Should -Be 'Batch'
+        $i.InstallCmd | Should -Be 'cmd.exe /c "run.cmd"'
+    }
+}
+
+Describe 'Apps: Setup-Ordner (Copy-HUSetupToStore)' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        $script:T = Join-Path ([IO.Path]::GetTempPath()) "hu-store-$([guid]::NewGuid().ToString('N'))"
+        $script:Src = Join-Path $script:T 'dl\Plugin-1.0'
+        New-Item -ItemType Directory -Path (Join-Path $script:Src 'sub') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:Src 'Install.ps1') -Value 'x'
+        Set-Content -LiteralPath (Join-Path $script:Src 'sub\a.dll') -Value 'y'
+        $script:Root = Join-Path $script:T 'store'
+    }
+    AfterAll { Remove-Item -LiteralPath $script:T -Recurse -Force -ErrorAction SilentlyContinue }
+    It 'kopiert den ganzen Ordner nach <App>\<Version>' {
+        $p = Copy-HUSetupToStore -Root $script:Root -AppName 'Plugin' -Version '1.0' -SetupPath (Join-Path $script:Src 'Install.ps1') -WholeFolder $true
+        $p | Should -Be (Join-Path $script:Root 'Plugin\1.0\Install.ps1')
+        Test-Path -LiteralPath (Join-Path $script:Root 'Plugin\1.0\sub\a.dll') | Should -BeTrue
+    }
+    It 'liegt es schon in der Ablage, bleibt der Pfad' {
+        $in = Join-Path $script:Root 'Plugin\1.0\Install.ps1'
+        Copy-HUSetupToStore -Root $script:Root -AppName 'Plugin' -Version '1.0' -SetupPath $in -WholeFolder $true | Should -Be $in
+    }
+    It 'behaelt nur die letzten zwei Versionen' {
+        foreach ($v in '1.1', '1.2') { Start-Sleep -Milliseconds 50; [void](Copy-HUSetupToStore -Root $script:Root -AppName 'Plugin' -Version $v -SetupPath (Join-Path $script:Src 'Install.ps1')) }
+        @(Get-ChildItem -LiteralPath (Join-Path $script:Root 'Plugin') -Directory | ForEach-Object Name | Sort-Object) | Should -Be @('1.1', '1.2')
+    }
+}
+
 Describe 'Intune: Abhaengigkeiten' {
     BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
     It 'ersetzt Abhaengigkeiten, behaelt Ersetzungen (Supersedence)' {

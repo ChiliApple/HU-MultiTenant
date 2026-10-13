@@ -50,6 +50,8 @@ function Show-SecretSetupDialog {
     if ($missingTenants.Count -eq 0) {
         return $true
     }
+    # Startbildschirm schliessen, sonst laege er (Topmost) ueber dem Dialog
+    if (Get-Command Close-HUSplash -ErrorAction SilentlyContinue) { Close-HUSplash }
 
     # Build PasswordBox rows dynamically
     $rowDefs = ''

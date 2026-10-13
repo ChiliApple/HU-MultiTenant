@@ -85,6 +85,7 @@ function Show-HUSettingsDialog {
     $c.txtWarnDays.Text = "$(Get-HUSecretWarnDays)"
     $c.txtAuthor.Text = "$(Get-HUProp $S.ui 'author' '')"
     $c.txtBackupPath.Text = "$(Get-HUProp $S.ui 'backupPath' '')"
+    $c.txtSetupPath.Text = "$(Get-HUSetupRoot $S -NoCreate)"
     $c.txtBackupKeep.Text = "$(Get-HUProp $S.ui 'backupKeep' 30)"
     $c.chkBackupDaily.IsChecked = [bool](Get-HUProp $S.ui 'backupDaily' $true)
     # Quelle fuer App-Updates: Liste erst beim Aufklappen holen (winget braucht etwas)
@@ -129,6 +130,31 @@ function Show-HUSettingsDialog {
     $c.btnLauncher.Add_Click({
         if (New-HULauncher -Force) { Show-HUMessage "Starter bereit:`n$(Join-Path $script:AppRoot $script:LauncherName)" -Owner $w } else { Show-HUMessage 'Starter konnte nicht erstellt werden (Protokoll).' -Icon Error -Owner $w }
         & $updShortcutInfo
+    })
+    $c.btnSetupBrowse.Add_Click({
+        $f = New-Object System.Windows.Forms.FolderBrowserDialog
+        $f.Description = 'Ordner fuer die Setup-Dateien der App-Bibliothek'
+        if ($c.txtSetupPath.Text -and (Test-Path -LiteralPath $c.txtSetupPath.Text)) { $f.SelectedPath = $c.txtSetupPath.Text }
+        if ($f.ShowDialog() -eq 'OK') { $c.txtSetupPath.Text = $f.SelectedPath }
+    })
+    $c.btnSetupMove.Add_Click({
+        $root = $c.txtSetupPath.Text.Trim()
+        if (-not $root) { Show-HUMessage 'Bitte zuerst einen Setup-Ordner angeben.' -Icon Warning -Owner $w; return }
+        $root = [Environment]::ExpandEnvironmentVariables($root)
+        $rootFull = try { [IO.Path]::GetFullPath($root).TrimEnd('\') + '\' } catch { $root }
+        $todo = @($script:AppLib | Where-Object { $_.Type -eq 'win32' -and $_.SetupPath -and (Test-Path -LiteralPath $_.SetupPath) -and -not "$($_.SetupPath)".StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase) })
+        $missing = @($script:AppLib | Where-Object { $_.Type -eq 'win32' -and $_.SetupPath -and -not (Test-Path -LiteralPath $_.SetupPath) })
+        if (-not $todo.Count) { Show-HUMessage "Alle vorhandenen Setups liegen schon im Setup-Ordner.$(if ($missing.Count) { "`n`nNicht gefunden (dort 'Andere Datei ...' waehlen): $(@($missing | ForEach-Object Name) -join ', ')" })" -Owner $w; return }
+        if (-not (Confirm-HU "$($todo.Count) Setup(s) nach`n$root`nkopieren?`n`n$(@($todo | ForEach-Object { "  $($_.Name) $($_.Version)" }) -join "`n")`n`nDie Originale bleiben liegen und koennen danach geloescht werden." 'Setup-Ordner' -Owner $w)) { return }
+        if (-not (Test-Path -LiteralPath $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
+        $ok = 0; $err = @()
+        foreach ($a in $todo) {
+            try { $a.SetupPath = Copy-HUSetupToStore -Root $root -AppName $a.Name -Version $a.Version -SetupPath $a.SetupPath -WholeFolder ([bool]$a.WholeFolder); $ok++ }
+            catch { $err += "$($a.Name): $($_.Exception.Message)" }
+        }
+        Save-HUAppLib
+        if ($script:AppCurrent) { Show-HUAppForm $script:AppCurrent }
+        Show-HUMessage "$ok Setup(s) uebernommen.$(if ($err.Count) { "`n`nFehler:`n$($err -join "`n")" })$(if ($missing.Count) { "`n`nNicht gefunden: $(@($missing | ForEach-Object Name) -join ', ')" })" -Owner $w -Icon $(if ($err.Count) { 'Warning' } else { 'Info' })
     })
     $c.btnBackupBrowse.Add_Click({
         $f = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -374,6 +400,7 @@ function Show-HUSettingsDialog {
         Set-HUProp $S.ui 'checkSecretsOnStart' ([bool]$c.chkSecretCheckStart.IsChecked)
         Set-HUProp $S.ui 'author' $c.txtAuthor.Text.Trim()
         Set-HUProp $S.ui 'backupPath' $c.txtBackupPath.Text.Trim()
+        Set-HUProp $S.ui 'setupPath' $c.txtSetupPath.Text.Trim()
         $bk = 30; if (-not [int]::TryParse($c.txtBackupKeep.Text.Trim(), [ref]$bk) -or $bk -lt 1) { $bk = 30 }
         Set-HUProp $S.ui 'backupKeep' $bk
         Set-HUProp $S.ui 'backupDaily' ([bool]$c.chkBackupDaily.IsChecked)

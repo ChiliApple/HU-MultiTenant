@@ -59,6 +59,7 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Text="Reiter beim Start" Style="{StaticResource FieldLabel}"/>
                             <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbStartTab" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3">
@@ -100,6 +101,14 @@
                                 <TextBox x:Name="txtBackupKeep" Width="50" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Anzahl Staende je Tenant (aeltere werden geloescht)"/>
                                 <TextBlock Text="Staende" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="6,0,0,0"/>
                             </StackPanel>
+                            <TextBlock Grid.Row="8" Text="Setup-Ordner (Apps)" Style="{StaticResource FieldLabel}"/>
+                            <DockPanel Grid.Row="8" Grid.Column="1" Margin="0,3">
+                                <Button x:Name="btnSetupMove" DockPanel.Dock="Right" Content="Vorhandene &#xFC;bernehmen" Style="{StaticResource ToolButton}" Margin="6,0,0,0"
+                                        ToolTip="Setup-Dateien der Bibliothek, die noch woanders liegen (z. B. Downloads), in den Setup-Ordner kopieren - danach koennen die Originale weg"/>
+                                <Button x:Name="btnSetupBrowse" DockPanel.Dock="Right" Content="..." Style="{StaticResource ToolButton}" Width="34" Margin="6,0,0,0"/>
+                                <TextBox x:Name="txtSetupPath" Style="{StaticResource DarkTextBox}" FontSize="12"
+                                         ToolTip="Hierhin werden Setup-Dateien beim Hinzufuegen kopiert (&lt;App&gt;\&lt;Version&gt;, die letzten zwei Versionen bleiben). Danach kann der Download geloescht werden. Vorschlag: OneDrive\HU-MultiTenant-Setups."/>
+                            </DockPanel>
                             <ComboBox Grid.Row="5" Grid.Column="1" x:Name="cmbWingetSource" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
                                       ToolTip="winget-Quelle fuer Apps &gt; Updates. Standard: winget (Community-Repository). Die Liste zeigt die auf diesem PC eingerichteten Quellen (winget source list)."/>
                         </Grid>

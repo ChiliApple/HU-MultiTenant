@@ -261,6 +261,7 @@ function Get-HUAppKindText($App) {
     if ($App.Type -eq 'store') { return 'STORE' }
     $k = "$($App.Kind)".ToUpper()
     if ($App.Kind -eq 'exe' -and "$($App.InstallerType)" -and "$($App.InstallerType)" -ne 'unbekannt') { $k += " ($($App.InstallerType))" }
+    if ($App.Kind -eq 'script') { $k = "SKRIPT ($(if ("$($App.InstallerType)") { $App.InstallerType } else { 'PowerShell' }))" }
     return $k
 }
 
@@ -519,7 +520,7 @@ function Get-HUAppBaseName([string]$Name) {
 
 # -Target: als neue Version dieser Bibliotheks-App uebernehmen ("Andere Datei ...")
 function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck) {
-    if ($Path -notmatch '(?i)\.(msi|exe)$') { Show-HUMessage "Nur .msi- und .exe-Dateien.`n`n$Path" -Icon Warning; return }
+    if ($Path -notmatch '(?i)\.(msi|exe|ps1|cmd|bat)$') { Show-HUMessage "Nur .msi-, .exe- und Skript-Dateien (.ps1, .cmd, .bat).`n`n$Path" -Icon Warning; return }
     try { $info = Get-HUSetupInfo -Path $Path } catch { Show-HUMessage "Datei nicht lesbar:`n$($_.Exception.Message)" -Icon Error; return }
     Save-HUAppForm
     $a = $null
@@ -557,6 +558,7 @@ function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck)
     $a.Version = $info.Version
     $a.SetupPath = (Get-Item -LiteralPath $Path).FullName
     $a.InstallCmd = $info.InstallCmd
+    if ($info.Kind -eq 'script' -and $info.UninstallCmd -and (-not $a.UninstallCmd -or $isNew)) { $a.UninstallCmd = $info.UninstallCmd }
     if ($info.Kind -eq 'msi') {
         $a.UninstallCmd = $info.UninstallCmd; $a.UpgradeCode = $info.UpgradeCode
         $a.Detection = New-HUAppDetection $info.Detection
@@ -570,6 +572,16 @@ function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck)
     $others = @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne (Split-Path $a.SetupPath -Leaf) -and $_.Extension -match '(?i)^\.(mst|cab|ini|xml|json|cfg|config|reg|txt|lic)$' })
     $big = (Split-Path $dir -Leaf) -match '(?i)^(downloads|desktop|documents|dokumente)$'
     $a.WholeFolder = ($others.Count -gt 0 -and -not $big)
+    # Skript: braucht praktisch immer die Dateien daneben
+    if ($info.Kind -eq 'script') {
+        $a.WholeFolder = -not $big
+        if ($big) { $info.Hint += " ACHTUNG: Das Skript liegt direkt in '$(Split-Path $dir -Leaf)' - bitte in einen eigenen Ordner (mit seinen Dateien) legen, sonst fehlen sie im Paket." }
+    }
+    # dauerhafte Ablage (Einstellungen > Setup-Ordner) - Downloads darf danach aufgeraeumt werden
+    try {
+        $stored = Copy-HUSetupToStore -Root (Get-HUSetupRoot $script:Settings) -AppName $a.Name -Version $a.Version -SetupPath $a.SetupPath -WholeFolder ([bool]$a.WholeFolder)
+        if ($stored -ne $a.SetupPath) { $a.SetupPath = $stored; $info.Hint += " Setup abgelegt in: $(Split-Path $stored -Parent)" }
+    } catch { $info.Hint += " Setup konnte nicht in den Setup-Ordner kopiert werden ($($_.Exception.Message)) - es bleibt am bisherigen Ort." }
     if ($isNew) { $script:AppLib.Add($a) }
     # Symbol aus der Setup-EXE (spaeter ersetzt die Testinstallation es durch das der installierten App)
     if ($info.Kind -eq 'exe' -and -not (Test-Path -LiteralPath (Get-HUAppIconPath $a))) { [void](Set-HUAppIcon $a $a.SetupPath -Quiet) }
@@ -578,7 +590,7 @@ function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck)
     Show-HUAppForm $a
     $hint = $info.Hint
     if ($info.Kind -eq 'exe') { $hint += ' Tipp: "Testinstallation in der Windows Sandbox" ermittelt Erkennung und Deinstallation.' }
-    if ($a.WholeFolder) { $hint += " Im Ordner liegen Zusatzdateien ($(@($others | Select-Object -First 3 | ForEach-Object Name) -join ', ')) - der ganze Ordner wird mitgepackt." }
+    if ($a.WholeFolder -and $others.Count) { $hint += " Im Ordner liegen Zusatzdateien ($(@($others | Select-Object -First 3 | ForEach-Object Name) -join ', ')) - der ganze Ordner wird mitgepackt." }
     $script:Controls['txtAppInfo'].Text = $hint
     Add-HURtbLine $script:Controls['rtbApps'] "$(if ($isNew) { 'Hinzugefuegt' } else { 'Neue Version' }): $($a.Name) v$($a.Version) ($(Get-HUAppKindText $a))" '#81C784'
 }
@@ -1092,6 +1104,26 @@ function Show-HUSandboxSetup {
     [void]$w.ShowDialog()
 }
 
+
+# Abhaengigkeiten aus der Bibliothek (rekursiv), tiefste zuerst, ohne Doppelte/Schleifen
+function Get-HUAppDepChain($App) {
+    $out = New-Object System.Collections.Generic.List[object]
+    $seen = @{ "$($App.Id)" = $true }
+    $walk = $null
+    $walk = {
+        param($x)
+        foreach ($id in @($x.Dependencies | Where-Object { $_ })) {
+            if ($seen.ContainsKey("$id")) { continue }
+            $seen["$id"] = $true
+            $d = @($script:AppLib | Where-Object { $_.Id -eq $id -and $_.Type -eq 'win32' })[0]
+            if (-not $d) { continue }
+            & $walk $d
+            $out.Add($d)
+        }
+    }
+    & $walk $App
+    return @($out.ToArray())
+}
 function Start-HUAppSandbox {
     Save-HUAppForm
     $a = $script:AppCurrent
@@ -1122,14 +1154,25 @@ function Start-HUAppSandbox {
     $script:AppSbStart = @{ AppId = $a.Id; TestUn = $testUn; Uninstall = $a.UninstallCmd; KeepOpen = [bool]$c['chkAppSandboxKeep'].IsChecked }
     $rtb = $c['rtbApps']
     Add-HURtbLine $rtb "=== Testinstallation: $($a.Name) ===" '#CE93D8'
+    # Abhaengigkeiten aus der Bibliothek werden in der Sandbox vorher installiert (Reihenfolge: tiefste zuerst)
+    $depDefs = @(foreach ($d in @(Get-HUAppDepChain $a)) {
+            if (-not $d.SetupPath -or -not (Test-Path -LiteralPath $d.SetupPath) -or -not $d.InstallCmd) { Add-HURtbLine $rtb "Abhaengigkeit '$($d.Name)': Setup-Datei oder Befehl fehlt - wird in der Sandbox nicht installiert." '#FFB74D'; continue }
+            Add-HURtbLine $rtb "Abhaengigkeit wird vorher installiert: $($d.Name)$(if ($d.Version) { " v$($d.Version)" })" '#90CAF9'
+            @{ Id = $d.Id; Name = "$($d.Name)"; SetupPath = $d.SetupPath; WholeFolder = [bool]$d.WholeFolder; Plan = (Get-HUInstallPlan $d -Sandbox) }
+        })
+    if (@($a.IntuneDeps | Where-Object { $_ }).Count) { Add-HURtbLine $rtb "Hinweis: Abhaengigkeiten nur aus Intune ($(@($a.IntuneDeps) -join ', ')) gibt es in der Sandbox nicht." '#FFB74D' }
     $c['txtAppSandbox'].Text = 'Sandbox wird vorbereitet ...'
     [void](Start-HUJob -Name 'AppSandbox' -Output $rtb -Vars @{
             Id = $a.Id; SetupPath = $a.SetupPath; WholeFolder = [bool]$a.WholeFolder; Plan = (Get-HUInstallPlan $a -Sandbox); UninstallCmd = $a.UninstallCmd
-            TestUn = $testUn; KeepOpen = [bool]$c['chkAppSandboxKeep'].IsChecked
+            TestUn = $testUn; KeepOpen = [bool]$c['chkAppSandboxKeep'].IsChecked; DepDefs = $depDefs; Det = $a.Detection
         } -Code {
             $src = Sync-HUAppSource -SetupPath $SetupPath -WholeFolder $WholeFolder -Destination (Join-Path (Get-HUWorkPath "Packages\$Id") 'src') -Extra $Plan.Extra
             if ($src.Copied) { Write-HULog -Message 'Setup in den lokalen Arbeitsordner kopiert' -Level 'INFO' }
-            $res = Start-HUSandboxTest -SourceFolder $src.Folder -WorkFolder (Join-Path (Get-HUWorkPath 'Sandbox') $Id) -InstallCmd $Plan.Cmd -UninstallCmd $UninstallCmd -TestUninstall:$TestUn -KeepOpen:$KeepOpen
+            $deps = @(foreach ($d in @($DepDefs | Where-Object { $_ })) {
+                    $ds = Sync-HUAppSource -SetupPath $d.SetupPath -WholeFolder $d.WholeFolder -Destination (Join-Path (Get-HUWorkPath "Packages\$($d.Id)") 'src') -Extra $d.Plan.Extra
+                    @{ Name = $d.Name; Folder = $ds.Folder; Cmd = $d.Plan.Cmd }
+                })
+            $res = Start-HUSandboxTest -SourceFolder $src.Folder -WorkFolder (Join-Path (Get-HUWorkPath 'Sandbox') $Id) -InstallCmd $Plan.Cmd -UninstallCmd $UninstallCmd -TestUninstall:$TestUn -KeepOpen:$KeepOpen -Dependencies $deps -Detection $Det
             Write-HULog -Message 'Windows Sandbox gestartet - die Installation laeuft dort sichtbar im eigenen Fenster.' -Level 'OK'
             $res
         } -OnDone {
@@ -1199,6 +1242,7 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     if (-not $script:AppCurrent -or $script:AppCurrent.Id -ne $a.Id) { Save-HUAppForm; Update-HUAppList $a.Id; Show-HUAppForm $a }
     $code = $Res.ExitCode
     $okCodes = @(0, 1707, 3010, 1641)
+    $warn = $false
     $lines = New-Object System.Collections.Generic.List[string]
     if ("$($Res.Error)") { $lines.Add("Fehler im Testskript: $($Res.Error)") }
     $codeText = switch ($code) {
@@ -1209,9 +1253,16 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
         default { "Exitcode $code" }
     }
     $ok = ($null -ne $code -and "$code" -match '^-?\d+$' -and $okCodes -contains [int]$code)
+    foreach ($dp in @($Res.Deps | Where-Object { $_ })) {
+        $dOk = "$($dp.ExitCode)" -match '^-?\d+$' -and $okCodes -contains [int]$dp.ExitCode
+        $lines.Add("Abhaengigkeit $($dp.Name): $(if ($dOk) { "installiert ($($dp.ExitCode))" } else { "FEHLGESCHLAGEN (Exitcode $($dp.ExitCode))" })")
+    }
     $lines.Add("Installation: $codeText nach $($Res.Seconds) s")
+    if ($null -ne $Res.DetectInstall) {
+        if ($Res.DetectInstall) { $lines.Add('Erkennung nach der Installation: gefunden - Intune meldet "installiert"') }
+        elseif ($ok) { $warn = $true; $lines.Add('ACHTUNG: Erkennung nach der Installation NICHT gefunden - Intune wuerde "fehlgeschlagen" melden. Erkennungsregel pruefen.') }
+    }
     $winI = @($Res.InstallWindows | Where-Object { $_ })
-    $warn = $false
     if ($winI.Count) {
         if ($ok) {
             # Setup ist ohne Eingabe fertig geworden -> Fenster hat nicht blockiert (z. B. Webseite nach der Installation)
@@ -1230,11 +1281,18 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
         $lines.Add("ACHTUNG: installiert nur ins Benutzerprofil - unter Intune als 'System' landet es nicht beim Benutzer. Schalter fuer 'alle Benutzer' verwenden (Inno: /ALLUSERS, MSI: ALLUSERS=1) oder 'Ausfuehren als: Benutzer'.")
     }
     $lines.Add("Neue Programme in 'Apps & Features': $($entries.Count)$(if ($entries.Count) { ' - ' + (@($entries | Select-Object -First 4 | ForEach-Object { "$($_.DisplayName) $($_.DisplayVersion)".Trim() }) -join '; ') })")
+    $nfAll = @($Res.NewFiles | Where-Object { $_ })
+    if (-not $entries.Count -and $nfAll.Count) { $lines.Add("Neue Programmdateien: $($nfAll.Count) - $(@($nfAll | Select-Object -First 3 | ForEach-Object { $_.Path }) -join '; ')") }
     if ($Res.UninstallTested) {
         $winU = @($Res.UninstallWindows | Where-Object { $_ })
-        $unOk = $Res.UninstallRemoved -and -not $winU.Count
+        # ohne Eintrag in Apps & Features (z. B. Skript/Plugin) zaehlt die Erkennungsregel
+        $noEntry = -not $entries.Count -and $null -ne $Res.DetectUninstall
+        $nf = @($Res.NewFiles | Where-Object { $_ })
+        $byFiles = -not $entries.Count -and $null -eq $Res.DetectUninstall -and $nf.Count -and $null -ne $Res.FilesLeft
+        $unknown = -not $entries.Count -and $null -eq $Res.DetectUninstall -and -not $byFiles
+        $unOk = $(if ($noEntry) { -not $Res.DetectUninstall } elseif ($byFiles) { $Res.FilesLeft -eq 0 } else { $Res.UninstallRemoved -and -not $unknown }) -and -not $winU.Count
         if (-not $unOk) { $warn = $true }
-        $lines.Add("Deinstallation: $(if ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
+        $lines.Add("Deinstallation: $(if ($unOk -and $noEntry) { 'OK - Erkennung danach nicht mehr gefunden, ohne Fenster' } elseif ($noEntry -and -not $winU.Count) { 'Erkennung danach NOCH gefunden - Befehl pruefen' } elseif ($unOk -and $byFiles) { "OK - alle $($nf.Count) neuen Programmdateien entfernt, ohne Fenster" } elseif ($byFiles -and -not $winU.Count) { "$($Res.FilesLeft) von $($nf.Count) neuen Programmdateien noch vorhanden - Befehl pruefen" } elseif ($unknown -and -not $winU.Count) { 'nicht pruefbar (kein Eintrag in Apps & Features, keine Erkennung festgelegt)' } elseif ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
     } elseif (-not $TestUn) { $lines.Add('Deinstallation nicht getestet.') }
     # Gesamtergebnis: fehlgeschlagen / mit Hinweisen / OK
     $lines.Add($(if (-not $ok) { 'Ergebnis: Installation fehlgeschlagen - so nicht hochladen.' } elseif ($warn) { 'Ergebnis: installiert, aber mit Hinweisen (siehe ACHTUNG) - vor dem Hochladen pruefen.' } else { 'Ergebnis: OK - bereit zum Hochladen.' }))
@@ -1258,7 +1316,12 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
     $iconSrc = ''
     if ($prop -and $prop.IconFile) { $f = Join-Path (Join-Path (Get-HUWorkPath 'Sandbox') $AppId) $prop.IconFile; if (Test-Path -LiteralPath $f) { $iconSrc = $f } }
     $folders = @($Res.NewFolders | Where-Object { $_ -match '(?i)\\Program Files' })
-    if ($ok -and ($prop -or $folders.Count)) {
+    # ohne Eintrag und ohne neuen Ordner (z. B. Plugin in einem vorhandenen Programmordner): neue DLL/EXE als Erkennung
+    $newFile = $null
+    if (-not $prop -and -not $folders.Count) {
+        $newFile = @($Res.NewFiles | Where-Object { $_ -and $_.Path } | Sort-Object { ($_.Path -split '\\').Count }, { if ($_.Path -match '(?i)\.dll$') { 0 } else { 1 } } | Select-Object -First 1)[0]
+    }
+    if ($ok -and ($prop -or $folders.Count -or $newFile)) {
         $msg = "Testinstallation $codeText.`n`nVorschlag:`n"
         if ($prop) {
             $det = $prop.Detection
@@ -1266,6 +1329,8 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
             if ($prop.UninstallCmd) { $msg += "  Deinstallation: $($prop.UninstallCmd)`n" }
             if ($prop.HKCU) { $msg += "`n  Achtung: die App installiert sich nur fuer den Benutzer - 'Ausfuehren als: Benutzer' waehlen.`n" }
             if ($iconSrc) { $msg += "  Symbol: aus der installierten App`n" }
+        } elseif ($newFile) {
+            $msg += "  Erkennung: Datei $($newFile.Path)$(if ($newFile.Version) { ", Version >= $($newFile.Version)" }) (kein Eintrag in 'Apps & Features' gefunden)`n"
         } else {
             $f = $folders[0]
             $msg += "  Erkennung: Ordner $f vorhanden (kein Eintrag in 'Apps & Features' gefunden)`n"
@@ -1279,6 +1344,8 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
                 if (-not $a.Publisher -and $prop.Publisher) { $a.Publisher = $prop.Publisher }
                 if ($prop.HKCU) { $a.RunAs = 'user' }
                 if ($iconSrc) { [void](Set-HUAppIcon $a $iconSrc -Quiet) }
+            } elseif ($newFile) {
+                $a.Detection = New-HUAppDetection ([pscustomobject]@{ Type = 'file'; Path = (Split-Path $newFile.Path -Parent); FileName = (Split-Path $newFile.Path -Leaf); VersionCheck = [bool]$newFile.Version; Version = "$($newFile.Version)" })
             } else {
                 $a.Detection = New-HUAppDetection ([pscustomobject]@{ Type = 'file'; Path = (Split-Path $folders[0] -Parent); FileName = (Split-Path $folders[0] -Leaf) })
             }
@@ -1311,15 +1378,16 @@ function Register-HUAppHandlers {
         })
     $c['btnAppAdd'].Add_Click({
             $dlg = New-Object Microsoft.Win32.OpenFileDialog
-            $dlg.Filter = 'Setup (*.msi;*.exe)|*.msi;*.exe'
+            $dlg.Filter = 'Setup (*.msi;*.exe)|*.msi;*.exe|Skript (*.ps1;*.cmd;*.bat)|*.ps1;*.cmd;*.bat|Alle Setups|*.msi;*.exe;*.ps1;*.cmd;*.bat'
             $dlg.Title = 'Setup-Datei waehlen'
-            if ($dlg.ShowDialog($script:Window)) { Add-HUAppFromFile $dlg.FileName -Target $(if ($a.Type -eq 'win32') { $a } else { $null }) }
+            # neue App - gleicher Name in der Bibliothek wird in Add-HUAppFromFile als neue Version erkannt
+            if ($dlg.ShowDialog($script:Window)) { Add-HUAppFromFile $dlg.FileName }
         })
     $c['btnAppBrowse'].Add_Click({
             $a = $script:AppCurrent
             if (-not $a) { return }
             $dlg = New-Object Microsoft.Win32.OpenFileDialog
-            $dlg.Filter = 'Setup (*.msi;*.exe)|*.msi;*.exe'
+            $dlg.Filter = 'Setup (*.msi;*.exe)|*.msi;*.exe|Skript (*.ps1;*.cmd;*.bat)|*.ps1;*.cmd;*.bat|Alle Setups|*.msi;*.exe;*.ps1;*.cmd;*.bat'
             if ($a.SetupPath) { $dir = Split-Path $a.SetupPath -Parent; if (Test-Path -LiteralPath $dir) { $dlg.InitialDirectory = $dir } }
             if ($dlg.ShowDialog($script:Window)) { Add-HUAppFromFile $dlg.FileName }
         })

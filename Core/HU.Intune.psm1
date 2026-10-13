@@ -228,6 +228,38 @@ function Get-HUSetupInfo {
     param([Parameter(Mandatory)][string]$Path)
     $file = Get-Item -LiteralPath $Path
     $name = $file.Name
+    # Skript als Setup (z. B. Plugin-Installer ohne MSI/EXE): Name/Version aus dem Ordnernamen ("HUScroll-0.5.2"),
+    # Schalter -AllUsers/-Uninstall uebernehmen, wenn das Skript sie hat. Ganzer Ordner wird mitgepackt.
+    if ($file.Extension -match '(?i)^\.(ps1|cmd|bat)$') {
+        $dirName = Split-Path $file.DirectoryName -Leaf
+        $ver = ''; $nm = [IO.Path]::GetFileNameWithoutExtension($name)
+        if ($dirName -notmatch '(?i)^(downloads|desktop|documents|dokumente)$') {
+            if ($dirName -match '^(.+?)[\s_\-]+v?(\d+(?:\.\d+){1,3})$') { $nm = $Matches[1]; $ver = $Matches[2] } else { $nm = $dirName }
+        }
+        if ($file.Extension -ieq '.ps1') {
+            $params = @()
+            try {
+                $ast = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$null)
+                if ($ast.ParamBlock) { $params = @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath }) }
+            } catch { }
+            $base = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$name`""
+            if ($params -contains 'AllUsers') { $base += ' -AllUsers' }
+            $un = if ($params -contains 'Uninstall') { "$base -Uninstall" } else { '' }
+            $hint = 'PowerShell-Skript: der ganze Ordner wird mitgepackt. Erkennung (z. B. Datei) selbst festlegen.'
+            if ($params -contains 'AllUsers') { $hint += ' Schalter -AllUsers uebernommen.' }
+            if (-not $un) { $hint += ' Deinstallationsbefehl fehlt - selbst eintragen.' }
+            $hint += ' Intune startet das Skript in einer 32-Bit-PowerShell - Pfade unter Program Files beachten.'
+            return [pscustomobject]@{
+                Kind = 'script'; FileName = $name; Name = $nm; Publisher = ''; Version = $ver; ProductCode = ''; UpgradeCode = ''; InstallerType = 'PowerShell'
+                InstallCmd = $base; UninstallCmd = $un; Detection = $null; Hint = $hint
+            }
+        }
+        return [pscustomobject]@{
+            Kind = 'script'; FileName = $name; Name = $nm; Publisher = ''; Version = $ver; ProductCode = ''; UpgradeCode = ''; InstallerType = 'Batch'
+            InstallCmd = "cmd.exe /c `"$name`""; UninstallCmd = ''; Detection = $null
+            Hint = 'Batch-Datei: der ganze Ordner wird mitgepackt. Deinstallationsbefehl und Erkennung selbst festlegen.'
+        }
+    }
     if ($file.Extension -ieq '.msi') {
         $m = Read-HUMsiInfo -Path $file.FullName
         return [pscustomobject]@{
@@ -338,7 +370,7 @@ function New-HUIntuneWinPackage {
 # ============================================================================
 # Win32-App: Daten -> Graph
 #   Def: Name, Publisher, Description, Version, SetupFile, InstallCmd, UninstallCmd, RunAs (system|user),
-#        Restart (suppress|basedOnReturnCode|allow|force), Detection (Type msi|registry|file|script ...), Kind (msi|exe)
+#        Restart (suppress|basedOnReturnCode|allow|force), Detection (Type msi|registry|file|script ...), Kind (msi|exe|script)
 # ============================================================================
 function Get-HUDefaultReturnCodes {
     return @(
@@ -549,6 +581,42 @@ function Get-HUWorkPath([string]$Sub = '') {
     $p = if ($Sub) { Join-Path $base $Sub } else { $base }
     if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
     return $p
+}
+
+# Dauerhafte Ablage der Setups der App-Bibliothek: Einstellung ui.setupPath, sonst OneDrive\HU-MultiTenant-Setups
+# (gesichert, auf jedem PC da), ohne OneDrive lokal. Aufbau: <Root>\<App>\<Version>\
+function Get-HUSetupRoot($Settings, [switch]$NoCreate) {
+    $p = ''
+    try { if ($Settings -and $Settings.PSObject.Properties['ui'] -and $Settings.ui -and $Settings.ui.PSObject.Properties['setupPath']) { $p = "$($Settings.ui.setupPath)".Trim() } } catch { }
+    if (-not $p) {
+        $od = @($env:OneDriveCommercial, $env:OneDrive) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+        $p = if ($od) { Join-Path $od 'HU-MultiTenant-Setups' } else { Join-Path (Join-Path $env:LOCALAPPDATA 'HU-MultiTenant') 'Setups' }
+    }
+    $p = [Environment]::ExpandEnvironmentVariables($p)
+    if (-not $NoCreate -and -not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
+    return $p
+}
+
+# Setup (Datei oder ganzen Ordner) in die Ablage kopieren -> neuer Pfad der Setup-Datei.
+# Liegt es schon in der Ablage, bleibt alles wie es ist. Je App bleiben die letzten $Keep Versionen.
+function Copy-HUSetupToStore {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$AppName, [string]$Version = '',
+        [Parameter(Mandatory)][string]$SetupPath, [bool]$WholeFolder = $false, [int]$Keep = 2)
+    $setup = Get-Item -LiteralPath $SetupPath
+    $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
+    if ($setup.FullName.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) { return $setup.FullName }
+    $appDir = Join-Path $Root (ConvertTo-HUSafeFileName $AppName 60)
+    $ver = if ("$Version".Trim()) { ConvertTo-HUSafeFileName "$Version" 40 } else { Get-Date -Format 'yyyy-MM-dd_HHmm' }
+    $dest = Join-Path $appDir $ver
+    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    if ($WholeFolder) { Copy-Item -Path (Join-Path $setup.DirectoryName '*') -Destination $dest -Recurse -Force }
+    else { Copy-Item -LiteralPath $setup.FullName -Destination $dest -Force }
+    (Get-Item -LiteralPath $dest).LastWriteTime = Get-Date
+    $old = @(Get-ChildItem -LiteralPath $appDir -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -Skip ([Math]::Max(1, $Keep)))
+    foreach ($o in $old) { try { Remove-Item -LiteralPath $o.FullName -Recurse -Force } catch { } }
+    return (Join-Path $dest $setup.Name)
 }
 
 # Setup-Datei (oder ganzen Ordner) in einen lokalen Quellordner spiegeln. Kennung aus Pfad/Groesse/Zeit:
@@ -1638,7 +1706,7 @@ function Enable-HUSandbox {
 $script:SandboxScript = @'
 $ErrorActionPreference = 'Continue'
 $cfg = Get-Content -LiteralPath 'C:\HUTest\config.json' -Raw | ConvertFrom-Json
-$result = [ordered]@{ ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @(); InstallLog = ''; UninstallLog = ''; DesktopLinks = @(); WrapperLog = @() }
+$result = [ordered]@{ Deps = @(); DetectInstall = $null; DetectUninstall = $null; NewFiles = @(); FilesLeft = $null; ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @(); InstallLog = ''; UninstallLog = ''; DesktopLinks = @(); WrapperLog = @() }
 function Get-Snap {
     $l = @()
     foreach ($p in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall') {
@@ -1651,6 +1719,38 @@ function Get-Snap {
     }
     $l
 }
+# Erkennungsregel wie Intune pruefen (Datei/Ordner, Registry, MSI-Produktcode); $null = nicht pruefbar
+function Test-Det {
+    $d = $cfg.Detect
+    if (-not $d -or -not $d.Type) { return $null }
+    switch ($d.Type) {
+        'file' {
+            $raw = "$($d.Path)"
+            if ($d.Check32) { $raw = $raw -replace '(?i)%ProgramFiles%', '%ProgramFiles(x86)%' }
+            $base = [Environment]::ExpandEnvironmentVariables($raw)
+            if (-not $base) { return $null }
+            $p = if ("$($d.FileName)") { Join-Path $base $d.FileName } else { $base }
+            return (Test-Path -LiteralPath $p)
+        }
+        'registry' {
+            if (-not "$($d.KeyPath)") { return $null }
+            $kp = "$($d.KeyPath)"
+            if ($d.Check32 -and $kp -notmatch '(?i)\\WOW6432Node\\') { $kp = $kp -replace '(?i)^(HKEY_LOCAL_MACHINE|HKLM:?)\\SOFTWARE\\', '$1\SOFTWARE\WOW6432Node\' }
+            $k = "Registry::$kp"
+            if (-not (Test-Path -LiteralPath $k)) { return $false }
+            if ("$($d.ValueName)") { return ($null -ne (Get-ItemProperty -LiteralPath $k -Name $d.ValueName -ErrorAction SilentlyContinue)) }
+            return $true
+        }
+        'msi' {
+            if (-not "$($d.ProductCode)") { return $null }
+            foreach ($r in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall') { if (Test-Path -LiteralPath (Join-Path $r $d.ProductCode)) { return $true } }
+            return $false
+        }
+    }
+    return $null
+}
+# Programmdateien (exe/dll) - fuer Apps ohne Eintrag in Apps & Features (Skripte, Plugins)
+function Get-ProgFiles { @(Get-ChildItem $env:ProgramFiles, ${env:ProgramFiles(x86)} -Recurse -File -Include *.exe, *.dll -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
 function Get-Dirs { @(Get-ChildItem $env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:ProgramData" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
 $script:Windows = @()
 # Fenstergroesse pruefen: Inno/Delphi-Setups haben auch bei /VERYSILENT ein unsichtbares 0x0-Hauptfenster
@@ -1674,14 +1774,15 @@ function Test-RealWindow([IntPtr]$H) {
 $script:LastRect = ''
 # Befehl ausfuehren; Ausgabe nach C:\HUTest\logs\<Tag>-ausgabe.txt, bei msiexec ein ausfuehrliches MSI-Protokoll.
 # Sichtbare Fenster neuer Prozesse merken (unter Intune wuerde ein Dialog haengen).
-function Invoke-Cmd([string]$Line, [int]$Minutes, [string]$Tag = 'install') {
+function Invoke-Cmd([string]$Line, [int]$Minutes, [string]$Tag = 'install', [string]$Dir = 'C:\HUInstall') {
     New-Item -ItemType Directory -Path 'C:\HUTest\logs' -Force | Out-Null
     $run = $Line
     if ($run -match '(?i)\bmsiexec(\.exe)?\b' -and $run -notmatch '(?i)\s/l[\*a-z+!]*\s') { $run += " /l*v `"C:\HUTest\logs\$Tag-msi.log`"" }
-    Set-Content -LiteralPath 'C:\HUInstall\__run.cmd' -Value "@echo off`r`n$run > `"C:\HUTest\logs\$Tag-ausgabe.txt`" 2>&1`r`nexit /b %errorlevel%" -Encoding Default
+    $runCmd = Join-Path $Dir '__run.cmd'
+    Set-Content -LiteralPath $runCmd -Value "@echo off`r`n$run > `"C:\HUTest\logs\$Tag-ausgabe.txt`" 2>&1`r`nexit /b %errorlevel%" -Encoding Default
     $base = @(Get-Process | ForEach-Object { $_.Id })
     $seen = @{}
-    $p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'C:\HUInstall\__run.cmd' -WorkingDirectory 'C:\HUInstall' -PassThru -WindowStyle Hidden
+    $p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $runCmd -WorkingDirectory $Dir -PassThru -WindowStyle Hidden
     $end = (Get-Date).AddMinutes($Minutes)
     while (-not $p.HasExited) {
         foreach ($w in @(Get-Process | Where-Object { $base -notcontains $_.Id -and $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -and $_.ProcessName -notmatch '^(explorer|conhost|cmd|powershell|ShellExperienceHost|SearchHost|StartMenuExperienceHost)$' })) {
@@ -1723,7 +1824,19 @@ try {
     Write-Host 'HU-MultiTenant Testinstallation' -ForegroundColor Cyan
     New-Item -ItemType Directory -Path 'C:\HUInstall' -Force | Out-Null
     Copy-Item -Path 'C:\HUSource\*' -Destination 'C:\HUInstall' -Recurse -Force
-    $before = @(Get-Snap); $dirsBefore = Get-Dirs
+    # Abhaengigkeiten aus der Bibliothek zuerst (zaehlen nicht als neue Programme dieser App)
+    $di = 0
+    foreach ($d in @($cfg.Deps | Where-Object { $_ })) {
+        $di++
+        New-Item -ItemType Directory -Path $d.Dir -Force | Out-Null
+        Copy-Item -Path (Join-Path $d.Src '*') -Destination $d.Dir -Recurse -Force
+        Write-Host "Abhaengigkeit $($d.Name): $($d.Cmd)" -ForegroundColor Yellow
+        $dt = Get-Date
+        $dx = Invoke-Cmd $d.Cmd 30 "dep$di" $d.Dir
+        $result.Deps += [pscustomobject]@{ Name = "$($d.Name)"; ExitCode = $dx; Log = $(if ($dx -notin 0, 1707, 3010, 1641) { Get-LogText $dt "dep$di" } else { '' }) }
+        if ($dx -notin 0, 1707, 3010, 1641) { throw "Abhaengigkeit '$($d.Name)' fehlgeschlagen (Exitcode $dx) - App selbst nicht installiert" }
+    }
+    $before = @(Get-Snap); $dirsBefore = Get-Dirs; $filesBefore = @{}; foreach ($f in Get-ProgFiles) { $filesBefore[$f] = $true }
     $lnkDirs = @("$env:PUBLIC\Desktop", [Environment]::GetFolderPath('Desktop'))
     $lnkBefore = @(Get-ChildItem -Path $lnkDirs -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
     Write-Host "Installiere: $($cfg.Install)" -ForegroundColor Yellow
@@ -1733,6 +1846,7 @@ try {
     $result.InstallWindows = @($script:Windows)
     $result.InstallLog = Get-LogText $t0 'install'
     $result.Seconds = [Math]::Round($sw.Elapsed.TotalSeconds, 1)
+    $result.DetectInstall = Test-Det
     $keys = @($before | ForEach-Object { $_.Key })
     $after = @(Get-Snap)
     $result.NewEntries = @($after | Where-Object { $keys -notcontains $_.Key })
@@ -1761,6 +1875,10 @@ try {
         }
     } catch { }
     $result.NewFolders = @(Get-Dirs | Where-Object { $dirsBefore -notcontains $_ })
+    $result.NewFiles = @(Get-ProgFiles | Where-Object { -not $filesBefore.ContainsKey($_) } | Select-Object -First 200 | ForEach-Object {
+            $v = ''; try { $v = "$((Get-Item -LiteralPath $_).VersionInfo.FileVersion)".Trim() } catch { }
+            [pscustomobject]@{ Path = $_; Version = $v }
+        })
     Start-Sleep -Seconds 5
     $result.DesktopLinks = @(Get-ChildItem -Path $lnkDirs -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $lnkBefore -notcontains $_.FullName } | ForEach-Object { $_.Name })
     $wl = Join-Path $env:ProgramData 'HU-MultiTenant\Logs\HU-Install.log'
@@ -1780,6 +1898,8 @@ try {
             Start-Sleep -Seconds 3
         }
         $result.UninstallLog = Get-LogText $t1 'uninstall'
+        $result.DetectUninstall = Test-Det
+        $result.FilesLeft = @($result.NewFiles | Where-Object { Test-Path -LiteralPath $_.Path }).Count
     }
 } catch { $result.Error = $_.Exception.Message }
 $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'C:\HUTest\result.json' -Encoding UTF8
@@ -1815,7 +1935,11 @@ function Start-HUSandboxTest {
         [Parameter(Mandatory)][string]$InstallCmd,
         [string]$UninstallCmd = '',
         [switch]$TestUninstall,
-        [switch]$KeepOpen
+        [switch]$KeepOpen,
+        # Abhaengigkeiten aus der Bibliothek, werden vorher installiert: je @{ Name; Folder (Host); Cmd }
+        [object[]]$Dependencies = @(),
+        # Erkennungsregel der App (Type file|registry|msi) - wird nach Installation/Deinstallation geprueft
+        $Detection = $null
     )
     if (-not (Test-HUSandboxAvailable)) { throw 'Windows Sandbox ist nicht aktiviert' }
     if (Get-Process -Name 'WindowsSandbox', 'WindowsSandboxClient', 'WindowsSandboxRemoteSession' -ErrorAction SilentlyContinue) { throw 'Es laeuft bereits eine Windows Sandbox - bitte zuerst schliessen (nur eine gleichzeitig moeglich).' }
@@ -1823,15 +1947,22 @@ function Start-HUSandboxTest {
     New-Item -ItemType Directory -Path $WorkFolder -Force | Out-Null
     $utf8 = New-Object System.Text.UTF8Encoding $true
     [IO.File]::WriteAllText((Join-Path $WorkFolder 'HUTest.ps1'), $script:SandboxScript, $utf8)
-    $cfg = [ordered]@{ Install = $InstallCmd; Uninstall = $UninstallCmd; TestUninstall = [bool]$TestUninstall; KeepOpen = [bool]$KeepOpen }
-    [IO.File]::WriteAllText((Join-Path $WorkFolder 'config.json'), ($cfg | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
     $esc = { param($s) [System.Security.SecurityElement]::Escape($s) }
+    $deps = @(); $depMaps = ''; $i = 0
+    foreach ($d in @($Dependencies | Where-Object { $_ })) {
+        $i++
+        $deps += [ordered]@{ Name = "$($d.Name)"; Cmd = "$($d.Cmd)"; Src = "C:\HUDepSrc\$i"; Dir = "C:\HUDep\$i" }
+        $depMaps += "`n    <MappedFolder><HostFolder>$(& $esc "$($d.Folder)")</HostFolder><SandboxFolder>C:\HUDepSrc\$i</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>"
+    }
+    $cfg = [ordered]@{ Install = $InstallCmd; Uninstall = $UninstallCmd; TestUninstall = [bool]$TestUninstall; KeepOpen = [bool]$KeepOpen; Deps = @($deps)
+        Detect = $(if ($Detection -and "$($Detection.Type)" -in 'file', 'registry', 'msi') { [ordered]@{ Type = "$($Detection.Type)"; Path = "$($Detection.Path)"; FileName = "$($Detection.FileName)"; KeyPath = "$($Detection.KeyPath)"; ValueName = "$($Detection.ValueName)"; ProductCode = "$($Detection.ProductCode)"; Check32 = [bool]$Detection.Check32 } } else { $null }) }
+    [IO.File]::WriteAllText((Join-Path $WorkFolder 'config.json'), (ConvertTo-Json -InputObject $cfg -Depth 4), (New-Object System.Text.UTF8Encoding $false))
     $wsb = @"
 <Configuration>
   <Networking>Enable</Networking>
   <MappedFolders>
     <MappedFolder><HostFolder>$(& $esc $SourceFolder)</HostFolder><SandboxFolder>C:\HUSource</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>
-    <MappedFolder><HostFolder>$(& $esc $WorkFolder)</HostFolder><SandboxFolder>C:\HUTest</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>
+    <MappedFolder><HostFolder>$(& $esc $WorkFolder)</HostFolder><SandboxFolder>C:\HUTest</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>$depMaps
   </MappedFolders>
   <LogonCommand><Command>cmd.exe /c start "HU-MultiTenant Testinstallation" powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass -File C:\HUTest\HUTest.ps1</Command></LogonCommand>
 </Configuration>
@@ -2675,7 +2806,7 @@ function Get-HUAuditEvents {
 
 Export-ModuleMember -Function @(
     'Invoke-HUIntuneGraph', 'Get-HUIntuneGraphAll', 'Assert-HUAssignmentKeysUnique', 'ConvertTo-HUBase64Utf8', 'Find-HUGroup', 'Find-HUManagedDevice', 'ConvertTo-HUGroupRow', 'Get-HUTenantGroups', 'ConvertTo-HUW32Row', 'Get-HUTenantWin32Apps', 'Find-HUWin32AppByName',
-    'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo',
+    'Read-HUMsiInfo', 'Get-HUExeInstallerType', 'Get-HUSetupInfo', 'Get-HUSetupRoot', 'Copy-HUSetupToStore',
     'Get-HUIntuneWinAppUtil', 'New-HUIntuneWinPackage',
     'Get-HUDefaultReturnCodes', 'ConvertTo-HUDetectionRule', 'ConvertTo-HUWin32Payload',
     'Get-HUIntuneApp', 'New-HUWin32App', 'Update-HUWin32App', 'Publish-HUWin32Content', 'New-HUStoreApp',
