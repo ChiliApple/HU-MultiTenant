@@ -32,7 +32,9 @@ function Add-HUQSHistory {
             "Ergebnis:     $Result$(if ($Errors) { " ($Errors Fehler)" })"
             ('-' * 70)
         )
-        $body = @($Lines) + @('', ('-' * 70), 'Code:', $Code)
+        # Secrets/Token nie im Klartext in die Protokolldatei (Ausgabe und Code, z. B. neu angelegte Client Secrets)
+        $mask = { param($t) try { Protect-LogMessage -Message "$t" } catch { "$t" } }
+        $body = @(@($Lines) | ForEach-Object { & $mask $_ }) + @('', ('-' * 70), 'Code:', (& $mask $Code))
         [System.IO.File]::WriteAllLines($log, [string[]]($head + $body), (New-Object System.Text.UTF8Encoding $true))
         $entry = [pscustomobject][ordered]@{
             Time = $now.ToString('s'); Snippet = "$Snippet"; Tenants = @($Tenants); Seconds = [Math]::Round($Seconds, 1)

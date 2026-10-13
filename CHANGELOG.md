@@ -7,6 +7,7 @@
 
 ### Behoben
 - **Absturz bei "+ Setup ..."** (vorher "+ MSI / EXE ..."): das Programm beendete sich nach der Dateiauswahl; die neue Datei wird jetzt immer als neue App hinzugefuegt (gleicher Name in der Bibliothek wird weiterhin als neue Version erkannt)
+- **Quick Script: Protokolldateien maskieren Secrets und Token** (z. B. ein neu angelegtes Client Secret, das ein Snippet ausgibt) - vorher standen sie im Klartext in `Logs\QuickScript\*.log`
 - Fehler in einer Schaltflaeche beenden nicht mehr das ganze Programm - sie werden protokolliert, das Programm laeuft weiter
 - Sperre: Meldung "Verzoegerte Aktion: Die Variable $state ..." 30 s nach dem Entsperren entfernt
 
