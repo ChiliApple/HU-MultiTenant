@@ -1,5 +1,25 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.9 (in Arbeit)
+
+### Neu: Reiter Teams - Meldungen in Teams-Kanaele
+- **Ziele:** Teams-Workflows-Webhooks ("When a Teams webhook request is received") mit Name und Kategorien. Adressen
+  liegen DPAPI-verschluesselt im Benutzerprofil (`%APPDATA%\HU-MultiTenant\notify-targets.json`), nie im Log; im
+  Protokoll erscheint nur eine Kurzkennung. Alte Office-365-Connector-Adressen (webhook.office.com) werden abgewiesen
+  (seit Mai 2026 abgeschaltet). Test-Knopf sendet eine Testkarte.
+- **Zeitgesteuerte Meldungen:** Auftraege (`Config\teams-jobs.json`, lokal) mit Uhrzeit, Wochentagen und Tenants.
+  Erste Art **Tages-Ampel**: je Tenant Geraete, nicht konform, ohne Sync, Ablauf des App-Secrets - eine Karte mit
+  einer Zeile je Tenant (gruen/gelb/rot). "Jetzt senden" aus der Oberflaeche oder als Aufgabe in der Windows-
+  Aufgabenplanung (`\HU-MultiTenant\Teams-<Id>`, eigenes Konto, ohne erhoehte Rechte, nur bei Anmeldung).
+- **Ohne Oberflaeche:** `Main.ps1 -Headless -Job <Id>` fuehrt genau einen gespeicherten Auftrag aus (Exit 0/1);
+  freie Skripte sind in diesem Modus nicht moeglich. Fehlschlaege werden als Karte (Kategorie "Zeitgesteuerte
+  Laeufe") gemeldet.
+- "An Kanal ...": einen Auftrag einmalig an ein bestimmtes Ziel senden (uebergeht den Kategorie-Filter), z. B. an die Direktion.
+- Sendeprotokoll im Reiter (Zeit, Ziel, Kategorie, Titel, Ergebnis; ohne Adressen).
+- Neue Core-Module `HU.Notify.psm1` (Karten, Ziele, Senden) und `HU.TeamsJobs.psm1` (Auftraege, Kennzahlen,
+  Aufgabenplanung) - ohne Oberflaeche, fuer Extensions und Snippets nutzbar: `Send-HUNotify -Category ... -Title ...`.
+- Reiter Teams als Start-Reiter waehlbar; Tests fuer Karten, Adressen, Textbereinigung, Ziele (Windows) und Auftraege.
+
 ## v2.1.8 (2026-10-10)
 
 ### Update (Pull.ps1)

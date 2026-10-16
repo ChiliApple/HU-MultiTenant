@@ -8,10 +8,12 @@
       Functions\   Oberflaeche: Quick Script, Snippets, Extensions, Apps, Wartung, Tenants/Secrets, Einstellungen, Update
       XAML\        Fenster und gemeinsames Theme
     Start: HU-MultiTenant.exe (Einstellungen > Verknuepfung) oder Start-HUMultiTenant.cmd.
+    Ohne Oberflaeche (Aufgabenplanung, Reiter Teams): Main.ps1 -Headless -Job <Id>
+      fuehrt NUR einen gespeicherten Teams-Auftrag (Config\teams-jobs.json) aus und beendet sich (Exit 0/1).
 .NOTES
     Zielmaschine: der PC, auf dem HU-MultiTenant laeuft (Windows 10/11, Windows PowerShell 5.1).
 #>
-param([switch]$ShowConsole, [string]$SmokeTest = '')
+param([switch]$ShowConsole, [string]$SmokeTest = '', [switch]$Headless, [string]$Job = '')
 
 # Konsolenfenster ausblenden (nur die WPF-Oberflaeche ist sichtbar)
 if (-not $ShowConsole) {
@@ -45,13 +47,14 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 
 function Show-HUFatal([string]$Text) {
     if ($SmokeTest) { "FEHLER $Text" | Set-Content -LiteralPath $SmokeTest -Encoding UTF8; exit 1 }
+    if ($Headless) { [Console]::Error.WriteLine("FEHLER $Text"); try { Write-HULog -Message "Headless: $Text" -Level ERROR } catch { }; exit 1 }
     [void][System.Windows.MessageBox]::Show($Text, 'HU-MultiTenant - Fehler', 'OK', 'Error')
     exit 1
 }
 
 # nur eine Instanz je Programmordner (zwei Instanzen wuerden sich Bibliothek und Einstellungen gegenseitig ueberschreiben)
 $script:InstanceMutex = $null
-if (-not $SmokeTest) {
+if (-not $SmokeTest -and -not $Headless) {
     try {
         $sha = [System.Security.Cryptography.SHA256]::Create()
         $hid = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("$($script:AppRoot)".ToLowerInvariant()))) -replace '-', '').Substring(0, 16)
@@ -77,7 +80,7 @@ if (Test-Path -LiteralPath (Join-Path $script:AppRoot 'Config\pull-journal.json'
 $script:Version = '0.0.0'
 try { $script:Version = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
 
-foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget')) {
+foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs')) {
     $modPath = Join-Path $script:AppRoot "Core\$mod.psm1"
     if (-not (Test-Path -LiteralPath $modPath)) { Show-HUFatal "Core-Modul fehlt: $modPath`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     Import-Module $modPath -Force -DisableNameChecking
@@ -86,8 +89,11 @@ foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensi
 $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
-foreach ($f in @('Core-Async', 'Core-Update', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-                 'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-AppUpdates')) {
+$uiFiles = @('Core-Async', 'Core-Update', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
+             'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-AppUpdates', 'UI-Teams')
+# ohne Oberflaeche nur das Noetige (Einstellungen lesen/ergaenzen)
+if ($Headless) { $uiFiles = @('UI-Common', 'UI-Settings') }
+foreach ($f in $uiFiles) {
     $fp = Join-Path $script:AppRoot "Functions\$f.ps1"
     if (-not (Test-Path -LiteralPath $fp)) { Show-HUFatal "Datei fehlt: $fp`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     . $fp
@@ -105,6 +111,27 @@ $script:Settings = Import-TenantSettings -SettingsPath $settingsPath
 if (-not $script:Settings) { Show-HUFatal "settings.json nicht lesbar:`n$settingsPath`n`nSicherung: settings.json.bak" }
 $script:Settings = Initialize-HUSettingsDefaults $script:Settings
 if (-not @($script:Settings.tenants).Count) { $script:FirstRun = $true }
+
+# ============================================================================
+# 2b. OHNE OBERFLAECHE: einen gespeicherten Teams-Auftrag ausfuehren und beenden
+# ============================================================================
+if ($Headless) {
+    $logFile = "$($script:Settings.logging.file)"
+    if (-not $logFile) { $logFile = './Logs/HU-MultiTenant_{date}.log' }
+    if (-not [System.IO.Path]::IsPathRooted($logFile)) { $logFile = Join-Path $script:AppRoot ($logFile -replace '^\.[\\/]', '') }
+    Initialize-Logging -LogFilePath $logFile -MinLevel 'INFO'
+    if (-not $Job -or $Job -notmatch '^[0-9a-f]{8}$') { Show-HUFatal "Headless: -Job <Id> fehlt oder ungueltig (8 Zeichen aus Config\teams-jobs.json)." }
+    $j = $null
+    try { $j = Get-HUTeamsJob -AppRoot $script:AppRoot -Id $Job } catch { Show-HUFatal "Headless: $($_.Exception.Message)" }
+    if (-not $j) { Show-HUFatal "Headless: Auftrag '$Job' nicht gefunden." }
+    if (-not [bool]$j.Enabled) { Write-HULogInfo "Headless: Auftrag '$($j.Name)' ist ausgeschaltet - nichts zu tun."; exit 0 }
+    Write-HULogInfo "Headless v$($script:Version): Auftrag '$($j.Name)' ($($j.Kind)) startet ..."
+    $r = Invoke-HUTeamsJob -Job $j -Settings $script:Settings -AppRoot $script:AppRoot
+    if ($r.Success) { Write-HULogOK "Headless: $($r.Message)"; exit 0 }
+    Write-HULogError "Headless: $($r.Message)"
+    [void](Send-HUNotify -Category 'Jobs' -Title "Auftrag '$($j.Name)' fehlgeschlagen" -Level Error -Lines @("$($r.Message)") -Source ([Environment]::MachineName))
+    exit 1
+}
 
 $script:AppIcon = $null
 $iconPath = Join-Path $script:AppRoot 'Assets\icon.ico'
@@ -155,6 +182,7 @@ Register-HURintHandlers
 Register-HURemParamHandlers
 Register-HUAnaHandlers
 Register-HUUpdHandlers
+Register-HUTeamsHandlers
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
 $script:Controls['btnSupport'].Add_Click({ Show-HUSupport })
 $script:Controls['btnPanic'].Add_Click({ Invoke-HUPanic })

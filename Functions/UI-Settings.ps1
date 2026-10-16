@@ -53,6 +53,7 @@ function Open-HUSettings([string]$Tab = '', [string]$TenantKey = '') {
         Save-HUAppForm; Update-HUAppTenantChecks; Show-HUAppForm $script:AppCurrent; Update-HUIntTenantChecks
         Save-HURemForm; Update-HURemTenantChecks; Show-HURemForm $script:RemCurrent
         Update-HUAnaTenantChecks
+        Update-HUTeamsJobTenantChecks
     }
 }
 

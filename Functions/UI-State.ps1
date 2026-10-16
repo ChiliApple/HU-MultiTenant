@@ -124,7 +124,7 @@ function Save-HUWindowState {
         }
         Set-HUStateValue 'EditorFontSize' $c['txtQSEditor'].FontSize
         $sel = $c['tabMain'].SelectedItem
-        $last = if ($sel -eq $c['tabExtensions']) { 'Extensions' } elseif ($sel -eq $c['tabApps']) { 'Apps' } elseif ($sel -eq $c['tabMaint']) { 'Wartung' } elseif ($sel -eq $c['tabAnalyse']) { 'Analyse' } else { 'QuickScript' }
+        $last = if ($sel -eq $c['tabExtensions']) { 'Extensions' } elseif ($sel -eq $c['tabApps']) { 'Apps' } elseif ($sel -eq $c['tabMaint']) { 'Wartung' } elseif ($sel -eq $c['tabAnalyse']) { 'Analyse' } elseif ($sel -eq $c['tabTeams']) { 'Teams' } else { 'QuickScript' }
         Set-HUStateValue 'LastTab' $last
     } catch { Write-Verbose "[UIState] Erfassen: $_" }
     Save-HUUIState
@@ -144,7 +144,7 @@ function Select-HUStartTab {
     $mode = 'QuickScript'
     try { if ($script:Settings.ui.PSObject.Properties['startTab'] -and "$($script:Settings.ui.startTab)") { $mode = "$($script:Settings.ui.startTab)" } } catch { }
     if ($mode -eq 'Last') { $mode = Get-HUStateValue 'LastTab' 'QuickScript' }
-    $tab = switch ($mode) { 'Extensions' { 'tabExtensions' } 'Apps' { 'tabApps' } 'Wartung' { 'tabMaint' } 'Analyse' { 'tabAnalyse' } default { 'tabQuickScript' } }
+    $tab = switch ($mode) { 'Extensions' { 'tabExtensions' } 'Apps' { 'tabApps' } 'Wartung' { 'tabMaint' } 'Analyse' { 'tabAnalyse' } 'Teams' { 'tabTeams' } default { 'tabQuickScript' } }
     $script:Controls['tabMain'].SelectedItem = $script:Controls[$tab]
     Update-HULeftPanel
 }
@@ -157,7 +157,7 @@ function Update-HULeftPanel {
     $sel = $c['tabMain'].SelectedItem
     # Tenant-Leiste (Verbinden/Trennen) gilt nur fuer Extensions - Quick Script, Apps und Wartung waehlen Tenants selbst
     $c['pnlTenantBar'].Visibility = $(if ($sel -eq $c['tabExtensions']) { 'Visible' } else { 'Collapsed' })
-    $hide = ($sel -eq $c['tabApps'] -or $sel -eq $c['tabMaint'] -or $sel -eq $c['tabAnalyse'])
+    $hide = ($sel -eq $c['tabApps'] -or $sel -eq $c['tabMaint'] -or $sel -eq $c['tabAnalyse'] -or $sel -eq $c['tabTeams'])
     if ($hide -eq $script:LeftHidden) { return }
     if ($hide) {
         if ($c['colLeft'].ActualWidth -ge 200) { $script:LeftWidthSaved = $c['colLeft'].ActualWidth }
