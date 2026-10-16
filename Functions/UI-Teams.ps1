@@ -219,6 +219,7 @@ function Get-HUTeamsJobFromForm {
     $j.Days = $days; $j.Tenants = $keys; $j.Category = $cat; $j.Enabled = [bool]$c['chkTeamsJobEnabled'].IsChecked
     $allT = @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
     $selT = @($allT | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+    if ($allT.Count -and -not $selT.Count) { throw 'Bitte mindestens ein Ziel anhaken (zum Stummschalten den Auftrag deaktivieren).' }   # Befund B1 (Review 029)
     $j.Targets = $(if ($selT.Count -eq $allT.Count) { @() } else { $selT })   # alle angehakt = leer = alle (auch spaetere)
     return $j
 }

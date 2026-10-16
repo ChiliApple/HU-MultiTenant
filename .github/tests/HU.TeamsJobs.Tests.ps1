@@ -186,4 +186,12 @@ Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
         $r.Success | Should -BeTrue
         $r.Message | Should -Match 'Nichts zu melden'
     }
+    It 'Invoke: Befund ohne erreichbares Ziel ist KEIN Erfolg (Review 029 B2)' {
+        Mock -ModuleName HU.TeamsJobs Get-HUSecretStatus { [pscustomobject]@{ Key = $TenantKey; Name = $TenantKey; Ok = $true; Error = ''; Days = 5; DisplayName = 'x'; Status = 'OK' } }
+        $j = New-HUTeamsJob -Name 'SC' -Kind 'Secrets'
+        $settings = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }); ui = [pscustomobject]@{ secretWarnDays = 30 } }
+        $r = Invoke-HUTeamsJob -Job $j -Settings $settings -AppRoot $script:TestRoot
+        $r.Success | Should -BeFalse
+        $r.Message | Should -Match 'NICHTS gesendet'
+    }
 }
