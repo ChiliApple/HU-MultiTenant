@@ -229,7 +229,8 @@ function Get-HUNotifyConfig {
         $raw = Get-Content -LiteralPath $script:NotifyFile -Raw -Encoding UTF8 | ConvertFrom-Json
         if (-not $raw.targets) { return $r }
         $json = Unprotect-HUNotifyText -Cipher "$($raw.targets)"
-        $list = @($json | ConvertFrom-Json)
+        $obj = $json | ConvertFrom-Json
+        $list = if ($obj -and $obj.PSObject.Properties['items']) { @($obj.items) } else { @($obj) }   # aeltere Dateien: nacktes Array/Objekt
         $out = @()
         foreach ($t in $list) { if ($t -and "$($t.Url)".Trim()) { $out += New-HUNotifyTargetObject $t } }
         $r.Targets = @($out | Select-Object -First $script:NotifyMaxTargets)
@@ -264,7 +265,8 @@ function Set-HUNotifyTargets {
         }
         if ($clean.Count -gt $script:NotifyMaxTargets) { return "Hoechstens $($script:NotifyMaxTargets) Ziele" }
         if (-not (Test-Path -LiteralPath $script:NotifyBasePath)) { New-Item -Path $script:NotifyBasePath -ItemType Directory -Force | Out-Null }
-        $plain = ConvertTo-Json -InputObject @($clean) -Depth 6 -Compress
+        # PS 5.1: -InputObject mit Array erzeugt value/Count-Huelle - daher Array als Eigenschaft verpacken
+        $plain = ([ordered]@{ v = 1; items = @($clean) } | ConvertTo-Json -Depth 6 -Compress)
         $doc = [ordered]@{ v = 1; scope = 'CurrentUser'; updated = (Get-Date).ToString('s'); targets = (Protect-HUNotifyText -Text $plain) }
         $tmp = "$($script:NotifyFile).tmp"
         [System.IO.File]::WriteAllText($tmp, ($doc | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
@@ -485,18 +487,34 @@ function Send-HUTeamsCard {
     return "Senden fehlgeschlagen: $last"
 }
 
+function Expand-HUNotifyHistoryNode {
+    # Protokoll-Eintraege einsammeln - auch aus aelteren, verschachtelten Dateien (value/Count-Huellen)
+    param($Node, [int]$Depth = 0)
+    $out = @()
+    if ($null -eq $Node -or $Depth -gt 20) { return $out }
+    foreach ($n in @($Node)) {
+        if ($null -eq $n) { continue }
+        if ($n.PSObject.Properties['Time'] -and $n.PSObject.Properties['Target']) { $out += $n; continue }
+        if ($n.PSObject.Properties['items']) { $out += Expand-HUNotifyHistoryNode -Node $n.items -Depth ($Depth + 1); continue }
+        if ($n.PSObject.Properties['value']) { $out += Expand-HUNotifyHistoryNode -Node $n.value -Depth ($Depth + 1); continue }
+    }
+    return $out
+}
+
 function Add-HUNotifyHistory {
     # Protokoll (ohne Adressen): Zeit, Ziel, Kategorie, Titel, Ergebnis
     param([string]$TargetName, [string]$Tag, [string]$Category, [string]$Title, [string]$Result)
     try {
         $list = @()
         if (Test-Path -LiteralPath $script:NotifyHistFile -PathType Leaf) {
-            $list = @(Get-Content -LiteralPath $script:NotifyHistFile -Raw -Encoding UTF8 | ConvertFrom-Json)
+            try { $list = @(Expand-HUNotifyHistoryNode -Node (Get-Content -LiteralPath $script:NotifyHistFile -Raw -Encoding UTF8 | ConvertFrom-Json)) } catch { $list = @() }
         }
         $list += [pscustomobject]@{ Time = (Get-Date).ToString('s'); Target = $TargetName; Tag = $Tag; Category = $Category; Title = (ConvertTo-HUNotifySafeText -Text $Title -Max 120); Result = (Hide-HUNotifyUrl $Result) }
         $list = @($list | Select-Object -Last $script:NotifyMaxHistory)
         if (-not (Test-Path -LiteralPath $script:NotifyBasePath)) { New-Item -Path $script:NotifyBasePath -ItemType Directory -Force | Out-Null }
-        [System.IO.File]::WriteAllText($script:NotifyHistFile, (ConvertTo-Json -InputObject $list -Depth 4 -Compress), [System.Text.UTF8Encoding]::new($false))
+        # PS 5.1: Array als Eigenschaft verpacken (sonst value/Count-Huelle)
+        $json = ([ordered]@{ v = 1; items = @($list) } | ConvertTo-Json -Depth 5 -Compress)
+        [System.IO.File]::WriteAllText($script:NotifyHistFile, $json, [System.Text.UTF8Encoding]::new($false))
     }
     catch { Write-Verbose "[Notify] Protokoll nicht geschrieben: $($_.Exception.Message)" }
 }
@@ -509,7 +527,12 @@ function Get-HUNotifyHistory {
     [CmdletBinding()]
     param([int]$Last = 100)
     if (-not (Test-Path -LiteralPath $script:NotifyHistFile -PathType Leaf)) { return @() }
-    try { $l = @(Get-Content -LiteralPath $script:NotifyHistFile -Raw -Encoding UTF8 | ConvertFrom-Json); return @($l | Select-Object -Last $Last) | Sort-Object Time -Descending }
+    try {
+        $l = @(Expand-HUNotifyHistoryNode -Node (Get-Content -LiteralPath $script:NotifyHistFile -Raw -Encoding UTF8 | ConvertFrom-Json))
+        $sel = @($l | Select-Object -Last $Last)   # Dateireihenfolge = chronologisch
+        [array]::Reverse($sel)
+        return $sel
+    }
     catch { return @() }
 }
 
@@ -596,5 +619,6 @@ Export-ModuleMember -Function @(
     'Send-HUTeamsCard',
     'Send-HUNotify',
     'Send-HUNotifyTest',
+    'Add-HUNotifyHistory',
     'Get-HUNotifyHistory'
 )

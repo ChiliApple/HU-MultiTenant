@@ -156,6 +156,28 @@ Describe 'Teams: Senden (ohne Netz)' {
     }
 }
 
+Describe 'Teams: Sendeprotokoll (Datei)' {
+    BeforeEach { Remove-Item -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-history.json') -Force -ErrorAction SilentlyContinue }
+    It 'drei Eintraege bleiben drei Eintraege (flaches Array, PS-5.1-sicher)' {
+        1..3 | ForEach-Object { Add-HUNotifyHistory -TargetName "Z$_" -Tag 'aabbccdd' -Category 'Daily' -Title "T$_" -Result 'gesendet' }
+        $h = @(Get-HUNotifyHistory)
+        $h.Count | Should -Be 3
+        $h[0].Target | Should -Be 'Z3'
+        (Get-Content -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-history.json') -Raw) | Should -Match '^\{"v":1,"items":\['
+    }
+    It 'liest alte verschachtelte Dateien (value/Count) und repariert sie beim naechsten Eintrag' {
+        $p = Join-Path $env:APPDATA 'HU-MultiTenant'
+        if (-not (Test-Path $p)) { New-Item -Path $p -ItemType Directory -Force | Out-Null }
+        '[{"value":[{"value":" ","Count":2},{"Time":"2026-10-16T19:54:51","Target":"A","Tag":"x","Category":"Licenses","Title":"L","Result":"gesendet"}],"Count":2},{"Time":"2026-10-16T20:00:16","Target":"A","Tag":"x","Category":"Defender","Title":"D","Result":"gesendet"}]' |
+            Set-Content -LiteralPath (Join-Path $p 'notify-history.json') -Encoding UTF8
+        @(Get-HUNotifyHistory).Count | Should -Be 2
+        Add-HUNotifyHistory -TargetName 'B' -Tag 'y' -Category 'Daily' -Title 'N' -Result 'gesendet'
+        $h = @(Get-HUNotifyHistory)
+        $h.Count | Should -Be 3
+        $h[0].Target | Should -Be 'B'
+    }
+}
+
 Describe 'Teams: Ziele speichern (DPAPI, nur Windows)' -Skip:(-not $script:IsWin) {
     It 'speichert, liest, entfernt' {
         (Get-HUNotifyConfig).Configured | Should -BeFalse
