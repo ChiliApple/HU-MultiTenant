@@ -444,6 +444,7 @@ function Invoke-HUTeamsJob {
         $warn = 30; try { $warn = [int]$Settings.ui.secretWarnDays } catch { }
         $opt = { param($n, $d) try { if ($Job.Options.PSObject.Properties[$n]) { return [int]$Job.Options.$n } } catch { }; return $d }
         $spec = $null
+        $detail = ''
         $readLog = { param($k) if ($log) { Write-HULog -Message "[Teams] $($Job.Name): $k lesen ..." -Level INFO } }
         switch ("$($Job.Kind)") {
             'Daily' {
@@ -453,19 +454,24 @@ function Invoke-HUTeamsJob {
             'Secrets' {
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HUSecretStatus -TenantKey $k -Settings $Settings }
                 $spec = New-HUSecretsCardSpec -Statuses $st -WarnDays (& $opt 'warnDays' $warn) -Title "$($Job.Name)"
+                $next = @($st | Where-Object { $null -ne $_.Days }) | Sort-Object Days | Select-Object -First 1
+                if ($next) { $detail = "fruehester Secret-Ablauf: $($next.Name) in $($next.Days) Tagen" }
             }
             'Licenses' {
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HULicenseStatus -TenantKey $k -Settings $Settings }
                 $spec = New-HULicenseCardSpec -Statuses $st -MinFree (& $opt 'minFree' 5) -Title "$($Job.Name)"
+                $low = @($st | ForEach-Object { $_.Skus } | Where-Object { $_ -and $_.Total -gt 0 }) | Sort-Object Free | Select-Object -First 1
+                if ($low) { $detail = "knappste SKU: $($low.Sku) mit $($low.Free) frei" }
             }
             'Defender' {
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HUDefenderStatus -TenantKey $k -Settings $Settings }
                 $spec = New-HUDefenderCardSpec -Statuses $st -Title "$($Job.Name)"
+                $detail = "$((@($st | ForEach-Object { @($_.Findings).Count }) | Measure-Object -Sum).Sum) Geraete mit Befund, $(@($st | Where-Object { -not $_.Ok }).Count) Tenants nicht lesbar"
             }
             default { $res.Message = "Unbekannte Auftragsart: $($Job.Kind)"; return $res }
         }
         $res.Spec = $spec
-        if ($null -eq $spec) { $res.Success = $true; $res.Message = 'Nichts zu melden - keine Karte gesendet'; return $res }
+        if ($null -eq $spec) { $res.Success = $true; $res.Message = "Nichts zu melden - keine Karte gesendet$(if ($detail) { " ($detail)" })"; return $res }
         if ($NoSend) { $res.Success = $true; $res.Message = 'Vorschau'; return $res }
         $cat = "$((Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($Job.Kind)" }).Category)"; if (-not $cat) { $cat = 'Daily' }
         # Ziele: einmalige Auswahl > am Auftrag gespeicherte > alle aktiven

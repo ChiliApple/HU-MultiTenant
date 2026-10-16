@@ -124,6 +124,9 @@ function Test-HUTeamsTarget {
 function Get-HUTeamsJobLabel($Job) {
     $d = @($Job.Days | ForEach-Object { [int]$_ })
     $when = if ($d.Count) { ($d | Sort-Object | ForEach-Object { @('Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So')[$_ - 1] }) -join '' } else { 'taeglich' }
+    $kindLabel = "$((Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($Job.Kind)" }).Label)"
+    $nm = "$($Job.Name)"
+    if ($kindLabel -and $nm -ne $kindLabel) { $nm = "$nm ($kindLabel)" }
     $tids = @($Job.Targets | Where-Object { "$_" })
     $to = 'alle Ziele'
     if ($tids.Count) {
@@ -131,7 +134,7 @@ function Get-HUTeamsJobLabel($Job) {
         $names = @($tids | ForEach-Object { $id = "$_"; $t = $all | Where-Object { $_.Id -eq $id } | Select-Object -First 1; if ($t) { "$($t.Name)" } else { '?' } })
         $to = $names -join ', '
     }
-    return "$(if ($Job.Enabled) { '' } else { '(aus) ' })$($Job.Name)  -  $when $($Job.Time)  -  an $to"
+    return "$(if ($Job.Enabled) { '' } else { '(aus) ' })$nm  -  $when $($Job.Time)  -  an $to"
 }
 
 function Update-HUTeamsJobs {
@@ -176,7 +179,7 @@ function Show-HUTeamsJob($Job) {
     $script:TeamsFillBusy = $true
     try {
         $script:TeamsJobCurrent = if ($Job) { "$($Job.Id)" } else { '' }
-        $c['txtTeamsJobName'].Text = if ($Job) { "$($Job.Name)" } else { 'Tages-Ampel' }
+        $c['txtTeamsJobName'].Text = if ($Job) { "$($Job.Name)" } else { 'Tages-Ampel' }   # neuer Auftrag: Name folgt der Art (siehe SelectionChanged)
         $c['txtTeamsJobTime'].Text = if ($Job -and "$($Job.Time)") { "$($Job.Time)" } else { '07:00' }
         $c['chkTeamsJobEnabled'].IsChecked = if ($Job) { [bool]$Job.Enabled } else { $true }
         $kind = if ($Job) { "$($Job.Kind)" } else { 'Daily' }
@@ -360,6 +363,17 @@ function Register-HUTeamsHandlers {
     $c['btnTeamsSave'].Add_Click({ Save-HUTeamsTarget })
     $c['btnTeamsDel'].Add_Click({ Remove-HUTeamsTarget })
     $c['btnTeamsTest'].Add_Click({ Test-HUTeamsTarget })
+
+    # Name folgt der gewaehlten Art, solange im Feld ein Standardname steht (eigene Namen bleiben)
+    $c['cmbTeamsJobKind'].Add_SelectionChanged({
+        if ($script:TeamsFillBusy) { return }
+        $c2 = $script:Controls
+        $labels = @(Get-HUTeamsKinds | ForEach-Object { "$($_.Label)" })
+        $cur = "$($c2['txtTeamsJobName'].Text)".Trim()
+        if ($cur -and ($labels -notcontains $cur)) { return }
+        $sel = $c2['cmbTeamsJobKind'].SelectedItem
+        if ($sel) { $k = Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($sel.Tag)" } | Select-Object -First 1; if ($k) { $c2['txtTeamsJobName'].Text = "$($k.Label)" } }
+    })
 
     $c['lstTeamsJobs'].Add_SelectionChanged({
         if ($script:TeamsFillBusy) { return }

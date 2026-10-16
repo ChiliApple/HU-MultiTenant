@@ -18,6 +18,9 @@
   Laeufe") gemeldet.
 - Auftraege senden an die dort angehakten Ziele (keines angehakt = alle aktiven Ziele); "An Kanal ..." sendet einmalig an ein bestimmtes Ziel, z. B. an die Direktion. Die Kategorien am Ziel gelten fuer Meldungen ohne Auftrag (Test, Fehler zeitgesteuerter Laeufe, kuenftige Alarme).
 - Sendeprotokoll im Reiter (Zeit, Ziel, Kategorie, Titel, Ergebnis; ohne Adressen).
+- Feinschliff nach den ersten Live-Tests: Auftragsliste zeigt die Art mit an; bei Standardnamen folgt der Name der
+  gewaehlten Art; "Nichts zu melden" nennt den Grund (z. B. fruehester Secret-Ablauf, knappste SKU); die
+  Benachrichtigungs-Vorschau am Handy zeigt Titel plus die ersten Ampel-Zeilen, getrennt mit Aufzaehlungspunkten.
 - Neue Core-Module `HU.Notify.psm1` (Karten, Ziele, Senden) und `HU.TeamsJobs.psm1` (Auftraege, Kennzahlen,
   Aufgabenplanung) - ohne Oberflaeche, fuer Extensions und Snippets nutzbar: `Send-HUNotify -Category ... -Title ...`.
 - Reiter Teams als Start-Reiter waehlbar; Tests fuer Karten, Adressen, Textbereinigung, Ziele (Windows) und Auftraege.

@@ -405,8 +405,12 @@ function New-HUTeamsCard {
     if ($Category) { $foot += (ConvertTo-HUNotifySafeText -Text $Category -Max 30) }
     $body.Add([ordered]@{ type = 'TextBlock'; text = ($foot -join '  |  '); isSubtle = $true; size = 'Small'; wrap = $true; spacing = 'Medium' })
 
-    # fallbackText/speak: Textauszug fuer Clients ohne Kartendarstellung (Versuch: Push-Vorschau am Handy)
-    $fb = ConvertTo-HUNotifySafeText -Text ("$Title" + $(if (@($Lines).Count) { ": " + (@($Lines) -join '; ') })) -Max 200
+    # fallbackText/speak/summary: Textauszug fuer Push-Vorschau und Clients ohne Kartendarstellung.
+    # Inhalt: Titel plus erste Zeilen bzw. erste Ampel-Zeilen (Name: Text).
+    $fbParts = @($Rows | Where-Object { $_ } | Select-Object -First 3 | ForEach-Object { "$($_.Name): $($_.Text)" })
+    if (-not $fbParts.Count) { $fbParts = @($Lines | Where-Object { "$_".Trim() } | Select-Object -First 3) }
+    $sep = ' ' + [char]0x2022 + ' '   # Aufzaehlungspunkt (ueberlebt die Textbereinigung, anders als |)
+    $fb = ConvertTo-HUNotifySafeText -Text ("$Title" + $(if (@($fbParts).Count) { $sep + (@($fbParts) -join $sep) })) -Max 240
     $card = [ordered]@{ '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'; type = 'AdaptiveCard'; version = '1.4'; fallbackText = $fb; speak = $fb; body = $body.ToArray() }
     $acts = @()
     foreach ($a in @($Actions | Where-Object { $_ })) {
