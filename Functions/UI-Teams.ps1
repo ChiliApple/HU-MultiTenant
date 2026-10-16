@@ -186,7 +186,8 @@ function Show-HUTeamsJob($Job) {
         foreach ($i in $c['cmbTeamsJobKind'].Items) { if ("$($i.Tag)" -eq $kind) { $c['cmbTeamsJobKind'].SelectedItem = $i } }
         Update-HUTeamsJobTargetChecks
         $tids = @(if ($Job) { $Job.Targets | ForEach-Object { "$_" } } else { @() })
-        foreach ($cb in @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = ($tids -contains "$($cb.Tag)") }
+        # leer = alle Ziele -> alle anhaken (so wird es auch gesendet)
+        foreach ($cb in @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = ((-not $tids.Count) -or ($tids -contains "$($cb.Tag)")) }
         $days = @(if ($Job) { $Job.Days | ForEach-Object { [int]$_ } } else { @() })
         foreach ($cb in @($c['pnlTeamsJobDays'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = ($days -contains [int]$cb.Tag) }
         $keys = @(if ($Job) { $Job.Tenants } else { @() })
