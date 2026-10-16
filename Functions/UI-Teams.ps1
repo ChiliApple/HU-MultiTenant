@@ -88,6 +88,7 @@ function Save-HUTeamsTarget {
     $c['pwdTeamsUrl'].Password = ''
     $new = (Get-HUNotifyConfig).Targets | Where-Object { $_.Name -eq $name } | Select-Object -Last 1
     if ($new) { $script:TeamsCurrent = "$($new.Id)" }
+    Update-HUTeamsJobTargetChecks
     Update-HUTeamsTargets
     Show-HUTeamsTarget $new
     Write-HULogOK "Teams-Ziel '$name' gespeichert."
@@ -100,6 +101,7 @@ function Remove-HUTeamsTarget {
     $r = Remove-HUNotifyTarget -Id $script:TeamsCurrent
     if ($r) { Show-HUMessage $r -Icon Error; return }
     $script:TeamsCurrent = ''
+    Update-HUTeamsJobTargetChecks
     Update-HUTeamsTargets
     Show-HUTeamsTarget $null
 }
@@ -122,7 +124,14 @@ function Test-HUTeamsTarget {
 function Get-HUTeamsJobLabel($Job) {
     $d = @($Job.Days | ForEach-Object { [int]$_ })
     $when = if ($d.Count) { ($d | Sort-Object | ForEach-Object { @('Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So')[$_ - 1] }) -join '' } else { 'taeglich' }
-    return "$(if ($Job.Enabled) { '' } else { '(aus) ' })$($Job.Name)  -  $when $($Job.Time)"
+    $tids = @($Job.Targets | Where-Object { "$_" })
+    $to = 'alle Ziele'
+    if ($tids.Count) {
+        $all = @((Get-HUNotifyConfig).Targets)
+        $names = @($tids | ForEach-Object { $id = "$_"; $t = $all | Where-Object { $_.Id -eq $id } | Select-Object -First 1; if ($t) { "$($t.Name)" } else { '?' } })
+        $to = $names -join ', '
+    }
+    return "$(if ($Job.Enabled) { '' } else { '(aus) ' })$($Job.Name)  -  $when $($Job.Time)  -  an $to"
 }
 
 function Update-HUTeamsJobs {
@@ -172,8 +181,9 @@ function Show-HUTeamsJob($Job) {
         $c['chkTeamsJobEnabled'].IsChecked = if ($Job) { [bool]$Job.Enabled } else { $true }
         $kind = if ($Job) { "$($Job.Kind)" } else { 'Daily' }
         foreach ($i in $c['cmbTeamsJobKind'].Items) { if ("$($i.Tag)" -eq $kind) { $c['cmbTeamsJobKind'].SelectedItem = $i } }
-        $cat = if ($Job -and "$($Job.Category)") { "$($Job.Category)" } else { 'Daily' }
-        foreach ($i in $c['cmbTeamsJobCat'].Items) { if ("$($i.Tag)" -eq $cat) { $c['cmbTeamsJobCat'].SelectedItem = $i } }
+        Update-HUTeamsJobTargetChecks
+        $tids = @(if ($Job) { $Job.Targets | ForEach-Object { "$_" } } else { @() })
+        foreach ($cb in @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = ($tids -contains "$($cb.Tag)") }
         $days = @(if ($Job) { $Job.Days | ForEach-Object { [int]$_ } } else { @() })
         foreach ($cb in @($c['pnlTeamsJobDays'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = ($days -contains [int]$cb.Tag) }
         $keys = @(if ($Job) { $Job.Tenants } else { @() })
@@ -192,7 +202,7 @@ function Get-HUTeamsJobFromForm {
     $time = "$($c['txtTeamsJobTime'].Text)".Trim()
     if ($time -notmatch '^([01]?\d|2[0-3]):[0-5]\d$') { throw 'Uhrzeit bitte als HH:mm (z. B. 07:00).' }
     $kind = "$($c['cmbTeamsJobKind'].SelectedItem.Tag)"; if (-not $kind) { $kind = 'Daily' }
-    $cat = "$($c['cmbTeamsJobCat'].SelectedItem.Tag)"; if (-not $cat) { $cat = 'Daily' }
+    $cat = $kind   # Fusszeilen-Kennzeichnung = Art
     $days = @($c['pnlTeamsJobDays'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and $_.IsChecked } | ForEach-Object { [int]$_.Tag })
     $all = @($script:Settings.tenants | ForEach-Object { "$($_.key)" })
     $keys = @(Get-HUCheckedTenants $c['pnlTeamsJobTenants'])
@@ -203,6 +213,9 @@ function Get-HUTeamsJobFromForm {
     $j = if ($old) { $old } else { New-HUTeamsJob -Name $name -Kind $kind }
     $j.Name = $name; $j.Kind = $kind; $j.Time = ('{0:D2}:{1}' -f [int]($time.Split(':')[0]), $time.Split(':')[1])
     $j.Days = $days; $j.Tenants = $keys; $j.Category = $cat; $j.Enabled = [bool]$c['chkTeamsJobEnabled'].IsChecked
+    $allT = @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
+    $selT = @($allT | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+    $j.Targets = $(if ($selT.Count -eq $allT.Count) { @() } else { $selT })   # alle angehakt = leer = alle (auch spaetere)
     return $j
 }
 
@@ -325,13 +338,6 @@ function Register-HUTeamsHandlers {
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 12, 1)
         [void]$c['pnlTeamsCats'].Children.Add($cb)
     }
-    # Kategorie-Auswahl fuer Auftraege
-    $c['cmbTeamsJobCat'].Items.Clear()
-    foreach ($k in @(Get-HUNotifyCategories | Where-Object { $_.Key -ne 'Test' })) {
-        $ci = New-Object System.Windows.Controls.ComboBoxItem
-        $ci.Content = $k.Label; $ci.Tag = $k.Key
-        [void]$c['cmbTeamsJobCat'].Items.Add($ci)
-    }
     # Wochentage
     $c['pnlTeamsJobDays'].Children.Clear()
     $i = 0
@@ -373,6 +379,21 @@ function Register-HUTeamsHandlers {
     Update-HUTeamsJobs
     Show-HUTeamsJob $null
     Update-HUTeamsHist
+}
+
+# Ziel-Haken fuer Auftraege (nach Anlegen/Loeschen von Zielen neu aufbauen; Auswahl bleibt)
+function Update-HUTeamsJobTargetChecks {
+    $sp = $script:Controls['pnlTeamsJobTargets']
+    $was = @($sp.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+    $sp.Children.Clear()
+    foreach ($t in @((Get-HUNotifyConfig).Targets | Where-Object { $_ -and $_.Enabled })) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Content = "$($t.Name)"; $cb.Tag = "$($t.Id)"
+        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
+        $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
+        $cb.IsChecked = ($was -contains "$($t.Id)")
+        [void]$sp.Children.Add($cb)
+    }
 }
 
 # Tenant-Haken fuer Auftraege (nach Aenderungen in den Einstellungen neu aufbauen)

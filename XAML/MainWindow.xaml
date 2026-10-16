@@ -1239,24 +1239,13 @@
                             <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
                                        Text="Meldungen als Karte an Teams-Kanaele (Workflows-Webhook 'When a Teams webhook request is received'). Adressen liegen verschluesselt im Benutzerprofil, nie im Log. Zeitgesteuerte Auftraege laufen ueber die Aufgabenplanung im eigenen Konto."/>
                         </Border>
-                        <Border DockPanel.Dock="Bottom" Background="#252526" CornerRadius="4" Padding="10" Margin="0,6,0,0" Height="170">
-                            <DockPanel>
-                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-                                    <Button x:Name="btnTeamsHistRefresh" ToolTip="Sendeprotokoll neu laden" DockPanel.Dock="Right" Content="&#x21BB; Aktualisieren" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"/>
-                                    <TextBlock Text="Sendeprotokoll (ohne Adressen)" Style="{StaticResource SectionTitle}"/>
-                                </DockPanel>
-                                <DataGrid x:Name="gridTeamsHist" ToolTip="Letzte 200 Sendungen - ohne Adressen, nur Kurzkennung des Ziels" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" CanUserSortColumns="True">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Zeit" Binding="{Binding Zeit}" Width="120"/>
-                                        <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="130"/>
-                                        <DataGridTextColumn Header="Kategorie" Binding="{Binding Kategorie}" Width="100"/>
-                                        <DataGridTextColumn Header="Titel" Binding="{Binding Titel}" Width="2*"/>
-                                        <DataGridTextColumn Header="Ergebnis" Binding="{Binding Ergebnis}" Width="2*"/>
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </DockPanel>
-                        </Border>
                         <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" MinHeight="220"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="190" MinHeight="60"/>
+                            </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="8"/>
@@ -1313,22 +1302,23 @@
                                         <StackPanel>
                                             <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
                                             <TextBox x:Name="txtTeamsJobName" ToolTip="Name des Auftrags - erscheint als Titel der Karte" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,6"/>
-                                            <DockPanel Margin="0,0,0,6">
-                                                <StackPanel DockPanel.Dock="Left" Width="110" Margin="0,0,10,0">
+                                            <DockPanel Margin="0,0,0,6" LastChildFill="False">
+                                                <StackPanel DockPanel.Dock="Left" Width="160" Margin="0,0,10,0">
                                                     <TextBlock Text="Art" Style="{StaticResource FieldLabel}"/>
-                                                    <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Was gemeldet wird. Tages-Ampel: je Tenant Geraete, nicht konform, ohne Sync, Secret-Ablauf" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
+                                                    <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Was gemeldet wird. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp und Defender-Alarm senden nur, wenn es etwas zu melden gibt." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
                                                         <ComboBoxItem Content="Tages-Ampel" Tag="Daily"/>
+                                                        <ComboBoxItem Content="Secret-Countdown" Tag="Secrets"/>
+                                                        <ComboBoxItem Content="Lizenzen knapp" Tag="Licenses"/>
+                                                        <ComboBoxItem Content="Defender-Alarm" Tag="Defender"/>
                                                     </ComboBox>
                                                 </StackPanel>
                                                 <StackPanel DockPanel.Dock="Left" Width="70" Margin="0,0,10,0">
                                                     <TextBlock Text="Uhrzeit" Style="{StaticResource FieldLabel}"/>
                                                     <TextBox x:Name="txtTeamsJobTime" ToolTip="Uhrzeit (HH:mm) fuer die Aufgabenplanung" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,0" Text="07:00"/>
                                                 </StackPanel>
-                                                <StackPanel>
-                                                    <TextBlock Text="Kategorie (Ziel-Filter)" Style="{StaticResource FieldLabel}"/>
-                                                    <ComboBox x:Name="cmbTeamsJobCat" ToolTip="Gesendet wird nur an Ziele, bei denen diese Kategorie eingeschaltet ist" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0"/>
-                                                </StackPanel>
                                             </DockPanel>
+                                            <TextBlock Text="Senden an (keines = alle aktiven Ziele)" Style="{StaticResource FieldLabel}"/>
+                                            <WrapPanel x:Name="pnlTeamsJobTargets" Margin="0,2,0,6" ToolTip="Welche Kanaele diese Meldung bekommen"/>
                                             <TextBlock Text="Wochentage (keiner = taeglich)" Style="{StaticResource FieldLabel}"/>
                                             <WrapPanel x:Name="pnlTeamsJobDays" ToolTip="Keiner angehakt = jeden Tag" Margin="0,2,0,6"/>
                                             <TextBlock Text="Tenants" Style="{StaticResource FieldLabel}"/>
@@ -1338,6 +1328,25 @@
                                     </ScrollViewer>
                                 </DockPanel>
                             </Border>
+                        </Grid>
+                        <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="Transparent" ResizeBehavior="PreviousAndNext" ResizeDirection="Rows" Cursor="SizeNS" ToolTip="Hoehe des Sendeprotokolls anpassen"/>
+                        <Border Grid.Row="2" Background="#252526" CornerRadius="4" Padding="10" Margin="0,6,0,0">
+                            <DockPanel>
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                    <Button x:Name="btnTeamsHistRefresh" ToolTip="Sendeprotokoll neu laden" DockPanel.Dock="Right" Content="&#x21BB; Aktualisieren" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"/>
+                                    <TextBlock Text="Sendeprotokoll (ohne Adressen)" Style="{StaticResource SectionTitle}"/>
+                                </DockPanel>
+                                <DataGrid x:Name="gridTeamsHist" ToolTip="Letzte 200 Sendungen - ohne Adressen, nur Kurzkennung des Ziels" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" CanUserSortColumns="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Zeit" Binding="{Binding Zeit}" Width="120"/>
+                                        <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="130"/>
+                                        <DataGridTextColumn Header="Kategorie" Binding="{Binding Kategorie}" Width="100"/>
+                                        <DataGridTextColumn Header="Titel" Binding="{Binding Titel}" Width="2*"/>
+                                        <DataGridTextColumn Header="Ergebnis" Binding="{Binding Ergebnis}" Width="2*"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+                        </Border>
                         </Grid>
                     </DockPanel>
                 </TabItem>

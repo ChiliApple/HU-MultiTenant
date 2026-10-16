@@ -113,3 +113,77 @@ Describe 'Teams-Auftraege: Ausfuehrung ohne Ziele' {
         $r.Spec.Facts['Geraete gesamt'] | Should -Be 10
     }
 }
+
+Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
+    It 'Kinds-Liste und Kategorien' {
+        $k = @(Get-HUTeamsKinds)
+        $k.Key | Should -Be @('Daily', 'Secrets', 'Licenses', 'Defender')
+        ($k | Where-Object Key -eq 'Daily').OnlyFindings | Should -BeFalse
+        ($k | Where-Object Key -eq 'Secrets').Category | Should -Be 'Secrets'
+    }
+    It 'Secret-Countdown: nichts zu melden -> $null' {
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 200; DisplayName = 'x'; Status = 'OK' })
+        New-HUSecretsCardSpec -Statuses $st -WarnDays 30 | Should -BeNullOrEmpty
+    }
+    It 'Secret-Countdown: Warnung und Abgelaufen' {
+        $st = @(
+            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 12; DisplayName = 'neu'; Status = 'OK' }
+            [pscustomobject]@{ Key = 'B'; Name = 'Gym'; Ok = $true; Error = ''; Days = -1; DisplayName = 'alt'; Status = 'OK' }
+            [pscustomobject]@{ Key = 'C'; Name = 'BORG'; Ok = $false; Error = 'Kein Token (Secret fehlt oder abgelaufen)'; Days = $null; DisplayName = ''; Status = '' }
+        )
+        $s = New-HUSecretsCardSpec -Statuses $st -WarnDays 30
+        $s.Level | Should -Be 'Error'
+        @($s.Rows).Count | Should -Be 3
+        $s.Rows[0].Text | Should -Match '12 Tagen'
+        $s.Rows[1].Text | Should -Match 'ABGELAUFEN'
+    }
+    It 'Lizenzen: nur knappe SKUs, Ueberbuchung rot' {
+        $st = @(
+            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Skus = @(
+                [pscustomobject]@{ Sku = 'A3-FACULTY'; Total = 100; Used = 98; Free = 2 }
+                [pscustomobject]@{ Sku = 'A1-STUDENT'; Total = 500; Used = 100; Free = 400 }
+            ) }
+            [pscustomobject]@{ Key = 'B'; Name = 'Gym'; Ok = $true; Error = ''; Skus = @(
+                [pscustomobject]@{ Sku = 'A3'; Total = 10; Used = 12; Free = -2 }
+            ) }
+            [pscustomobject]@{ Key = 'C'; Name = 'BORG'; Ok = $true; Error = ''; Skus = @(
+                [pscustomobject]@{ Sku = 'FLOW_FREE'; Total = 0; Used = 0; Free = 0 }
+            ) }
+        )
+        $s = New-HULicenseCardSpec -Statuses $st -MinFree 5
+        @($s.Rows).Count | Should -Be 2
+        $s.Rows[0].Status | Should -Be 'Warning'
+        $s.Rows[0].Text | Should -Match 'A3-FACULTY: noch 2 von 100 frei'
+        $s.Rows[0].Text | Should -Not -Match 'A1-STUDENT'
+        $s.Rows[1].Status | Should -Be 'Error'
+        $s.Level | Should -Be 'Error'
+    }
+    It 'Lizenzen: alles ausreichend -> $null' {
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Skus = @([pscustomobject]@{ Sku = 'A3'; Total = 100; Used = 50; Free = 50 }) })
+        New-HULicenseCardSpec -Statuses $st | Should -BeNullOrEmpty
+    }
+    It 'Defender: Befunde mit Geraeteliste, Deckel bei 10' {
+        $f = @(1..12 | ForEach-Object { [pscustomobject]@{ Device = "NB-$_"; State = 'Bedrohung (hoch)' } })
+        $st = @(
+            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 100; Findings = $f }
+            [pscustomobject]@{ Key = 'B'; Name = 'Gym'; Ok = $true; Error = ''; Devices = 50; Findings = @() }
+        )
+        $s = New-HUDefenderCardSpec -Statuses $st
+        @($s.Rows).Count | Should -Be 1
+        $s.Rows[0].Text | Should -Match 'und 2 weitere'
+        $s.Facts['Geraete mit Befund'] | Should -Be 12
+        $s.Level | Should -Be 'Error'
+    }
+    It 'Defender: alles sauber -> $null' {
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 100; Findings = @() })
+        New-HUDefenderCardSpec -Statuses $st | Should -BeNullOrEmpty
+    }
+    It 'Invoke: Befund-Art ohne Befund sendet nichts und ist OK' {
+        Mock -ModuleName HU.TeamsJobs Get-HUSecretStatus { [pscustomobject]@{ Key = $TenantKey; Name = $TenantKey; Ok = $true; Error = ''; Days = 300; DisplayName = 'x'; Status = 'OK' } }
+        $j = New-HUTeamsJob -Name 'SC' -Kind 'Secrets'
+        $settings = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }); ui = [pscustomobject]@{ secretWarnDays = 30 } }
+        $r = Invoke-HUTeamsJob -Job $j -Settings $settings -AppRoot $script:TestRoot
+        $r.Success | Should -BeTrue
+        $r.Message | Should -Match 'Nichts zu melden'
+    }
+}

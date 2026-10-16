@@ -405,7 +405,9 @@ function New-HUTeamsCard {
     if ($Category) { $foot += (ConvertTo-HUNotifySafeText -Text $Category -Max 30) }
     $body.Add([ordered]@{ type = 'TextBlock'; text = ($foot -join '  |  '); isSubtle = $true; size = 'Small'; wrap = $true; spacing = 'Medium' })
 
-    $card = [ordered]@{ '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'; type = 'AdaptiveCard'; version = '1.4'; body = $body.ToArray() }
+    # fallbackText/speak: Textauszug fuer Clients ohne Kartendarstellung (Versuch: Push-Vorschau am Handy)
+    $fb = ConvertTo-HUNotifySafeText -Text ("$Title" + $(if (@($Lines).Count) { ": " + (@($Lines) -join '; ') })) -Max 200
+    $card = [ordered]@{ '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'; type = 'AdaptiveCard'; version = '1.4'; fallbackText = $fb; speak = $fb; body = $body.ToArray() }
     $acts = @()
     foreach ($a in @($Actions | Where-Object { $_ })) {
         $au = "$($a.Url)".Trim(); $x = $null
@@ -414,7 +416,7 @@ function New-HUTeamsCard {
         }
     }
     if ($acts.Count) { $card['actions'] = $acts }
-    return [ordered]@{ type = 'message'; attachments = @([ordered]@{ contentType = 'application/vnd.microsoft.card.adaptive'; contentUrl = $null; content = $card }) }
+    return [ordered]@{ type = 'message'; summary = $fb; text = $fb; attachments = @([ordered]@{ contentType = 'application/vnd.microsoft.card.adaptive'; contentUrl = $null; content = $card }) }
 }
 
 function ConvertTo-HUTeamsCardJson {
