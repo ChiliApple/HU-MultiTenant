@@ -18,6 +18,20 @@
   Laeufe") gemeldet.
 - Auftraege senden an die dort angehakten Ziele (keines angehakt = alle aktiven Ziele); "An Kanal ..." sendet einmalig an ein bestimmtes Ziel, z. B. an die Direktion. Die Kategorien am Ziel gelten fuer Meldungen ohne Auftrag (Test, Fehler zeitgesteuerter Laeufe, kuenftige Alarme).
 - Sendeprotokoll im Reiter (Zeit, Ziel, Kategorie, Titel, Ergebnis; ohne Adressen).
+- Externe Code-Pruefung (Review 029) eingearbeitet: keine Ziele am Auftrag ist jetzt ein Fehler statt "an alle";
+  ein Auftrag gilt nur als erfolgreich, wenn alle Ziele wirklich beliefert wurden (sonst Fehler, auch im
+  Headless-Exit-Code); fruehe Headless-Abbrueche melden sich als Karte "Zeitgesteuerte Laeufe"; Schreibzugriffe
+  auf Auftraege und Sendeprotokoll laufen unter einer Prozess-Sperre (GUI vs. Aufgabenplanung) mit eindeutigen
+  Temp-Dateien, ein kaputtes Protokoll wird nach .bak gesichert statt ueberschrieben; Webhook-Pruefung deckt
+  weitere private Bereiche ab und folgt keinen Weiterleitungen; Unterstriche in SKU-/Geraetenamen bleiben als
+  Leerzeichen erhalten; abgeschnittene Ampel-Zeilen zeigen "und N weitere"; Retry beachtet Retry-After;
+  Warnschwelle 0 faellt auf 30 Tage zurueck; auslaufende Lizenz-SKUs werden mitgeprueft; Headless legt keine
+  leere settings.json mehr an. Nach der Gegenpruefung zusaetzlich: auch die Oberflaeche und die Ziel-Ablage
+  schreiben unter der Prozess-Sperre; Tenant-Eintraege ohne Schluessel werden uebersprungen statt den Lauf
+  abzubrechen; ein fehlgeschlagener Kartenbau wird als Fehler gemeldet statt zu werfen.
+- Feinschliff nach den ersten Live-Tests: Auftragsliste zeigt die Art mit an; bei Standardnamen folgt der Name der
+  gewaehlten Art; "Nichts zu melden" nennt den Grund (z. B. fruehester Secret-Ablauf, knappste SKU); die
+  Benachrichtigungs-Vorschau am Handy zeigt Titel plus die ersten Ampel-Zeilen, getrennt mit Aufzaehlungspunkten.
 - Neue Core-Module `HU.Notify.psm1` (Karten, Ziele, Senden) und `HU.TeamsJobs.psm1` (Auftraege, Kennzahlen,
   Aufgabenplanung) - ohne Oberflaeche, fuer Extensions und Snippets nutzbar: `Send-HUNotify -Category ... -Title ...`.
 - Reiter Teams als Start-Reiter waehlbar; Tests fuer Karten, Adressen, Textbereinigung, Ziele (Windows) und Auftraege.

@@ -104,6 +104,16 @@ function Get-HUTeamsJobs {
     catch { throw "teams-jobs.json nicht lesbar: $($_.Exception.Message)" }
 }
 
+function Invoke-HUTeamsJobsLocked {
+    # Kurze prozessuebergreifende Sperre (GUI vs. Aufgabenplanung) um Lesen+Schreiben von teams-jobs.json
+    param([Parameter(Mandatory)][scriptblock]$Do)
+    $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_TeamsJobs')
+    $got = $false
+    try { $got = $m.WaitOne(5000) } catch [System.Threading.AbandonedMutexException] { $got = $true }
+    if (-not $got) { $log = Get-Command Write-HULog -ErrorAction SilentlyContinue; if ($log) { Write-HULog -Message '[TeamsJobs] Sperre nicht erhalten (5 s) - schreibe trotzdem' -Level WARN } }
+    try { & $Do } finally { if ($got) { try { $m.ReleaseMutex() } catch { } }; $m.Dispose() }
+}
+
 function Set-HUTeamsJobs {
     <#
     .SYNOPSIS
@@ -120,7 +130,7 @@ function Set-HUTeamsJobs {
     }
     $doc = [ordered]@{ v = 1; updated = (Get-Date).ToString('s'); jobs = @($Jobs) }
     $json = ConvertTo-Json -InputObject $doc -Depth 8
-    $tmp = "$p.tmp"
+    $tmp = "$p.tmp.$PID"
     [System.IO.File]::WriteAllText($tmp, $json, [System.Text.UTF8Encoding]::new($false))
     if (Test-Path -LiteralPath $p) { try { $null = Get-Content -LiteralPath $p -Raw -Encoding UTF8 | ConvertFrom-Json; Copy-Item -LiteralPath $p -Destination "$p.bak" -Force } catch { } }
     Move-Item -LiteralPath $tmp -Destination $p -Force
@@ -137,12 +147,14 @@ function Update-HUTeamsJobResult {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$AppRoot, [Parameter(Mandatory)][string]$Id, [string]$Result)
     try {
-        $jobs = @(Get-HUTeamsJobs -AppRoot $AppRoot)
-        $j = $jobs | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
-        if (-not $j) { return }
-        $j.LastRun = (Get-Date).ToString('s')
-        $j.LastResult = "$Result"
-        Set-HUTeamsJobs -AppRoot $AppRoot -Jobs $jobs
+        Invoke-HUTeamsJobsLocked {
+            $jobs = @(Get-HUTeamsJobs -AppRoot $AppRoot)
+            $j = $jobs | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
+            if (-not $j) { return }
+            $j.LastRun = (Get-Date).ToString('s')
+            $j.LastResult = "$Result"
+            Set-HUTeamsJobs -AppRoot $AppRoot -Jobs $jobs
+        }
     }
     catch { Write-Verbose "[TeamsJobs] Ergebnis nicht gespeichert: $($_.Exception.Message)" }
 }
@@ -235,6 +247,7 @@ function New-HUDailyCardSpec {
             elseif ($s.SecretDays -le $SecretWarnDays) { $parts += "App-Secret noch $($s.SecretDays) Tage"; $lvl = [math]::Max($lvl, 1); $secretLines += "$($s.Name): App-Secret laeuft in $($s.SecretDays) Tagen ab" }
         }
         elseif ($s.Ok -and $s.SecretStatus -eq 'NoPermission') { $parts += 'Secret-Ablauf nicht lesbar (Application.Read.All)' }
+        elseif ($s.Ok -and "$($s.SecretStatus)" -ne 'OK') { $parts += 'Secret-Ablauf unbekannt'; $lvl = [math]::Max($lvl, 1); $worst = [math]::Max($worst, 1) }
         $worst = [math]::Max($worst, $lvl)
         $rows += @{ Name = $s.Name; Status = @('OK', 'Warning', 'Error')[$lvl]; Text = ($parts -join ', ') }
     }
@@ -322,9 +335,10 @@ function Get-HULicenseStatus {
     if (-not $tok) { $r.Error = 'Kein Token (Secret fehlt oder abgelaufen)'; return $r }
     try {
         $skus = @(Invoke-GraphRequestAll -Token $tok -Endpoint '/subscribedSkus' -TenantKey $TenantKey -Settings $Settings -ErrorAction Stop)
-        $r.Skus = @($skus | Where-Object { "$($_.capabilityStatus)" -eq 'Enabled' } | ForEach-Object {
+        $r.Skus = @($skus | Where-Object { "$($_.capabilityStatus)" -in 'Enabled', 'Warning' } | ForEach-Object {
             $total = [int]$_.prepaidUnits.enabled
-            [pscustomobject]@{ Sku = "$($_.skuPartNumber)"; Total = $total; Used = [int]$_.consumedUnits; Free = ($total - [int]$_.consumedUnits) }
+            $nm = "$($_.skuPartNumber)$(if ("$($_.capabilityStatus)" -eq 'Warning') { ' (laeuft aus)' })"
+            [pscustomobject]@{ Sku = $nm; Total = $total; Used = [int]$_.consumedUnits; Free = ($total - [int]$_.consumedUnits) }
         })
         $r.Ok = $true
     }
@@ -400,7 +414,8 @@ function New-HUDefenderCardSpec {
         if (-not @($s.Findings).Count) { continue }
         $names = @($s.Findings | Select-Object -First $MaxDevices | ForEach-Object { "$($_.Device) ($($_.State))" })
         $more = @($s.Findings).Count - $names.Count
-        $txt = ($names -join ', ') + $(if ($more -gt 0) { " und $more weitere" })
+        $txt = ConvertTo-HUNotifySafeText -Text ($names -join ', ') -Max 260
+        if ($more -gt 0) { $txt += " und $more weitere" }
         $rows += @{ Name = $s.Name; Status = 'Error'; Text = $txt }
         $worst = 2
     }
@@ -438,12 +453,14 @@ function Invoke-HUTeamsJob {
     $res = [pscustomobject]@{ Success = $false; Message = ''; Sent = ''; Spec = $null }
     try {
         $keys = @($Job.Tenants | Where-Object { "$_" })
-        if (-not $keys.Count) { $keys = @($Settings.tenants | ForEach-Object { "$($_.key)" }) }
+        if (-not $keys.Count) { $keys = @($Settings.tenants | ForEach-Object { "$($_.key)" } | Where-Object { "$_" }) }   # Eintraege ohne key ueberspringen (Review 029 B18)
         if (-not $keys.Count) { $res.Message = 'Keine Tenants'; return $res }
         $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
         $warn = 30; try { $warn = [int]$Settings.ui.secretWarnDays } catch { }
+        if ($warn -le 0) { $warn = 30 }
         $opt = { param($n, $d) try { if ($Job.Options.PSObject.Properties[$n]) { return [int]$Job.Options.$n } } catch { }; return $d }
         $spec = $null
+        $detail = ''
         $readLog = { param($k) if ($log) { Write-HULog -Message "[Teams] $($Job.Name): $k lesen ..." -Level INFO } }
         switch ("$($Job.Kind)") {
             'Daily' {
@@ -453,29 +470,34 @@ function Invoke-HUTeamsJob {
             'Secrets' {
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HUSecretStatus -TenantKey $k -Settings $Settings }
                 $spec = New-HUSecretsCardSpec -Statuses $st -WarnDays (& $opt 'warnDays' $warn) -Title "$($Job.Name)"
+                $next = @($st | Where-Object { $null -ne $_.Days }) | Sort-Object Days | Select-Object -First 1
+                if ($next) { $detail = "fruehester Secret-Ablauf: $($next.Name) in $($next.Days) Tagen" }
             }
             'Licenses' {
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HULicenseStatus -TenantKey $k -Settings $Settings }
                 $spec = New-HULicenseCardSpec -Statuses $st -MinFree (& $opt 'minFree' 5) -Title "$($Job.Name)"
+                $low = @($st | ForEach-Object { $_.Skus } | Where-Object { $_ -and $_.Total -gt 0 }) | Sort-Object Free | Select-Object -First 1
+                if ($low) { $detail = "knappste SKU: $($low.Sku) mit $($low.Free) frei" }
             }
             'Defender' {
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HUDefenderStatus -TenantKey $k -Settings $Settings }
                 $spec = New-HUDefenderCardSpec -Statuses $st -Title "$($Job.Name)"
+                $detail = "$((@($st | ForEach-Object { @($_.Findings).Count }) | Measure-Object -Sum).Sum) Geraete mit Befund, $(@($st | Where-Object { -not $_.Ok }).Count) Tenants nicht lesbar"
             }
             default { $res.Message = "Unbekannte Auftragsart: $($Job.Kind)"; return $res }
         }
         $res.Spec = $spec
-        if ($null -eq $spec) { $res.Success = $true; $res.Message = 'Nichts zu melden - keine Karte gesendet'; return $res }
+        if ($null -eq $spec) { $res.Success = $true; $res.Message = "Nichts zu melden - keine Karte gesendet$(if ($detail) { " ($detail)" })"; return $res }
         if ($NoSend) { $res.Success = $true; $res.Message = 'Vorschau'; return $res }
         $cat = "$((Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($Job.Kind)" }).Category)"; if (-not $cat) { $cat = 'Daily' }
         # Ziele: einmalige Auswahl > am Auftrag gespeicherte > alle aktiven
         $ids = @($TargetIds | Where-Object { "$_" })
         if (-not $ids.Count) { $ids = @($Job.Targets | Where-Object { "$_" }) }
         $sent = Send-HUNotify -Category $cat -Title $spec.Title -Level $spec.Level -Rows $spec.Rows -Facts $spec.Facts -Lines $spec.Lines -Source "$([Environment]::MachineName)" -TargetIds $ids -IgnoreCategory
-        $res.Sent = $sent
-        if (-not $sent) { $res.Message = $(if ($ids.Count) { 'Ziel nicht gefunden oder ausgeschaltet - nichts gesendet' } else { 'Kein aktives Ziel - nichts gesendet' }); $res.Success = $true }
-        elseif ($sent -match '(?i)gesendet') { $res.Success = $true; $res.Message = $sent }
-        else { $res.Message = $sent }
+        $res.Sent = "$($sent.Text)"
+        if ($sent.Ok -gt 0 -and $sent.Failed -eq 0) { $res.Success = $true; $res.Message = "$($sent.Text)" }
+        elseif ($sent.Ok -eq 0 -and $sent.Failed -eq 0) { $res.Message = $(if ($ids.Count) { 'Ziel nicht gefunden oder ausgeschaltet - NICHTS gesendet. Ziele am Auftrag pruefen.' } else { 'Kein aktives Ziel - NICHTS gesendet.' }) }
+        else { $res.Message = "Teilweise/nicht gesendet: $($sent.Text)" }
     }
     catch { $res.Message = "Fehler: $(($_.Exception.Message) -replace 'https?://\S+', '(Webhook)')" }
     finally {
@@ -527,7 +549,7 @@ function Register-HUTeamsJobTask {
         $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
         $arg = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$main`" -Headless -Job $($Job.Id)"
         $a = New-ScheduledTaskAction -Execute $ps -Argument $arg -WorkingDirectory $AppRoot
-        $at = [datetime]::ParseExact("$($Job.Time)", 'H:mm', $null)
+        $at = [datetime]::ParseExact("$($Job.Time)", 'H:mm', [cultureinfo]::InvariantCulture)
         $days = @($Job.Days | ForEach-Object { [int]$_ } | Where-Object { $_ -ge 1 -and $_ -le 7 })
         if ($days.Count) {
             $dow = @($days | ForEach-Object { @('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')[$_ - 1] })
@@ -559,6 +581,7 @@ function Unregister-HUTeamsJobTask {
 }
 
 Export-ModuleMember -Function @(
+    'Invoke-HUTeamsJobsLocked',
     'Get-HUTeamsJobsPath',
     'New-HUTeamsJob',
     'Get-HUTeamsJobs',

@@ -42,6 +42,9 @@ Describe 'Teams: Webhook-Adresse (Test-HUWebhookUrl)' {
         Test-HUWebhookUrl 'https://192.168.1.5/x' | Should -Not -Be ''
         Test-HUWebhookUrl 'https://localhost/x' | Should -Not -Be ''
         Test-HUWebhookUrl 'https://schulserver/x' | Should -Not -Be ''
+        Test-HUWebhookUrl 'https://[::ffff:127.0.0.1]/x' | Should -Not -Be ''
+        Test-HUWebhookUrl 'https://100.64.1.1/x' | Should -Not -Be ''
+        Test-HUWebhookUrl 'https://198.18.0.1/x' | Should -Not -Be ''
     }
     It 'leer' { Test-HUWebhookUrl '   ' | Should -Be 'leer' }
     It 'bekannte Hosts werden erkannt (nur Hinweis)' {
@@ -54,6 +57,9 @@ Describe 'Teams: Textbereinigung (ConvertTo-HUNotifySafeText)' {
     It 'entfernt Markdown, Steuerzeichen und entschaerft Links' {
         $t = ConvertTo-HUNotifySafeText ("Hallo [x] *fett* <b>t</b> https://evil.example " + [char]0x200E + [char]0x202E + " ende")
         $t | Should -Be 'Hallo x fett bt/b https :// evil.example ende'
+    }
+    It 'Unterstriche bleiben als Leerzeichen erhalten (SKU-/Geraetenamen)' {
+        ConvertTo-HUNotifySafeText 'M365EDU_A3_FACULTY NB_123' | Should -Be 'M365EDU A3 FACULTY NB 123'
     }
     It 'kuerzt auf Max' {
         (ConvertTo-HUNotifySafeText ('a' * 500) -Max 100).Length | Should -Be 104
@@ -100,7 +106,12 @@ Describe 'Teams: Karte (New-HUTeamsCard)' {
     It 'begrenzt die Zeilenzahl' {
         $c = New-HUTeamsCard -Title 'T' -Lines @(1..60 | ForEach-Object { "z$_" })
         $tb = @($c.attachments[0].content.body | Where-Object { $_.type -eq 'TextBlock' })
-        $tb[-2].text | Should -Match 'weitere Zeilen'
+        $tb[-2].text | Should -Match 'und 20 weitere Zeilen'
+    }
+    It 'begrenzt die Ampel-Zeilen mit Hinweis' {
+        $c = New-HUTeamsCard -Title 'T' -Rows @(1..30 | ForEach-Object { @{ Name = "S$_"; Status = 'OK'; Text = 'x' } })
+        @($c.attachments[0].content.body | Where-Object { $_.type -eq 'ColumnSet' }).Count | Should -Be 25
+        @($c.attachments[0].content.body | Where-Object { $_.type -eq 'TextBlock' -and "$($_.text)" -match 'und 5 weitere' }).Count | Should -Be 1
     }
     It 'JSON ist kompakt und nicht zu gross' {
         $j = ConvertTo-HUTeamsCardJson (New-HUTeamsCard -Title 'T' -Lines @('a'))
@@ -140,8 +151,9 @@ Describe 'Teams: Senden (ohne Netz)' {
         Send-HUTeamsCard -Card (New-HUTeamsCard -Title 'T') -Url 'https://x.webhook.office.com/a' | Should -Match 'ungueltig'
     }
     It 'Send-HUNotify ohne Ziele sendet nichts und wirft nicht' {
-        Send-HUNotify -Category 'Daily' -Title 'T' | Should -Be ''
-        Send-HUNotify -Category 'Gibtsnicht' -Title 'T' | Should -Match 'Unbekannte Kategorie'
+        $r = Send-HUNotify -Category 'Daily' -Title 'T'
+        $r.Ok | Should -Be 0; $r.Failed | Should -Be 0; $r.Text | Should -Be ''
+        (Send-HUNotify -Category 'Gibtsnicht' -Title 'T').Text | Should -Match 'Unbekannte Kategorie'
     }
     It 'Fehlermeldungen enthalten nie die Adresse' {
         Mock -ModuleName HU.Notify Invoke-WebRequest { throw 'Fehler bei https://prod-1.logic.azure.com/workflows/abc?sig=geheim' }
@@ -149,10 +161,40 @@ Describe 'Teams: Senden (ohne Netz)' {
         $r | Should -Match 'fehlgeschlagen'
         $r | Should -Not -Match 'geheim'
     }
+    It 'wirft nicht, wenn der Kartenbau scheitert (Review 029 B19)' {
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @([pscustomobject]@{ Id = 'aabbccdd'; Name = 'Z'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = $null }) } }
+        Mock -ModuleName HU.Notify New-HUTeamsCard { throw 'kaputt https://prod-1.logic.azure.com/w?sig=geheim' }
+        $r = Send-HUNotify -Category 'Daily' -Title 'T'
+        $r.Failed | Should -Be 1
+        $r.Text | Should -Match 'Karte nicht gebaut'
+        $r.Text | Should -Not -Match 'geheim'
+    }
     It 'sendet JSON per POST' {
         Mock -ModuleName HU.Notify Invoke-WebRequest { param($Uri, $Method, $Body, $ContentType) $script:sent = [System.Text.Encoding]::UTF8.GetString($Body); return $null }
         Send-HUTeamsCard -Card (New-HUTeamsCard -Title 'Hallo') -Url 'https://prod-1.logic.azure.com/workflows/abc' | Should -Be ''
         Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 1 -Exactly -ParameterFilter { $Method -eq 'Post' -and $ContentType -like 'application/json*' }
+    }
+}
+
+Describe 'Teams: Sendeprotokoll (Datei)' {
+    BeforeEach { Remove-Item -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-history.json') -Force -ErrorAction SilentlyContinue }
+    It 'drei Eintraege bleiben drei Eintraege (flaches Array, PS-5.1-sicher)' {
+        1..3 | ForEach-Object { Add-HUNotifyHistory -TargetName "Z$_" -Tag 'aabbccdd' -Category 'Daily' -Title "T$_" -Result 'gesendet' }
+        $h = @(Get-HUNotifyHistory)
+        $h.Count | Should -Be 3
+        $h[0].Target | Should -Be 'Z3'
+        (Get-Content -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-history.json') -Raw) | Should -Match '^\{"v":1,"items":\['
+    }
+    It 'liest alte verschachtelte Dateien (value/Count) und repariert sie beim naechsten Eintrag' {
+        $p = Join-Path $env:APPDATA 'HU-MultiTenant'
+        if (-not (Test-Path $p)) { New-Item -Path $p -ItemType Directory -Force | Out-Null }
+        '[{"value":[{"value":" ","Count":2},{"Time":"2026-10-16T19:54:51","Target":"A","Tag":"x","Category":"Licenses","Title":"L","Result":"gesendet"}],"Count":2},{"Time":"2026-10-16T20:00:16","Target":"A","Tag":"x","Category":"Defender","Title":"D","Result":"gesendet"}]' |
+            Set-Content -LiteralPath (Join-Path $p 'notify-history.json') -Encoding UTF8
+        @(Get-HUNotifyHistory).Count | Should -Be 2
+        Add-HUNotifyHistory -TargetName 'B' -Tag 'y' -Category 'Daily' -Title 'N' -Result 'gesendet'
+        $h = @(Get-HUNotifyHistory)
+        $h.Count | Should -Be 3
+        $h[0].Target | Should -Be 'B'
     }
 }
 

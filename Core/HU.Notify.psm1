@@ -138,6 +138,16 @@ function New-HUNotifyTargetObject {
     }
 }
 
+function Invoke-HUNotifyLocked {
+    # Kurze prozessuebergreifende Sperre (GUI vs. Aufgabenplanung) um Lesen+Schreiben der Dateien
+    param([Parameter(Mandatory)][scriptblock]$Do)
+    $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_Notify')
+    $got = $false
+    try { $got = $m.WaitOne(5000) } catch [System.Threading.AbandonedMutexException] { $got = $true }
+    if (-not $got) { Write-HUNotifyModuleLog 'Sperre nicht erhalten (5 s) - schreibe trotzdem' 'WARN' }
+    try { & $Do } finally { if ($got) { try { $m.ReleaseMutex() } catch { } }; $m.Dispose() }
+}
+
 # ============================================================================
 # PRUEFUNGEN
 # ============================================================================
@@ -171,7 +181,7 @@ function Test-HUWebhookUrl {
     $x = $null
     if (-not [uri]::TryCreate($u, [UriKind]::Absolute, [ref]$x) -or $x.Scheme -ne 'https') { return 'keine https-Adresse' }
     if ($x.Host -match '(?i)(^|\.)webhook\.office\.com$') { return 'alte Office-365-Connector-Adresse - die Connectors sind abgeschaltet, bitte in Teams einen Workflow anlegen' }
-    if ($x.Host -match '^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|\[::1\]|0\.)' -or $x.Host -notmatch '\.') { return 'lokale oder private Adresse nicht erlaubt' }
+    if ($x.Host -match '(?i)^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|198\.1[89]\.|0\.|\[::1\]|\[::ffff:|\[f[cd]|\[fe80)' -or $x.Host -notmatch '\.') { return 'lokale oder private Adresse nicht erlaubt' }
     if ($x.UserInfo) { return 'Benutzerangaben in der Adresse nicht erlaubt' }
     return ''
 }
@@ -198,7 +208,8 @@ function ConvertTo-HUNotifySafeText {
     [OutputType([string])]
     param([string]$Text, [int]$Max = 400)
     $t = ("$Text" -replace '[\x00-\x1F\x7F\u200B-\u200F\u202A-\u202E\u2066-\u2069]', ' ' `
-                  -replace '[\[\]\*`<>_~#|]', '' `
+                  -replace '[\[\]\*`<>~]', '' `
+                  -replace '[_|#]', ' ' `
                   -replace '(?i)\b(https?|ftp|file)://', '$1 :// ' `
                   -replace '(?i)\bwww\.', 'www .' `
                   -replace '\s{2,}', ' ').Trim()
@@ -229,7 +240,8 @@ function Get-HUNotifyConfig {
         $raw = Get-Content -LiteralPath $script:NotifyFile -Raw -Encoding UTF8 | ConvertFrom-Json
         if (-not $raw.targets) { return $r }
         $json = Unprotect-HUNotifyText -Cipher "$($raw.targets)"
-        $list = @($json | ConvertFrom-Json)
+        $obj = $json | ConvertFrom-Json
+        $list = if ($obj -and $obj.PSObject.Properties['items']) { @($obj.items) } else { @($obj) }   # aeltere Dateien: nacktes Array/Objekt
         $out = @()
         foreach ($t in $list) { if ($t -and "$($t.Url)".Trim()) { $out += New-HUNotifyTargetObject $t } }
         $r.Targets = @($out | Select-Object -First $script:NotifyMaxTargets)
@@ -263,12 +275,15 @@ function Set-HUNotifyTargets {
             $clean += $o
         }
         if ($clean.Count -gt $script:NotifyMaxTargets) { return "Hoechstens $($script:NotifyMaxTargets) Ziele" }
-        if (-not (Test-Path -LiteralPath $script:NotifyBasePath)) { New-Item -Path $script:NotifyBasePath -ItemType Directory -Force | Out-Null }
-        $plain = ConvertTo-Json -InputObject @($clean) -Depth 6 -Compress
-        $doc = [ordered]@{ v = 1; scope = 'CurrentUser'; updated = (Get-Date).ToString('s'); targets = (Protect-HUNotifyText -Text $plain) }
-        $tmp = "$($script:NotifyFile).tmp"
-        [System.IO.File]::WriteAllText($tmp, ($doc | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
-        Move-Item -LiteralPath $tmp -Destination $script:NotifyFile -Force
+        Invoke-HUNotifyLocked {
+            if (-not (Test-Path -LiteralPath $script:NotifyBasePath)) { New-Item -Path $script:NotifyBasePath -ItemType Directory -Force | Out-Null }
+            # PS 5.1: -InputObject mit Array erzeugt value/Count-Huelle - daher Array als Eigenschaft verpacken
+            $plain = ([ordered]@{ v = 1; items = @($clean) } | ConvertTo-Json -Depth 6 -Compress)
+            $doc = [ordered]@{ v = 1; scope = 'CurrentUser'; updated = (Get-Date).ToString('s'); targets = (Protect-HUNotifyText -Text $plain) }
+            $tmp = "$($script:NotifyFile).tmp.$PID"
+            [System.IO.File]::WriteAllText($tmp, ($doc | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
+            Move-Item -LiteralPath $tmp -Destination $script:NotifyFile -Force
+        }
         Write-HUNotifyModuleLog "Ziele gespeichert: $($clean.Count)" 'OK'
         return ''
     }
@@ -292,11 +307,16 @@ function Add-HUNotifyTarget {
         [hashtable]$Cats,
         [string]$Id = ''
     )
-    $c = Get-HUNotifyConfig
-    if ($c.Error) { return "Ziele nicht lesbar: $($c.Error)" }
-    $list = @($c.Targets | Where-Object { $_.Id -ne $Id })
-    $list += [pscustomobject]@{ Id = $Id; Name = $Name; Url = $Url; Enabled = $true; Cats = $Cats; Created = '' }
-    return (Set-HUNotifyTargets -Targets $list)
+    $out = ''
+    Invoke-HUNotifyLocked {
+        $c = Get-HUNotifyConfig
+        if ($c.Error) { $script:__huAddOut = "Ziele nicht lesbar: $($c.Error)"; return }
+        $list = @($c.Targets | Where-Object { $_.Id -ne $Id })
+        $list += [pscustomobject]@{ Id = $Id; Name = $Name; Url = $Url; Enabled = $true; Cats = $Cats; Created = '' }
+        $script:__huAddOut = (Set-HUNotifyTargets -Targets $list)
+    }
+    $out = "$($script:__huAddOut)"; $script:__huAddOut = $null
+    return $out
 }
 
 function Remove-HUNotifyTarget {
@@ -307,9 +327,14 @@ function Remove-HUNotifyTarget {
     [CmdletBinding()]
     [OutputType([string])]
     param([Parameter(Mandatory)][string]$Id)
-    $c = Get-HUNotifyConfig
-    if ($c.Error) { return "Ziele nicht lesbar: $($c.Error)" }
-    return (Set-HUNotifyTargets -Targets @($c.Targets | Where-Object { $_.Id -ne $Id }))
+    $out = ''
+    Invoke-HUNotifyLocked {
+        $c = Get-HUNotifyConfig
+        if ($c.Error) { $script:__huAddOut = "Ziele nicht lesbar: $($c.Error)"; return }
+        $script:__huAddOut = (Set-HUNotifyTargets -Targets @($c.Targets | Where-Object { $_.Id -ne $Id }))
+    }
+    $out = "$($script:__huAddOut)"; $script:__huAddOut = $null
+    return $out
 }
 
 function Test-HUNotifyCat {
@@ -369,8 +394,9 @@ function New-HUTeamsCard {
     $body.Add([ordered]@{ type = 'TextBlock'; text = (ConvertTo-HUNotifySafeText -Text $Title -Max 200); weight = 'Bolder'; size = 'Medium'; wrap = $true; color = $color })
 
     $n = 0
-    foreach ($l in @($Lines | Where-Object { "$_".Trim() })) {
-        if (++$n -gt $script:NotifyMaxLines) { $body.Add([ordered]@{ type = 'TextBlock'; text = "... und $(@($Lines).Count - $script:NotifyMaxLines) weitere Zeilen"; isSubtle = $true; wrap = $true }); break }
+    $allLines = @($Lines | Where-Object { "$_".Trim() })
+    foreach ($l in $allLines) {
+        if (++$n -gt $script:NotifyMaxLines) { $body.Add([ordered]@{ type = 'TextBlock'; text = "... und $($allLines.Count - $script:NotifyMaxLines) weitere Zeilen"; isSubtle = $true; wrap = $true }); break }
         $body.Add([ordered]@{ type = 'TextBlock'; text = (ConvertTo-HUNotifySafeText -Text $l); wrap = $true; spacing = 'Small' })
     }
 
@@ -386,8 +412,9 @@ function New-HUTeamsCard {
 
     if ($Rows -and @($Rows).Count) {
         $n = 0
-        foreach ($r in @($Rows | Where-Object { $_ })) {
-            if (++$n -gt $script:NotifyMaxRows) { break }
+        $allRows = @($Rows | Where-Object { $_ })
+        foreach ($r in $allRows) {
+            if (++$n -gt $script:NotifyMaxRows) { $body.Add([ordered]@{ type = 'TextBlock'; text = "... und $($allRows.Count - $script:NotifyMaxRows) weitere Zeilen"; isSubtle = $true; wrap = $true; spacing = 'Small' }); break }
             $st = "$($r.Status)"
             $dot = switch ($st) { 'OK' { "$([char]0xD83D)$([char]0xDFE2)" } 'Warning' { "$([char]0xD83D)$([char]0xDFE1)" } 'Error' { "$([char]0xD83D)$([char]0xDD34)" } default { [string][char]0x26AA } }
             $rc = switch ($st) { 'OK' { 'Good' } 'Warning' { 'Warning' } 'Error' { 'Attention' } default { 'Default' } }
@@ -405,8 +432,12 @@ function New-HUTeamsCard {
     if ($Category) { $foot += (ConvertTo-HUNotifySafeText -Text $Category -Max 30) }
     $body.Add([ordered]@{ type = 'TextBlock'; text = ($foot -join '  |  '); isSubtle = $true; size = 'Small'; wrap = $true; spacing = 'Medium' })
 
-    # fallbackText/speak: Textauszug fuer Clients ohne Kartendarstellung (Versuch: Push-Vorschau am Handy)
-    $fb = ConvertTo-HUNotifySafeText -Text ("$Title" + $(if (@($Lines).Count) { ": " + (@($Lines) -join '; ') })) -Max 200
+    # fallbackText/speak/summary: Textauszug fuer Push-Vorschau und Clients ohne Kartendarstellung.
+    # Inhalt: Titel plus erste Zeilen bzw. erste Ampel-Zeilen (Name: Text).
+    $fbParts = @($Rows | Where-Object { $_ } | Select-Object -First 3 | ForEach-Object { "$($_.Name): $($_.Text)" })
+    if (-not $fbParts.Count) { $fbParts = @($Lines | Where-Object { "$_".Trim() } | Select-Object -First 3) }
+    $sep = ' ' + [char]0x2022 + ' '   # Aufzaehlungspunkt (ueberlebt die Textbereinigung, anders als |)
+    $fb = ConvertTo-HUNotifySafeText -Text ("$Title" + $(if (@($fbParts).Count) { $sep + (@($fbParts) -join $sep) })) -Max 240
     $card = [ordered]@{ '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'; type = 'AdaptiveCard'; version = '1.4'; fallbackText = $fb; speak = $fb; body = $body.ToArray() }
     $acts = @()
     foreach ($a in @($Actions | Where-Object { $_ })) {
@@ -463,7 +494,7 @@ function Send-HUTeamsCard {
     $last = ''
     for ($i = 0; $i -le $Retries; $i++) {
         try {
-            $null = Invoke-WebRequest -Uri $Url.Trim() -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8' -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
+            $null = Invoke-WebRequest -Uri $Url.Trim() -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8' -UseBasicParsing -TimeoutSec 20 -MaximumRedirection 0 -ErrorAction Stop
             return ''
         }
         catch {
@@ -475,24 +506,47 @@ function Send-HUTeamsCard {
             if ($code -eq 401 -or $code -eq 403) { return "Senden abgelehnt ($code): Adresse/Signatur ungueltig - Workflow neu anlegen" }
             if ($code -eq 404) { return 'Senden abgelehnt (404): Workflow nicht gefunden - geloescht oder deaktiviert' }
             if (-not $retry -or $i -eq $Retries) { break }
-            Start-Sleep -Seconds (3 * ($i + 1))
+            $wait = 3 * ($i + 1)
+            try { $ra = [int]"$($_.Exception.Response.Headers['Retry-After'])"; if ($ra -gt 0) { $wait = [math]::Min(30, $ra) } } catch { }
+            Start-Sleep -Seconds $wait
         }
     }
     return "Senden fehlgeschlagen: $last"
+}
+
+function Expand-HUNotifyHistoryNode {
+    # Protokoll-Eintraege einsammeln - auch aus aelteren, verschachtelten Dateien (value/Count-Huellen)
+    param($Node, [int]$Depth = 0)
+    $out = @()
+    if ($null -eq $Node -or $Depth -gt 20) { return $out }
+    foreach ($n in @($Node)) {
+        if ($null -eq $n) { continue }
+        if ($n.PSObject.Properties['Time'] -and $n.PSObject.Properties['Target']) { $out += $n; continue }
+        if ($n.PSObject.Properties['items']) { $out += Expand-HUNotifyHistoryNode -Node $n.items -Depth ($Depth + 1); continue }
+        if ($n.PSObject.Properties['value']) { $out += Expand-HUNotifyHistoryNode -Node $n.value -Depth ($Depth + 1); continue }
+    }
+    return $out
 }
 
 function Add-HUNotifyHistory {
     # Protokoll (ohne Adressen): Zeit, Ziel, Kategorie, Titel, Ergebnis
     param([string]$TargetName, [string]$Tag, [string]$Category, [string]$Title, [string]$Result)
     try {
-        $list = @()
-        if (Test-Path -LiteralPath $script:NotifyHistFile -PathType Leaf) {
-            $list = @(Get-Content -LiteralPath $script:NotifyHistFile -Raw -Encoding UTF8 | ConvertFrom-Json)
+        Invoke-HUNotifyLocked {
+            $list = @()
+            if (Test-Path -LiteralPath $script:NotifyHistFile -PathType Leaf) {
+                try { $list = @(Expand-HUNotifyHistoryNode -Node (Get-Content -LiteralPath $script:NotifyHistFile -Raw -Encoding UTF8 | ConvertFrom-Json)) }
+                catch { try { Copy-Item -LiteralPath $script:NotifyHistFile -Destination "$($script:NotifyHistFile).bak" -Force } catch { }; $list = @() }
+            }
+            $list += [pscustomobject]@{ Time = (Get-Date).ToString('s'); Target = $TargetName; Tag = $Tag; Category = $Category; Title = (ConvertTo-HUNotifySafeText -Text $Title -Max 120); Result = (Hide-HUNotifyUrl $Result) }
+            $list = @($list | Select-Object -Last $script:NotifyMaxHistory)
+            if (-not (Test-Path -LiteralPath $script:NotifyBasePath)) { New-Item -Path $script:NotifyBasePath -ItemType Directory -Force | Out-Null }
+            # PS 5.1: Array als Eigenschaft verpacken (sonst value/Count-Huelle)
+            $json = ([ordered]@{ v = 1; items = @($list) } | ConvertTo-Json -Depth 5 -Compress)
+            $tmp = "$($script:NotifyHistFile).tmp.$PID"
+            [System.IO.File]::WriteAllText($tmp, $json, [System.Text.UTF8Encoding]::new($false))
+            Move-Item -LiteralPath $tmp -Destination $script:NotifyHistFile -Force
         }
-        $list += [pscustomobject]@{ Time = (Get-Date).ToString('s'); Target = $TargetName; Tag = $Tag; Category = $Category; Title = (ConvertTo-HUNotifySafeText -Text $Title -Max 120); Result = (Hide-HUNotifyUrl $Result) }
-        $list = @($list | Select-Object -Last $script:NotifyMaxHistory)
-        if (-not (Test-Path -LiteralPath $script:NotifyBasePath)) { New-Item -Path $script:NotifyBasePath -ItemType Directory -Force | Out-Null }
-        [System.IO.File]::WriteAllText($script:NotifyHistFile, (ConvertTo-Json -InputObject $list -Depth 4 -Compress), [System.Text.UTF8Encoding]::new($false))
     }
     catch { Write-Verbose "[Notify] Protokoll nicht geschrieben: $($_.Exception.Message)" }
 }
@@ -505,22 +559,26 @@ function Get-HUNotifyHistory {
     [CmdletBinding()]
     param([int]$Last = 100)
     if (-not (Test-Path -LiteralPath $script:NotifyHistFile -PathType Leaf)) { return @() }
-    try { $l = @(Get-Content -LiteralPath $script:NotifyHistFile -Raw -Encoding UTF8 | ConvertFrom-Json); return @($l | Select-Object -Last $Last) | Sort-Object Time -Descending }
+    try {
+        $l = @(Expand-HUNotifyHistoryNode -Node (Get-Content -LiteralPath $script:NotifyHistFile -Raw -Encoding UTF8 | ConvertFrom-Json))
+        $sel = @($l | Select-Object -Last $Last)   # Dateireihenfolge = chronologisch
+        [array]::Reverse($sel)
+        return $sel
+    }
     catch { return @() }
 }
 
 function Send-HUNotify {
     <#
     .SYNOPSIS
-        Meldung an alle eingeschalteten Ziele mit dieser Kategorie. Rueckgabe: Protokolltext ('' = nichts gesendet).
+        Meldung an alle eingeschalteten Ziele mit dieser Kategorie.
     .DESCRIPTION
-        Wirft nie. Gibt pro Ziel 'Name: gesendet' oder 'Name: Grund' zurueck.
-        -TargetIds: nur diese Ziele; mit -IgnoreCategory auch, wenn die Kategorie dort aus ist (einmaliges Senden).
+        Wirft nie. Rueckgabe-Objekt: Ok (gesendet), Failed (fehlgeschlagen), Text (Protokolltext, '' = kein Ziel angesprochen).
+        -TargetIds: nur diese Ziele; mit -IgnoreCategory auch, wenn die Kategorie dort aus ist.
     .EXAMPLE
         Send-HUNotify -Category Devices -Title 'HLW: 7 Geraete nicht konform' -Level Warning -Lines @('NB-123 (Maier T.)')
     #>
     [CmdletBinding()]
-    [OutputType([string])]
     param(
         [Parameter(Mandatory)][string]$Category,
         [Parameter(Mandatory)][string]$Title,
@@ -533,23 +591,26 @@ function Send-HUNotify {
         [string[]]$TargetIds = @(),
         [switch]$IgnoreCategory
     )
-    if (-not $script:NotifyCats.Contains($Category)) { return "Unbekannte Kategorie: $Category" }
+    $res = [pscustomobject]@{ Ok = 0; Failed = 0; Text = '' }
+    if (-not $script:NotifyCats.Contains($Category)) { $res.Text = "Unbekannte Kategorie: $Category"; $res.Failed = 1; return $res }
     $c = Get-HUNotifyConfig
-    if ($c.Error) { return "Teams-Benachrichtigung: Ziele nicht lesbar: $($c.Error)" }
-    if (-not $c.Configured) { return '' }
-    $card = New-HUTeamsCard -Title $Title -Lines $Lines -Level $Level -Facts $Facts -Rows $Rows -Actions $Actions -Source $Source -Category $script:NotifyCats[$Category][0]
+    if ($c.Error) { $res.Text = "Teams-Benachrichtigung: Ziele nicht lesbar: $($c.Error)"; $res.Failed = 1; return $res }
+    if (-not $c.Configured) { return $res }
+    try { $card = New-HUTeamsCard -Title $Title -Lines $Lines -Level $Level -Facts $Facts -Rows $Rows -Actions $Actions -Source $Source -Category $script:NotifyCats[$Category][0] }
+    catch { $res.Failed = 1; $res.Text = "Karte nicht gebaut: $(Hide-HUNotifyUrl "$($_.Exception.Message)")"; return $res }
     $out = @()
     foreach ($t in @($c.Targets | Where-Object { $_ -and $_.Enabled })) {
         if ($TargetIds.Count -and ($TargetIds -notcontains $t.Id)) { continue }
         if (-not $IgnoreCategory -and -not (Test-HUNotifyCat -Target $t -Category $Category)) { continue }
         $r = Send-HUTeamsCard -Card $card -Url $t.Url
+        if ($r) { $res.Failed++ } else { $res.Ok++ }
         $tag = Get-HUNotifyUrlTag $t.Url
         Add-HUNotifyHistory -TargetName $t.Name -Tag $tag -Category $Category -Title $Title -Result $(if ($r) { $r } else { 'gesendet' })
         Write-HUNotifyModuleLog "$($t.Name) [$tag] $Category - $(if ($r) { $r } else { 'gesendet' })" $(if ($r) { 'WARN' } else { 'OK' })
         $out += "$($t.Name): $(if ($r) { $r } else { 'gesendet' })"
     }
-    if (-not $out.Count) { return '' }
-    return "Teams-Benachrichtigung: $($out -join '; ')"
+    if ($out.Count) { $res.Text = "Teams-Benachrichtigung: $($out -join '; ')" }
+    return $res
 }
 
 function Send-HUNotifyTest {
@@ -592,5 +653,6 @@ Export-ModuleMember -Function @(
     'Send-HUTeamsCard',
     'Send-HUNotify',
     'Send-HUNotifyTest',
+    'Add-HUNotifyHistory',
     'Get-HUNotifyHistory'
 )

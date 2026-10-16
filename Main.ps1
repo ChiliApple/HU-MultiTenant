@@ -47,7 +47,13 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 
 function Show-HUFatal([string]$Text) {
     if ($SmokeTest) { "FEHLER $Text" | Set-Content -LiteralPath $SmokeTest -Encoding UTF8; exit 1 }
-    if ($Headless) { [Console]::Error.WriteLine("FEHLER $Text"); try { Write-HULog -Message "Headless: $Text" -Level ERROR } catch { }; exit 1 }
+    if ($Headless) {
+        [Console]::Error.WriteLine("FEHLER $Text")
+        try { Write-HULog -Message "Headless: $Text" -Level ERROR } catch { }
+        # Befund B3 (Review 029): auch fruehe Abbrueche nach Teams melden, sofern HU.Notify schon geladen ist
+        try { if (Get-Command Send-HUNotify -ErrorAction SilentlyContinue) { [void](Send-HUNotify -Category 'Jobs' -Title 'Zeitgesteuerter Lauf fehlgeschlagen' -Level Error -Lines @("$Text") -Source ([Environment]::MachineName)) } } catch { }
+        exit 1
+    }
     [void][System.Windows.MessageBox]::Show($Text, 'HU-MultiTenant - Fehler', 'OK', 'Error')
     exit 1
 }
@@ -105,6 +111,7 @@ foreach ($f in $uiFiles) {
 $settingsPath = Join-Path $script:AppRoot 'Config\settings.json'
 $script:FirstRun = $false
 if (-not (Test-Path -LiteralPath $settingsPath)) {
+    if ($Headless) { Show-HUFatal "settings.json fehlt ($settingsPath) - Headless legt keine neue an." }
     try { New-HUSettingsFile -Path $settingsPath; $script:FirstRun = $true } catch { Show-HUFatal "settings.json konnte nicht angelegt werden:`n$($_.Exception.Message)" }
 }
 $script:Settings = Import-TenantSettings -SettingsPath $settingsPath

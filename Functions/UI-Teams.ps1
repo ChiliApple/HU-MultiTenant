@@ -124,6 +124,9 @@ function Test-HUTeamsTarget {
 function Get-HUTeamsJobLabel($Job) {
     $d = @($Job.Days | ForEach-Object { [int]$_ })
     $when = if ($d.Count) { ($d | Sort-Object | ForEach-Object { @('Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So')[$_ - 1] }) -join '' } else { 'taeglich' }
+    $kindLabel = "$((Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($Job.Kind)" }).Label)"
+    $nm = "$($Job.Name)"
+    if ($kindLabel -and $nm -ne $kindLabel) { $nm = "$nm ($kindLabel)" }
     $tids = @($Job.Targets | Where-Object { "$_" })
     $to = 'alle Ziele'
     if ($tids.Count) {
@@ -131,7 +134,7 @@ function Get-HUTeamsJobLabel($Job) {
         $names = @($tids | ForEach-Object { $id = "$_"; $t = $all | Where-Object { $_.Id -eq $id } | Select-Object -First 1; if ($t) { "$($t.Name)" } else { '?' } })
         $to = $names -join ', '
     }
-    return "$(if ($Job.Enabled) { '' } else { '(aus) ' })$($Job.Name)  -  $when $($Job.Time)  -  an $to"
+    return "$(if ($Job.Enabled) { '' } else { '(aus) ' })$nm  -  $when $($Job.Time)  -  an $to"
 }
 
 function Update-HUTeamsJobs {
@@ -176,14 +179,15 @@ function Show-HUTeamsJob($Job) {
     $script:TeamsFillBusy = $true
     try {
         $script:TeamsJobCurrent = if ($Job) { "$($Job.Id)" } else { '' }
-        $c['txtTeamsJobName'].Text = if ($Job) { "$($Job.Name)" } else { 'Tages-Ampel' }
+        $c['txtTeamsJobName'].Text = if ($Job) { "$($Job.Name)" } else { 'Tages-Ampel' }   # neuer Auftrag: Name folgt der Art (siehe SelectionChanged)
         $c['txtTeamsJobTime'].Text = if ($Job -and "$($Job.Time)") { "$($Job.Time)" } else { '07:00' }
         $c['chkTeamsJobEnabled'].IsChecked = if ($Job) { [bool]$Job.Enabled } else { $true }
         $kind = if ($Job) { "$($Job.Kind)" } else { 'Daily' }
         foreach ($i in $c['cmbTeamsJobKind'].Items) { if ("$($i.Tag)" -eq $kind) { $c['cmbTeamsJobKind'].SelectedItem = $i } }
         Update-HUTeamsJobTargetChecks
         $tids = @(if ($Job) { $Job.Targets | ForEach-Object { "$_" } } else { @() })
-        foreach ($cb in @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = ($tids -contains "$($cb.Tag)") }
+        # leer = alle Ziele -> alle anhaken (so wird es auch gesendet)
+        foreach ($cb in @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = ((-not $tids.Count) -or ($tids -contains "$($cb.Tag)")) }
         $days = @(if ($Job) { $Job.Days | ForEach-Object { [int]$_ } } else { @() })
         foreach ($cb in @($c['pnlTeamsJobDays'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = ($days -contains [int]$cb.Tag) }
         $keys = @(if ($Job) { $Job.Tenants } else { @() })
@@ -215,6 +219,7 @@ function Get-HUTeamsJobFromForm {
     $j.Days = $days; $j.Tenants = $keys; $j.Category = $cat; $j.Enabled = [bool]$c['chkTeamsJobEnabled'].IsChecked
     $allT = @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
     $selT = @($allT | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+    if ($allT.Count -and -not $selT.Count) { throw 'Bitte mindestens ein Ziel anhaken (zum Stummschalten den Auftrag deaktivieren).' }   # Befund B1 (Review 029)
     $j.Targets = $(if ($selT.Count -eq $allT.Count) { @() } else { $selT })   # alle angehakt = leer = alle (auch spaetere)
     return $j
 }
@@ -222,9 +227,11 @@ function Get-HUTeamsJobFromForm {
 function Save-HUTeamsJob {
     try {
         $j = Get-HUTeamsJobFromForm
-        $jobs = @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id })
-        $jobs += $j
-        Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs $jobs
+        Invoke-HUTeamsJobsLocked {
+            $jobs = @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id })
+            $jobs += $j
+            Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs $jobs
+        }
         $script:TeamsJobCurrent = "$($j.Id)"
         # bestehende Aufgabe an den neuen Zeitplan anpassen
         if ((Get-HUTeamsJobTask -Job $j).Exists) { $r = Register-HUTeamsJobTask -Job $j -AppRoot $script:AppRoot; if ($r) { Write-HULogWarn $r } }
@@ -240,7 +247,7 @@ function Remove-HUTeamsJob {
     if (-not $j) { return }
     if (-not (Confirm-HU "Auftrag '$($j.Name)' entfernen (inkl. Aufgabe in der Aufgabenplanung)?" -Warning)) { return }
     $r = Unregister-HUTeamsJobTask -Job $j; if ($r) { Write-HULogWarn $r }
-    Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id })
+    Invoke-HUTeamsJobsLocked { Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id }) }
     $script:TeamsJobCurrent = ''
     Update-HUTeamsJobs
     Show-HUTeamsJob $null
@@ -360,6 +367,17 @@ function Register-HUTeamsHandlers {
     $c['btnTeamsSave'].Add_Click({ Save-HUTeamsTarget })
     $c['btnTeamsDel'].Add_Click({ Remove-HUTeamsTarget })
     $c['btnTeamsTest'].Add_Click({ Test-HUTeamsTarget })
+
+    # Name folgt der gewaehlten Art, solange im Feld ein Standardname steht (eigene Namen bleiben)
+    $c['cmbTeamsJobKind'].Add_SelectionChanged({
+        if ($script:TeamsFillBusy) { return }
+        $c2 = $script:Controls
+        $labels = @(Get-HUTeamsKinds | ForEach-Object { "$($_.Label)" })
+        $cur = "$($c2['txtTeamsJobName'].Text)".Trim()
+        if ($cur -and ($labels -notcontains $cur)) { return }
+        $sel = $c2['cmbTeamsJobKind'].SelectedItem
+        if ($sel) { $k = Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($sel.Tag)" } | Select-Object -First 1; if ($k) { $c2['txtTeamsJobName'].Text = "$($k.Label)" } }
+    })
 
     $c['lstTeamsJobs'].Add_SelectionChanged({
         if ($script:TeamsFillBusy) { return }
