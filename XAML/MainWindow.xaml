@@ -1233,6 +1233,123 @@
                         </Grid>
                     </DockPanel>
                 </TabItem>
+                <TabItem Header="&#x1F4AC; Teams" x:Name="tabTeams" Style="{StaticResource DarkTabItem}">
+                    <DockPanel Margin="0,8,0,0">
+                        <Border DockPanel.Dock="Top" Background="#252526" CornerRadius="4" Padding="10" Margin="0,0,0,6">
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
+                                       Text="Meldungen als Karte an Teams-Kanaele (Workflows-Webhook 'When a Teams webhook request is received'). Adressen liegen verschluesselt im Benutzerprofil, nie im Log. Zeitgesteuerte Auftraege laufen ueber die Aufgabenplanung im eigenen Konto."/>
+                        </Border>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" MinHeight="220"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="190" MinHeight="60"/>
+                            </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- Ziele -->
+                            <Border Grid.Column="0" Background="#252526" CornerRadius="4" Padding="10">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Top" Text="Ziele (Kanaele)" Style="{StaticResource SectionTitle}" Margin="0,0,0,6"/>
+                                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                        <Button x:Name="btnTeamsNew" ToolTip="Neues Ziel anlegen (Felder leeren)" DockPanel.Dock="Right" Content="+ Neu" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"/>
+                                        <ListBox x:Name="lstTeamsTargets" ToolTip="Gespeicherte Teams-Ziele (Kanaele). Anklicken zum Bearbeiten." Style="{StaticResource DarkListBox}" Height="90"/>
+                                    </DockPanel>
+                                    <StackPanel DockPanel.Dock="Bottom">
+                                        <TextBlock x:Name="lblTeamsHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                                        <DockPanel>
+                                            <Button x:Name="btnTeamsDel" ToolTip="Ziel loeschen (der Workflow in Teams bleibt bestehen)" DockPanel.Dock="Right" Content="Entfernen" Background="#C62828" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                            <Button x:Name="btnTeamsTest" ToolTip="Testkarte senden - an die eingegebene Adresse, sonst an das gewaehlte Ziel" DockPanel.Dock="Right" Content="&#x2709; Test senden" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                            <Button x:Name="btnTeamsSave" ToolTip="Ziel speichern (Adresse DPAPI-verschluesselt im Benutzerprofil)" Content="&#x1F4BE; Speichern" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" HorizontalAlignment="Left"/>
+                                        </DockPanel>
+                                    </StackPanel>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel>
+                                            <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox x:Name="txtTeamsName" ToolTip="Anzeigename des Kanals, z. B. Admin-Kanal (erscheint im Protokoll)" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,6"/>
+                                            <TextBlock Text="Webhook-Adresse (leer lassen = gespeicherte behalten)" Style="{StaticResource FieldLabel}"/>
+                                            <PasswordBox x:Name="pwdTeamsUrl" ToolTip="Webhook-Adresse aus Teams: Kanal &gt; Workflows &gt; 'Post to a channel when a webhook request is received'. Wird verschluesselt gespeichert und nie wieder angezeigt. Leer lassen = gespeicherte Adresse behalten." Style="{StaticResource DarkPasswordBox}" FontSize="12" Margin="0,2,0,6"/>
+                                            <CheckBox x:Name="chkTeamsEnabled" ToolTip="Aus = Ziel bleibt gespeichert, bekommt aber keine Meldungen" Content="Ziel aktiv" IsChecked="True" Foreground="#CCCCCC" FontSize="11" Margin="0,0,0,6"/>
+                                            <TextBlock Text="Kategorien" Style="{StaticResource FieldLabel}"/>
+                                            <WrapPanel x:Name="pnlTeamsCats" ToolTip="Welche Meldungen dieses Ziel bekommt" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                            <!-- Auftraege -->
+                            <Border Grid.Column="2" Background="#252526" CornerRadius="4" Padding="10">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Top" Text="Zeitgesteuerte Meldungen" Style="{StaticResource SectionTitle}" Margin="0,0,0,6"/>
+                                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                        <Button x:Name="btnTeamsJobNew" ToolTip="Neuen Auftrag anlegen (Felder leeren)" DockPanel.Dock="Right" Content="+ Neu" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"/>
+                                        <ListBox x:Name="lstTeamsJobs" ToolTip="Gespeicherte Auftraege. Anklicken zum Bearbeiten." Style="{StaticResource DarkListBox}" Height="90"/>
+                                    </DockPanel>
+                                    <StackPanel DockPanel.Dock="Bottom">
+                                        <TextBlock x:Name="lblTeamsJobTask" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                                        <DockPanel>
+                                            <Button x:Name="btnTeamsJobDel" ToolTip="Auftrag und zugehoerige Aufgabe loeschen" DockPanel.Dock="Right" Content="Entfernen" Background="#C62828" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                            <Button x:Name="btnTeamsJobTask" ToolTip="Aufgabe in der Windows-Aufgabenplanung anlegen/entfernen (\HU-MultiTenant\Teams-&lt;Id&gt;, eigenes Konto, nur bei Anmeldung)" DockPanel.Dock="Right" Content="Aufgabe anlegen" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                            <Button x:Name="btnTeamsJobSendTo" DockPanel.Dock="Right" Content="An Kanal ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0" ToolTip="Einmalig an ein bestimmtes Ziel senden (auch wenn die Kategorie dort aus ist) - z. B. an die Direktion"/>
+                                            <Button x:Name="btnTeamsJobRun" ToolTip="Sofort ausfuehren und an Teams senden (Fortschritt im Protokoll unten links)" DockPanel.Dock="Right" Content="&#x25B6; Jetzt senden" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
+                                            <Button x:Name="btnTeamsJobSave" ToolTip="Auftrag speichern (Config\teams-jobs.json). Eine bestehende Aufgabe wird an den neuen Zeitplan angepasst." Content="&#x1F4BE; Speichern" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" HorizontalAlignment="Left"/>
+                                        </DockPanel>
+                                    </StackPanel>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel>
+                                            <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox x:Name="txtTeamsJobName" ToolTip="Name des Auftrags - erscheint als Titel der Karte" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,6"/>
+                                            <DockPanel Margin="0,0,0,6" LastChildFill="False">
+                                                <StackPanel DockPanel.Dock="Left" Width="160" Margin="0,0,10,0">
+                                                    <TextBlock Text="Art" Style="{StaticResource FieldLabel}"/>
+                                                    <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Was gemeldet wird. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp und Defender-Alarm senden nur, wenn es etwas zu melden gibt." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
+                                                        <ComboBoxItem Content="Tages-Ampel" Tag="Daily"/>
+                                                        <ComboBoxItem Content="Secret-Countdown" Tag="Secrets"/>
+                                                        <ComboBoxItem Content="Lizenzen knapp" Tag="Licenses"/>
+                                                        <ComboBoxItem Content="Defender-Alarm" Tag="Defender"/>
+                                                    </ComboBox>
+                                                </StackPanel>
+                                                <StackPanel DockPanel.Dock="Left" Width="70" Margin="0,0,10,0">
+                                                    <TextBlock Text="Uhrzeit" Style="{StaticResource FieldLabel}"/>
+                                                    <TextBox x:Name="txtTeamsJobTime" ToolTip="Uhrzeit (HH:mm) fuer die Aufgabenplanung" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,0" Text="07:00"/>
+                                                </StackPanel>
+                                            </DockPanel>
+                                            <TextBlock Text="Senden an (keines = alle aktiven Ziele)" Style="{StaticResource FieldLabel}"/>
+                                            <WrapPanel x:Name="pnlTeamsJobTargets" Margin="0,2,0,6" ToolTip="Welche Kanaele diese Meldung bekommen"/>
+                                            <TextBlock Text="Wochentage (keiner = taeglich)" Style="{StaticResource FieldLabel}"/>
+                                            <WrapPanel x:Name="pnlTeamsJobDays" ToolTip="Keiner angehakt = jeden Tag" Margin="0,2,0,6"/>
+                                            <TextBlock Text="Tenants" Style="{StaticResource FieldLabel}"/>
+                                            <WrapPanel x:Name="pnlTeamsJobTenants" ToolTip="Alle angehakt = auch spaeter angelegte Tenants" Margin="0,2,0,6"/>
+                                            <CheckBox x:Name="chkTeamsJobEnabled" ToolTip="Aus = Aufgabe laeuft, sendet aber nichts" Content="Auftrag aktiv" IsChecked="True" Foreground="#CCCCCC" FontSize="11"/>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </Grid>
+                        <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="Transparent" ResizeBehavior="PreviousAndNext" ResizeDirection="Rows" Cursor="SizeNS" ToolTip="Hoehe des Sendeprotokolls anpassen"/>
+                        <Border Grid.Row="2" Background="#252526" CornerRadius="4" Padding="10" Margin="0,6,0,0">
+                            <DockPanel>
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                    <Button x:Name="btnTeamsHistRefresh" ToolTip="Sendeprotokoll neu laden" DockPanel.Dock="Right" Content="&#x21BB; Aktualisieren" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2"/>
+                                    <TextBlock Text="Sendeprotokoll (ohne Adressen)" Style="{StaticResource SectionTitle}"/>
+                                </DockPanel>
+                                <DataGrid x:Name="gridTeamsHist" ToolTip="Letzte 200 Sendungen - ohne Adressen, nur Kurzkennung des Ziels" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" CanUserSortColumns="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Zeit" Binding="{Binding Zeit}" Width="120"/>
+                                        <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="130"/>
+                                        <DataGridTextColumn Header="Kategorie" Binding="{Binding Kategorie}" Width="100"/>
+                                        <DataGridTextColumn Header="Titel" Binding="{Binding Titel}" Width="2*"/>
+                                        <DataGridTextColumn Header="Ergebnis" Binding="{Binding Ergebnis}" Width="2*"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+                        </Border>
+                        </Grid>
+                    </DockPanel>
+                </TabItem>
             </TabControl>
         </Grid>
     </DockPanel>
