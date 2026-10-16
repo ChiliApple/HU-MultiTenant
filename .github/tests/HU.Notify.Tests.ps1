@@ -161,6 +161,14 @@ Describe 'Teams: Senden (ohne Netz)' {
         $r | Should -Match 'fehlgeschlagen'
         $r | Should -Not -Match 'geheim'
     }
+    It 'wirft nicht, wenn der Kartenbau scheitert (Review 029 B19)' {
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @([pscustomobject]@{ Id = 'aabbccdd'; Name = 'Z'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = $null }) } }
+        Mock -ModuleName HU.Notify New-HUTeamsCard { throw 'kaputt https://prod-1.logic.azure.com/w?sig=geheim' }
+        $r = Send-HUNotify -Category 'Daily' -Title 'T'
+        $r.Failed | Should -Be 1
+        $r.Text | Should -Match 'Karte nicht gebaut'
+        $r.Text | Should -Not -Match 'geheim'
+    }
     It 'sendet JSON per POST' {
         Mock -ModuleName HU.Notify Invoke-WebRequest { param($Uri, $Method, $Body, $ContentType) $script:sent = [System.Text.Encoding]::UTF8.GetString($Body); return $null }
         Send-HUTeamsCard -Card (New-HUTeamsCard -Title 'Hallo') -Url 'https://prod-1.logic.azure.com/workflows/abc' | Should -Be ''

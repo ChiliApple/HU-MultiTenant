@@ -103,6 +103,21 @@ Describe 'Teams-Auftraege: Ausfuehrung ohne Ziele' {
         $r.Success | Should -BeFalse
         $r.Message | Should -Match 'Keine Tenants'
     }
+    It 'ueberspringt Tenant-Eintraege ohne key (Review 029 B18)' {
+        Mock -ModuleName HU.TeamsJobs Get-HUSecretStatus { [pscustomobject]@{ Key = $TenantKey; Name = $TenantKey; Ok = $true; Error = ''; Days = 5; DisplayName = 'x'; Status = 'OK' } }
+        $j = New-HUTeamsJob -Name 'SC' -Kind 'Secrets'
+        $settings = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }, [pscustomobject]@{ displayName = 'ohne key' }); ui = [pscustomobject]@{ secretWarnDays = 30 } }
+        $r = Invoke-HUTeamsJob -Job $j -Settings $settings -AppRoot $script:TestRoot -NoSend
+        $r.Success | Should -BeTrue
+        @($r.Spec.Rows).Count | Should -Be 1
+    }
+    It 'tenants = null ergibt Keine Tenants, keinen Bindungsfehler (Review 029 B18)' {
+        $j = New-HUTeamsJob -Name 'SC' -Kind 'Secrets'
+        $settings = [pscustomobject]@{ tenants = $null; ui = [pscustomobject]@{ secretWarnDays = 30 } }
+        $r = Invoke-HUTeamsJob -Job $j -Settings $settings -AppRoot $script:TestRoot
+        $r.Success | Should -BeFalse
+        $r.Message | Should -Be 'Keine Tenants'
+    }
     It 'Vorschau (NoSend) nutzt die Kennzahlen' {
         Mock -ModuleName HU.TeamsJobs Get-HUDailyTenantStatus { [pscustomobject]@{ Key = $TenantKey; Name = $TenantKey; Ok = $true; Error = ''; Devices = 5; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = 50; SecretStatus = 'OK' } }
         $j = New-HUTeamsJob -Name 'Ampel'

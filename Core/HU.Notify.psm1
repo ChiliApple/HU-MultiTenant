@@ -144,6 +144,7 @@ function Invoke-HUNotifyLocked {
     $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_Notify')
     $got = $false
     try { $got = $m.WaitOne(5000) } catch [System.Threading.AbandonedMutexException] { $got = $true }
+    if (-not $got) { Write-HUNotifyModuleLog 'Sperre nicht erhalten (5 s) - schreibe trotzdem' 'WARN' }
     try { & $Do } finally { if ($got) { try { $m.ReleaseMutex() } catch { } }; $m.Dispose() }
 }
 
@@ -274,13 +275,15 @@ function Set-HUNotifyTargets {
             $clean += $o
         }
         if ($clean.Count -gt $script:NotifyMaxTargets) { return "Hoechstens $($script:NotifyMaxTargets) Ziele" }
-        if (-not (Test-Path -LiteralPath $script:NotifyBasePath)) { New-Item -Path $script:NotifyBasePath -ItemType Directory -Force | Out-Null }
-        # PS 5.1: -InputObject mit Array erzeugt value/Count-Huelle - daher Array als Eigenschaft verpacken
-        $plain = ([ordered]@{ v = 1; items = @($clean) } | ConvertTo-Json -Depth 6 -Compress)
-        $doc = [ordered]@{ v = 1; scope = 'CurrentUser'; updated = (Get-Date).ToString('s'); targets = (Protect-HUNotifyText -Text $plain) }
-        $tmp = "$($script:NotifyFile).tmp"
-        [System.IO.File]::WriteAllText($tmp, ($doc | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
-        Move-Item -LiteralPath $tmp -Destination $script:NotifyFile -Force
+        Invoke-HUNotifyLocked {
+            if (-not (Test-Path -LiteralPath $script:NotifyBasePath)) { New-Item -Path $script:NotifyBasePath -ItemType Directory -Force | Out-Null }
+            # PS 5.1: -InputObject mit Array erzeugt value/Count-Huelle - daher Array als Eigenschaft verpacken
+            $plain = ([ordered]@{ v = 1; items = @($clean) } | ConvertTo-Json -Depth 6 -Compress)
+            $doc = [ordered]@{ v = 1; scope = 'CurrentUser'; updated = (Get-Date).ToString('s'); targets = (Protect-HUNotifyText -Text $plain) }
+            $tmp = "$($script:NotifyFile).tmp.$PID"
+            [System.IO.File]::WriteAllText($tmp, ($doc | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
+            Move-Item -LiteralPath $tmp -Destination $script:NotifyFile -Force
+        }
         Write-HUNotifyModuleLog "Ziele gespeichert: $($clean.Count)" 'OK'
         return ''
     }
@@ -304,11 +307,16 @@ function Add-HUNotifyTarget {
         [hashtable]$Cats,
         [string]$Id = ''
     )
-    $c = Get-HUNotifyConfig
-    if ($c.Error) { return "Ziele nicht lesbar: $($c.Error)" }
-    $list = @($c.Targets | Where-Object { $_.Id -ne $Id })
-    $list += [pscustomobject]@{ Id = $Id; Name = $Name; Url = $Url; Enabled = $true; Cats = $Cats; Created = '' }
-    return (Set-HUNotifyTargets -Targets $list)
+    $out = ''
+    Invoke-HUNotifyLocked {
+        $c = Get-HUNotifyConfig
+        if ($c.Error) { $script:__huAddOut = "Ziele nicht lesbar: $($c.Error)"; return }
+        $list = @($c.Targets | Where-Object { $_.Id -ne $Id })
+        $list += [pscustomobject]@{ Id = $Id; Name = $Name; Url = $Url; Enabled = $true; Cats = $Cats; Created = '' }
+        $script:__huAddOut = (Set-HUNotifyTargets -Targets $list)
+    }
+    $out = "$($script:__huAddOut)"; $script:__huAddOut = $null
+    return $out
 }
 
 function Remove-HUNotifyTarget {
@@ -319,9 +327,14 @@ function Remove-HUNotifyTarget {
     [CmdletBinding()]
     [OutputType([string])]
     param([Parameter(Mandatory)][string]$Id)
-    $c = Get-HUNotifyConfig
-    if ($c.Error) { return "Ziele nicht lesbar: $($c.Error)" }
-    return (Set-HUNotifyTargets -Targets @($c.Targets | Where-Object { $_.Id -ne $Id }))
+    $out = ''
+    Invoke-HUNotifyLocked {
+        $c = Get-HUNotifyConfig
+        if ($c.Error) { $script:__huAddOut = "Ziele nicht lesbar: $($c.Error)"; return }
+        $script:__huAddOut = (Set-HUNotifyTargets -Targets @($c.Targets | Where-Object { $_.Id -ne $Id }))
+    }
+    $out = "$($script:__huAddOut)"; $script:__huAddOut = $null
+    return $out
 }
 
 function Test-HUNotifyCat {
@@ -583,7 +596,8 @@ function Send-HUNotify {
     $c = Get-HUNotifyConfig
     if ($c.Error) { $res.Text = "Teams-Benachrichtigung: Ziele nicht lesbar: $($c.Error)"; $res.Failed = 1; return $res }
     if (-not $c.Configured) { return $res }
-    $card = New-HUTeamsCard -Title $Title -Lines $Lines -Level $Level -Facts $Facts -Rows $Rows -Actions $Actions -Source $Source -Category $script:NotifyCats[$Category][0]
+    try { $card = New-HUTeamsCard -Title $Title -Lines $Lines -Level $Level -Facts $Facts -Rows $Rows -Actions $Actions -Source $Source -Category $script:NotifyCats[$Category][0] }
+    catch { $res.Failed = 1; $res.Text = "Karte nicht gebaut: $(Hide-HUNotifyUrl "$($_.Exception.Message)")"; return $res }
     $out = @()
     foreach ($t in @($c.Targets | Where-Object { $_ -and $_.Enabled })) {
         if ($TargetIds.Count -and ($TargetIds -notcontains $t.Id)) { continue }

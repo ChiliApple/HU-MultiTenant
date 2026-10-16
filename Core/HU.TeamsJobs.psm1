@@ -110,6 +110,7 @@ function Invoke-HUTeamsJobsLocked {
     $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_TeamsJobs')
     $got = $false
     try { $got = $m.WaitOne(5000) } catch [System.Threading.AbandonedMutexException] { $got = $true }
+    if (-not $got) { $log = Get-Command Write-HULog -ErrorAction SilentlyContinue; if ($log) { Write-HULog -Message '[TeamsJobs] Sperre nicht erhalten (5 s) - schreibe trotzdem' -Level WARN } }
     try { & $Do } finally { if ($got) { try { $m.ReleaseMutex() } catch { } }; $m.Dispose() }
 }
 
@@ -452,7 +453,7 @@ function Invoke-HUTeamsJob {
     $res = [pscustomobject]@{ Success = $false; Message = ''; Sent = ''; Spec = $null }
     try {
         $keys = @($Job.Tenants | Where-Object { "$_" })
-        if (-not $keys.Count) { $keys = @($Settings.tenants | ForEach-Object { "$($_.key)" }) }
+        if (-not $keys.Count) { $keys = @($Settings.tenants | ForEach-Object { "$($_.key)" } | Where-Object { "$_" }) }   # Eintraege ohne key ueberspringen (Review 029 B18)
         if (-not $keys.Count) { $res.Message = 'Keine Tenants'; return $res }
         $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
         $warn = 30; try { $warn = [int]$Settings.ui.secretWarnDays } catch { }
@@ -580,6 +581,7 @@ function Unregister-HUTeamsJobTask {
 }
 
 Export-ModuleMember -Function @(
+    'Invoke-HUTeamsJobsLocked',
     'Get-HUTeamsJobsPath',
     'New-HUTeamsJob',
     'Get-HUTeamsJobs',

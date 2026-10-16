@@ -26,7 +26,9 @@
   weitere private Bereiche ab und folgt keinen Weiterleitungen; Unterstriche in SKU-/Geraetenamen bleiben als
   Leerzeichen erhalten; abgeschnittene Ampel-Zeilen zeigen "und N weitere"; Retry beachtet Retry-After;
   Warnschwelle 0 faellt auf 30 Tage zurueck; auslaufende Lizenz-SKUs werden mitgeprueft; Headless legt keine
-  leere settings.json mehr an.
+  leere settings.json mehr an. Nach der Gegenpruefung zusaetzlich: auch die Oberflaeche und die Ziel-Ablage
+  schreiben unter der Prozess-Sperre; Tenant-Eintraege ohne Schluessel werden uebersprungen statt den Lauf
+  abzubrechen; ein fehlgeschlagener Kartenbau wird als Fehler gemeldet statt zu werfen.
 - Feinschliff nach den ersten Live-Tests: Auftragsliste zeigt die Art mit an; bei Standardnamen folgt der Name der
   gewaehlten Art; "Nichts zu melden" nennt den Grund (z. B. fruehester Secret-Ablauf, knappste SKU); die
   Benachrichtigungs-Vorschau am Handy zeigt Titel plus die ersten Ampel-Zeilen, getrennt mit Aufzaehlungspunkten.

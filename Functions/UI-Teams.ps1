@@ -227,9 +227,11 @@ function Get-HUTeamsJobFromForm {
 function Save-HUTeamsJob {
     try {
         $j = Get-HUTeamsJobFromForm
-        $jobs = @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id })
-        $jobs += $j
-        Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs $jobs
+        Invoke-HUTeamsJobsLocked {
+            $jobs = @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id })
+            $jobs += $j
+            Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs $jobs
+        }
         $script:TeamsJobCurrent = "$($j.Id)"
         # bestehende Aufgabe an den neuen Zeitplan anpassen
         if ((Get-HUTeamsJobTask -Job $j).Exists) { $r = Register-HUTeamsJobTask -Job $j -AppRoot $script:AppRoot; if ($r) { Write-HULogWarn $r } }
@@ -245,7 +247,7 @@ function Remove-HUTeamsJob {
     if (-not $j) { return }
     if (-not (Confirm-HU "Auftrag '$($j.Name)' entfernen (inkl. Aufgabe in der Aufgabenplanung)?" -Warning)) { return }
     $r = Unregister-HUTeamsJobTask -Job $j; if ($r) { Write-HULogWarn $r }
-    Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id })
+    Invoke-HUTeamsJobsLocked { Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id }) }
     $script:TeamsJobCurrent = ''
     Update-HUTeamsJobs
     Show-HUTeamsJob $null
