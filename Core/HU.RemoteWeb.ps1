@@ -137,7 +137,7 @@ $script:HURemoteHtml = @'
     </div>
     <div id="rDone"></div>
     <button class="btn danger wide hidden" id="rCancel">Abbrechen</button>
-    <div class="row between"><h2>Ausgabe</h2><span class="row"><button class="ibtn" id="rCopy" title="Alles kopieren" aria-label="Ausgabe in die Zwischenablage kopieren">&#10697;</button><button class="ibtn" id="rClear" title="Leeren" aria-label="Ausgabe leeren">&#128465;</button><label class="muted small"><input type="checkbox" id="rFollow" checked> mitlaufen</label></span></div>
+    <div class="row between"><h2>Ausgabe</h2><span class="row tools"><button class="ibtn" id="rCopy" title="Alles kopieren" aria-label="Ausgabe in die Zwischenablage kopieren">&#10697;</button><button class="ibtn" id="rClear" title="Leeren" aria-label="Ausgabe leeren">&#128465;</button><label class="muted small"><input type="checkbox" id="rFollow" checked> mitlaufen</label></span></div>
     <p class="muted small hidden" id="rLost"></p>
     <div class="console" id="rCon" aria-live="polite"></div>
   </section>
@@ -300,7 +300,7 @@ input.code4{font-size:24px;letter-spacing:6px;text-align:center;text-transform:u
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .ok-t{color:var(--green)}
 .ibtn{min-width:36px;min-height:36px;padding:0 8px;border:1px solid var(--s0);border-radius:10px;background:none;color:var(--ov);font-size:16px;line-height:1;cursor:pointer}
-.ibtn:active{background:var(--s0)}.ibtn.done{color:var(--green);border-color:var(--green)}
+.tools{position:relative;top:-4px}.ibtn:active{background:var(--s0)}.ibtn.done{color:var(--green);border-color:var(--green)}
 '@
 
 $script:HURemoteJs = @'
