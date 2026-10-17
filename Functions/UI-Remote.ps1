@@ -212,18 +212,38 @@ function Invoke-HURemoteSetup([ValidateSet('Install', 'Uninstall')][string]$Acti
     $hs = @{}
     foreach ($f in 'HU.RemoteSetup.ps1', 'HU.Remote.ps1') { $hs[$f] = (Get-FileHash -LiteralPath (Join-Path $core $f) -Algorithm SHA256).Hash }
     $nonce = [guid]::NewGuid().ToString('N')
-    $base = Join-Path $env:ProgramData 'HU-MultiTenant-RemoteSetup'
-    $res = Join-Path $base "result-$nonce.json"
+    # Review 032 B53: je Lauf ein neuer Ordner mit zufaelligem Namen unter %windir%\Temp (Name vorher unbekannt, also
+    # nicht vorab anlegbar); Besitzer Administratoren, ACL ohne Vererbung, keine Junction - sonst Abbruch
+    $base = Join-Path $env:windir "Temp\HU-RemoteSetup-$nonce"
+    $res = Join-Path $base 'result.json'
     $q = { param($s) "'" + ("$s" -replace "'", "''") + "'" }
     $boot = @"
 `$ErrorActionPreference = 'Stop'
 `$base = $(& $q $base); `$res = $(& $q $res); `$src = $(& $q $core)
 `$files = @{ 'HU.RemoteSetup.ps1' = '$($hs['HU.RemoteSetup.ps1'])'; 'HU.Remote.ps1' = '$($hs['HU.Remote.ps1'])' }
+`$ok = @('S-1-5-32-544', 'S-1-5-18', '$sid')
+function Test-HUOwnDir([string]`$p) {
+    `$i = Get-Item -LiteralPath `$p -Force
+    if (-not `$i.PSIsContainer -or (`$i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return `$false }
+    `$o = (Get-Acl -LiteralPath `$p).GetOwner([Security.Principal.SecurityIdentifier]).Value
+    return (`$o -eq 'S-1-5-32-544' -or `$o -eq 'S-1-5-18')
+}
+# Reste frueherer Einrichtungen entfernen - nur eigene Ordner (Besitzer Administratoren/SYSTEM, keine Junction)
 try {
-    if (Test-Path -LiteralPath `$base) { Remove-Item -LiteralPath `$base -Recurse -Force }
-    [void](New-Item -ItemType Directory -Path `$base -Force)
+    `$old = Join-Path `$env:ProgramData 'HU-MultiTenant-RemoteSetup'
+    if ((Test-Path -LiteralPath `$old) -and (Test-HUOwnDir `$old)) { Remove-Item -LiteralPath `$old -Recurse -Force }
+    Get-ChildItem -LiteralPath (Split-Path `$base -Parent) -Directory -Filter 'HU-RemoteSetup-*' -Force -ErrorAction SilentlyContinue |
+        Where-Object { `$_.LastWriteTime -lt (Get-Date).AddHours(-1) -and (Test-HUOwnDir `$_.FullName) } | Remove-Item -Recurse -Force
+} catch { }
+try {
+    if (Test-Path -LiteralPath `$base) { throw 'Setup-Ordner gibt es schon - abgebrochen' }
+    [void](New-Item -ItemType Directory -Path `$base)
+    `$o = & icacls.exe `$base /setowner '*S-1-5-32-544' 2>&1
+    if (`$LASTEXITCODE) { throw "Besitzer des Setup-Ordners nicht gesetzt: `$o" }
     `$o = & icacls.exe `$base /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' '*$($sid):(OI)(CI)RX' 2>&1
     if (`$LASTEXITCODE) { throw "Rechte fuer den Setup-Ordner nicht gesetzt: `$o" }
+    if (-not (Test-HUOwnDir `$base)) { throw 'Setup-Ordner: Besitzer oder Ordnerart unerwartet - abgebrochen' }
+    foreach (`$a in (Get-Acl -LiteralPath `$base).Access) { if (`$ok -notcontains `$a.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value) { throw "Setup-Ordner: unerwartete Berechtigung fuer `$(`$a.IdentityReference) - abgebrochen" } }
     foreach (`$k in `$files.Keys) {
         `$d = Join-Path `$base `$k
         Copy-Item -LiteralPath (Join-Path `$src `$k) -Destination `$d -Force

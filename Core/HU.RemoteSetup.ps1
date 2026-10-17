@@ -6,8 +6,8 @@
     Install: CA (gemeinsam mit HUMig, nur falls noch keine da ist), Server-Zertifikat fuer die privaten IPv4-Adressen und
     Namen dieses PCs, HTTPS-Bindung (http.sys), Port-Freigabe fuer das Benutzerkonto (urlacl) und Firewall-Regel
     (Domaenen-/private Netze, lokales Subnetz + eingetragene Netze, z. B. das VPN). Danach startet die Fernbedienung
-    ohne Adminrechte. Gestartet wird eine gepruefte Kopie aus %ProgramData%\HU-MultiTenant-RemoteSetup
-    (nur Administratoren duerfen dort schreiben; Pruefsummen vom Programm uebergeben). Uninstall entfernt Bindung, Freigabe, Regel und Server-Zertifikat (die CA bleibt fuer HUMig).
+    ohne Adminrechte. Gestartet wird eine gepruefte Kopie aus %windir%\Temp\HU-RemoteSetup-<zufaellig>
+    (je Lauf neu angelegt, Besitzer Administratoren, nur Administratoren duerfen schreiben; Pruefsummen vom Programm). Uninstall entfernt Bindung, Freigabe, Regel und Server-Zertifikat (die CA bleibt fuer HUMig).
     Das Ergebnis steht als JSON in -ResultFile.
 .NOTES
     Zielmaschine: der PC, auf dem HU-MultiTenant laeuft. Aufruf nur durch HU-MultiTenant (Knopf Remote FB > Einstellungen).

@@ -23,8 +23,8 @@
 - Probelauf erkennt das Handy nur an eindeutigen Schaltern (DryRun, WhatIf, Probelauf); alles andere gilt als echter Lauf.
 - Freigaben: wurde der Code seit der Freigabe geaendert, fragt das Speichern mit Liste nach (Nein = bleibt gesperrt).
 - Not-Aus beendet auch die Fernbedienung, entfernt die gekoppelten Handys und schaltet den Autostart aus.
-- Einrichtung: gestartet wird als Administrator eine gepruefte Kopie (SHA-256) in einem nur fuer Administratoren
-  beschreibbaren Ordner, Zusatznetze nur als Ziffern/Punkt/Schraegstrich.
+- Einrichtung: gestartet wird als Administrator eine gepruefte Kopie (SHA-256) in einem je Lauf neu angelegten, nur fuer
+  Administratoren beschreibbaren Ordner (%windir%\Temp, zufaelliger Name, Besitzer und Rechte geprueft), Zusatznetze nur als Ziffern/Punkt/Schraegstrich.
 - Teams-Meldung vom Handy: Bestaetigung "Sendet jetzt eine Teams-Meldung an ..." und Knopf "Jetzt senden"; Reiter und
   Hinweistexte kontrastreicher. Herunterziehen bleibt auf der Seite (auch Art Snippets/Erweiterungen/Meldungen).
 - Intune am Handy (Reiter "Intune"): Apps und Wartungsskripte je Tenant, Installationsstand bzw. Ergebnis (Anzahl und
