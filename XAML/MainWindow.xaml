@@ -42,10 +42,10 @@
                             <Rectangle Width="8" Height="2" Fill="#1E1E1E"/>
                         </Grid>
                     </Button>
-                    <Button x:Name="btnSetupGuide" Content="&#x1F6E0; Berechtigungen" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
-                            ToolTip="Benoetigte Graph-Berechtigungen der gewaehlten Extension pruefen und einrichten"/>
                     <Button x:Name="btnRemote" Content="&#x1F4F1; Handy" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
                             ToolTip="Handy-Fernbedienung: Snippets, Erweiterungen und Teams-Meldungen vom Handy starten"/>
+                    <Button x:Name="btnSetupGuide" Content="&#x1F6E0; Berechtigungen" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
+                            ToolTip="Benoetigte Graph-Berechtigungen der gewaehlten Extension pruefen und einrichten"/>
                     <Button x:Name="btnSettings" Content="&#x2699; Einstellungen" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
                             ToolTip="Tenants, Secrets, Verknuepfungen, Darstellung, Update"/>
                     <Button x:Name="btnSupport" Content="&#x1F6DF; Support" Style="{StaticResource ToolButton}" Margin="0,0,6,0"
