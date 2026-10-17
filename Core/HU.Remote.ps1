@@ -1069,7 +1069,7 @@ function Get-HURemoteResponse($S, $Req) {
             } finally { [System.Threading.Monitor]::Exit($S.Nonces.SyncRoot) }
             if ($full) { return (New-HURemoteJson 429 @{ ok = $false; error = 'Zu viele offene Anfragen - kurz warten' }) }
             $sum = [ordered]@{ title = $(if ($iv) { $iv.Title } else { "$($it.Name)" }); kind = "$($it.Kind)"; live = $live; tenants = $tnames
-                params = $(if ($iv) { @($iv.Lines | ForEach-Object { [ordered]@{ label = $_.Label; value = $_.Value; changed = $false } }) } else { @(Format-HURemoteParamText $it.Params $pv.Values) })
+                params = @(if ($iv) { $iv.Lines | ForEach-Object { [ordered]@{ label = $_.Label; value = $_.Value; changed = $false } } } else { Format-HURemoteParamText $it.Params $pv.Values })   # @(): immer Liste (0/1 Eintrag)
                 teams = $(if ($tgtName) { "einmalig an: $tgtName" } elseif ($it.Kind -eq 'teams') { "an: $($it.TargetText)" } else { '' })
                 hint = $(if ($live) { "Aendert Daten in $($tk.Count) Tenant(s). Am PC steht 'gestartet von $($dev.Name)', an Teams geht ein Hinweis." } else { '' }) }
             return (New-HURemoteJson 200 ([ordered]@{ ok = $true; nonce = $nonce; seconds = $script:HURemoteConfirmSec; code = $short; summary = $sum }))

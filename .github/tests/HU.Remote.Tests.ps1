@@ -86,6 +86,14 @@ Describe 'Fernbedienung: Pruefen und Starten' {
         Test-HURemotePin '4711' (Read-HURemotePin) | Should -BeTrue
         Test-HURemotePin '4712' (Read-HURemotePin) | Should -BeFalse
     }
+    It 'Zusammenfassung: Parameter immer als Liste (auch ohne bzw. mit einem Parameter)' {
+        $S = New-TestState; $S.Pin = Read-HURemotePin; $t = Pair $S
+        $r = Get-HURemoteResponse $S @{ Method = 'POST'; Path = '/api/prepare'; Body = (@{ id = '00000000000000b2'; tenants = @('a') } | ConvertTo-Json -Compress); Ip = '10.0.0.9'; Host = 'pc:8444'; Origin = ''; Auth = "Bearer $t"; Query = @{} }
+        $r.Text | Should -Match '"params":\['
+        $S.Nonces.Clear()
+        $r = Get-HURemoteResponse $S @{ Method = 'POST'; Path = '/api/prepare'; Body = (@{ id = '00000000000000a1'; tenants = @('a'); params = @{ DryRun = $true } } | ConvertTo-Json -Compress); Ip = '10.0.0.9'; Host = 'pc:8444'; Origin = ''; Auth = "Bearer $t"; Query = @{} }
+        $r.Text | Should -Match '"params":\['
+    }
     It 'Probelauf (Schalter an) braucht weder Kuerzel noch PIN' {
         $S = New-TestState; $S.Pin = Read-HURemotePin; $t = Pair $S
         $p = Req $S POST '/api/prepare' @{ id = '00000000000000a1'; tenants = @('a'); params = @{ DryRun = $true } } $t

@@ -641,7 +641,7 @@ $script:HURemoteJs = @'
     $('cTeams').textContent = s.teams || ''; show('cTeamsRow', !!s.teams);
     $('cBy').textContent = 'gestartet von ' + (S.info.device || 'diesem Handy');
     var p = $('cPar'); clear(p);
-    (s.params || []).forEach(function (x) { var r = el('div', 'kv'); r.appendChild(el('span', '', x.label)); r.appendChild(el('b', x.changed ? 'chg' : '', x.value)); p.appendChild(r); });
+    (Array.isArray(s.params) ? s.params : []).forEach(function (x) { var r = el('div', 'kv'); r.appendChild(el('span', '', x.label)); r.appendChild(el('b', x.changed ? 'chg' : '', x.value)); p.appendChild(r); });
     $('cHint').textContent = s.hint || '';
     show('cLive', !!s.live);
     $('cShort').textContent = j.code || ''; $('cCode').value = ''; $('cPin').value = '';
