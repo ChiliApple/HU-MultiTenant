@@ -232,6 +232,7 @@ function Show-HUTeamsJob($Job) {
         $c['chkTeamsJobMask'].IsChecked = $mask
         Update-HUTeamsMaskState
         $kind = if ($Job) { "$($Job.Kind)" } else { 'Daily' }
+        $c['cmbTeamsJobKind'].SelectedItem = $null   # Skript-Meldung: oben nichts gewaehlt
         foreach ($i in $c['cmbTeamsJobKind'].Items) { if ("$($i.Tag)" -eq $kind) { $c['cmbTeamsJobKind'].SelectedItem = $i } }
         Update-HUTeamsSnippetCombo -Select $(if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['snippet']) { "$($Job.Options.snippet)" } else { '' })
         Update-HUTeamsMaskState
@@ -250,15 +251,22 @@ function Show-HUTeamsJob($Job) {
     } finally { $script:TeamsFillBusy = $false }
 }
 
-# "Geraetenamen ausblenden" gibt es nur beim Defender-Alarm (Review 030 B2); die Skript-Auswahl nur bei "Aus Skript"
+# Was gemeldet wird: Skript gewaehlt -> 'Script', sonst die eingebaute Meldung oben ('' = nichts gewaehlt)
+function Get-HUTeamsFormKind {
+    $c = $script:Controls
+    $sn = $c['cmbTeamsJobSnippet'].SelectedItem
+    if ($sn -and "$($sn.Tag)") { return 'Script' }
+    return "$($c['cmbTeamsJobKind'].SelectedItem.Tag)"
+}
+
+# "Geraetenamen ausblenden" gibt es nur beim Defender-Alarm (Review 030 B2)
 function Update-HUTeamsMaskState {
     $c = $script:Controls
-    $kind = "$($c['cmbTeamsJobKind'].SelectedItem.Tag)"
+    $kind = Get-HUTeamsFormKind
     $isDef = ($kind -eq 'Defender')
     $c['chkTeamsJobMask'].IsEnabled = $isDef
     $c['chkTeamsJobMask'].Opacity = $(if ($isDef) { 1.0 } else { 0.5 })
     $c['chkTeamsJobMask'].Visibility = $(if ($kind -eq 'Script') { 'Collapsed' } else { 'Visible' })
-    $c['pnlTeamsJobScript'].Visibility = $(if ($kind -eq 'Script') { 'Visible' } else { 'Collapsed' })
 }
 
 # Skript-Auswahl: gespeicherte Quick-Script-Snippets (Auswahl bleibt, auch wenn das Snippet inzwischen fehlt)
@@ -268,6 +276,8 @@ function Update-HUTeamsSnippetCombo {
     $cur = if ($null -ne $Select) { $Select } elseif ($cb.SelectedItem) { "$($cb.SelectedItem.Tag)" } else { '' }
     $names = @(Get-HUSnippets | ForEach-Object { "$($_.name)" } | Sort-Object)
     $cb.Items.Clear()
+    $none = New-Object System.Windows.Controls.ComboBoxItem; $none.Content = '(kein Skript - eingebaute Meldung oben)'; $none.Tag = ''; $none.Foreground = Get-HUBrush '#888888'
+    [void]$cb.Items.Add($none); if (-not $cur) { $cb.SelectedItem = $none }
     foreach ($n in $names) { $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = $n; $i.Tag = $n; [void]$cb.Items.Add($i); if ($n -eq $cur) { $cb.SelectedItem = $i } }
     if ($cur -and $names -notcontains $cur) {
         $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = "$cur (fehlt!)"; $i.Tag = $cur; $i.Foreground = Get-HUBrush '#F44336'
@@ -281,7 +291,8 @@ function Get-HUTeamsJobFromForm {
     if (-not $name) { throw 'Bitte einen Namen eingeben.' }
     $time = "$($c['txtTeamsJobTime'].Text)".Trim()
     if ($time -notmatch '^([01]?\d|2[0-3]):[0-5]\d$') { throw 'Uhrzeit bitte als HH:mm (z. B. 07:00).' }
-    $kind = "$($c['cmbTeamsJobKind'].SelectedItem.Tag)"; if (-not $kind) { $kind = 'Daily' }
+    $kind = Get-HUTeamsFormKind
+    if (-not $kind) { throw 'Bitte eine eingebaute Meldung oder ein Skript waehlen.' }
     $cat = $kind   # Fusszeilen-Kennzeichnung = Art
     $days = @($c['pnlTeamsJobDays'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and $_.IsChecked } | ForEach-Object { [int]$_.Tag })
     $all = @($script:Settings.tenants | ForEach-Object { "$($_.key)" })
@@ -429,7 +440,11 @@ function Register-HUTeamsHandlers {
         if ($script:TeamsFillBusy) { return }
         $c2 = $script:Controls
         $it = $c2['cmbTeamsJobSnippet'].SelectedItem
-        if (-not $it) { return }
+        Update-HUTeamsMaskState
+        if (-not $it -or -not "$($it.Tag)") { return }
+        # Skript gewaehlt: oben keine eingebaute Meldung (entweder - oder)
+        $script:TeamsFillBusy = $true
+        try { $c2['cmbTeamsJobKind'].SelectedItem = $null } finally { $script:TeamsFillBusy = $false }
         # Name folgt dem Skript, solange im Feld ein Standardname steht
         $cur = "$($c2['txtTeamsJobName'].Text)".Trim()
         $std = @(Get-HUTeamsKinds | ForEach-Object { "$($_.Label)" }) + @(Get-HUSnippets | ForEach-Object { "$($_.name)" })
@@ -463,10 +478,16 @@ function Register-HUTeamsHandlers {
         Update-HUTeamsMaskState
         if ($script:TeamsFillBusy) { return }
         $c2 = $script:Controls
-        $labels = @(Get-HUTeamsKinds | ForEach-Object { "$($_.Label)" })
+        $sel = $c2['cmbTeamsJobKind'].SelectedItem
+        # eingebaute Meldung gewaehlt: Skript-Auswahl auf "kein Skript" (entweder - oder)
+        if ($sel) {
+            $script:TeamsFillBusy = $true
+            try { $c2['cmbTeamsJobSnippet'].SelectedIndex = 0 } finally { $script:TeamsFillBusy = $false }
+            Update-HUTeamsMaskState
+        }
+        $labels = @(Get-HUTeamsKinds | ForEach-Object { "$($_.Label)" }) + @(Get-HUSnippets | ForEach-Object { "$($_.name)" })
         $cur = "$($c2['txtTeamsJobName'].Text)".Trim()
         if ($cur -and ($labels -notcontains $cur)) { return }
-        $sel = $c2['cmbTeamsJobKind'].SelectedItem
         if ($sel) { $k = Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($sel.Tag)" } | Select-Object -First 1; if ($k) { $c2['txtTeamsJobName'].Text = "$($k.Label)" } }
     })
 
@@ -555,7 +576,7 @@ function Confirm-HUTeamsSend {
         $direct = "$Code" -match '(?i)-TargetIds\b|-IgnoreCategory\b|\bSend-HUTeamsCard\b|-Category\s+\$'   # Ziel/Kategorie nicht sicher erkennbar
         $to = @($targets | Where-Object { $t = $_; @($cats | Where-Object { Test-HUNotifyCat -Target $t -Category $_ }).Count } | ForEach-Object { "$($_.Name)" })
         if (-not $direct -and -not $to.Count) {
-            Write-HULogWarn "Teams: Dieses $What ist keiner Meldung zugeordnet - es wird nichts gesendet. Reiter Teams > Meldungen > + Neu > 'Aus Skript ...' und dieses Snippet waehlen."
+            Write-HULogWarn "Teams: Dieses $What ist keiner Meldung zugeordnet - es wird nichts gesendet. Reiter Teams > Meldungen > + Neu > 'oder Meldung aus Skript' und dieses Snippet waehlen."
             return 'none'
         }
         $txt = "Dieses $What kann Meldungen an Teams senden.`n`nGeht an: $(if ($to.Count) { $to -join ', ' } else { 'im Code nicht sicher erkennbar' })`n`n"

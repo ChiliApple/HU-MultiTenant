@@ -905,9 +905,9 @@ function Send-HUNotify {
     else {
         $map = Get-HUNotifyCatMap
         if (-not $Category -and $TargetIds.Count) { $IgnoreCategory = $true; $Category = 'Skript' }   # eigenes Skript: direkt an diese Ziele
-        elseif (-not $Category) { $res.Text = "Teams: nichts gesendet - dieses Skript ist keiner Meldung zugeordnet (Reiter Teams > Meldungen > + Neu > 'Aus Skript')"; return $res }
+        elseif (-not $Category) { $res.Text = "Teams: nichts gesendet - dieses Skript ist keiner Meldung zugeordnet (Reiter Teams > Meldungen > + Neu > 'oder Meldung aus Skript')"; return $res }
         if ($Category -eq 'Skript' -and $IgnoreCategory) { $map = [ordered]@{ Skript = @($(if ($Source) { $Source } else { 'Skript' }), $false, $true) } }
-        if (-not $map.Contains($Category)) { $res.Text = "Unbekannte Kategorie: $Category - nichts gesendet. Skript im Reiter Teams als Meldung 'Aus Skript' anlegen."; $res.Failed = 1; return $res }
+        if (-not $map.Contains($Category)) { $res.Text = "Unbekannte Kategorie: $Category - nichts gesendet. Skript im Reiter Teams als 'Meldung aus Skript' anlegen."; $res.Failed = 1; return $res }
         $catLabel = $map[$Category][0]; $histCat = $Category
     }
     $c = Get-HUNotifyConfig

@@ -108,7 +108,7 @@ Weitere Beispiele: Snippet-Verwaltung › **Beispiele** (Datei `Config\quick-sni
 Das Snippet entscheidet, **ob** und **was** gemeldet wird; die Meldung im Reiter **Teams** entscheidet, **an wen** und **wann**.
 
 1. Snippet schreiben und speichern, z. B. "Drucker-Status".
-2. Reiter **Teams** › Meldungen › *+ Neu* › *Was wird gemeldet*: **Aus Skript …** › Snippet wählen, Ziele anhaken, Tenants wählen › *Speichern*.
+2. Reiter **Teams** › Meldungen › *+ Neu* › Feld **oder Meldung aus Skript**: Snippet wählen, Ziele anhaken, Tenants wählen › *Speichern*.
 3. *Jetzt senden* zum Ausprobieren, *Aufgabe anlegen* für den Zeitplan.
 
 ```powershell

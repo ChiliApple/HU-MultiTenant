@@ -1313,13 +1313,12 @@
                                                 <TextBox x:Name="txtTeamsJobName" ToolTip="Name der Meldung - Titel der Karte (bei Skripten in Fusszeile und Sendeprotokoll)" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,6"/>
                                                 <DockPanel Margin="0,0,0,6" LastChildFill="False">
                                                     <StackPanel DockPanel.Dock="Left" Width="160" Margin="0,0,10,0">
-                                                        <TextBlock Text="Was wird gemeldet" Style="{StaticResource FieldLabel}"/>
-                                                        <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Eingebaute Meldung oder eigenes Skript. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp und Defender-Alarm nur, wenn es etwas zu melden gibt; ein Skript sendet, wenn es Send-HUNotify aufruft." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
+                                                        <TextBlock Text="Eingebaute Meldung" Style="{StaticResource FieldLabel}"/>
+                                                        <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Fertige Meldungen. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp und Defender-Alarm nur, wenn es etwas zu melden gibt. Fuer ein eigenes Skript das Feld darunter verwenden." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
                                                             <ComboBoxItem Content="Tages-Ampel" Tag="Daily"/>
                                                             <ComboBoxItem Content="Secret-Countdown" Tag="Secrets"/>
                                                             <ComboBoxItem Content="Lizenzen knapp" Tag="Licenses"/>
                                                             <ComboBoxItem Content="Defender-Alarm" Tag="Defender"/>
-                                                            <ComboBoxItem Content="Aus Skript ..." Tag="Script"/>
                                                         </ComboBox>
                                                     </StackPanel>
                                                     <StackPanel DockPanel.Dock="Left" Width="70" Margin="0,0,10,0">
@@ -1327,8 +1326,8 @@
                                                         <TextBox x:Name="txtTeamsJobTime" ToolTip="Uhrzeit (HH:mm) fuer die Aufgabenplanung" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,0" Text="07:00"/>
                                                     </StackPanel>
                                                 </DockPanel>
-                                                <StackPanel x:Name="pnlTeamsJobScript" Visibility="Collapsed" Margin="0,0,0,6">
-                                                    <TextBlock Text="Skript (gespeichertes Snippet aus Quick Script)" Style="{StaticResource FieldLabel}"/>
+                                                <StackPanel x:Name="pnlTeamsJobScript" Margin="0,0,0,6">
+                                                    <TextBlock Text="oder Meldung aus Skript (gespeichertes Snippet aus Quick Script)" Style="{StaticResource FieldLabel}"/>
                                                     <ComboBox x:Name="cmbTeamsJobSnippet" AutomationProperties.Name="Skript der Meldung" ToolTip="Snippet aus Quick Script. Es laeuft je Tenant mit den Standardwerten seiner @param-Zeilen." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,2"/>
                                                     <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" FontSize="10" Text="Im Skript genuegt: Send-HUNotify -Title '...' -Lines @('...'). Jede Karte geht an die Ziele unten. Laeuft das Snippet im Quick-Script-Editor, gehen seine Karten (nach Rueckfrage) ebenfalls an diese Ziele."/>
                                                 </StackPanel>

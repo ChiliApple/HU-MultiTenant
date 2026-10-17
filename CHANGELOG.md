@@ -10,7 +10,7 @@
 - Reiter Teams neu geordnet: links **Ziele** (Kanaele), rechts **Meldungen** in zwei Gruppen - *Eingebaute Meldungen*
   (Tages-Ampel, Secret-Countdown, Lizenzen knapp, Defender-Alarm) und *Meldungen aus Skripten*. Jede Meldung hat
   dieselben Einstellungen: Ziele ("Senden an"), Tenants, "Jetzt senden" und auf Wunsch einen Zeitplan (Aufgabenplanung).
-- **Meldung aus Skript:** "Was wird gemeldet" > *Aus Skript ...* > gespeichertes Quick-Script-Snippet waehlen. Das Snippet
+- **Meldung aus Skript:** unter der eingebauten Meldung steht immer das Feld *oder Meldung aus Skript* mit allen gespeicherten Quick-Script-Snippets. Das Snippet
   laeuft je Tenant mit den Standardwerten seiner `@param`-Zeilen; jedes `Send-HUNotify -Title ...` darin geht an die Ziele
   der Meldung - eine Kategorie braucht es nicht. Geplant ueber `Main.ps1 -Headless -Job <Id>` (nur gespeicherte
   Meldungen und Snippets, kein freier Code), Laufzeit hoechstens 30 Minuten. Exit-Codes wie bei den eingebauten Meldungen.
