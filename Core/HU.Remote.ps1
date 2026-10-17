@@ -41,6 +41,7 @@ $script:HURemoteBlockedParams = '^(?i)(TenantKey|Schule|Token|Tenants|Settings|A
 # QR-CODE (ISO/IEC 18004): Byte-Modus, Fehlerkorrektur M, Version 1-10
 # ============================================================================
 # je Version: Bloecke Gruppe 1 (Anzahl, Datenwoerter), Gruppe 2 (Anzahl, Datenwoerter), Korrekturwoerter je Block
+$script:HURQrGfExp = $null; $script:HURQrGfLog = $null   # Tabellen, beim ersten QR-Code berechnet (vorbelegt wegen Set-StrictMode in Main.ps1)
 $script:HURQrM = @{
     1 = @(1, 16, 0, 0, 10); 2 = @(1, 28, 0, 0, 16); 3 = @(1, 44, 0, 0, 26); 4 = @(2, 32, 0, 0, 18); 5 = @(2, 43, 0, 0, 24)
     6 = @(4, 27, 0, 0, 16); 7 = @(4, 31, 0, 0, 18); 8 = @(2, 38, 2, 39, 22); 9 = @(3, 36, 2, 37, 22); 10 = @(4, 43, 1, 44, 26)

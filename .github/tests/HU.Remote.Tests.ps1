@@ -12,6 +12,7 @@ BeforeAll {
     $script:OldAppData = $env:APPDATA
     $env:APPDATA = Join-Path $script:TestRoot 'appdata'
     New-Item -Path $env:APPDATA -ItemType Directory -Force | Out-Null
+    Set-StrictMode -Version 1.0   # wie Main.ps1
     . (Join-Path $root 'Core\HU.Remote.ps1')
     . (Join-Path $root 'Core\HU.RemoteRun.ps1')
     . (Join-Path $root 'Core\HU.RemoteWeb.ps1')
