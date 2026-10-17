@@ -463,9 +463,9 @@ function Update-HURemotePushRuns {
 function Update-HURemoteButton {
     $b = $script:Controls['btnRemote']; if (-not $b) { return }
     $r = $script:HURem
-    if ($r -and $r.Runner) { $b.Content = [char]0x1F4F1 + ' Handy steuert'; $b.Foreground = Get-HUBrush '#FFB74D'; $b.ToolTip = "Vom Handy laeuft: $($r.S.Job.Title)" }
-    elseif ($r) { $b.Content = [char]0x1F4F1 + ' Handy ' + [char]0x25CF; $b.Foreground = Get-HUBrush '#81C784'; $b.ToolTip = "Fernbedienung aktiv: https://$($r.Ip):$($r.Port)" }
-    else { $b.Content = [char]0x1F4F1 + ' Handy'; $b.Foreground = Get-HUBrush '#CCCCCC'; $b.ToolTip = 'Handy-Fernbedienung: Snippets, Erweiterungen und Teams-Meldungen vom Handy starten' }
+    if ($r -and $r.Runner) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Handy steuert'; $b.Foreground = Get-HUBrush '#FFB74D'; $b.ToolTip = "Vom Handy laeuft: $($r.S.Job.Title)" }
+    elseif ($r) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Handy ' + [char]0x25CF; $b.Foreground = Get-HUBrush '#81C784'; $b.ToolTip = "Fernbedienung aktiv: https://$($r.Ip):$($r.Port)" }
+    else { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Handy'; $b.Foreground = Get-HUBrush '#CCCCCC'; $b.ToolTip = 'Handy-Fernbedienung: Snippets, Erweiterungen und Teams-Meldungen vom Handy starten' }
 }
 
 # Beim Start: Knopf, ggf. automatisch einschalten

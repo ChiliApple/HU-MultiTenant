@@ -500,7 +500,7 @@ Initialize-HUMaint
 Initialize-HURint
 Restore-HUWindowState
 Select-HUStartTab
-Initialize-HURemote
+try { Initialize-HURemote } catch { Write-HULogWarn "Fernbedienung: $($_.Exception.Message)" }
 Write-HULogOK "Bereit - $(@($script:Settings.tenants).Count) Tenant(s), $($script:ExtensionItems.Count) Extension(s)."
 
 try { [void]$script:Window.ShowDialog() }
