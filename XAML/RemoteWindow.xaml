@@ -129,6 +129,7 @@
                         <CheckBox x:Name="chkRemLocked" Content="Starten vom Handy auch, wenn HU-MultiTenant am PC gesperrt ist" Foreground="#CCCCCC" Margin="0,2"
                                   ToolTip="Aus: solange die App am PC gesperrt ist, startet vom Handy nichts (ansehen geht weiter)"/>
                         <CheckBox x:Name="chkRemAwake" Content="PC wach halten, solange die Fernbedienung an ist (sonst nur waehrend eines Laufs)" Foreground="#CCCCCC" Margin="0,2"/>
+                        <CheckBox x:Name="chkRemIntune" Content="Apps und Wartung (Intune) am Handy: Stand ansehen, Zuweisungen setzen und aufheben (immer mit Kuerzel und PIN)" Foreground="#CCCCCC" Margin="0,2"/>
 
                         <TextBlock Text="Netz" Style="{StaticResource SectionTitle}" Margin="0,16,0,0"/>
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,2">

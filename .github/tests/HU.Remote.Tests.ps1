@@ -189,6 +189,77 @@ Describe 'Fernbedienung: Lauf ohne Oberflaeche' {
     }
 }
 
+Describe 'Fernbedienung: Apps und Wartung (Intune)' {
+    BeforeAll {
+        Set-HURemotePin '4711'
+        $script:G1 = '11111111-2222-3333-4444-555555555555'
+        function script:New-IState { $S = New-TestState; $S.Pin = Read-HURemotePin; $S.Items['00000000000000c3'] = @{ Id = '00000000000000c3'; Kind = 'intune'; Area = 'app'; Name = 'Intune-Apps'; Mode = 'write'; Params = @(); Hash = 'intune'; Stale = $false; TargetText = '' }; $S.Items['00000000000000d4'] = @{ Id = '00000000000000d4'; Kind = 'intune'; Area = 'rem'; Name = 'Intune-Wartung'; Mode = 'write'; Params = @(); Hash = 'intune'; Stale = $false; TargetText = '' }; return $S }
+    }
+    It 'Zuweisen ist immer ein echter Lauf (Kuerzel + PIN), genau ein Tenant, Werte gehen geprueft in den Start' {
+        $S = New-IState; $t = Pair $S
+        $q = @{ op = 'assign'; id = $G1; name = 'Firefox'; kind = 'group'; groupId = $G1; groupName = 'Schueler'; intent = 'required' }
+        (Req $S POST '/api/prepare' @{ id = '00000000000000c3'; tenants = @('a', 'b'); intune = $q } $t).Code | Should -Be 400
+        $p = Req $S POST '/api/prepare' @{ id = '00000000000000c3'; tenants = @('a'); intune = $q } $t
+        $p.Code | Should -Be 200
+        $p.J.summary.live | Should -BeTrue
+        $p.J.code | Should -Match '^[A-Z2-9]{4}$'
+        (Req $S POST '/api/run' @{ nonce = $p.J.nonce; code = $p.J.code; pin = '4711' } $t).Code | Should -Be 202
+        $S.RunReq.Intune.Intent | Should -Be 'required'
+        $S.RunReq.Intune.GroupId | Should -Be $G1
+        $S.RunReq.Intune.Area | Should -Be 'app'
+    }
+    It 'ungueltige Angaben werden abgelehnt' {
+        (Test-HURemoteIntuneReq @{ op = 'assign'; id = 'x'; kind = 'group' } 'app').Ok | Should -BeFalse
+        (Test-HURemoteIntuneReq @{ op = 'assign'; id = $G1; kind = 'group'; groupId = 'abc'; intent = 'required' } 'app').Ok | Should -BeFalse
+        (Test-HURemoteIntuneReq @{ op = 'assign'; id = $G1; kind = 'allDevices'; intent = 'available' } 'app').Ok | Should -BeFalse
+        (Test-HURemoteIntuneReq @{ op = 'assign'; id = $G1; kind = 'allDevices'; intent = 'delete' } 'app').Ok | Should -BeFalse
+        (Test-HURemoteIntuneReq @{ op = 'assign'; id = $G1; kind = 'allDevices'; schedule = @{ type = 'hourly'; interval = 30 } } 'rem').Ok | Should -BeFalse
+        (Test-HURemoteIntuneReq @{ op = 'assign'; id = $G1; kind = 'allDevices'; schedule = @{ type = 'once'; time = '08:00'; date = '2000-01-01' } } 'rem').Ok | Should -BeFalse
+        (Test-HURemoteIntuneReq @{ op = 'unassign'; id = $G1; keys = @('foo') } 'app').Ok | Should -BeFalse
+        $r = Test-HURemoteIntuneReq @{ op = 'assign'; id = $G1; kind = 'allDevices'; schedule = @{ type = 'daily'; interval = 1; time = '07:30' } } 'rem'
+        $r.Ok | Should -BeTrue
+        $r.Req.Schedule.Time | Should -Be '07:30'
+        $u = Test-HURemoteIntuneReq @{ op = 'unassign'; id = $G1; keys = @('group|schueler') } 'rem'
+        $u.Ok | Should -BeTrue
+        @($u.Req.Remove) | Should -Be @('group|schueler')
+    }
+    It 'Daten fuers Handy: Liste bleibt eine Liste (auch bei einem Eintrag), Zuweisungen lesbar' {
+        function global:Get-HUTenantAppList { param($TenantKey, $Settings) [pscustomobject]@{ Id = $G1; Name = 'Firefox'; Typ = 'Win32'; Version = '1'; Assignments = @(1, 2) } }
+        function global:Get-HUAppAssignmentRows { param($TenantKey, $Settings, $AppId) [pscustomobject]@{ Key = 'group|schueler'; Ziel = 'Schueler'; Kind = 'group'; Intent = 'required' } }
+        function global:Get-HUAppInstallSummary { param($TenantKey, $Settings, $AppId) 'installiert 3 | fehlgeschlagen 1' }
+        function global:Invoke-HUIntuneGraph { param($TenantKey, $Settings, $Endpoint) [pscustomobject]@{ displayName = 'Firefox'; description = ''; '@odata.type' = '#microsoft.graph.win32LobApp' } }
+        function global:Get-HUAppKindFromType { param($T) 'win32' }
+        try {
+            $l = [object[]]@(Get-HURemoteIntuneData @{ Op = 'list'; Area = 'app'; Tenant = 'a'; Id = '' } $null)
+            (ConvertTo-Json -InputObject $l -Compress) | Should -Match '^\[\{'
+            $l[0].n | Should -Be 2
+            $d = Get-HURemoteIntuneData @{ Op = 'detail'; Area = 'app'; Tenant = 'a'; Id = $G1 } $null
+            $d.summary | Should -Match 'installiert 3'
+            @($d.asg)[0].info | Should -Be 'Erforderlich'
+            @($d.asg)[0].key | Should -Be 'group|schueler'
+        } finally { foreach ($f in 'Get-HUTenantAppList', 'Get-HUAppAssignmentRows', 'Get-HUAppInstallSummary', 'Invoke-HUIntuneGraph', 'Get-HUAppKindFromType') { Remove-Item "function:global:$f" -ErrorAction SilentlyContinue } }
+    }
+    It 'Lesen: erst "pending", Anfrage in der Warteschlange; danach Ergebnis aus dem Zwischenspeicher' {
+        $S = New-IState; $t = Pair $S
+        $r = Req $S POST '/api/intune' @{ op = 'list'; area = 'app'; tenant = 'a' } $t
+        $r.Code | Should -Be 200
+        $r.J.pending | Should -BeTrue
+        $S.IQueue.Count | Should -Be 1
+        (Req $S POST '/api/intune' @{ op = 'list'; area = 'app'; tenant = 'a' } $t).J.pending | Should -BeTrue
+        $S.IQueue.Count | Should -Be 1
+        $q = $S.IQueue.Dequeue()
+        $S.ICache[$q.Key] = @{ State = 'done'; At = (Get-Date); Data = '[{"id":"x","name":"Firefox"}]'; Error = '' }
+        $d = Req $S POST '/api/intune' @{ op = 'list'; area = 'app'; tenant = 'a' } $t
+        $d.J.pending | Should -BeFalse
+        $d.J.data[0].name | Should -Be 'Firefox'
+        (Req $S POST '/api/intune' @{ op = 'list'; area = 'app'; tenant = 'zz' } $t).Code | Should -Be 400
+        (Req $S POST '/api/intune' @{ op = 'detail'; area = 'app'; tenant = 'a'; id = 'nope' } $t).Code | Should -Be 400
+        $S.Intune = $false
+        (Req $S POST '/api/intune' @{ op = 'list'; area = 'app'; tenant = 'a' } $t).Code | Should -Be 403
+        (Req $S POST '/api/prepare' @{ id = '00000000000000c3'; tenants = @('a'); intune = @{ op = 'unassign'; id = $G1; keys = @('allDevices|') } } $t).Code | Should -Be 403
+    }
+}
+
 Describe 'Fernbedienung: Webseite' {
     It 'liefert Seite, Skript, Design, Service Worker, Manifest; strenge CSP ohne Inline-Skript' {
         $f = Get-HURemoteWebFiles -Version '2.1.11' -Pc 'PC1'

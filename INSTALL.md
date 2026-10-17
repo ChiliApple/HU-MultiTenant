@@ -7,7 +7,7 @@
 - für Excel-Reports das Modul **ImportExcel** (wird beim ersten Report installiert; Excel selbst ist nicht nötig)
 - für **Apps › Updates** der Windows Paket-Manager **winget** (App-Installer aus dem Microsoft Store, ab Windows 10 1809 meist vorhanden); das Modul `Microsoft.WinGet.Client` wird genutzt, wenn installiert
 - für die Testinstallation die **Windows Sandbox** (Windows Pro/Enterprise/Education, wird auf Wunsch aktiviert)
-- keine Administratorrechte nötig (Ausnahme: die Handy-Fernbedienung wird einmal mit Administratorrechten eingerichtet – Zertifikat, HTTPS-Bindung, Firewall-Regel; danach läuft auch sie ohne)
+- keine Administratorrechte nötig (Ausnahme: die Handy-Fernbedienung wird einmal mit Administratorrechten eingerichtet – Zertifikat, HTTPS-Bindung, Firewall-Regel; danach läuft auch sie ohne; Remote FB wird nur für sichere Homeoffice-Umgebungen empfohlen)
 
 ## Installieren
 1. `Pull.ps1` aus dem Repository in einen leeren Ordner legen und ausführen:
@@ -31,8 +31,8 @@ Alternativ: Repository als ZIP laden und entpacken (dann ohne Prüfsumme/Signatu
 | `AuditLog.Read.All` | MFA-Status, inaktive Benutzer (signInActivity) |
 | `Organization.Read.All` | Tenant-Übersicht, Lizenzen |
 | `Directory.Read.All` | Enterprise-App-Inventur |
-| `DeviceManagementApps.ReadWrite.All` | Reiter **Apps** (hochladen, zuweisen, Status) |
-| `DeviceManagementScripts.ReadWrite.All` | Reiter **Wartung** (Remediations) |
+| `DeviceManagementApps.ReadWrite.All` | Reiter **Apps** (hochladen, zuweisen, Status), Remote FB › Intune |
+| `DeviceManagementScripts.ReadWrite.All` | Reiter **Wartung** (Remediations), Remote FB › Intune |
 | `Group.Read.All` | Apps/Wartung: Zielgruppe per Name finden |
 | `DeviceManagementManagedDevices.PrivilegedOperations.All` | Wartung: *Jetzt auf Gerät ausführen* |
 | `Policy.Read.All` | Analyse: Conditional Access im Vergleich und Backup, Namen benannter Orte |

@@ -142,6 +142,53 @@ $script:HURemoteHtml = @'
     <div class="console" id="rCon" aria-live="polite"></div>
   </section>
 
+  <!-- Intune: Apps und Wartung -->
+  <section class="view hidden" id="vIntune">
+    <div class="seg" id="iSeg" role="tablist">
+      <button data-a="app" class="on" role="tab">Apps</button>
+      <button data-a="rem" role="tab">Wartung</button>
+    </div>
+    <label class="lbl" for="iTen">Tenant</label>
+    <select id="iTen" class="txt"></select>
+    <div class="row between runhead"><input id="iFind" class="txt find" type="search" placeholder="Suchen ..." aria-label="Suchen"><button class="ibtn" id="iReload" title="Neu laden" aria-label="Neu laden">&#8635;</button></div>
+    <p class="muted small" id="iAt"></p>
+    <p class="err hidden" id="iErr" role="alert"></p>
+    <div class="grid" id="iBody"></div>
+  </section>
+
+  <section class="view hidden" id="vIObj">
+    <button class="btn small back" id="oBack">&lsaquo; Zurueck</button>
+    <h1 id="oTitle"></h1>
+    <p class="muted small" id="oDesc"></p>
+    <div class="card">
+      <div class="kv"><span>Tenant</span><b id="oTen"></b></div>
+      <div class="kv"><span>Stand</span><b id="oSum">-</b></div>
+    </div>
+    <button class="btn wide" id="oDevBtn">Geraete anzeigen</button>
+    <p class="muted small hidden" id="oDevHint"></p>
+    <div id="oDev"></div>
+    <div class="row between"><h2>Zuweisungen</h2><button class="ibtn" id="oReload" title="Neu laden" aria-label="Neu laden">&#8635;</button></div>
+    <div id="oAsg"></div>
+    <h2>Zuweisen</h2>
+    <label class="lbl" for="oKind">Ziel</label>
+    <select id="oKind" class="txt"><option value="group">Gruppe</option><option value="exclude">Ausschluss (Gruppe)</option><option value="allDevices">Alle Geraete</option><option value="allUsers">Alle Benutzer</option></select>
+    <div id="oGrpBox">
+      <input id="oGrpFind" class="txt find" type="search" placeholder="Gruppe suchen (Gruppen werden geladen) ..." aria-label="Gruppe suchen" autocomplete="off">
+      <div id="oGrpList"></div>
+      <p class="muted small" id="oGrpSel">Keine Gruppe gewaehlt</p>
+    </div>
+    <div id="oIntBox"><label class="lbl" for="oIntent">Art</label>
+      <select id="oIntent" class="txt"><option value="required">Erforderlich</option><option value="available">Verfuegbar</option><option value="uninstall">Deinstallieren</option></select></div>
+    <div id="oSchBox"><label class="lbl" for="oSch">Zeitplan</label>
+      <select id="oSch" class="txt"><option value="daily">taeglich</option><option value="hourly">stuendlich</option><option value="once">einmalig</option></select>
+      <div class="row two"><div><label class="lbl" for="oIv" id="oIvL">alle ... Tage</label><input id="oIv" class="txt" type="number" min="1" max="30" value="1"></div>
+        <div id="oTimeBox"><label class="lbl" for="oTime">Uhrzeit</label><input id="oTime" class="txt" type="time" value="08:00"></div></div>
+      <div id="oDateBox" class="hidden"><label class="lbl" for="oDate">Datum</label><input id="oDate" class="txt" type="date"></div>
+    </div>
+    <p class="err hidden" id="oErr" role="alert"></p>
+    <button class="btn primary wide big" id="oGo">Pruefen</button>
+  </section>
+
   <!-- Mehr -->
   <section class="view hidden" id="vMore">
     <h1>Dieses Geraet</h1>
@@ -165,6 +212,7 @@ $script:HURemoteHtml = @'
 
 <nav class="tabs hidden" id="tabs">
   <button data-tab="vList" class="on"><span class="ico">&#9776;</span>Starten</button>
+  <button data-tab="vIntune" id="tIntune" class="hidden"><span class="ico">&#9638;</span>Intune</button>
   <button data-tab="vRun"><span class="ico">&#9654;</span>Lauf<span class="badge hidden" id="tRun"></span></button>
   <button data-tab="vMore"><span class="ico">&#8942;</span>Mehr</button>
 </nav>
@@ -300,6 +348,9 @@ input.code4{font-size:24px;letter-spacing:6px;text-align:center;text-transform:u
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .ok-t{color:var(--green)}
 .ibtn{min-width:36px;min-height:36px;padding:0 8px;border:1px solid var(--s0);border-radius:10px;background:none;color:var(--ov);font-size:16px;line-height:1;cursor:pointer}
+.gl{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;min-height:44px;padding:8px 12px;margin:4px 0;border:1px solid var(--s0);border-radius:10px;background:var(--crust);color:var(--tx);font-size:14px}.gl small{color:var(--sub)}.gl.on{border-color:var(--blue)}
+.asg{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:6px 0;border:1px solid var(--s0);border-radius:12px;background:var(--mantle)}.asg div{flex:1;min-width:0}.asg .s{color:var(--sub);font-size:13px}
+.dev{padding:6px 2px;border-bottom:1px solid var(--s0);font-size:14px}.dev .s{color:var(--sub);font-size:12px}#iFind{flex:1;margin:0}
 .runhead{margin:14px 0 8px}.runhead h2{margin:0}.tools{gap:6px;flex-wrap:nowrap}
 .find-s{width:110px;min-height:36px;padding:0 10px;border-radius:10px;border:1px solid var(--s0);background:var(--crust);color:var(--tx);font-size:14px;outline:none}
 .find-s:focus{border-color:var(--blue);width:150px}@media (max-width:430px){.runhead{flex-wrap:wrap;gap:6px}.find-s{width:84px}.find-s:focus{width:120px}}.console .ln.f{display:none}.console mark{background:rgba(249,226,175,.35);color:inherit;border-radius:3px}.ibtn:active{background:var(--s0)}.ibtn[disabled]{opacity:.35}.ibtn.done{color:var(--green);border-color:var(--green)}
@@ -310,7 +361,7 @@ $script:HURemoteJs = @'
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var S = { token: null, seq: 0, tab: 'vList', timer: null, busy: false, running: false, follow: true, secure: null, info: {},
-    cat: null, catVer: -1, kind: 'snippet', item: null, sel: {}, prep: null, prepUntil: 0, cdTimer: null, lastJobEnd: '' };
+    cat: null, catVer: -1, kind: 'snippet', item: null, ia: 'app', iten: '', ilist: null, ilistKey: '', iobjId: '', iobj: null, igroups: {}, igSel: null, iqTok: {}, backTo: '', sel: {}, prep: null, prepUntil: 0, cdTimer: null, lastJobEnd: '' };
   try { S.token = localStorage.getItem('hu_token'); } catch (e) { S.token = null; }
 
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) { e.className = cls; } if (text !== undefined && text !== null) { e.textContent = String(text); } return e; }
@@ -334,7 +385,8 @@ $script:HURemoteJs = @'
   // --- Ansicht merken (Seite, Art, Eintrag): Herunterziehen/Neuladen bleibt dort. localStorage, weil
   // sessionStorage in der installierten App beim Neuladen nicht immer erhalten bleibt; gilt 30 Minuten.
   function memo() {
-    try { localStorage.setItem('hu_nav', JSON.stringify({ v: S.tab === 'vConfirm' ? 'vStart' : S.tab, k: S.kind, i: S.item ? S.item.id : '', t: Date.now() })); } catch (e) { }
+    var v = S.tab === 'vConfirm' ? (S.backTo === 'vIObj' ? 'vIObj' : 'vStart') : S.tab;
+    try { localStorage.setItem('hu_nav', JSON.stringify({ v: v, k: S.kind, i: S.item ? S.item.id : '', ia: S.ia, it: S.iten, io: S.iobjId || '', t: Date.now() })); } catch (e) { }
   }
   function recall() {
     try { var n = JSON.parse(localStorage.getItem('hu_nav') || 'null'); if (n && Date.now() - (n.t || 0) < 1800000) { return n; } } catch (e) { }
@@ -345,17 +397,19 @@ $script:HURemoteJs = @'
     Array.prototype.forEach.call(document.querySelectorAll('.seg button'), function (x) { x.classList.toggle('on', x.getAttribute('data-k') === k); });
   }
   // --- Ansicht
-  var VIEWS = ['vPair', 'vList', 'vStart', 'vConfirm', 'vRun', 'vMore'];
+  var VIEWS = ['vPair', 'vList', 'vStart', 'vConfirm', 'vRun', 'vMore', 'vIntune', 'vIObj'];
   function setView(v) {
     VIEWS.forEach(function (x) { show(x, x === v); });
     show('tabs', v !== 'vPair');
     S.tab = v;
     // Ansicht merken: Herunterziehen (Neuladen) bleibt auf dieser Seite
     if (v !== 'vPair') { memo(); }
-    var tabOf = (v === 'vStart' || v === 'vConfirm') ? 'vList' : v;
+    var tabOf = (v === 'vStart' || v === 'vConfirm') ? (S.backTo === 'vIObj' && v === 'vConfirm' ? 'vIntune' : 'vList') : (v === 'vIObj' ? 'vIntune' : v);
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) { var on = b.getAttribute('data-tab') === tabOf; b.classList.toggle('on', on); if (on) { b.setAttribute('aria-current', 'page'); } else { b.removeAttribute('aria-current'); } });
     if (v === 'vRun' && S.follow) { var c = $('rCon'); c.scrollTop = c.scrollHeight; }
     if (v === 'vMore') { pushState(); }
+    if (v === 'vIntune') { iShow(); }
+    if (v === 'vIObj' && S.iobjId) { oLoad(false); }
     if (v !== 'vConfirm') { clearInterval(S.cdTimer); }
     window.scrollTo(0, 0);
     schedule(50);
@@ -412,6 +466,10 @@ $script:HURemoteJs = @'
     api('GET', '/api/catalog').then(function (j) {
       if (!j.ok) { return; }
       S.cat = j; S.catVer = j.ver;
+      var hasI = (j.items || []).some(function (x) { return x.kind === 'intune'; });
+      show('tIntune', hasI);
+      if (!hasI && (S.tab === 'vIntune' || S.tab === 'vIObj')) { setView('vList'); }
+      if (S.tab === 'vIntune') { iShow(); }
       renderList();
       if (S.restoreItem) {
         var it = (j.items || []).filter(function (x) { return x.id === S.restoreItem; })[0];
@@ -543,6 +601,7 @@ $script:HURemoteJs = @'
       var ten = Object.keys(S.sel).filter(function (k) { return S.sel[k]; });
       if (!ten.length) { err('sErr', 'Bitte mindestens einen Tenant waehlen.'); return; }
       body = { id: S.item.id, tenants: ten, params: formValues() };
+      S.backTo = '';
       if (S.item.kind === 'teams' && $('sTgt').value) { body.target = $('sTgt').value; }
     }
     $('sGo').disabled = true; err('sErr', '');
@@ -560,7 +619,7 @@ $script:HURemoteJs = @'
     if (!S.lastBody || S.running) { return; }
     var it = ((S.cat && S.cat.items) || []).filter(function (x) { return x.id === S.lastBody.id; })[0];
     if (!it) { banner('Eintrag nicht mehr vorhanden.'); return; }
-    S.item = it; S.fromAgain = true; prepare(true);
+    S.item = it; S.fromAgain = true; S.backTo = S.lastBody.intune ? 'vIObj' : ''; prepare(true);
   }
 
   // --- Bestaetigung
@@ -614,6 +673,145 @@ $script:HURemoteJs = @'
       }
       S.prep = null; S.seq = S.seq; setView('vRun'); schedule(300);
     }).catch(function () { err('cErr', 'PC nicht erreichbar - Zurueck und neu pruefen.'); S.prepUntil = 0; checkGo(); });
+  }
+
+  // --- Intune: Apps und Wartung (lesen ohne PIN; Zuweisen/Aufheben ueber Pruefen + Kuerzel + PIN)
+  function iItem() { return ((S.cat && S.cat.items) || []).filter(function (x) { return x.kind === 'intune' && x.area === S.ia; })[0]; }
+  function tName(k) { var t = ((S.cat && S.cat.tenants) || []).filter(function (x) { return x.key === k; })[0]; return t ? t.name : k; }
+  // Abfrage beim PC; liest der PC noch ("pending"), wird nachgefragt. slot: nur die letzte Abfrage je Platz zaehlt
+  function iq(slot, q, force, cb, tries) {
+    tries = tries || 0;
+    if (!tries) { S.iqTok[slot] = (S.iqTok[slot] || 0) + 1; }
+    var tok = S.iqTok[slot];
+    q.tenant = S.iten; if (force && !tries) { q.force = true; } else { delete q.force; }
+    api('POST', '/api/intune', q).then(function (j) {
+      if (tok !== S.iqTok[slot]) { return; }
+      if (j.__status === 401) { needPair('Nicht mehr gekoppelt.'); return; }
+      if (j.ok && j.pending) { if (tries > 240) { cb({ ok: false, error: 'Keine Antwort vom PC (Zeitlimit)' }); return; } setTimeout(function () { iq(slot, q, false, cb, tries + 1); }, 1500); return; }
+      cb(j);
+    }).catch(function () { if (tok === S.iqTok[slot]) { cb({ ok: false, error: 'PC nicht erreichbar.' }); } });
+  }
+  function iShow() {
+    var sel = $('iTen'), ts = (S.cat && S.cat.tenants) || [];
+    if (sel.options.length !== ts.length) {
+      clear(sel); ts.forEach(function (t) { var o = el('option', '', t.name); o.value = t.key; sel.appendChild(o); });
+    }
+    if (!S.iten || !ts.some(function (t) { return t.key === S.iten; })) { S.iten = ts.length ? ts[0].key : ''; }
+    sel.value = S.iten;
+    Array.prototype.forEach.call(document.querySelectorAll('#iSeg button'), function (x) { x.classList.toggle('on', x.getAttribute('data-a') === S.ia); });
+    iLoad(false);   // PC antwortet aus dem Zwischenspeicher; nach einer Aenderung kommt der neue Stand
+  }
+  function iLoad(force) {
+    if (!S.iten) { return; }
+    S.ilistKey = S.ia + '|' + S.iten; S.ilist = null; err('iErr', '');
+    var b = $('iBody'); clear(b); b.appendChild(el('div', 'empty', 'Lade ' + (S.ia === 'app' ? 'Apps' : 'Wartungsskripte') + ' aus ' + tName(S.iten) + ' ...'));
+    $('iAt').textContent = '';
+    iq('list', { op: 'list', area: S.ia }, force, function (j) {
+      if (!j.ok || j.error) { clear(b); err('iErr', j.error || 'Nicht lesbar'); return; }
+      S.ilist = j.data || []; $('iAt').textContent = 'Stand ' + (j.at || '') + ' - ' + S.ilist.length + ' Eintraege';
+      iRender();
+    });
+  }
+  function iRender() {
+    var b = $('iBody'); clear(b);
+    if (!S.ilist) { return; }
+    var q = ($('iFind').value || '').toLowerCase();
+    var rows = S.ilist.filter(function (x) { return !q || (x.name + ' ' + (x.sub || '')).toLowerCase().indexOf(q) >= 0; });
+    if (!rows.length) { b.appendChild(el('div', 'empty', q ? 'Nichts gefunden.' : 'Keine Eintraege.')); return; }
+    rows.slice(0, 300).forEach(function (x) {
+      var t = el('button', 'tile'), w = el('div'), h = el('div', 't', x.name);
+      h.appendChild(el('span', 'tag ' + (x.n > 0 ? 'write' : 'cat'), x.n < 0 ? '?' : (x.n > 0 ? x.n + ' zugewiesen' : 'nicht zugewiesen')));
+      w.appendChild(h); if (x.sub) { w.appendChild(el('div', 's', x.sub)); }
+      t.appendChild(w); t.addEventListener('click', function () { oOpen(x); }); b.appendChild(t);
+    });
+  }
+  function oOpen(x) {
+    S.iobjId = x.id; S.iobj = { name: x.name };
+    $('oTitle').textContent = x.name; $('oDesc').textContent = ''; S.igSel = null;
+    $('oGrpFind').value = ''; clear($('oGrpList')); $('oGrpSel').textContent = 'Keine Gruppe gewaehlt';
+    clear($('oDev')); show('oDevHint', false); err('oErr', '');
+    setView('vIObj');
+  }
+  function oForm() {
+    var k = $('oKind').value, app = S.ia === 'app', st = $('oSch').value;
+    show('oGrpBox', k === 'group' || k === 'exclude');
+    show('oIntBox', app);
+    show('oSchBox', !app && k !== 'exclude');
+    show('oTimeBox', st !== 'hourly'); show('oDateBox', st === 'once');
+    $('oIvL').textContent = st === 'hourly' ? 'alle ... Stunden' : 'alle ... Tage';
+    show('oIv', st !== 'once'); show('oIvL', st !== 'once');
+    if ((k === 'group' || k === 'exclude') && !S.igroups[S.iten]) { gLoad(); }
+  }
+  function oLoad(force) {
+    $('oTen').textContent = tName(S.iten); $('oSum').textContent = 'wird gelesen ...';
+    var a = $('oAsg'); clear(a); a.appendChild(el('div', 'empty', 'Lade Zuweisungen ...'));
+    oForm();
+    iq('detail', { op: 'detail', area: S.ia, id: S.iobjId }, force, function (j) {
+      clear(a);
+      if (!j.ok || j.error || !j.data) { $('oSum').textContent = '-'; err('oErr', j.error || 'Nicht lesbar'); return; }
+      var d = j.data; S.iobj = d;
+      $('oTitle').textContent = d.name; $('oDesc').textContent = d.desc || '';
+      $('oSum').textContent = (d.summary || 'keine Angaben') + ' (' + (j.at || '') + ')';
+      var rows = d.asg || [];
+      if (!rows.length) { a.appendChild(el('div', 'empty', 'Nicht zugewiesen.')); }
+      rows.forEach(function (r) {
+        var row = el('div', 'asg'), w = el('div');
+        w.appendChild(el('div', '', r.ziel)); if (r.info) { w.appendChild(el('div', 's', r.info)); }
+        var x = el('button', 'ibtn', '\u2715'); x.title = 'Zuweisung aufheben'; x.setAttribute('aria-label', 'Zuweisung ' + r.ziel + ' aufheben');
+        x.addEventListener('click', function () { iPrepare({ op: 'unassign', id: S.iobjId, name: d.name, keys: [r.key] }); });
+        row.appendChild(w); row.appendChild(x); a.appendChild(row);
+      });
+    });
+  }
+  function oDevices() {
+    var b = $('oDev'); clear(b); show('oDevHint', true);
+    $('oDevHint').textContent = S.ia === 'app' ? 'Intune erstellt den Geraetebericht - das kann eine Minute dauern ...' : 'Lade Geraete ...';
+    iq('dev', { op: 'devices', area: S.ia, id: S.iobjId }, true, function (j) {
+      if (!j.ok || j.error) { $('oDevHint').textContent = j.error || 'Nicht lesbar'; return; }
+      var rows = j.data || []; $('oDevHint').textContent = rows.length + ' Geraet(e), Stand ' + (j.at || '');
+      rows.forEach(function (r) { var d = el('div', 'dev'); d.appendChild(el('div', '', (r.d || '-') + ' - ' + (r.s || ''))); var s = [r.u, r.x].filter(function (z) { return z; }).join(' - '); if (s) { d.appendChild(el('div', 's', s)); } b.appendChild(d); });
+    });
+  }
+  function gLoad() {
+    var ten = S.iten; $('oGrpSel').textContent = 'Lade Gruppen ...';
+    iq('grp', { op: 'groups' }, false, function (j) {
+      if (!j.ok || j.error) { $('oGrpSel').textContent = j.error || 'Gruppen nicht lesbar'; return; }
+      S.igroups[ten] = j.data || []; $('oGrpSel').textContent = S.igSel ? 'Gewaehlt: ' + S.igSel.name : (S.igroups[ten].length + ' Gruppen - suchen und antippen');
+      gRender();
+    });
+  }
+  function gRender() {
+    var b = $('oGrpList'); clear(b);
+    var all = S.igroups[S.iten] || [], q = ($('oGrpFind').value || '').toLowerCase();
+    if (!q) { return; }
+    all.filter(function (g) { return g.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 25).forEach(function (g) {
+      var x = el('button', 'gl' + (S.igSel && S.igSel.id === g.id ? ' on' : '')); x.appendChild(el('span', '', g.name)); x.appendChild(el('small', '', g.typ));
+      x.addEventListener('click', function () { S.igSel = g; $('oGrpSel').textContent = 'Gewaehlt: ' + g.name; $('oGrpFind').value = ''; clear(b); });
+      b.appendChild(x);
+    });
+  }
+  function oGo() {
+    var k = $('oKind').value, q = { op: 'assign', id: S.iobjId, name: (S.iobj && S.iobj.name) || '', kind: k };
+    if (k === 'group' || k === 'exclude') { if (!S.igSel) { err('oErr', 'Bitte eine Gruppe suchen und antippen.'); return; } q.groupId = S.igSel.id; q.groupName = S.igSel.name; }
+    if (S.ia === 'app') { q.intent = $('oIntent').value; }
+    else if (k !== 'exclude') {
+      q.schedule = { type: $('oSch').value, interval: parseInt($('oIv').value, 10) || 1, time: $('oTime').value || '08:00', date: $('oDate').value || '' };
+    }
+    iPrepare(q);
+  }
+  function iPrepare(q) {
+    var it = iItem(); if (!it) { err('oErr', 'Apps/Wartung sind am PC ausgeschaltet.'); return; }
+    S.item = it; S.backTo = 'vIObj'; S.fromAgain = false; err('oErr', '');
+    var body = { id: it.id, tenants: [S.iten], intune: q };
+    $('oGo').disabled = true;
+    api('POST', '/api/prepare', body).then(function (j) {
+      $('oGo').disabled = false;
+      if (j.__status === 401) { needPair('Nicht mehr gekoppelt.'); return; }
+      if (!j.ok) { err('oErr', j.error || 'Nicht moeglich'); return; }
+      S.prep = j; S.prepUntil = Date.now() + (j.seconds || 120) * 1000;
+      S.lastBody = body; S.lastItem = it;
+      showConfirm(j);
+    }).catch(function () { $('oGo').disabled = false; err('oErr', 'PC nicht erreichbar.'); });
   }
 
   // --- Push (wie HUMig): Abo im Browser, Inhalt holt der Service Worker beim PC
@@ -774,11 +972,25 @@ $script:HURemoteJs = @'
     });
     $('lFind').addEventListener('input', renderList);
     $('sBack').addEventListener('click', function () { setView('vList'); });
+    Array.prototype.forEach.call(document.querySelectorAll('#iSeg button'), function (b) {
+      b.addEventListener('click', function () { S.ia = b.getAttribute('data-a'); iShow(); memo(); });
+    });
+    $('iTen').addEventListener('change', function () { S.iten = $('iTen').value; S.igSel = null; iShow(); memo(); });
+    $('iFind').addEventListener('input', iRender);
+    $('iReload').addEventListener('click', function () { iLoad(true); });
+    $('oBack').addEventListener('click', function () { setView('vIntune'); });
+    $('oReload').addEventListener('click', function () { oLoad(true); });
+    $('oDevBtn').addEventListener('click', oDevices);
+    $('oKind').addEventListener('change', oForm);
+    $('oSch').addEventListener('change', oForm);
+    $('oGrpFind').addEventListener('input', gRender);
+    $('oGrpFind').addEventListener('focus', function () { if (!S.igroups[S.iten]) { gLoad(); } });
+    $('oGo').addEventListener('click', oGo);
     $('sAll').addEventListener('click', function () { (S.cat.tenants || []).forEach(function (t) { S.sel[t.key] = true; }); Array.prototype.forEach.call($('sTen').childNodes, function (c) { c.classList.add('on'); c.setAttribute('aria-pressed', 'true'); }); });
     $('sNone').addEventListener('click', function () { S.sel = {}; Array.prototype.forEach.call($('sTen').childNodes, function (c) { c.classList.remove('on'); c.setAttribute('aria-pressed', 'false'); }); });
     $('sGo').addEventListener('click', function () { S.fromAgain = false; prepare(false); });
     $('rAgain').addEventListener('click', again);
-    $('cBack').addEventListener('click', function () { S.prep = null; setView(S.fromAgain ? 'vRun' : 'vStart'); });
+    $('cBack').addEventListener('click', function () { S.prep = null; setView(S.fromAgain ? 'vRun' : (S.backTo || 'vStart')); });
     $('cGo').addEventListener('click', run);
     $('cCode').addEventListener('input', checkGo);
     $('cPin').addEventListener('input', checkGo);
@@ -795,8 +1007,10 @@ $script:HURemoteJs = @'
     if (S.token) {
       var n = recall() || {}, v = n.v || 'vList';
       if (n.k === 'snippet' || n.k === 'ext' || n.k === 'teams') { setKind(n.k); }
+      if (n.ia === 'app' || n.ia === 'rem') { S.ia = n.ia; } if (n.it) { S.iten = n.it; }
+      if (v === 'vIObj') { if (n.io) { S.iobjId = n.io; } else { v = 'vIntune'; } }
       if (v === 'vStart') { S.restoreItem = n.i || null; v = 'vList'; }
-      if (['vList', 'vRun', 'vMore'].indexOf(v) < 0) { v = 'vList'; }
+      if (['vList', 'vRun', 'vMore', 'vIntune', 'vIObj'].indexOf(v) < 0) { v = 'vList'; }
       setView(v); poll();
     } else { setView('vPair'); }
   });

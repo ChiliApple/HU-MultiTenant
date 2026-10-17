@@ -32,6 +32,7 @@ function Get-HURemoteConfig {
         AutoStart  = [bool]($j -and $j.AutoStart -eq $true)
         WhenLocked = [bool](-not $j -or $j.WhenLocked -ne $false)   # Entscheidung Udo: Handy startet auch bei gesperrter App (abschaltbar)
         KeepAwake  = [bool]($j -and $j.KeepAwake -eq $true)
+        Intune     = [bool](-not $j -or $j.Intune -ne $false)      # Apps/Wartung am Handy (Standard an, abschaltbar)
         Port       = $port
         Networks   = @($(if ($j) { @($j.Networks) } else { @() }) | Where-Object { "$_".Trim() } | ForEach-Object { "$_".Trim() })
         SetupPort  = $(if ($j -and [int]$j.SetupPort -gt 0) { [int]$j.SetupPort } else { 0 })
@@ -41,7 +42,7 @@ function Get-HURemoteConfig {
     }
 }
 function Save-HURemoteConfig($Cfg) {
-    Write-HUJsonFile -Path (Get-HURemoteConfigFile) -Object ([ordered]@{ v = 1; AutoStart = [bool]$Cfg.AutoStart; WhenLocked = [bool]$Cfg.WhenLocked; KeepAwake = [bool]$Cfg.KeepAwake
+    Write-HUJsonFile -Path (Get-HURemoteConfigFile) -Object ([ordered]@{ v = 1; AutoStart = [bool]$Cfg.AutoStart; WhenLocked = [bool]$Cfg.WhenLocked; KeepAwake = [bool]$Cfg.KeepAwake; Intune = [bool]$Cfg.Intune
             Port = [int]$Cfg.Port; Networks = @($Cfg.Networks); SetupPort = [int]$Cfg.SetupPort; SetupSid = "$($Cfg.SetupSid)"; SetupAt = "$($Cfg.SetupAt)"; SetupIps = @($Cfg.SetupIps) })
 }
 function Get-HURemoteMarksFile { return (Join-Path (Get-HURemoteDataDir) 'remote-marks.json') }
@@ -142,6 +143,17 @@ function Update-HURemoteCatalog([switch]$Force) {
         $client += [ordered]@{ id = $id; kind = 'teams'; name = "$($jb.Name)"; desc = $(if ($stale) { 'Skript geaendert - Meldung am PC neu speichern' } else { "$(Format-HUTeamsDays $jb.Days) $($jb.Time)".Trim() }); cat = ''; mode = $mode; stale = $stale
             params = @($defs | ForEach-Object { [ordered]@{ name = $_.Name; type = $_.Type; label = $_.Label; def = $_.Default; choices = @($_.Choices) } }); tenants = @($jt); targets = $tTxt }
     }
+    # Apps und Wartung (Intune): feste Eintraege; was genau, waehlt das Handy (geprueft am PC, immer Kuerzel + PIN)
+    $intune = [bool](Get-HURemoteConfig).Intune
+    if ($intune) {
+        foreach ($ar in 'app', 'rem') {
+            $id = Get-HURemoteItemId "intune|$ar"
+            $nm = if ($ar -eq 'app') { 'Intune-Apps' } else { 'Intune-Wartung' }
+            $items[$id] = @{ Id = $id; Kind = 'intune'; Area = $ar; Name = $nm; Mode = 'write'; Params = @(); Hash = 'intune'; Stale = $false; TargetText = ''; FixedTenants = $false }
+            $client += [ordered]@{ id = $id; kind = 'intune'; area = $ar; name = $nm; desc = ''; cat = ''; mode = 'write'; stale = $false; params = @(); tenants = @($defTen) }
+        }
+    }
+    $S.Intune = $intune
     $tenants = @($script:Settings.tenants | Where-Object { $_ -and "$($_.key)" } | ForEach-Object { [ordered]@{ key = "$($_.key)"; name = $(if ("$($_.displayName)") { "$($_.displayName)" } else { "$($_.key)" }) } })
     $json = ConvertTo-Json -InputObject ([ordered]@{ items = @($client); tenants = @($tenants); targets = @($targets) }) -Depth 8 -Compress
     $S.Tenants = @($tenants | ForEach-Object { [pscustomobject]$_ })
@@ -317,6 +329,16 @@ function Start-HURemote([switch]$Quiet, $Owner = $null) {
         return $false
     }
     try { Update-HURemoteCatalog -Force } catch { Write-HULogWarn "Fernbedienung: Liste nicht erstellt - $($_.Exception.Message)" }
+    # Apps/Wartung: Leseanfragen vom Handy im eigenen Runspace (blockiert weder Webserver noch Oberflaeche)
+    try {
+        $wset = $script:Settings | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $wrun = (Join-Path $script:AppRoot 'Core\HU.RemoteRun.ps1') -replace "'", "''"
+        $wrs = [runspacefactory]::CreateRunspace(); $wrs.Open()
+        $wrs.SessionStateProxy.SetVariable('S', $S); $wrs.SessionStateProxy.SetVariable('Set', $wset); $wrs.SessionStateProxy.SetVariable('AppRoot', $script:AppRoot)
+        $wps = [powershell]::Create(); $wps.Runspace = $wrs
+        [void]$wps.AddScript(". '$core'`n. '$wrun'`nStart-HURemoteIntuneWorker `$S `$Set `$AppRoot")
+        $script:HURem.IW = @{ PS = $wps; RS = $wrs; Handle = $wps.BeginInvoke() }
+    } catch { Write-HULogWarn "Fernbedienung: Apps/Wartung nicht verfuegbar - $($_.Exception.Message)" }
     $t = New-Object System.Windows.Threading.DispatcherTimer
     $t.Interval = [TimeSpan]::FromMilliseconds(500)
     $t.Add_Tick({ try { Update-HURemoteTick } catch { Write-HULogWarn "Fernbedienung: $($_.Exception.Message)" } })
@@ -337,6 +359,10 @@ function Stop-HURemote([string]$Why = '', [switch]$Silent) {
     try { if ($r.Handle.IsCompleted) { [void]$r.PS.EndInvoke($r.Handle) } } catch { }
     try { $r.PS.Dispose() } catch { }
     try { $r.RS.Dispose() } catch { }
+    if ($r.IW) {
+        # Lese-Runspace: endet von selbst (S.Run); haengt er in einer Graph-Abfrage, nicht blockieren
+        try { if ($r.IW.Handle.AsyncWaitHandle.WaitOne(1000)) { [void]$r.IW.PS.EndInvoke($r.IW.Handle); $r.IW.PS.Dispose(); $r.IW.RS.Dispose() } else { [void]$r.IW.PS.BeginStop($null, $null) } } catch { }
+    }
     try { if ($r.S.DevDirty) { Save-HURemoteDevices $r.S.Devices } } catch { }
     if ($r.Awake) { try { Set-HURemoteAwakeUi $false } catch { } }
     if ($r.Runner) {
@@ -516,6 +542,7 @@ function Show-HURemoteDialog {
     $c['chkRemAuto'].IsChecked = $cfg.AutoStart
     $c['chkRemLocked'].IsChecked = $cfg.WhenLocked
     $c['chkRemAwake'].IsChecked = $cfg.KeepAwake
+    $c['chkRemIntune'].IsChecked = $cfg.Intune
     $c['txtRemPort'].Text = "$($cfg.Port)"
     $c['txtRemNets'].Text = (@($cfg.Networks) -join ', ')
     $c['btnRemClose'].Add_Click({ $script:HURemDlg.Window.Close() })
@@ -551,7 +578,7 @@ function Show-HURemoteDialog {
             $nets = @("$($c2['txtRemNets'].Text)" -split '[,; ]+' | Where-Object { $_ })
             foreach ($n in $nets) { if ($n -notmatch '^[0-9./]+$' -or @(Get-HURemoteFirewallRemote @($n)).Count -lt 2) { Show-HUMessage "'$n' ist kein gueltiges Netz (z. B. 192.168.99.0/24)." -Icon Warning -Owner $script:HURemDlg.Window; return } }
             $netChanged = ((@($cfg.Networks) -join ',') -ne ($nets -join ',')) -or ($cfg.Port -ne $p)
-            $cfg.AutoStart = [bool]$c2['chkRemAuto'].IsChecked; $cfg.WhenLocked = [bool]$c2['chkRemLocked'].IsChecked; $cfg.KeepAwake = [bool]$c2['chkRemAwake'].IsChecked
+            $cfg.AutoStart = [bool]$c2['chkRemAuto'].IsChecked; $cfg.WhenLocked = [bool]$c2['chkRemLocked'].IsChecked; $cfg.KeepAwake = [bool]$c2['chkRemAwake'].IsChecked; $cfg.Intune = [bool]$c2['chkRemIntune'].IsChecked
             $cfg.Port = $p; $cfg.Networks = $nets
             Save-HURemoteConfig $cfg
             if ($script:HURem) { $script:HURem.Cfg = $null }

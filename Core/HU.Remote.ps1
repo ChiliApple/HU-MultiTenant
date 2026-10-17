@@ -810,6 +810,63 @@ function Test-HURemoteLive($Item, [hashtable]$Values) {
     }
     return $true
 }
+# Apps/Wartung vom Handy: Zuweisen/Aufheben pruefen. Rueckgabe @{ Ok; Error; Req; Lines; Title }
+# Das Handy schickt nur Kennungen und Auswahlwerte; was ausgefuehrt wird, legt der PC fest.
+$script:HURemoteGuidRx = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+function ConvertTo-HURemoteShortText([string]$Text, [int]$Max = 120) {
+    $x = ("$Text" -replace '[\x00-\x1F]', ' ').Trim()
+    if ($x.Length -gt $Max) { $x = $x.Substring(0, $Max) }
+    return $x
+}
+function Test-HURemoteIntuneReq($X, [string]$Area) {
+    $bad = { param($m) [pscustomobject]@{ Ok = $false; Error = $m; Req = $null; Lines = @(); Title = '' } }
+    if (-not $X) { return (& $bad 'Angaben fehlen') }
+    $op = "$($X.op)"; $id = "$($X.id)"
+    if ($op -notin 'assign', 'unassign') { return (& $bad 'Unbekannte Aktion') }
+    if ($id -notmatch $script:HURemoteGuidRx) { return (& $bad 'Ungueltige Kennung') }
+    $name = ConvertTo-HURemoteShortText "$($X.name)" 200
+    $what = if ($Area -eq 'app') { 'App' } else { 'Wartung' }
+    $req = @{ Area = $Area; Op = $op; Id = $id; Name = $name }
+    $lines = @(@{ Label = $what; Value = $(if ($name) { $name } else { $id }) })
+    if ($op -eq 'unassign') {
+        $keys = @(@($X.keys) | ForEach-Object { "$_" } | Where-Object { $_ } | Select-Object -Unique)
+        if (-not $keys.Count -or $keys.Count -gt 20) { return (& $bad 'Bitte 1 bis 20 Zuweisungen waehlen') }
+        foreach ($k in $keys) { if ($k.Length -gt 300 -or $k -notmatch '^(group|exclude|allDevices|allUsers)\|') { return (& $bad 'Ungueltige Zuweisung') } }
+        $req.Remove = [string[]]$keys
+        $lbl = @($keys | ForEach-Object { $p = $_ -split '\|', 2; switch ($p[0]) { 'allDevices' { 'Alle Geraete' } 'allUsers' { 'Alle Benutzer' } 'exclude' { "Ausschluss: $($p[1])" } default { $p[1] } } })
+        $lines += @{ Label = 'Aufheben'; Value = ($lbl -join ', ') }
+        return [pscustomobject]@{ Ok = $true; Error = ''; Req = $req; Lines = $lines; Title = "${what}: Zuweisung aufheben" }
+    }
+    $kind = "$($X.kind)"
+    if ($kind -notin 'group', 'exclude', 'allDevices', 'allUsers') { return (& $bad 'Ungueltiges Ziel') }
+    $req.Kind = $kind; $req.GroupId = ''; $req.GroupName = ''
+    if ($kind -in 'group', 'exclude') {
+        if ("$($X.groupId)" -notmatch $script:HURemoteGuidRx) { return (& $bad 'Bitte eine Gruppe waehlen') }
+        $req.GroupId = "$($X.groupId)"; $req.GroupName = ConvertTo-HURemoteShortText "$($X.groupName)" 256
+    }
+    $tl = switch ($kind) { 'allDevices' { 'Alle Geraete' } 'allUsers' { 'Alle Benutzer' } 'exclude' { "Ausschluss: $($req.GroupName)" } default { "Gruppe: $($req.GroupName)" } }
+    $lines += @{ Label = 'Ziel'; Value = $tl }
+    if ($Area -eq 'app') {
+        $in = "$($X.intent)"
+        if ($in -notin 'required', 'available', 'uninstall') { return (& $bad 'Ungueltige Zuweisungsart') }
+        if ($in -eq 'available' -and $kind -eq 'allDevices') { return (& $bad "'Verfuegbar' geht nur fuer Benutzer bzw. Benutzergruppen") }
+        $req.Intent = $in
+        $lines += @{ Label = 'Art'; Value = $(switch ($in) { 'required' { 'Erforderlich' } 'available' { 'Verfuegbar' } default { 'Deinstallieren' } }) }
+    }
+    elseif ($kind -ne 'exclude') {
+        $st = "$($X.schedule.type)"; $iv = 1; [void][int]::TryParse("$($X.schedule.interval)", [ref]$iv)
+        $tm = "$($X.schedule.time)"; $dt = "$($X.schedule.date)"
+        if ($st -notin 'once', 'hourly', 'daily') { return (& $bad 'Ungueltiger Zeitplan') }
+        if ($st -eq 'hourly' -and ($iv -lt 1 -or $iv -gt 23)) { return (& $bad 'Stuendlich: alle 1 bis 23 Stunden') }
+        if ($st -eq 'daily' -and ($iv -lt 1 -or $iv -gt 30)) { return (& $bad 'Taeglich: alle 1 bis 30 Tage') }
+        if ($st -ne 'hourly' -and $tm -notmatch '^([01]?\d|2[0-3]):[0-5]\d$') { return (& $bad 'Uhrzeit als HH:mm') }
+        if ($st -eq 'once') { $d = [datetime]::MinValue; if (-not [datetime]::TryParseExact($dt, 'yyyy-MM-dd', $null, 'None', [ref]$d) -or $d.Date -lt (Get-Date).Date) { return (& $bad 'Datum fehlt oder liegt in der Vergangenheit') } }
+        $req.Schedule = @{ Type = $st; Interval = $iv; Time = $(if ($tm) { $tm } else { '08:00' }); Date = $dt }
+        $lines += @{ Label = 'Zeitplan'; Value = $(switch ($st) { 'hourly' { "alle $iv Std." } 'once' { "einmal am $dt um $tm" } default { "$(if ($iv -gt 1) { "alle $iv Tage" } else { 'taeglich' }) um $tm" } }) }
+    }
+    return [pscustomobject]@{ Ok = $true; Error = ''; Req = $req; Lines = $lines; Title = "${what}: zuweisen" }
+}
+
 # Text fuer die Anzeige: Werte, die nach Kennwort aussehen, nie zeigen (Review 031 B17)
 function Format-HURemoteParamText($Defs, [hashtable]$Values) {
     $l = @()
@@ -837,6 +894,8 @@ function New-HURemoteState {
         Nonces = [hashtable]::Synchronized(@{}); RunReq = $null; CancelReq = $null
         FailIp = [hashtable]::Synchronized(@{}); LogFile = ''; PushKey = ''
         Events = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
+        # Apps und Wartung (Intune): Leseanfragen vom Handy -> Warteschlange -> eigener Runspace -> Zwischenspeicher
+        Intune = $true; IQueue = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue)); ICache = [hashtable]::Synchronized(@{})
     })
 }
 # Kopplung oeffnen (Code 6 Ziffern, 10 Minuten, 5 Fehlversuche) - nur ueber den Knopf am PC
@@ -968,6 +1027,13 @@ function Get-HURemoteResponse($S, $Req) {
             # Tenants: nur bekannte, mindestens einer (kein automatisches "alle", Review 031 B22)
             $known = @($S.Tenants | ForEach-Object { "$($_.key)" })
             $tk = @(@($body.tenants) | ForEach-Object { "$_" } | Where-Object { $_ } | Select-Object -Unique)
+            $iv = $null
+            if ($it.Kind -eq 'intune') {
+                if (-not $S.Intune) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Apps und Wartung sind fuers Handy ausgeschaltet (am PC: Remote FB > Einstellungen)' }) }
+                if ($tk.Count -ne 1) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Genau einen Tenant waehlen' }) }
+                $iv = Test-HURemoteIntuneReq $body.intune "$($it.Area)"
+                if (-not $iv.Ok) { return (New-HURemoteJson 400 @{ ok = $false; error = $iv.Error }) }
+            }
             if ($it.Kind -ne 'teams' -or -not $it.FixedTenants) {
                 if (-not $tk.Count) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Bitte mindestens einen Tenant waehlen' }) }
                 foreach ($k in $tk) { if ($known -cnotcontains $k) { return (New-HURemoteJson 400 @{ ok = $false; error = "Unbekannter Tenant '$k'" }) } }
@@ -983,7 +1049,7 @@ function Get-HURemoteResponse($S, $Req) {
                 if (-not $tt) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Unbekanntes Ziel' }) }
                 $tgtName = "$($tt.name)"
             }
-            $live = Test-HURemoteLive $it $pv.Values
+            $live = if ($iv) { $true } else { Test-HURemoteLive $it $pv.Values }   # Apps/Wartung aendern immer: Kuerzel + PIN
             if ($live -and -not $S.Pin) { return (New-HURemoteJson 409 @{ ok = $false; error = 'Echter Lauf braucht eine Fernbedienungs-PIN - am PC unter Remote FB > Einstellungen festlegen' }) }
             $nb = Get-HURemoteRandomBytes 16
             $nonce = -join ($nb | ForEach-Object { $_.ToString('x2') })
@@ -996,11 +1062,12 @@ function Get-HURemoteResponse($S, $Req) {
                 if ($S.Nonces.Count -ge 30 -or @($S.Nonces.Values | Where-Object { $_.Dev -eq $dh }).Count -ge 3) { $full = $true }
                 else {
                     # an Geraet, Eintrag (inkl. Code-Stand), Tenants, Parameter und Ziel gebunden (Review 031 B15)
-                    $S.Nonces[$nonce] = @{ Dev = $dh; Id = $iid; Hash = "$($it.Hash)"; Tenants = $tk; Values = $pv.Values; Target = $tgt; Live = $live; Short = $short; Exp = $now.AddSeconds($script:HURemoteConfirmSec) }
+                    $S.Nonces[$nonce] = @{ Dev = $dh; Id = $iid; Hash = "$($it.Hash)"; Tenants = $tk; Values = $pv.Values; Target = $tgt; Live = $live; Short = $short; Exp = $now.AddSeconds($script:HURemoteConfirmSec); Intune = $(if ($iv) { $iv.Req } else { $null }) }
                 }
             } finally { [System.Threading.Monitor]::Exit($S.Nonces.SyncRoot) }
             if ($full) { return (New-HURemoteJson 429 @{ ok = $false; error = 'Zu viele offene Anfragen - kurz warten' }) }
-            $sum = [ordered]@{ title = "$($it.Name)"; kind = "$($it.Kind)"; live = $live; tenants = $tnames; params = @(Format-HURemoteParamText $it.Params $pv.Values)
+            $sum = [ordered]@{ title = $(if ($iv) { $iv.Title } else { "$($it.Name)" }); kind = "$($it.Kind)"; live = $live; tenants = $tnames
+                params = $(if ($iv) { @($iv.Lines | ForEach-Object { [ordered]@{ label = $_.Label; value = $_.Value; changed = $false } }) } else { @(Format-HURemoteParamText $it.Params $pv.Values) })
                 teams = $(if ($tgtName) { "einmalig an: $tgtName" } elseif ($it.Kind -eq 'teams') { "an: $($it.TargetText)" } else { '' })
                 hint = $(if ($live) { "Aendert Daten in $($tk.Count) Tenant(s). Am PC steht 'gestartet von $($dev.Name)', an Teams geht ein Hinweis." } else { '' }) }
             return (New-HURemoteJson 200 ([ordered]@{ ok = $true; nonce = $nonce; seconds = $script:HURemoteConfirmSec; code = $short; summary = $sum }))
@@ -1033,9 +1100,41 @@ function Get-HURemoteResponse($S, $Req) {
             if (-not $it -or "$($it.Hash)" -ne "$($e.Hash)") { return (New-HURemoteJson 409 @{ ok = $false; error = 'Eintrag wurde inzwischen geaendert - bitte neu pruefen'; expired = $true }) }
             $busy = $false
             [System.Threading.Monitor]::Enter($S.Nonces.SyncRoot)
-            try { if ($S.RunReq -or $S.Job.Running -or "$($S.Busy)") { $busy = $true } else { $S.RunReq = @{ Item = $it; Tenants = $e.Tenants; Values = $e.Values; Target = $e.Target; Live = $e.Live; By = "$($dev.Name)"; DevId = "$($dev.Id)"; Ip = "$($Req.Ip)"; At = $now } } } finally { [System.Threading.Monitor]::Exit($S.Nonces.SyncRoot) }
+            try { if ($S.RunReq -or $S.Job.Running -or "$($S.Busy)") { $busy = $true } else { $S.RunReq = @{ Item = $it; Tenants = $e.Tenants; Values = $e.Values; Target = $e.Target; Live = $e.Live; Intune = $e.Intune; By = "$($dev.Name)"; DevId = "$($dev.Id)"; Ip = "$($Req.Ip)"; At = $now } } } finally { [System.Threading.Monitor]::Exit($S.Nonces.SyncRoot) }
             if ($busy) { return (New-HURemoteJson 409 @{ ok = $false; error = 'Es laeuft gerade etwas - kurz warten' }) }
             return (New-HURemoteJson 202 @{ ok = $true } "Start angefordert: $($it.Name)$(if ($e.Live) { ' (ECHTER LAUF)' }) ($($dev.Name))")
+        }
+        '/api/intune' {
+            # Apps/Wartung lesen: Liste, Details (Zuweisungen + Stand), Geraete, Gruppen. Antwort sofort aus dem
+            # Zwischenspeicher oder "pending" - der PC liest im Hintergrund, das Handy fragt erneut.
+            if ($method -ne 'POST') { return (New-HURemoteJson 405 @{ ok = $false; error = 'Methode nicht erlaubt' }) }
+            if (-not $S.Intune) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Apps und Wartung sind fuers Handy ausgeschaltet (am PC: Remote FB > Einstellungen)' }) }
+            $op = "$($body.op)"; $area = "$($body.area)"; $tk = "$($body.tenant)"; $oid = "$($body.id)"
+            if ($op -notin 'list', 'detail', 'devices', 'groups') { return (New-HURemoteJson 400 @{ ok = $false; error = 'Unbekannte Abfrage' }) }
+            if ($op -eq 'groups') { $area = 'grp' } elseif ($area -notin 'app', 'rem') { return (New-HURemoteJson 400 @{ ok = $false; error = 'Unbekannter Bereich' }) }
+            if (@($S.Tenants | ForEach-Object { "$($_.key)" }) -cnotcontains $tk) { return (New-HURemoteJson 400 @{ ok = $false; error = "Unbekannter Tenant '$tk'" }) }
+            if ($op -in 'detail', 'devices') { if ($oid -notmatch $script:HURemoteGuidRx) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Ungueltige Kennung' }) } } else { $oid = '' }
+            $key = "$op|$area|$tk|$oid"
+            $ttl = switch ($op) { 'list' { 120 } 'detail' { 30 } 'devices' { 120 } default { 600 } }
+            $force = ($body.force -eq $true)
+            $res = $null; $full = $false
+            [System.Threading.Monitor]::Enter($S.ICache.SyncRoot)
+            try {
+                $e = $S.ICache[$key]
+                $age = if ($e) { ($now - $e.At).TotalSeconds } else { 1e9 }
+                if ($e -and $e.State -eq 'pending' -and $age -lt 300) { $res = '{"ok":true,"pending":true}' }
+                elseif ($e -and $e.State -ne 'pending' -and ($age -lt 3 -or (-not $force -and $age -lt $ttl))) {
+                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('HH:mm:ss') + '","error":' + (ConvertTo-Json -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
+                }
+                elseif ($S.IQueue.Count -ge 20) { $full = $true }
+                else {
+                    $S.ICache[$key] = @{ State = 'pending'; At = $now; Data = ''; Error = '' }
+                    $S.IQueue.Enqueue(@{ Key = $key; Op = $op; Area = $area; Tenant = $tk; Id = $oid })
+                    $res = '{"ok":true,"pending":true}'
+                }
+            } finally { [System.Threading.Monitor]::Exit($S.ICache.SyncRoot) }
+            if ($full) { return (New-HURemoteJson 429 @{ ok = $false; error = 'Zu viele Abfragen - kurz warten' }) }
+            return (New-HURemoteJson 200 $res)
         }
         '/api/cancel' {
             if ($method -ne 'POST') { return (New-HURemoteJson 405 @{ ok = $false; error = 'Methode nicht erlaubt' }) }

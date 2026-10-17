@@ -139,6 +139,10 @@ function Invoke-HURemoteRun($S, $Req, $Settings, [string]$AppRoot, [int]$LimitMi
     $j = $S.Job
     $j.Title = "$($it.Name)"; $j.Kind = "$($it.Kind)"; $j.By = "$($Req.By)"; $j.Live = [bool]$Req.Live
     $j.Started = Get-Date; $j.Ended = $null; $j.Result = ''; $j.Level = ''; $j.Done = @()
+    if ("$($it.Kind)" -eq 'intune' -and $Req.Intune) {
+        $x = $Req.Intune
+        $j.Title = "$(if ($x.Area -eq 'app') { 'App' } else { 'Wartung' }) '$($x.Name)': $(if ($x.Op -eq 'assign') { 'zuweisen' } else { 'Zuweisung aufheben' })"
+    }
     $names = @{}; foreach ($t in @($Settings.tenants)) { if ($t -and "$($t.key)") { $names["$($t.key)"] = $(if ("$($t.displayName)") { "$($t.displayName)" } else { "$($t.key)" }) } }
     $tenants = @($Req.Tenants)
     $j.Tenants = @($tenants | ForEach-Object { $names["$_"] })
@@ -235,6 +239,46 @@ function Invoke-HURemoteRun($S, $Req, $Settings, [string]$AppRoot, [int]$LimitMi
                 Remove-Item -LiteralPath $tail -Force -ErrorAction SilentlyContinue
                 if ($r -eq 'ok') { $ok++ } elseif ($r -eq 'cancel') { $cancel = $true } else { $bad++ }
             }
+            'intune' {
+                # Apps/Wartung: zuweisen oder aufheben - immer genau ein Tenant, nur mit Kuerzel + PIN bestaetigt
+                $tk = "$(@($tenants)[0])"
+                Add-HURemoteLineTo $S "--- $($names[$tk]) ---" 'Head'
+                $tail = Join-Path ([IO.Path]::GetTempPath()) ("hu-remote-{0}.log" -f [guid]::NewGuid().ToString('N').Substring(0, 8))
+                $vars = @{ AppRoot = $AppRoot; Settings = $Settings; __Tk = $tk; __X = $Req.Intune; __Tail = $tail }
+                $r = Invoke-HURemoteChild $S $vars {
+                    foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Intune') { $p = Join-Path $AppRoot "Core\$m.psm1"; if (Test-Path $p) { Import-Module $p -Force -DisableNameChecking -ErrorAction Stop } }
+                    Initialize-Logging -LogFilePath $__Tail -MinLevel 'INFO'
+                    $x = $__X
+                    $lbl = switch ("$($x.Kind)") { 'allDevices' { 'Alle Geraete' } 'allUsers' { 'Alle Benutzer' } 'exclude' { "Ausschluss '$($x.GroupName)'" } default { "Gruppe '$($x.GroupName)'" } }
+                    $tg = @{ Kind = "$($x.Kind)"; Intent = "$($x.Intent)"; GroupId = "$($x.GroupId)"; Label = $lbl }
+                    if ($x.Area -eq 'app') {
+                        if ($x.Op -eq 'assign') {
+                            $a = Invoke-HUIntuneGraph -TenantKey $__Tk -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$($x.Id)"
+                            $n = Set-HUAppAssignment -TenantKey $__Tk -Settings $Settings -AppId $x.Id -AppKind (Get-HUAppKindFromType "$($a.'@odata.type')") -Targets @($tg)
+                            Write-Host "Zugewiesen: $lbl ($($x.Intent)) - insgesamt $n Zuweisung(en)" -ForegroundColor Green
+                        } else {
+                            $n = Remove-HUAppAssignments -TenantKey $__Tk -Settings $Settings -AppId $x.Id -Keys $x.Remove
+                            if (-not $n) { throw 'Zuweisung nicht gefunden (schon entfernt?)' }
+                            Write-Host "$n Zuweisung(en) aufgehoben" -ForegroundColor Green
+                        }
+                    } else {
+                        if ($x.Op -eq 'assign') {
+                            $sc = if ($x.Schedule) { [pscustomobject]$x.Schedule } else { [pscustomobject]@{ Type = 'daily'; Interval = 1; Time = '08:00'; Date = '' } }
+                            $n = Set-HURemediationAssignment -TenantKey $__Tk -Settings $Settings -Id $x.Id -Targets @($tg) -Schedule $sc
+                            Write-Host "Zugewiesen: $lbl - insgesamt $n Zuweisung(en)" -ForegroundColor Green
+                        } else {
+                            $n = Remove-HURemediationAssignments -TenantKey $__Tk -Settings $Settings -Id $x.Id -Keys $x.Remove
+                            if (-not $n) { throw 'Zuweisung nicht gefunden (schon entfernt?)' }
+                            Write-Host "$n Zuweisung(en) aufgehoben" -ForegroundColor Green
+                        }
+                    }
+                }.ToString() "" $secrets $log $tail $deadline
+                Remove-Item -LiteralPath $tail -Force -ErrorAction SilentlyContinue
+                $j.Done = @($j.Done) + @("$($names[$tk]): $r")
+                if ($r -eq 'ok') { $ok++ } elseif ($r -eq 'cancel') { $cancel = $true } else { $bad++ }
+                # Zwischenspeicher dieses Tenants verwerfen - die Liste am Handy zeigt dann den neuen Stand
+                try { foreach ($k in @($S.ICache.Keys)) { if ("$k" -like "*|$($Req.Intune.Area)|$tk|*") { $S.ICache.Remove($k) } } } catch { }
+            }
             default { Add-HURemoteLineTo $S "Unbekannte Art '$($it.Kind)'" 'Error'; $bad++ }
         }
     } catch {
@@ -244,10 +288,76 @@ function Invoke-HURemoteRun($S, $Req, $Settings, [string]$AppRoot, [int]$LimitMi
         $total = @($tenants).Count; if ("$($it.Kind)" -eq 'teams') { $total = 1 }
         if ($cancel) { $j.Result = "abgebrochen ($ok von $total fertig)"; $j.Level = 'Warning' }
         elseif ($bad) { $j.Result = $(if ($ok) { "teilweise: $ok ok, $bad mit Fehler" } else { "Fehler ($bad)" }); $j.Level = 'Error' }
-        else { $j.Result = $(if ("$($it.Kind)" -eq 'teams') { 'gesendet' } else { "OK ($ok Tenant$(if ($ok -ne 1) { 's' }))" }); $j.Level = 'OK' }
+        else { $j.Result = $(if ("$($it.Kind)" -eq 'teams') { 'gesendet' } elseif ("$($it.Kind)" -eq 'intune') { 'erledigt' } else { "OK ($ok Tenant$(if ($ok -ne 1) { 's' }))" }); $j.Level = 'OK' }
         $j.Ended = Get-Date
         Add-HURemoteLineTo $S "=== Ende: $($j.Result) ===" $(switch ($j.Level) { 'OK' { 'OK' } 'Warning' { 'Warn' } default { 'Error' } })
         & $log "=== Ende: $($j.Result)"
         $S.CancelReq = $null
     }
+}
+
+<#
+.SYNOPSIS
+    Apps/Wartung fuer das Handy lesen (eigener Runspace, laeuft solange die Fernbedienung an ist).
+    Nimmt Anfragen aus $S.IQueue und legt das Ergebnis als JSON in $S.ICache ab. Nur lesend.
+#>
+function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
+    foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Intune') { $p = Join-Path $AppRoot "Core\$m.psm1"; if (Test-Path $p) { Import-Module $p -Force -DisableNameChecking -ErrorAction Stop } }
+    $logDir = Join-Path $AppRoot 'Logs\Remote'
+    try { if (-not (Test-Path -LiteralPath $logDir)) { [void](New-Item -ItemType Directory -Path $logDir -Force) } } catch { }
+    try { Initialize-Logging -LogFilePath (Join-Path $logDir '{date}_Intune.log') -MinLevel 'INFO' } catch { }
+    while ($S.Run) {
+        $q = $null
+        try { if ($S.IQueue.Count) { $q = $S.IQueue.Dequeue() } } catch { $q = $null }
+        if (-not $q) { Start-Sleep -Milliseconds 200; continue }
+        $data = $null; $err = ''
+        try { if ($q.Op -eq 'detail') { $data = Get-HURemoteIntuneData $q $Settings } else { $data = [object[]]@(Get-HURemoteIntuneData $q $Settings) } }
+        catch {
+            $err = "$($_.Exception.Message)"
+            if ($err -match '403|Forbidden|Authorization') { $err = 'Berechtigung fehlt (DeviceManagementApps.ReadWrite.All bzw. DeviceManagementScripts.ReadWrite.All, Group.Read.All)' }
+            if ($err.Length -gt 300) { $err = $err.Substring(0, 300) }
+        }
+        $json = if ($err) { '' } elseif ($data -is [array] -and -not $data.Count) { '[]' } else { ConvertTo-Json -InputObject $data -Depth 6 -Compress }
+        $S.ICache[$q.Key] = @{ State = $(if ($err) { 'error' } else { 'done' }); At = (Get-Date); Data = $json; Error = $err }
+    }
+}
+function ConvertTo-HURemoteAsgRows($Rows) {
+    return @(@($Rows) | Where-Object { $_ } | ForEach-Object {
+            [ordered]@{ key = "$($_.Key)"; ziel = "$($_.Ziel)"; kind = "$($_.Kind)"
+                info = $(if ($_.PSObject.Properties['Intent']) { switch ("$($_.Intent)") { 'required' { 'Erforderlich' } 'available' { 'Verfuegbar' } 'uninstall' { 'Deinstallieren' } default { "$($_.Intent)" } } } else { "$($_.Zeitplan)" }) }
+        } | Sort-Object { $_.ziel })
+}
+function Get-HURemoteIntuneData($Q, $Settings) {
+    $tk = "$($Q.Tenant)"
+    switch ("$($Q.Op)") {
+        'list' {
+            if ($Q.Area -eq 'app') {
+                return @(@(Get-HUTenantAppList -TenantKey $tk -Settings $Settings) | Sort-Object Name | ForEach-Object {
+                        [ordered]@{ id = "$($_.Id)"; name = "$($_.Name)"; sub = (@("$($_.Typ)", "$($_.Version)") | Where-Object { $_ }) -join ' '; n = @($_.Assignments).Count } })
+            }
+            return @(@(Get-HUTenantRemediationList -TenantKey $tk -Settings $Settings) | Sort-Object Name | ForEach-Object {
+                    [ordered]@{ id = "$($_.Id)"; name = "$($_.Name)"; sub = "$($_.Description)"; n = $(if ($_.AssignKnown) { @($_.Assignments).Count } else { -1 }) } })
+        }
+        'detail' {
+            if ($Q.Area -eq 'app') {
+                $a = Invoke-HUIntuneGraph -TenantKey $tk -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$($Q.Id)"
+                return [ordered]@{ id = "$($Q.Id)"; name = "$($a.displayName)"; desc = "$($a.description)"; kind = (Get-HUAppKindFromType "$($a.'@odata.type')")
+                    summary = (Get-HUAppInstallSummary -TenantKey $tk -Settings $Settings -AppId $Q.Id); asg = @(ConvertTo-HURemoteAsgRows @(Get-HUAppAssignmentRows -TenantKey $tk -Settings $Settings -AppId $Q.Id)) }
+            }
+            $d = Get-HURemediationDetail -TenantKey $tk -Settings $Settings -Id $Q.Id
+            return [ordered]@{ id = "$($Q.Id)"; name = "$($d.Name)"; desc = "$($d.Description)"; kind = 'rem'; summary = "$($d.Summary)"; asg = @(ConvertTo-HURemoteAsgRows @($d.Assignments)) }
+        }
+        'devices' {
+            if ($Q.Area -eq 'app') {
+                return @(@(Get-HUAppInstallStatus -TenantKey $tk -Settings $Settings -AppId $Q.Id) | Sort-Object Status, Geraet | ForEach-Object {
+                        [ordered]@{ d = "$($_.Geraet)"; u = "$($_.Benutzer)"; s = "$($_.Status)"; x = (@("$($_.Version)", "$($_.Hinweis)") | Where-Object { $_ }) -join ' - ' } })
+            }
+            return @(@(Get-HURemediationRunStates -TenantKey $tk -Settings $Settings -Id $Q.Id) | Sort-Object Pruefung, Geraet | ForEach-Object {
+                    [ordered]@{ d = "$($_.Geraet)"; u = "$($_.Benutzer)"; s = "$($_.Pruefung)$(if ("$($_.Reparatur)" -and "$($_.Reparatur)" -ne '-') { " / $($_.Reparatur)" })"; x = "$($_.Zeit)" } })
+        }
+        'groups' {
+            return @(@(Get-HUTenantGroups -TenantKey $tk -Settings $Settings) | Sort-Object Name | ForEach-Object { [ordered]@{ id = "$($_.Id)"; name = "$($_.Name)"; typ = "$($_.Typ)" } })
+        }
+    }
+    throw 'Unbekannte Abfrage'
 }
