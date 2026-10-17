@@ -296,7 +296,7 @@ function Get-GraphToken { param($TenantKey, $Settings) if ($TenantKey -eq 'bad')
 Export-ModuleMember -Function Get-GraphToken
 '@
         $code = "# @param Anzahl|int|Anzahl|3`nSend-HUNotify -Title `"`$TenantKey`" -Lines @(`"`$Anzahl Drucker offline`")"
-        @{ snippets = @(@{ name = 'Drucker'; code = $code }) } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $script:App 'Config\quick-snippets.json') -Encoding UTF8
+        @{ snippets = @(@{ name = 'Drucker'; code = $code }, @{ name = 'Nur Ausgabe'; code = "[pscustomobject]@{ Tenant = `$TenantKey; Offen = 2 }" }) } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $script:App 'Config\quick-snippets.json') -Encoding UTF8
         # eigenes, leeres Profil: auf einem echten Admin-PC duerfen keine Karten an echte Kanaele gehen
         $script:OldAppData = $env:APPDATA
         $env:APPDATA = Join-Path $script:TestRoot 'appdata'
@@ -318,6 +318,12 @@ Export-ModuleMember -Function Get-GraphToken
         $r.Code | Should -Be 3
         $r.Message | Should -Match '1 Meldung'
         $r.Message | Should -Match '\[bad\] Kein Token'
+    }
+    It 'ohne Send-HUNotify: Ausgabe wird als eine Karte gesendet (hier: kein Ziel)' {
+        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe' }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
+        $r.Message | Should -Match '1 Meldung'
+        $r.Code | Should -Be 3
     }
     It 'Get-HUTeamsSnippetCode liefert den Code' {
         Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Drucker' | Should -Match 'Send-HUNotify'

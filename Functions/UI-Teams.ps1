@@ -237,7 +237,8 @@ function Show-HUTeamsJob($Job) {
         Update-HUTeamsSnippetCombo -Select $(if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['snippet']) { "$($Job.Options.snippet)" } else { '' })
         Update-HUTeamsMaskState
         Update-HUTeamsJobTargetChecks
-        $tids = @(if ($Job) { $Job.Targets | ForEach-Object { "$_" } } else { @() })
+        # Where-Object: $null | ForEach-Object laeuft einmal mit $null -> '' waere ein "Ziel" und kein Haken bliebe gesetzt
+        $tids = @(if ($Job) { @($Job.Targets) | Where-Object { "$_" } | ForEach-Object { "$_" } })
         # leer = alle Ziele -> alle anhaken (so wird es auch gesendet)
         foreach ($cb in @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $cb.IsChecked = ((-not $tids.Count) -or ($tids -contains "$($cb.Tag)")) }
         $days = @(if ($Job) { $Job.Days | ForEach-Object { [int]$_ } } else { @() })
@@ -314,7 +315,8 @@ function Get-HUTeamsJobFromForm {
     $allT = @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
     $selT = @($allT | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
     if ($allT.Count -and -not $selT.Count) { throw 'Bitte mindestens ein Ziel anhaken (zum Stummschalten den Auftrag deaktivieren).' }   # Befund B1 (Review 029)
-    $j.Targets = $(if ($selT.Count -eq $allT.Count) { @() } else { $selT })   # alle angehakt = leer = alle (auch spaetere)
+    # alle angehakt = leer = alle (auch spaetere). Nicht $(if ...) - das macht aus @() ein $null
+    if ($selT.Count -eq $allT.Count) { $j.Targets = @() } else { $j.Targets = @($selT) }
     return $j
 }
 

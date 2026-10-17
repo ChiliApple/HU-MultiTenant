@@ -13,6 +13,7 @@
     Meldung aus Skript:
       Kind 'Script'   fuehrt ein gespeichertes Quick-Script-Snippet (Options.snippet = Name) je Tenant aus, mit den
                       Standardwerten seiner @param-Zeilen. Jedes Send-HUNotify im Snippet geht an die Ziele der Meldung.
+                      Ruft das Snippet kein Send-HUNotify auf, wird seine Ausgabe (Objekte/Text) als eine Karte gesendet.
     Meldungen liegen in Config\teams-jobs.json (lokal, nicht im Repository). Sie enthalten keine Adressen -
     gesendet wird ueber die Ziele aus HU.Notify (am Auftrag gespeicherte Ziel-Ids).
 
@@ -380,7 +381,7 @@ function Invoke-HUTeamsScript {
         $ps = [powershell]::Create()
         $ps.Runspace = $rs
         [void]$ps.AddScript({
-            $errs = @()
+            $errs = @(); $outLines = New-Object System.Collections.Generic.List[string]
             foreach ($m in 'HU.Auth', 'HU.Graph', 'HU.Notify') { Import-Module (Join-Path $AppRoot "Core\$m.psm1") -Force -DisableNameChecking -ErrorAction Stop }
             . (Join-Path $AppRoot 'Core\HU.QSParams.ps1')
             . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
@@ -394,9 +395,20 @@ function Invoke-HUTeamsScript {
                 foreach ($p in @(Get-HUQSParams $__Code)) {
                     try { Set-Variable -Name $p.Name -Value (ConvertTo-HUQSParamValue $p $p.Default) -Scope Global } catch { $errs += "[$tk] Parameter $($p.Name): $($_.Exception.Message)" }
                 }
-                try { & $sb | Out-Null } catch { $errs += "[$tk] $($_.Exception.Message)" }
+                try {
+                    # Ausgabe merken: ruft das Skript selbst kein Send-HUNotify auf, wird sie als Karte gesendet
+                    foreach ($o in @(& $sb)) {
+                        if ($null -eq $o -or $outLines.Count -ge 60) { continue }
+                        $txt = if ($o -is [string] -or $o -is [ValueType]) { "$o" } else { (@($o.PSObject.Properties | Where-Object { $_.MemberType -match 'Property' } | Select-Object -First 6 | ForEach-Object { "$($_.Name): $($_.Value)" }) -join ' | ') }
+                        if ("$txt".Trim()) { $outLines.Add($(if ($__Tenants.Count -gt 1) { "[$tk] $txt" } else { "$txt" })) }
+                    }
+                } catch { $errs += "[$tk] $($_.Exception.Message)" }
             }
             $r = Get-HUNotifyRoute
+            if ($r.Calls -eq 0 -and $outLines.Count) {
+                [void](Send-HUNotify -Title $__Name -Level Info -Lines @($outLines) -Preview "$($outLines.Count) Eintraege")
+                $r = Get-HUNotifyRoute
+            }
             [pscustomobject]@{ __Done = $true; Calls = [int]$r.Calls; Ok = [int]$r.Ok; Failed = [int]$r.Failed; Errors = @($errs) }
         }.ToString())
         $h = $ps.BeginInvoke()

@@ -12,7 +12,8 @@
   dieselben Einstellungen: Ziele ("Senden an"), Tenants, "Jetzt senden" und auf Wunsch einen Zeitplan (Aufgabenplanung).
 - **Meldung aus Skript:** unter der eingebauten Meldung steht immer das Feld *oder Meldung aus Skript* mit allen gespeicherten Quick-Script-Snippets. Das Snippet
   laeuft je Tenant mit den Standardwerten seiner `@param`-Zeilen; jedes `Send-HUNotify -Title ...` darin geht an die Ziele
-  der Meldung - eine Kategorie braucht es nicht. Geplant ueber `Main.ps1 -Headless -Job <Id>` (nur gespeicherte
+  der Meldung - eine Kategorie braucht es nicht. Ruft das Snippet kein `Send-HUNotify` auf, geht seine Ausgabe
+  (Objekte/Text) als eine Karte; ohne Ausgabe wird nichts gesendet. Geplant ueber `Main.ps1 -Headless -Job <Id>` (nur gespeicherte
   Meldungen und Snippets, kein freier Code), Laufzeit hoechstens 30 Minuten. Exit-Codes wie bei den eingebauten Meldungen.
 - Im Quick-Script-Editor gehen die Karten eines Snippets, das zu einer Meldung gehoert, an deren Ziele; ein Snippet ohne
   Meldung sendet nichts (Hinweis im Protokoll).
