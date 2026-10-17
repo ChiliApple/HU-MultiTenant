@@ -199,6 +199,16 @@ Describe 'Fernbedienung: Webseite' {
         $script:HURemoteHeaders['Content-Security-Policy'] | Should -Match "script-src 'self'"
         [Text.Encoding]::UTF8.GetString($f['/sw.js'].Bytes) | Should -Match 'humt-2\.1\.11'
     }
+    It 'Review 032 B1: Probelauf nur an eindeutigen Schaltern' {
+        foreach ($p in 'DryRun', 'WhatIf', 'Probelauf', 'dryrun') { $p | Should -Match $script:HURemoteDryRx }
+        foreach ($p in 'Test', 'Preview', 'Simulation', 'TestMode') { $p | Should -Not -Match $script:HURemoteDryRx }
+    }
+    It 'Service-Worker-Cache wechselt mit dem Inhalt (Neuladen holt neue Seite)' {
+        $a = [Text.Encoding]::UTF8.GetString((Get-HURemoteWebFiles -Version '2.1.11')['/sw.js'].Bytes)
+        $old = $script:HURemoteJs
+        try { $script:HURemoteJs = $old + "`n// x"; $b = [Text.Encoding]::UTF8.GetString((Get-HURemoteWebFiles -Version '2.1.11')['/sw.js'].Bytes) } finally { $script:HURemoteJs = $old }
+        $a | Should -Not -Be $b
+    }
     It 'QR-Code fuer die Adresse' {
         $q = ConvertTo-HURQrMatrix 'https://192.168.1.20:8444/#c=123456'
         $q.Size | Should -BeGreaterThan 20

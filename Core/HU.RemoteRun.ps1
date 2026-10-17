@@ -105,6 +105,16 @@ function Invoke-HURemoteChild($S, [hashtable]$Vars, [string]$Script, [string]$Pr
                 break
             }
         }
+        if ($hung) {
+            # Review 032 B11: haengt der Lauf, die Laufsperre bis zum echten Ende halten (nicht parallel weiterstarten)
+            Add-HURemoteLineTo $S "${Prefix}haengt - laeuft noch, die Sperre bleibt bis zum Ende" 'Warning'
+            $w = Get-Date
+            while (-not $h.IsCompleted) {
+                [void]$h.AsyncWaitHandle.WaitOne(1000)
+                if (((Get-Date) - $w).TotalSeconds -ge 60) { $w = Get-Date; Add-HURemoteLineTo $S "${Prefix}haengt - laeuft noch" 'Warning' }
+            }
+            $hung = $false
+        }
         if (-not $hung) {
             try { [void]$ps.EndInvoke($h) } catch { if ($res -ne 'cancel') { $pos.Errs++; Add-HURemoteLineTo $S ("$Prefix" + (Protect-HURemoteText "$($_.Exception.Message)" $Secrets)) 'Error' } }
             Read-HURemoteStreams $ps $out $pos $S $Prefix $Secrets $Log

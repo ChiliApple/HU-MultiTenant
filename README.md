@@ -41,7 +41,7 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
 | **Wartung** | Intune Remediations mit KI erstellen, automatisch prüfen, in der Windows Sandbox wie Intune (als SYSTEM) testen, Werte als Eingabefelder, mit Zeitplan verteilen, Ergebnisse je Gerät; vorhandene Skripte verwalten und in andere Tenants kopieren |
 | **Analyse** | Was bekommt eine Gruppe, ein Gerät oder ein Benutzer? Alle Apps, Profile, Richtlinien und Skripte über alle Tenants – inkl. verschachtelter Gruppen und Ausschlüsse; Tenant-Vergleich mit Kopieren fehlender Richtlinien; Backup mit Verlauf (wer hat was geändert) und Wiederherstellen |
 | **Teams** | Meldungen in Teams-Kanäle (Workflows): eingebaut – Tages-Ampel, Secret-Countdown, Lizenzen knapp, Defender-Alarm – oder aus eigenen Snippets; je Meldung Ziele, Tenants und Zeitplan (Aufgabenplanung), Jetzt senden, Push-Vorschau am Handy, Rückfrage vor jedem Senden, Sendeprotokoll ohne Adressen |
-| **Handy** | Fernbedienung als Web-App: freigegebene Snippets, Erweiterungen und Teams-Meldungen vom Handy starten – Tenants und Parameter wählen, Live-Ausgabe, Push-Meldung am Ende; echte Läufe nur mit Kürzel und PIN, Geheimnisse bleiben am PC |
+| **Handy** | Fernbedienung als Web-App: freigegebene Snippets, Erweiterungen und Teams-Meldungen vom Handy starten – Tenants und Parameter wählen, Live-Ausgabe, Push-Meldung am Ende; echte Läufe nur mit Kürzel und PIN, Client Secrets bleiben am PC |
 | **Secrets** | DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf |
 | **Update** | Kanal Stabil/Test, jede Datei per SHA-256 geprüft, nur signierte Releases |
 

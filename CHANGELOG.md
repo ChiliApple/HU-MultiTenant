@@ -17,7 +17,16 @@
   `@param`-Felder, Auswahl/Laenge geprueft, geschuetzte Namen ($Token, $TenantKey, *Preference ...) gesperrt.
 - Laeufe ohne Oberflaeche: je Tenant ein frischer Runspace, nie ein Dialog am PC (auch bei gesperrter App - abschaltbar),
   gemeinsame Laufsperre mit Quick Script, Erweiterungen und "Jetzt senden". Titelleiste und Protokoll zeigen
-  "Remote FB". Kennwoerter/Token in der Ausgabe werden ausgeblendet. Vollstaendiges Protokoll in Logs\Remote.
+  "Remote FB". Client Secrets und Webhook-Adressen bleiben am PC; was ein Skript selbst ausgibt, erscheint am Handy.
+  Vollstaendiges Protokoll in Logs\Remote (aufgeraeumt nach logging.retentionDays). Haengt ein Lauf nach dem Abbruch,
+  bleibt die Laufsperre bis zum echten Ende.
+- Probelauf erkennt das Handy nur an eindeutigen Schaltern (DryRun, WhatIf, Probelauf); alles andere gilt als echter Lauf.
+- Freigaben: wurde der Code seit der Freigabe geaendert, fragt das Speichern mit Liste nach (Nein = bleibt gesperrt).
+- Not-Aus beendet auch die Fernbedienung, entfernt die gekoppelten Handys und schaltet den Autostart aus.
+- Einrichtung: gestartet wird als Administrator eine gepruefte Kopie (SHA-256) in einem nur fuer Administratoren
+  beschreibbaren Ordner, Zusatznetze nur als Ziffern/Punkt/Schraegstrich.
+- Teams-Meldung vom Handy: Bestaetigung "Sendet jetzt eine Teams-Meldung an ..." und Knopf "Jetzt senden"; Reiter und
+  Hinweistexte kontrastreicher. Herunterziehen bleibt auf der Seite (auch Art Snippets/Erweiterungen/Meldungen).
 - Ausgabe am Handy: Filterfeld (zeigt nur passende Zeilen) und kleine Symbole - letzten Lauf mit derselben Auswahl wiederholen (wieder mit Bestaetigung), in die Zwischenablage kopieren, Anzeige leeren.
 - Push-Meldungen ueber den Handy-Browser: Ende eines Laufs mit Ergebnis (der Inhalt kommt direkt vom PC, nur im
   Heimnetz/VPN; sonst "Lauf beendet").

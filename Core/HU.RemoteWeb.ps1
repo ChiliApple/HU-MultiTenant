@@ -102,7 +102,7 @@ $script:HURemoteHtml = @'
   <!-- Bestaetigung (eigener Schritt, Review 031 B6) -->
   <section class="view hidden" id="vConfirm">
     <div class="warnbox hidden" id="cWarn" role="alert"><span class="ico">&#9888;</span><span id="cWarnT"></span></div>
-    <div class="okbox hidden" id="cSafe"><span class="ico">&#10003;</span><span>Probelauf / nur lesend - aendert nichts</span></div>
+    <div class="okbox hidden" id="cSafe"><span class="ico">&#10003;</span><span id="cSafeT">Probelauf / nur lesend - aendert nichts</span></div>
     <div class="card">
       <div class="kv"><span>Was</span><b id="cWhat"></b></div>
       <div class="kv"><span>Wo</span><b id="cWhere"></b></div>
@@ -159,7 +159,7 @@ $script:HURemoteHtml = @'
     </div>
     <a class="btn wide" href="/ca.cer" download="HU-Fernbedienung-CA.cer">Zertifikat erneut laden</a>
     <button class="btn danger wide" id="mUnpair">Dieses Handy entkoppeln</button>
-    <p class="muted small">Gestartet wird am PC - HU-MultiTenant muss dort offen und die Fernbedienung an sein. Geheimnisse (Secrets, Token) verlassen den PC nie.</p>
+    <p class="muted small">Gestartet wird am PC - HU-MultiTenant muss dort offen und die Fernbedienung an sein. Client Secrets und Webhook-Adressen bleiben am PC; was ein Skript selbst ausgibt, erscheint hier.</p>
   </section>
 </main>
 
@@ -223,7 +223,7 @@ ol{margin:6px 0 4px 18px;padding:0;color:var(--sub)}li{margin:6px 0}
 .item .t{font-weight:600}.item .s{color:var(--sub);font-size:13px;margin-top:2px;word-break:break-word}
 .item.Error{border-color:rgba(243,139,168,.45);background:linear-gradient(90deg,rgba(243,139,168,.10),var(--mantle) 40%)}
 .item.Warning{border-color:rgba(250,179,135,.35)}
-.empty{color:var(--ov);font-size:14px;padding:6px 2px}
+.empty{color:var(--sub);font-size:14px;padding:6px 2px}
 .job{display:flex;align-items:center;gap:18px}
 .ring{position:relative;width:118px;height:118px;flex:none}.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
 .ring circle{fill:none;stroke-width:10}.ring .track{stroke:var(--s0)}
@@ -241,13 +241,13 @@ ol{margin:6px 0 4px 18px;padding:0;color:var(--sub)}li{margin:6px 0}
 .jinfo{min-width:0}.jtitle{font-size:18px;font-weight:700;word-break:break-word}
 .console{background:var(--crust);border:1px solid var(--s0);border-radius:14px;padding:10px 12px;height:46vh;overflow:auto;
 font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
-.console .ln{color:var(--tx)}.console .z{color:var(--ov);margin-right:6px}
+.console .ln{color:var(--tx)}.console .z{color:var(--sub);margin-right:6px}
 .console .Success{color:var(--green)}.console .Warning{color:var(--peach)}.console .Error{color:var(--red)}.console .Debug{color:var(--ov)}.console .Header{color:var(--blue);font-weight:700}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--s0)}.kv:last-child{border:0}.kv span{color:var(--sub)}
 .kv b{text-align:right;word-break:break-word}
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;padding:6px 8px calc(6px + var(--safe-b));
 background:rgba(17,17,27,.92);backdrop-filter:blur(12px);border-top:1px solid var(--s0)}
-.tabs button{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border:0;background:none;color:var(--ov);font-size:12px;font-weight:600;border-radius:12px}
+.tabs button{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border:0;background:none;color:var(--sub);font-size:12px;font-weight:600;border-radius:12px}
 .tabs button .ico{font-size:20px;line-height:1}.tabs button.on{color:var(--blue);background:rgba(137,180,250,.10)}
 .badge{position:absolute;top:4px;right:calc(50% - 26px);min-width:9px;height:9px;border-radius:9px;background:var(--green);animation:pulse 1.4s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(166,227,161,.6)}70%{box-shadow:0 0 0 8px rgba(166,227,161,0)}100%{box-shadow:0 0 0 0 rgba(166,227,161,0)}}
@@ -291,7 +291,7 @@ input.code4{font-size:24px;letter-spacing:6px;text-align:center;text-transform:u
 .done span{font-size:13px;padding:4px 10px;border-radius:99px;background:var(--s0)}
 .done .ok{color:var(--green)}.done .error{color:var(--red)}.done .cancel{color:var(--peach)}
 .console .Info{color:var(--tx)}.console .OK{color:var(--green)}.console .Warn{color:var(--peach)}.console .Error{color:var(--red)}.console .Head{color:var(--blue);font-weight:700}
-.console .z{color:var(--ov);margin-right:6px}
+.console .z{color:var(--sub);margin-right:6px}
 .busy{margin:6px 0;padding:10px 14px;border-radius:12px;background:rgba(250,179,135,.12);color:var(--peach);font-size:14px}
 @media (min-width:600px){.grid{grid-template-columns:1fr 1fr}}
 @media (min-width:1000px){.grid{grid-template-columns:1fr 1fr 1fr}main{max-width:1100px}}
@@ -331,6 +331,19 @@ $script:HURemoteJs = @'
     });
   }
 
+  // --- Ansicht merken (Seite, Art, Eintrag): Herunterziehen/Neuladen bleibt dort. localStorage, weil
+  // sessionStorage in der installierten App beim Neuladen nicht immer erhalten bleibt; gilt 30 Minuten.
+  function memo() {
+    try { localStorage.setItem('hu_nav', JSON.stringify({ v: S.tab === 'vConfirm' ? 'vStart' : S.tab, k: S.kind, i: S.item ? S.item.id : '', t: Date.now() })); } catch (e) { }
+  }
+  function recall() {
+    try { var n = JSON.parse(localStorage.getItem('hu_nav') || 'null'); if (n && Date.now() - (n.t || 0) < 1800000) { return n; } } catch (e) { }
+    return null;
+  }
+  function setKind(k) {
+    S.kind = k;
+    Array.prototype.forEach.call(document.querySelectorAll('.seg button'), function (x) { x.classList.toggle('on', x.getAttribute('data-k') === k); });
+  }
   // --- Ansicht
   var VIEWS = ['vPair', 'vList', 'vStart', 'vConfirm', 'vRun', 'vMore'];
   function setView(v) {
@@ -338,9 +351,9 @@ $script:HURemoteJs = @'
     show('tabs', v !== 'vPair');
     S.tab = v;
     // Ansicht merken: Herunterziehen (Neuladen) bleibt auf dieser Seite
-    try { if (v !== 'vPair') { sessionStorage.setItem('hu_view', v === 'vConfirm' ? 'vStart' : v); if (S.item) { sessionStorage.setItem('hu_item', S.item.id); } } } catch (e) { }
+    if (v !== 'vPair') { memo(); }
     var tabOf = (v === 'vStart' || v === 'vConfirm') ? 'vList' : v;
-    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tabOf); });
+    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) { var on = b.getAttribute('data-tab') === tabOf; b.classList.toggle('on', on); if (on) { b.setAttribute('aria-current', 'page'); } else { b.removeAttribute('aria-current'); } });
     if (v === 'vRun' && S.follow) { var c = $('rCon'); c.scrollTop = c.scrollHeight; }
     if (v === 'vMore') { pushState(); }
     if (v !== 'vConfirm') { clearInterval(S.cdTimer); }
@@ -415,7 +428,7 @@ $script:HURemoteJs = @'
     document.title = 'HU-MultiTenant - ' + (j.pc || '');
     $('mDev').textContent = j.device || '-'; $('mPc').textContent = j.pc || '-'; $('mVer').textContent = j.version || '-';
     $('mPin').textContent = j.pin ? 'eingerichtet' : 'fehlt - am PC festlegen';
-    if (j.locked) { banner('Dieses Handy ist gesperrt (zu viele falsche PINs) - am PC unter Einstellungen > Fernbedienung entsperren.'); }
+    if (j.locked) { banner('Dieses Handy ist gesperrt (zu viele falsche PINs) - am PC unter Remote FB entsperren.'); }
     $('lBusy').textContent = j.busy ? 'Am PC laeuft gerade: ' + j.busy + ' - Start erst danach moeglich.' : '';
     show('lBusy', !!j.busy);
     renderJob(j.job || {});
@@ -457,7 +470,7 @@ $script:HURemoteJs = @'
     var q = ($('lFind').value || '').toLowerCase();
     var items = (S.cat.items || []).filter(function (x) { return x.kind === S.kind && (!q || (x.name + ' ' + (x.desc || '') + ' ' + (x.cat || '')).toLowerCase().indexOf(q) >= 0); });
     if (!items.length) {
-      b.appendChild(el('div', 'empty', S.kind === 'teams' ? 'Keine gespeicherten Meldungen.' : 'Nichts fuers Handy freigegeben - am PC unter Einstellungen > Fernbedienung > Freigaben markieren.'));
+      b.appendChild(el('div', 'empty', S.kind === 'teams' ? 'Keine gespeicherten Meldungen.' : 'Nichts fuers Handy freigegeben - am PC unter Remote FB > Freigaben fuers Handy markieren.'));
       return;
     }
     items.forEach(function (x) {
@@ -491,7 +504,7 @@ $script:HURemoteJs = @'
     });
     var pb = $('sPar'); clear(pb);
     (x.params || []).forEach(function (p) {
-      var d = el('div', 'par' + (/^(DryRun|WhatIf|Simulation|Simulate|Test|TestMode|Probelauf|NurAnzeigen|Preview)$/i.test(p.name) && p.type === 'bool' ? ' dry' : ''));
+      var d = el('div', 'par' + (/^(DryRun|WhatIf|Probelauf)$/i.test(p.name) && p.type === 'bool' ? ' dry' : ''));
       var id = 'p_' + p.name;
       if (p.type === 'bool') {
         var l = el('label', 'sw'); var i = el('input'); i.type = 'checkbox'; i.id = id; i.checked = /^(true|1|ja|yes|\$true|wahr)$/i.test(String(p.def || ''));
@@ -553,7 +566,9 @@ $script:HURemoteJs = @'
   // --- Bestaetigung
   function showConfirm(j) {
     var s = j.summary || {};
+    var isTeams = !!(S.item && S.item.kind === 'teams');
     show('cWarn', !!s.live); show('cSafe', !s.live);
+    $('cSafeT').textContent = isTeams ? 'Sendet jetzt eine Teams-Meldung' + (s.teams ? ' an ' + s.teams : '') : 'Probelauf / nur lesend - aendert nichts';
     $('cWarnT').textContent = 'Echter Lauf - aendert Daten in ' + (s.tenants || []).length + ' Tenant' + ((s.tenants || []).length === 1 ? '' : 's');
     $('cWhat').textContent = s.title || '';
     $('cWhere').textContent = (s.tenants || []).join(', ');
@@ -564,7 +579,7 @@ $script:HURemoteJs = @'
     $('cHint').textContent = s.hint || '';
     show('cLive', !!s.live);
     $('cShort').textContent = j.code || ''; $('cCode').value = ''; $('cPin').value = '';
-    $('cGo').textContent = s.live ? 'Echt starten (' + (s.tenants || []).length + ')' : 'Starten';
+    $('cGo').textContent = s.live ? 'Echt starten (' + (s.tenants || []).length + ')' : (isTeams ? 'Jetzt senden' : 'Starten');
     $('cGo').className = 'btn big ' + (s.live ? 'danger' : 'primary');
     err('cErr', '');
     setView('vConfirm');
@@ -753,9 +768,8 @@ $script:HURemoteJs = @'
     $('pCode').addEventListener('keydown', function (e) { if (e.key === 'Enter') { pair(); } });
     Array.prototype.forEach.call(document.querySelectorAll('.seg button'), function (b) {
       b.addEventListener('click', function () {
-        S.kind = b.getAttribute('data-k');
-        Array.prototype.forEach.call(document.querySelectorAll('.seg button'), function (x) { x.classList.toggle('on', x === b); });
-        renderList();
+        setKind(b.getAttribute('data-k'));
+        renderList(); memo();
       });
     });
     $('lFind').addEventListener('input', renderList);
@@ -779,8 +793,9 @@ $script:HURemoteJs = @'
     document.addEventListener('visibilitychange', function () { if (!document.hidden) { schedule(50); } else { clearTimeout(S.timer); } });
     initSw();
     if (S.token) {
-      var v = 'vList'; try { v = sessionStorage.getItem('hu_view') || 'vList'; } catch (e) { }
-      if (v === 'vStart') { try { S.restoreItem = sessionStorage.getItem('hu_item'); } catch (e) { } v = 'vList'; }
+      var n = recall() || {}, v = n.v || 'vList';
+      if (n.k === 'snippet' || n.k === 'ext' || n.k === 'teams') { setKind(n.k); }
+      if (v === 'vStart') { S.restoreItem = n.i || null; v = 'vList'; }
       if (['vList', 'vRun', 'vMore'].indexOf(v) < 0) { v = 'vList'; }
       setView(v); poll();
     } else { setView('vPair'); }
@@ -864,6 +879,10 @@ function Get-HURemoteWebFiles {
             [ordered]@{ src = '/icon-512.png'; sizes = '512x512'; type = 'image/png'; purpose = 'maskable' }
         )
     }
+    # Cache-Name mit Inhalts-Pruefsumme: geaenderte Seite/Skripte werden auch ohne neue Versionsnummer frisch geladen
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { $cv = ([BitConverter]::ToString($sha.ComputeHash($u8.GetBytes($script:HURemoteHtml + $script:HURemoteCss + $script:HURemoteJs))) -replace '-', '').Substring(0, 10) } finally { $sha.Dispose() }
+    $Version = "$($Version -replace '[^0-9A-Za-z.\-]', '')-$cv"
     $f = @{
         '/index.html'           = @{ Type = 'text/html; charset=utf-8'; Bytes = $u8.GetBytes($script:HURemoteHtml) }
         '/app.css'              = @{ Type = 'text/css; charset=utf-8'; Bytes = $u8.GetBytes($script:HURemoteCss) }

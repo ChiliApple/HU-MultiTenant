@@ -152,7 +152,7 @@ Ein Snippet erscheint in der Handy-Fernbedienung erst, wenn es am PC freigegeben
 - läuft **je Tenant in einem eigenen Runspace** mit `$TenantKey`, `$Token`, `$Tenants` (alle gewählten) und den `@param`-Werten vom Handy – wie eine Meldung aus Skript
 - die `@param`-Felder erscheinen am Handy; `choice` nur aus der Liste, `string` höchstens 256 Zeichen, eine Zeile
 - *ändert Daten* = **echter Lauf** (Kürzel + PIN am Handy), außer ein Probelauf-Schalter (`DryRun`, `WhatIf`, `Probelauf` …) ist angehakt – deshalb bei ändernden Snippets immer `# @param DryRun|bool|Probelauf|true`
-- Ausgabe (`Write-Host`, Objekte, Warnungen, Fehler) erscheint live am Handy; Token und Kennwörter werden ausgeblendet, trotzdem keine Geheimnisse ausgeben
+- Ausgabe (`Write-Host`, Objekte, Warnungen, Fehler) erscheint live am Handy; was das Skript ausgibt, sieht das Handy – also keine Secrets, Token oder Kennwörter ausgeben
 - keine Eingaben (`Read-Host`, `Out-GridView`, Dialoge) – vom Handy sieht sie niemand; der Lauf hängt sonst bis zum Abbruch
 - nach jeder Änderung am Code ist die Freigabe ungültig, bis sie am PC neu gespeichert ist (Fingerabdruck)
 - `Send-HUNotify` sendet vom Handy nur, wenn das Snippet zu einer Teams-Meldung gehört (an deren Ziele)

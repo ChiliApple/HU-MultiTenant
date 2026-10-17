@@ -92,12 +92,13 @@ function Update-HURemoteCatalog([switch]$Force) {
         $defs = ConvertTo-HURemoteParamDefs (Get-HUQSParams "$($sn.code)")
         $route = $null; try { $rt = Get-HUTeamsSnippetRoute "$($sn.name)"; if ($rt) { $route = @{ Name = "$($rt.Name)"; TargetIds = [string[]]@($rt.Ids) } } } catch { }
         $items[$id] = @{ Id = $id; Kind = 'snippet'; Name = "$($sn.name)"; Mode = $mk.Mode; Params = $defs; Hash = $h; Code = "$($sn.code)"; Route = $route; Stale = $stale; TargetText = '' }
-        $client += [ordered]@{ id = $id; kind = 'snippet'; name = "$($sn.name)"; desc = $(if ($stale) { 'GEAENDERT - am PC unter Freigaben neu freigeben' } else { "$($sn.description)" }); cat = "$($sn.category)"; mode = $mk.Mode; stale = $stale
+        $client += [ordered]@{ id = $id; kind = 'snippet'; name = "$($sn.name)"; desc = $(if ($stale) { 'GEAENDERT - am PC unter Remote FB > Freigaben neu freigeben' } else { "$($sn.description)" }); cat = "$($sn.category)"; mode = $mk.Mode; stale = $stale
             params = @($defs | ForEach-Object { [ordered]@{ name = $_.Name; type = $_.Type; label = $_.Label; def = $_.Default; choices = @($_.Choices) } }); tenants = @($defTen) }
     }
     # Erweiterungen (nur Windows PowerShell 5.1, nur freigegebene)
     $root = Join-Path $script:AppRoot 'Extensions'
-    foreach ($ex in @($script:ExtensionItems)) {
+    foreach ($exi in @($script:ExtensionItems)) {
+        $ex = if ($exi -and $exi.PSObject.Properties['ExtensionObj']) { $exi.ExtensionObj } else { $exi }   # Liste haelt Anzeige-Objekte, die Erweiterung steckt in ExtensionObj
         if (-not $ex -or -not $ex.Path) { continue }
         $rel = "$($ex.Path)".Replace($root, '').TrimStart('\', '/')
         $mk = $marks.Extensions[$rel]; if (-not $mk) { continue }
@@ -110,7 +111,7 @@ function Update-HURemoteCatalog([switch]$Force) {
         if ("$($ex.Mode)" -eq 'ReadWrite') { $mode = 'write' }
         if ($mode -eq 'write' -and $ex.DryRunCapable) { $defs = @([pscustomobject]@{ Name = 'Probelauf'; Type = 'bool'; Label = 'Probelauf (nichts aendern)'; Default = 'true'; Choices = @() }) + $defs }
         $items[$id] = @{ Id = $id; Kind = 'ext'; Name = "$($ex.Name)"; Mode = $mode; Params = $defs; Hash = $h; Path = "$($ex.Path)"; Stale = $stale; TargetText = '' }
-        $client += [ordered]@{ id = $id; kind = 'ext'; name = "$($ex.Name)"; desc = $(if ($stale) { 'GEAENDERT - am PC unter Freigaben neu freigeben' } else { "$(if ($ex.Synopsis) { $ex.Synopsis } else { $ex.Description })" }); cat = "$($ex.Category)"; mode = $mode; stale = $stale
+        $client += [ordered]@{ id = $id; kind = 'ext'; name = "$($ex.Name)"; desc = $(if ($stale) { 'GEAENDERT - am PC unter Remote FB > Freigaben neu freigeben' } else { "$(if ($ex.Synopsis) { $ex.Synopsis } else { $ex.Description })" }); cat = "$($ex.Category)"; mode = $mode; stale = $stale
             params = @($defs | ForEach-Object { [ordered]@{ name = $_.Name; type = $_.Type; label = $_.Label; def = $_.Default; choices = @($_.Choices) } }); tenants = @($(try { $k0 = Get-SelectedTenantKey; if ($k0) { "$k0" } elseif ($defTen.Count) { $defTen[0] } } catch { })) }
     }
     # Teams-Meldungen (alle gespeicherten)
@@ -191,14 +192,42 @@ function Invoke-HURemoteSetup([ValidateSet('Install', 'Uninstall')][string]$Acti
         $fp = Get-HURemoteFreePort $port
         Show-HUMessage "Port $port ist belegt (anderes Programm).$(if ($fp) { " Frei waere z. B. $fp - unter Einstellungen eintragen." })" -Icon Warning -Owner $Owner; return $false
     }
-    $res = Join-Path ([IO.Path]::GetTempPath()) ("hu-remote-setup-{0}.json" -f [guid]::NewGuid().ToString('N').Substring(0, 8))
-    $script = Join-Path $script:AppRoot 'Core\HU.RemoteSetup.ps1'
-    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"", '-Action', $Action, '-Port', "$port", '-Sid', $sid, '-Networks', "`"$(@($cfg.Networks) -join ',')`"", '-ResultFile', "`"$res`"")
+    # Review 032 B5: die Skripte nicht aus dem (vom Benutzer beschreibbaren) Programmordner als Admin starten, sondern
+    # als Admin in einen nur fuer Administratoren beschreibbaren Ordner kopieren, Pruefsummen gegen die hier
+    # ermittelten Werte pruefen und die Kopie ausfuehren. Ergebnis ebenfalls dort (fuer das Konto nur lesbar).
+    $nets = @(@($cfg.Networks) | Where-Object { "$_" -match '^[0-9./]+$' })
+    $core = Join-Path $script:AppRoot 'Core'
+    $hs = @{}
+    foreach ($f in 'HU.RemoteSetup.ps1', 'HU.Remote.ps1') { $hs[$f] = (Get-FileHash -LiteralPath (Join-Path $core $f) -Algorithm SHA256).Hash }
+    $nonce = [guid]::NewGuid().ToString('N')
+    $base = Join-Path $env:ProgramData 'HU-MultiTenant-RemoteSetup'
+    $res = Join-Path $base "result-$nonce.json"
+    $q = { param($s) "'" + ("$s" -replace "'", "''") + "'" }
+    $boot = @"
+`$ErrorActionPreference = 'Stop'
+`$base = $(& $q $base); `$res = $(& $q $res); `$src = $(& $q $core)
+`$files = @{ 'HU.RemoteSetup.ps1' = '$($hs['HU.RemoteSetup.ps1'])'; 'HU.Remote.ps1' = '$($hs['HU.Remote.ps1'])' }
+try {
+    if (Test-Path -LiteralPath `$base) { Remove-Item -LiteralPath `$base -Recurse -Force }
+    [void](New-Item -ItemType Directory -Path `$base -Force)
+    `$o = & icacls.exe `$base /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' '*$($sid):(OI)(CI)RX' 2>&1
+    if (`$LASTEXITCODE) { throw "Rechte fuer den Setup-Ordner nicht gesetzt: `$o" }
+    foreach (`$k in `$files.Keys) {
+        `$d = Join-Path `$base `$k
+        Copy-Item -LiteralPath (Join-Path `$src `$k) -Destination `$d -Force
+        if ((Get-FileHash -LiteralPath `$d -Algorithm SHA256).Hash -ne `$files[`$k]) { throw "Pruefsumme von `$k stimmt nicht - Datei wurde waehrend der Einrichtung veraendert" }
+    }
+    & (Join-Path `$base 'HU.RemoteSetup.ps1') -Action '$Action' -Port $port -Sid '$sid' -Networks '$($nets -join ',')' -ResultFile `$res
+}
+catch { [IO.File]::WriteAllText(`$res, (@{ Ok = `$false; Error = "`$(`$_.Exception.Message)" } | ConvertTo-Json), (New-Object Text.UTF8Encoding `$false)) }
+finally { foreach (`$k in `$files.Keys) { Remove-Item -LiteralPath (Join-Path `$base `$k) -Force -ErrorAction SilentlyContinue } }
+"@
+    $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($boot))
+    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc)
     try {
         $p = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $argList -Verb RunAs -WindowStyle Hidden -PassThru -Wait -ErrorAction Stop
     } catch { Show-HUMessage "Einrichtung abgebrochen (keine Administratorrechte erteilt).`n$($_.Exception.Message)" -Icon Warning -Owner $Owner; return $false }
     $j = $null; try { $j = Get-Content -LiteralPath $res -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
-    Remove-Item -LiteralPath $res -Force -ErrorAction SilentlyContinue
     if (-not $j -or -not $j.Ok) { Show-HUMessage "Einrichtung fehlgeschlagen: $(if ($j) { $j.Error } else { 'kein Ergebnis' })" -Icon Error -Owner $Owner; return $false }
     if ($Action -eq 'Install') {
         $cfg.SetupPort = $port; $cfg.SetupSid = $sid; $cfg.SetupAt = (Get-Date).ToString('dd.MM.yyyy HH:mm'); $cfg.SetupIps = @($j.Ips)
@@ -520,7 +549,7 @@ function Show-HURemoteDialog {
             $p = 0
             if (-not [int]::TryParse("$($c2['txtRemPort'].Text)".Trim(), [ref]$p) -or $p -lt 1025 -or $p -gt 65535) { Show-HUMessage 'Port: Zahl von 1025 bis 65535.' -Icon Warning -Owner $script:HURemDlg.Window; return }
             $nets = @("$($c2['txtRemNets'].Text)" -split '[,; ]+' | Where-Object { $_ })
-            foreach ($n in $nets) { if (@(Get-HURemoteFirewallRemote @($n)).Count -lt 2) { Show-HUMessage "'$n' ist kein gueltiges Netz (z. B. 192.168.99.0/24)." -Icon Warning -Owner $script:HURemDlg.Window; return } }
+            foreach ($n in $nets) { if ($n -notmatch '^[0-9./]+$' -or @(Get-HURemoteFirewallRemote @($n)).Count -lt 2) { Show-HUMessage "'$n' ist kein gueltiges Netz (z. B. 192.168.99.0/24)." -Icon Warning -Owner $script:HURemDlg.Window; return } }
             $netChanged = ((@($cfg.Networks) -join ',') -ne ($nets -join ',')) -or ($cfg.Port -ne $p)
             $cfg.AutoStart = [bool]$c2['chkRemAuto'].IsChecked; $cfg.WhenLocked = [bool]$c2['chkRemLocked'].IsChecked; $cfg.KeepAwake = [bool]$c2['chkRemAwake'].IsChecked
             $cfg.Port = $p; $cfg.Networks = $nets
@@ -599,7 +628,7 @@ function Update-HURemoteDialog {
     $st = Get-HURemoteSetupState
     $c['txtRemSetup'].Text = "$($st.Text)$(if ($st.Warn) { "`n$($st.Warn)" })"
     $c['txtRemSetup'].Foreground = Get-HUBrush $(if (-not $st.Ok) { '#FFB74D' } elseif ($st.Warn) { '#FFB74D' } else { '#81C784' })
-    $c['txtRemFoot'].Text = 'Protokoll der Zugriffe und Laeufe: Logs\Remote. Geheimnisse (Secrets, Token, Webhook-Adressen) verlassen den PC nie.'
+    $c['txtRemFoot'].Text = 'Protokoll der Zugriffe und Laeufe: Logs\Remote. Client Secrets und Webhook-Adressen bleiben am PC; was ein Skript ausgibt, sieht das Handy.'
 }
 
 # Freigaben-Tabelle (DataTable: Zwei-Wege-Bindung der Auswahlspalte)
@@ -607,23 +636,24 @@ function Initialize-HURemoteMarksGrid {
     $c = $script:HURemDlg.C
     $marks = Get-HURemoteMarks
     $dt = New-Object System.Data.DataTable
-    foreach ($n in 'Art', 'Name', 'Freigabe', 'Hinweis', 'Key', 'Kind', 'Hash') { [void]$dt.Columns.Add($n) }
+    foreach ($n in 'Art', 'Name', 'Freigabe', 'Hinweis', 'Key', 'Kind', 'Hash', 'OldHash') { [void]$dt.Columns.Add($n) }
     foreach ($sn in @(Get-HUSnippets)) {
         $h = Get-HUTeamsCodeHash "$($sn.code)"
         $mk = $marks.Snippets["$($sn.name)"]
         $f = if (-not $mk) { 'aus' } elseif ($mk.Mode -eq 'read') { 'nur lesend' } else { 'aendert Daten' }
         $hint = if ($mk -and $mk.Hash -ne $h) { 'GEAENDERT - zum Erneuern speichern' } elseif ($sn.category) { "$($sn.category)" } else { '' }
-        [void]$dt.Rows.Add('Snippet', "$($sn.name)", $f, $hint, "$($sn.name)", 'snippet', $h)
+        [void]$dt.Rows.Add('Snippet', "$($sn.name)", $f, $hint, "$($sn.name)", 'snippet', $h, $(if ($mk) { "$($mk.Hash)" } else { '' }))
     }
     $root = Join-Path $script:AppRoot 'Extensions'
-    foreach ($ex in @($script:ExtensionItems)) {
+    foreach ($exi in @($script:ExtensionItems)) {
+        $ex = if ($exi -and $exi.PSObject.Properties['ExtensionObj']) { $exi.ExtensionObj } else { $exi }   # Liste haelt Anzeige-Objekte, die Erweiterung steckt in ExtensionObj
         if (-not $ex -or -not $ex.Path) { continue }
         $rel = "$($ex.Path)".Replace($root, '').TrimStart('\', '/')
         $h = ''; try { $h = Get-HURemoteFileHash $ex.Path } catch { }
         $mk = $marks.Extensions[$rel]
         $f = if (-not $mk) { 'aus' } elseif ($mk.Mode -eq 'read') { 'nur lesend' } else { 'aendert Daten' }
         $hint = if ("$($ex.Runtime)" -eq 'PS7') { 'nur PowerShell 7 - nicht vom Handy' } elseif ($mk -and $mk.Hash -ne $h) { 'GEAENDERT - zum Erneuern speichern' } elseif ("$($ex.Mode)" -eq 'ReadWrite') { 'schreibt (.MODE ReadWrite)' } else { '' }
-        [void]$dt.Rows.Add('Erweiterung', "$($ex.Name)", $f, $hint, $rel, 'ext', $h)
+        [void]$dt.Rows.Add('Erweiterung', "$($ex.Name)", $f, $hint, $rel, 'ext', $h, $(if ($mk) { "$($mk.Hash)" } else { '' }))
     }
     $c['gridRemMarks'].ItemsSource = $dt.DefaultView
     $script:HURemMarksTable = $dt
@@ -634,18 +664,25 @@ function Save-HURemoteMarksFromGrid {
     try { [void]$c['gridRemMarks'].CommitEdit('Row', $true) } catch { }
     $m = @{ Snippets = @{}; Extensions = @{} }
     $warn = @()
-    foreach ($row in @($script:HURemMarksTable.Rows)) {
+    # Review 032 B3: nach der Freigabe geaenderten Code nicht still neu freigeben - Liste zeigen und bestaetigen lassen
+    $rows = @($script:HURemMarksTable.Rows | Where-Object { "$($_.Freigabe)" -ne 'aus' -and "$($_.Hinweis)" -notlike 'nur PowerShell 7*' })
+    $chg = @($rows | Where-Object { "$($_.OldHash)" -and "$($_.OldHash)" -ne "$($_.Hash)" })
+    $renew = $true
+    if ($chg.Count) {
+        $renew = Confirm-HU ("Der Code dieser Freigaben wurde seit der Freigabe geaendert:`n`n" + (($chg | ForEach-Object { "  - $($_.Art): $($_.Name)" }) -join "`n") + "`n`nDie geaenderte Fassung fuers Handy freigeben?`n(Nein: bleiben gesperrt, bis Du sie erneuerst)") -Title 'Freigaben erneuern' -Warning -Owner $script:HURemDlg.Window
+    }
+    foreach ($row in $rows) {
         $mode = switch ("$($row.Freigabe)") { 'nur lesend' { 'read' } 'aendert Daten' { 'write' } default { '' } }
         if (-not $mode) { continue }
-        if ("$($row.Kind)" -eq 'snippet') { $m.Snippets["$($row.Key)"] = @{ Mode = $mode; Hash = "$($row.Hash)" } }
+        $hash = if (-not $renew -and "$($row.OldHash)" -and "$($row.OldHash)" -ne "$($row.Hash)") { "$($row.OldHash)" } else { "$($row.Hash)" }
+        if ("$($row.Kind)" -eq 'snippet') { $m.Snippets["$($row.Key)"] = @{ Mode = $mode; Hash = $hash } }
         else {
-            if ("$($row.Hinweis)" -like 'nur PowerShell 7*') { continue }
             if ($mode -eq 'read' -and "$($row.Hinweis)" -like 'schreibt*') { $warn += "$($row.Name)" }
-            $m.Extensions["$($row.Key)"] = @{ Mode = $mode; Hash = "$($row.Hash)" }
+            $m.Extensions["$($row.Key)"] = @{ Mode = $mode; Hash = $hash }
         }
     }
     try { Save-HURemoteMarks $m } catch { Show-HUMessage "Freigaben nicht gespeichert: $($_.Exception.Message)" -Icon Error -Owner $script:HURemDlg.Window; return }
-    Write-HULogOK "Fernbedienung: $($m.Snippets.Count) Snippet(s) und $($m.Extensions.Count) Erweiterung(en) fuers Handy freigegeben."
+    Write-HULogOK "Fernbedienung: $($m.Snippets.Count) Snippet(s) und $($m.Extensions.Count) Erweiterung(en) fuers Handy freigegeben$(if ($chg.Count) { if ($renew) { " ($($chg.Count) geaenderte erneuert)" } else { " ($($chg.Count) geaenderte bleiben gesperrt)" } })."
     if ($warn.Count) { Show-HUMessage "Als 'nur lesend' markiert, aber laut Kopf schreibend (.MODE ReadWrite) - gilt am Handy trotzdem als 'aendert Daten':`n$($warn -join ', ')" -Icon Warning -Owner $script:HURemDlg.Window }
     Initialize-HURemoteMarksGrid
     if ($script:HURem) { try { Update-HURemoteCatalog } catch { } }

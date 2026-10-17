@@ -244,6 +244,12 @@ try {
         Get-ChildItem -LiteralPath (Split-Path $logFile -Parent) -Filter ($leaf -replace '\{date\}', '*') -File -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -lt $limit } | Remove-Item -Force -ErrorAction SilentlyContinue
     }
+    # Handy-Fernbedienung (Logs\Remote: Tageslaeufe und Zugriffe je Monat) nach derselben Frist (Review 032 B15)
+    $remLog = Join-Path $script:AppRoot 'Logs\Remote'
+    if (Test-Path -LiteralPath $remLog) {
+        Get-ChildItem -LiteralPath $remLog -Filter '*.log' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$keep) } | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
 } catch { }
 
 Initialize-AsyncPool -PoolSize 4

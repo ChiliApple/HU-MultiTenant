@@ -802,7 +802,7 @@ function Test-HURemoteParams($Defs, $Values) {
     return @{ Ok = $true; Error = ''; Values = $out }
 }
 # Echter Lauf? Item.Mode: 'read' = nie, 'write' = immer, ausser ein Probelauf-Schalter steht auf ja
-$script:HURemoteDryRx = '^(?i)(DryRun|WhatIf|Simulation|Simulate|Test|TestMode|Probelauf|NurAnzeigen|Preview)$'
+$script:HURemoteDryRx = '^(?i)(DryRun|WhatIf|Probelauf)$'   # nur eindeutige Probelauf-Schalter (Review 032 B1: 'Test'/'Preview' bedeuten nicht sicher 'aendert nichts')
 function Test-HURemoteLive($Item, [hashtable]$Values) {
     if ("$($Item.Mode)" -eq 'read') { return $false }
     foreach ($d in @($Item.Params)) {
@@ -984,7 +984,7 @@ function Get-HURemoteResponse($S, $Req) {
                 $tgtName = "$($tt.name)"
             }
             $live = Test-HURemoteLive $it $pv.Values
-            if ($live -and -not $S.Pin) { return (New-HURemoteJson 409 @{ ok = $false; error = 'Echter Lauf braucht eine Fernbedienungs-PIN - am PC unter Einstellungen > Fernbedienung festlegen' }) }
+            if ($live -and -not $S.Pin) { return (New-HURemoteJson 409 @{ ok = $false; error = 'Echter Lauf braucht eine Fernbedienungs-PIN - am PC unter Remote FB > Einstellungen festlegen' }) }
             $nb = Get-HURemoteRandomBytes 16
             $nonce = -join ($nb | ForEach-Object { $_.ToString('x2') })
             $short = if ($live) { New-HURemoteShortCode } else { '' }
