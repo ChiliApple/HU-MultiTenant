@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Handy-Fernbedienung (Oberflaeche): Ein/Aus, Kopplung mit QR-Code, gekoppelte Handys, PIN, Freigaben, Einrichtung.
@@ -625,7 +625,6 @@ function Initialize-HURemoteMarksGrid {
         $hint = if ("$($ex.Runtime)" -eq 'PS7') { 'nur PowerShell 7 - nicht vom Handy' } elseif ($mk -and $mk.Hash -ne $h) { 'GEAENDERT - zum Erneuern speichern' } elseif ("$($ex.Mode)" -eq 'ReadWrite') { 'schreibt (.MODE ReadWrite)' } else { '' }
         [void]$dt.Rows.Add('Erweiterung', "$($ex.Name)", $f, $hint, $rel, 'ext', $h)
     }
-    $c['gridRemMarks'].Columns[2].ItemsSource = @('aus', 'nur lesend', 'aendert Daten')
     $c['gridRemMarks'].ItemsSource = $dt.DefaultView
     $script:HURemMarksTable = $dt
     $c['txtRemMarkInfo'].Text = "$(@($dt.Rows | Where-Object { $_.Freigabe -ne 'aus' }).Count) freigegeben"
