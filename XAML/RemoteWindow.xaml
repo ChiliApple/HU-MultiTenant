@@ -1,0 +1,141 @@
+<!--
+    HU-MultiTenant - Handy-Fernbedienung: Status, Kopplung (QR-Code), gekoppelte Handys, PIN, Freigaben, Einrichtung.
+-->
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Handy-Fernbedienung"
+    Width="1000" Height="720" MinWidth="760" MinHeight="520"
+    WindowStartupLocation="CenterOwner"
+    Background="#1E1E1E"
+    UseLayoutRounding="True"
+    ShowInTaskbar="False"
+    ResizeMode="CanResizeWithGrip">
+
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+
+    <DockPanel Margin="12">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <TextBlock x:Name="txtRemFoot" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="700"/>
+            <Button x:Name="btnRemClose" Content="Schlie&#xDF;en" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" HorizontalAlignment="Right"/>
+        </DockPanel>
+
+        <TabControl x:Name="tabRem" Style="{StaticResource DarkTabControl}">
+            <!-- Status + Koppeln -->
+            <TabItem Header="Status" Style="{StaticResource DarkTabItem}">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Text="Fernbedienung" Style="{StaticResource SectionTitle}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,6">
+                            <Ellipse x:Name="dotRem" Width="12" Height="12" Fill="#666666" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="txtRemState" Foreground="#CCCCCC" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="520"/>
+                        </StackPanel>
+                        <TextBlock x:Name="txtRemUrl" Foreground="#90CAF9" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
+                            <Button x:Name="btnRemOnOff" Content="Einschalten" Background="#4CAF50" Style="{StaticResource DarkButton}" Margin="0,0,8,0" MinWidth="120"/>
+                            <Button x:Name="btnRemPair" Content="&#x1F4F1; Handy koppeln" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
+                                    ToolTip="Kopplung fuer 10 Minuten oeffnen: QR-Code scannen oder Code am Handy eingeben"/>
+                        </StackPanel>
+                        <TextBlock x:Name="txtRemJob" Foreground="#FFB74D" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <TextBlock Text="Gekoppelte Handys" Style="{StaticResource SectionTitle}" Margin="0,12,0,4"/>
+                        <DataGrid x:Name="gridRemDev" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                  SelectionMode="Single" Height="150">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                                <DataGridTextColumn Header="Gekoppelt" Binding="{Binding Created}" Width="120"/>
+                                <DataGridTextColumn Header="Zuletzt" Binding="{Binding LastSeen}" Width="120"/>
+                                <DataGridTextColumn Header="Adresse" Binding="{Binding LastIp}" Width="110"/>
+                                <DataGridTextColumn Header="Zustand" Binding="{Binding State}" Width="120"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button x:Name="btnRemUnlock" Content="Entsperren" Style="{StaticResource ToolButton}" Margin="0,0,6,0" ToolTip="Nach 3 falschen PINs gesperrtes Handy wieder freigeben"/>
+                            <Button x:Name="btnRemRemove" Content="Entfernen" Style="{StaticResource ToolButton}" Margin="0,0,6,0" ToolTip="Kopplung loeschen - das Handy muss neu gekoppelt werden"/>
+                            <Button x:Name="btnRemRemoveAll" Content="Alle entfernen" Style="{StaticResource ToolButton}" ToolTip="Alle Handys entkoppeln (z. B. Handy verloren)"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <Border Grid.Column="1" x:Name="pnlRemPair" Visibility="Collapsed" Background="#252526" CornerRadius="6" Padding="12" VerticalAlignment="Top">
+                        <StackPanel Width="300">
+                            <TextBlock Text="Am Handy scannen" Style="{StaticResource SectionTitle}"/>
+                            <Image x:Name="imgRemQr" Width="260" Height="260" Margin="0,8" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                            <TextBlock Text="oder Code eingeben:" Foreground="#858585" FontSize="11"/>
+                            <TextBlock x:Name="txtRemCode" Foreground="#FFFFFF" FontSize="34" FontWeight="Bold" FontFamily="Consolas" HorizontalAlignment="Center" Margin="0,4"/>
+                            <TextBlock x:Name="txtRemPairInfo" Foreground="#858585" FontSize="11" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="txtRemFp" Foreground="#858585" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0" FontFamily="Consolas"/>
+                            <Button x:Name="btnRemPairClose" Content="Kopplung schliessen" Style="{StaticResource ToolButton}" Margin="0,8,0,0" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- Freigaben -->
+            <TabItem Header="Freigaben fuers Handy" Style="{StaticResource DarkTabItem}">
+                <DockPanel Margin="10">
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"
+                               Text="Nur hier freigegebene Snippets und Erweiterungen erscheinen am Handy. Pflicht ist die Einstufung: 'nur lesend' oder 'aendert Daten'. Bei 'aendert Daten' ist jeder Lauf ohne gesetzten Probelauf-Schalter ein ECHTER LAUF (Kuerzel + PIN am Handy). Wird der Code danach geaendert, ist die Freigabe ungueltig, bis sie hier erneuert wird. Teams-Meldungen stehen immer zur Verfuegung."/>
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button x:Name="btnRemMarkSave" Content="&#x1F4BE; Freigaben speichern" Background="#4CAF50" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+                        <TextBlock x:Name="txtRemMarkInfo" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <DataGrid x:Name="gridRemMarks" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" HeadersVisibility="Column" SelectionMode="Single"
+                              CanUserAddRows="False" CanUserDeleteRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Art" Binding="{Binding Art}" Width="90" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
+                            <DataGridComboBoxColumn x:Name="colRemMode" Header="Handy" SelectedItemBinding="{Binding Freigabe, UpdateSourceTrigger=PropertyChanged}" Width="150"/>
+                            <DataGridTextColumn Header="Hinweis" Binding="{Binding Hinweis}" Width="260" IsReadOnly="True"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+
+            <!-- Einstellungen -->
+            <TabItem Header="Einstellungen" Style="{StaticResource DarkTabItem}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10" MaxWidth="760" HorizontalAlignment="Left">
+                        <TextBlock Text="Fernbedienungs-PIN" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Text="Nur Ziffern, mindestens 4 Stellen. Wird am Handy bei jedem echten Lauf abgefragt; 3 falsche PINs sperren das Handy. Gespeichert wird nur ein Hash (nicht die PIN)."/>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,4">
+                            <PasswordBox x:Name="pwdRemPin1" Style="{StaticResource DarkPasswordBox}" Width="140" Margin="0,0,6,0" ToolTip="Neue PIN"/>
+                            <PasswordBox x:Name="pwdRemPin2" Style="{StaticResource DarkPasswordBox}" Width="140" Margin="0,0,6,0" ToolTip="PIN wiederholen"/>
+                            <Button x:Name="btnRemPinSet" Content="PIN festlegen" Style="{StaticResource ToolButton}"/>
+                            <TextBlock x:Name="txtRemPin" Foreground="#858585" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        </StackPanel>
+
+                        <TextBlock Text="Verhalten" Style="{StaticResource SectionTitle}" Margin="0,16,0,0"/>
+                        <CheckBox x:Name="chkRemAuto" Content="Beim Start von HU-MultiTenant einschalten" Foreground="#CCCCCC" Margin="0,6,0,2"/>
+                        <CheckBox x:Name="chkRemLocked" Content="Starten vom Handy auch, wenn HU-MultiTenant am PC gesperrt ist" Foreground="#CCCCCC" Margin="0,2"
+                                  ToolTip="Aus: solange die App am PC gesperrt ist, startet vom Handy nichts (ansehen geht weiter)"/>
+                        <CheckBox x:Name="chkRemAwake" Content="PC wach halten, solange die Fernbedienung an ist (sonst nur waehrend eines Laufs)" Foreground="#CCCCCC" Margin="0,2"/>
+
+                        <TextBlock Text="Netz" Style="{StaticResource SectionTitle}" Margin="0,16,0,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,2">
+                            <TextBlock Text="Port" Foreground="#CCCCCC" VerticalAlignment="Center" Width="160"/>
+                            <TextBox x:Name="txtRemPort" Style="{StaticResource DarkTextBox}" Width="90"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="Weitere Netze (VPN)" Foreground="#CCCCCC" VerticalAlignment="Center" Width="160"/>
+                            <TextBox x:Name="txtRemNets" Style="{StaticResource DarkTextBox}" Width="320" ToolTip="z. B. 192.168.99.0/24 - Adressbereich, aus dem das Handy ueber das VPN des Routers kommt. Mehrere mit Komma."/>
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,0" Text="Erlaubt sind das lokale Subnetz und diese Netze. Tipp: im Router eine feste Adresse (DHCP-Reservierung) fuer diesen PC - bei einer neuen Adresse muss die Einrichtung erneuert werden."/>
+                        <Button x:Name="btnRemOptSave" Content="&#x1F4BE; Speichern" Background="#4CAF50" Style="{StaticResource DarkButton}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+
+                        <TextBlock Text="Einrichtung (einmalig, Administrator)" Style="{StaticResource SectionTitle}" Margin="0,18,0,0"/>
+                        <TextBlock x:Name="txtRemSetup" Foreground="#CCCCCC" FontSize="12" TextWrapping="Wrap" Margin="0,4"/>
+                        <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Text="Legt Zertifikat (gemeinsame CA mit HUMig), HTTPS-Bindung, Port-Freigabe fuer Dein Konto und Firewall-Regel an. Danach laeuft die Fernbedienung ohne Adminrechte. Windows fragt einmal nach Administratorrechten (UAC)."/>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="btnRemSetup" Content="&#x1F6E1; Einrichten / erneuern" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+                            <Button x:Name="btnRemUnsetup" Content="Einrichtung entfernen" Style="{StaticResource ToolButton}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

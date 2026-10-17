@@ -7,7 +7,7 @@
 - für Excel-Reports das Modul **ImportExcel** (wird beim ersten Report installiert; Excel selbst ist nicht nötig)
 - für **Apps › Updates** der Windows Paket-Manager **winget** (App-Installer aus dem Microsoft Store, ab Windows 10 1809 meist vorhanden); das Modul `Microsoft.WinGet.Client` wird genutzt, wenn installiert
 - für die Testinstallation die **Windows Sandbox** (Windows Pro/Enterprise/Education, wird auf Wunsch aktiviert)
-- keine Administratorrechte nötig
+- keine Administratorrechte nötig (Ausnahme: die Handy-Fernbedienung wird einmal mit Administratorrechten eingerichtet – Zertifikat, HTTPS-Bindung, Firewall-Regel; danach läuft auch sie ohne)
 
 ## Installieren
 1. `Pull.ps1` aus dem Repository in einen leeren Ordner legen und ausführen:

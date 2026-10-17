@@ -200,6 +200,7 @@ function Disconnect-HUQS {
 # Ausfuehren / Abbrechen
 # ============================================================================
 function Start-HUQSRun([switch]$Selection) {
+    if ((Get-Command Test-HURemoteRunBusy -ErrorAction SilentlyContinue) -and (Test-HURemoteRunBusy -Message)) { return }   # gemeinsame Laufsperre mit dem Handy
     $ed = $script:Controls['txtQSEditor']
     $isSel = ($Selection -and $ed.SelectionLength -gt 0)
     $code = if ($isSel) { $ed.SelectedText } else { $ed.Text }
