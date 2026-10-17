@@ -6,7 +6,7 @@
 - Snippets, Erweiterungen und Teams-Meldungen vom Handy am PC starten: Web-App (PWA) im Heimnetz bzw. ueber das VPN des
   Routers, responsiv fuer Handy, Foldable und Tablet. Knopf "Handy" oben rechts: Ein/Aus, Kopplung per QR-Code,
   gekoppelte Handys, PIN, Freigaben, Einrichtung.
-- Am Handy: Tenants (vorausgewaehlt wie am Snippet bzw. an der Meldung) und @param-Felder waehlen, Zusammenfassung
+- Am Handy: Tenants (vorausgewaehlt wie am Snippet bzw. an der Meldung) und `@param`-Felder waehlen, Zusammenfassung
   pruefen, starten; Live-Ausgabe, Ergebnis je Tenant, Abbrechen. Teams-Meldungen auch einmalig an ein gespeichertes Ziel.
 - Echter Lauf (Einstufung "aendert Daten" ohne angehakten Probelauf): roter Bestaetigungsschritt, Kuerzel abtippen und
   Fernbedienungs-PIN (nur Ziffern, mind. 4 Stellen; am PC nur als PBKDF2-Pruefwert). Falsche Eingabe verbraucht die
@@ -14,7 +14,7 @@
   (Ziele mit "Hinweis, wenn eine zeitgesteuerte Meldung nicht laufen kann") bei jedem echten Lauf vom Handy.
 - Freigaben fuers Handy je Snippet/Erweiterung mit Pflicht-Einstufung "nur lesend" / "aendert Daten" und Fingerabdruck
   (SHA-256): geaenderter Code ist erst nach neuer Freigabe startbar. Parameter vom Handy nur fuer deklarierte
-  @param-Felder, Auswahl/Laenge geprueft, geschuetzte Namen ($Token, $TenantKey, *Preference ...) gesperrt.
+  `@param`-Felder, Auswahl/Laenge geprueft, geschuetzte Namen ($Token, $TenantKey, *Preference ...) gesperrt.
 - Laeufe ohne Oberflaeche: je Tenant ein frischer Runspace, nie ein Dialog am PC (auch bei gesperrter App - abschaltbar),
   gemeinsame Laufsperre mit Quick Script, Erweiterungen und "Jetzt senden". Titelleiste und Protokoll zeigen
   "Handy steuert". Kennwoerter/Token in der Ausgabe werden ausgeblendet. Vollstaendiges Protokoll in Logs\Remote.
