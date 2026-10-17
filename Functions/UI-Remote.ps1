@@ -547,7 +547,7 @@ function Open-HURemotePairUi {
     $r = $script:HURem
     $code = Open-HURemotePairing $r.S
     $url = "https://$($r.Ip):$($r.Port)/#c=$code"
-    try { $c['imgRemQr'].Source = ConvertTo-HURemoteQrImage $url } catch { }
+    try { $c['imgRemQr'].Source = ConvertTo-HURemoteQrImage $url } catch { Write-HULogWarn "Fernbedienung: QR-Code nicht erzeugt - $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" }
     $c['txtRemCode'].Text = ($code.Substring(0, 3) + ' ' + $code.Substring(3))
     $c['txtRemPairInfo'].Text = "Gilt 10 Minuten, einmal. Adresse: https://$($r.Ip):$($r.Port)`nZuerst am Handy das Zertifikat installieren (Seite oeffnen > Zertifikat laden), dann koppeln."
     $c['txtRemFp'].Text = "CA SHA-256: $($r.CaFp)"

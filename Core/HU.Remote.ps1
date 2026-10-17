@@ -611,7 +611,7 @@ function Get-HURemoteVapid([string]$Path = (Get-HURemotePushFile), [switch]$NoCr
         if ($NoCreate) { return $null }
         $p = New-Object System.Security.Cryptography.CngKeyCreationParameters
         $p.ExportPolicy = [System.Security.Cryptography.CngExportPolicies]::AllowPlaintextExport
-        $key = [System.Security.Cryptography.CngKey]::Create([System.Security.Cryptography.CngAlgorithm]::ECDsaP256, $null, $p)
+        $key = [System.Security.Cryptography.CngKey]::Create([System.Security.Cryptography.CngAlgorithm]::ECDsaP256, [NullString]::Value, $p)   # $null wuerde zu "" = benannter, dauerhafter Schluessel (kollidiert mit HUMig)
         $blob = $key.Export([System.Security.Cryptography.CngKeyBlobFormat]::EccPrivateBlob)
         $prot = [System.Security.Cryptography.ProtectedData]::Protect($blob, $ent, 'CurrentUser')
         $dir = Split-Path $Path -Parent
