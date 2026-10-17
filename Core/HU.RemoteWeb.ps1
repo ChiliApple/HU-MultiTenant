@@ -137,7 +137,7 @@ $script:HURemoteHtml = @'
     </div>
     <div id="rDone"></div>
     <button class="btn danger wide hidden" id="rCancel">Abbrechen</button>
-    <div class="row between runhead"><h2>Ausgabe</h2><span class="row tools"><input id="rFind" class="find-s" type="search" placeholder="Filter" aria-label="Ausgabe filtern" autocomplete="off"><button class="ibtn" id="rCopy" title="Alles kopieren" aria-label="Ausgabe in die Zwischenablage kopieren">&#10697;</button><button class="ibtn" id="rClear" title="Leeren" aria-label="Ausgabe leeren">&#128465;</button><label class="muted small"><input type="checkbox" id="rFollow" checked> mitlaufen</label></span></div>
+    <div class="row between runhead"><h2>Ausgabe</h2><span class="row tools"><input id="rFind" class="find-s" type="search" placeholder="Filter" aria-label="Ausgabe filtern" autocomplete="off"><button class="ibtn" id="rAgain" title="Letzten Lauf wiederholen" aria-label="Letzten Lauf wiederholen (mit Bestaetigung)" disabled>&#8635;</button><button class="ibtn" id="rCopy" title="Alles kopieren" aria-label="Ausgabe in die Zwischenablage kopieren">&#10697;</button><button class="ibtn" id="rClear" title="Leeren" aria-label="Ausgabe leeren">&#128465;</button><label class="muted small"><input type="checkbox" id="rFollow" checked> mitlaufen</label></span></div>
     <p class="muted small hidden" id="rLost"></p>
     <div class="console" id="rCon" aria-live="polite"></div>
   </section>
@@ -302,7 +302,7 @@ input.code4{font-size:24px;letter-spacing:6px;text-align:center;text-transform:u
 .ibtn{min-width:36px;min-height:36px;padding:0 8px;border:1px solid var(--s0);border-radius:10px;background:none;color:var(--ov);font-size:16px;line-height:1;cursor:pointer}
 .runhead{margin:14px 0 8px}.runhead h2{margin:0}.tools{gap:6px;flex-wrap:nowrap}
 .find-s{width:110px;min-height:36px;padding:0 10px;border-radius:10px;border:1px solid var(--s0);background:var(--crust);color:var(--tx);font-size:14px;outline:none}
-.find-s:focus{border-color:var(--blue);width:150px}@media (max-width:430px){.runhead{flex-wrap:wrap;gap:6px}.find-s{width:84px}.find-s:focus{width:120px}}.console .ln.f{display:none}.console mark{background:rgba(249,226,175,.35);color:inherit;border-radius:3px}.ibtn:active{background:var(--s0)}.ibtn.done{color:var(--green);border-color:var(--green)}
+.find-s:focus{border-color:var(--blue);width:150px}@media (max-width:430px){.runhead{flex-wrap:wrap;gap:6px}.find-s{width:84px}.find-s:focus{width:120px}}.console .ln.f{display:none}.console mark{background:rgba(249,226,175,.35);color:inherit;border-radius:3px}.ibtn:active{background:var(--s0)}.ibtn[disabled]{opacity:.35}.ibtn.done{color:var(--green);border-color:var(--green)}
 '@
 
 $script:HURemoteJs = @'
@@ -430,6 +430,7 @@ $script:HURemoteJs = @'
   function renderJob(job) {
     S.running = !!job.running;
     show('tRun', S.running); show('rDot', S.running); show('rCancel', S.running);
+    $('rAgain').disabled = !!(S.running || !S.lastBody);
     $('rTitle').textContent = job.title || 'Kein Lauf';
     $('rStatus').textContent = job.running ? 'laeuft' + (job.live ? ' - ECHTER LAUF' : '') + (job.by ? ' (von ' + job.by + ')' : '') : (job.result || '');
     $('rStatus').className = job.running ? 'muted' : (job.level === 'OK' ? 'ok-t' : job.level === 'Error' ? 'err' : 'muted');
@@ -515,19 +516,31 @@ $script:HURemoteJs = @'
     });
     return v;
   }
-  function prepare() {
-    var ten = Object.keys(S.sel).filter(function (k) { return S.sel[k]; });
-    if (!ten.length) { err('sErr', 'Bitte mindestens einen Tenant waehlen.'); return; }
+  function prepare(again) {
+    var body;
+    if (again && S.lastBody) { body = S.lastBody; }
+    else {
+      var ten = Object.keys(S.sel).filter(function (k) { return S.sel[k]; });
+      if (!ten.length) { err('sErr', 'Bitte mindestens einen Tenant waehlen.'); return; }
+      body = { id: S.item.id, tenants: ten, params: formValues() };
+      if (S.item.kind === 'teams' && $('sTgt').value) { body.target = $('sTgt').value; }
+    }
     $('sGo').disabled = true; err('sErr', '');
-    var body = { id: S.item.id, tenants: ten, params: formValues() };
-    if (S.item.kind === 'teams' && $('sTgt').value) { body.target = $('sTgt').value; }
     api('POST', '/api/prepare', body).then(function (j) {
       $('sGo').disabled = false;
       if (j.__status === 401) { needPair('Nicht mehr gekoppelt.'); return; }
-      if (!j.ok) { err('sErr', j.error || 'Nicht moeglich'); if (j.__status === 404) { S.catVer = -1; } return; }
+      if (!j.ok) { if (again) { banner(j.error || 'Wiederholen nicht moeglich'); return; } err('sErr', j.error || 'Nicht moeglich'); if (j.__status === 404) { S.catVer = -1; } return; }
       S.prep = j; S.prepUntil = Date.now() + (j.seconds || 120) * 1000;
+      S.lastBody = body; S.lastItem = S.item;
       showConfirm(j);
-    }).catch(function () { $('sGo').disabled = false; err('sErr', 'PC nicht erreichbar.'); });
+    }).catch(function () { $('sGo').disabled = false; if (again) { banner('PC nicht erreichbar.'); } else { err('sErr', 'PC nicht erreichbar.'); } });
+  }
+  // Wiederholen: dieselbe Auswahl wie beim letzten Start, wieder ueber die Bestaetigung (Kuerzel/PIN bei echtem Lauf)
+  function again() {
+    if (!S.lastBody || S.running) { return; }
+    var it = ((S.cat && S.cat.items) || []).filter(function (x) { return x.id === S.lastBody.id; })[0];
+    if (!it) { banner('Eintrag nicht mehr vorhanden.'); return; }
+    S.item = it; S.fromAgain = true; prepare(true);
   }
 
   // --- Bestaetigung
@@ -742,8 +755,9 @@ $script:HURemoteJs = @'
     $('sBack').addEventListener('click', function () { setView('vList'); });
     $('sAll').addEventListener('click', function () { (S.cat.tenants || []).forEach(function (t) { S.sel[t.key] = true; }); Array.prototype.forEach.call($('sTen').childNodes, function (c) { c.classList.add('on'); c.setAttribute('aria-pressed', 'true'); }); });
     $('sNone').addEventListener('click', function () { S.sel = {}; Array.prototype.forEach.call($('sTen').childNodes, function (c) { c.classList.remove('on'); c.setAttribute('aria-pressed', 'false'); }); });
-    $('sGo').addEventListener('click', prepare);
-    $('cBack').addEventListener('click', function () { S.prep = null; setView('vStart'); });
+    $('sGo').addEventListener('click', function () { S.fromAgain = false; prepare(false); });
+    $('rAgain').addEventListener('click', again);
+    $('cBack').addEventListener('click', function () { S.prep = null; setView(S.fromAgain ? 'vRun' : 'vStart'); });
     $('cGo').addEventListener('click', run);
     $('cCode').addEventListener('input', checkGo);
     $('cPin').addEventListener('input', checkGo);

@@ -18,7 +18,7 @@
 - Laeufe ohne Oberflaeche: je Tenant ein frischer Runspace, nie ein Dialog am PC (auch bei gesperrter App - abschaltbar),
   gemeinsame Laufsperre mit Quick Script, Erweiterungen und "Jetzt senden". Titelleiste und Protokoll zeigen
   "Handy steuert". Kennwoerter/Token in der Ausgabe werden ausgeblendet. Vollstaendiges Protokoll in Logs\Remote.
-- Ausgabe am Handy: Filterfeld (zeigt nur passende Zeilen) und zwei kleine Symbole - in die Zwischenablage kopieren, Anzeige leeren.
+- Ausgabe am Handy: Filterfeld (zeigt nur passende Zeilen) und kleine Symbole - letzten Lauf mit derselben Auswahl wiederholen (wieder mit Bestaetigung), in die Zwischenablage kopieren, Anzeige leeren.
 - Push-Meldungen ueber den Handy-Browser: Ende eines Laufs mit Ergebnis (der Inhalt kommt direkt vom PC, nur im
   Heimnetz/VPN; sonst "Lauf beendet").
 - Einmalige Einrichtung per UAC (Zertifikat - dieselbe CA wie HUMig -, HTTPS-Bindung, Port-Freigabe fuer das Konto,
