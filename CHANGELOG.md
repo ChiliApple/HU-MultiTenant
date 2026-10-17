@@ -2,6 +2,10 @@
 
 ## v2.1.10 (in Arbeit)
 
+### Startbildschirm wieder da
+- Logo, Name und Version erscheinen sofort beim Start, darunter was gerade geladen wird; schliesst sich, sobald das
+  Hauptfenster da ist (war im Vorab-Stand 2.1.9 gebaut, aber nicht in main). Nie bei geplanten Aufgaben (Headless).
+
 ### Neu: Teams-Meldungen - eingebaut oder aus eigenem Skript
 - Reiter Teams neu geordnet: links **Ziele** (Kanaele), rechts **Meldungen** in zwei Gruppen - *Eingebaute Meldungen*
   (Tages-Ampel, Secret-Countdown, Lizenzen knapp, Defender-Alarm) und *Meldungen aus Skripten*. Jede Meldung hat
