@@ -122,10 +122,10 @@ Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed
 
 - keine Kategorie nötig – jede Karte geht an die Ziele der Meldung
 - nach jeder Änderung am Snippet die Meldung im Reiter Teams **neu speichern** – sonst läuft sie nicht (Fingerabdruck); `DryRun`-Standard aus = Rückfrage „ECHTER LAUF“ beim Speichern
-- ohne `Send-HUNotify`: die Ausgabe des Snippets (Objekte/Text, sonst die `Write-Host`-Zeilen) geht als **eine** Karte; keine Ausgabe = nichts gesendet
-- ohne `$TenantKey`/`$Token` im Code (eigene Schleife über alle Schulen) läuft das Snippet nur **einmal** statt je Tenant
+- **Skript läuft** (Einstellung an der Meldung): *je Tenant* (Standard, mit `$TenantKey`/`$Token`) oder *einmal* – dann enthält `$Tenants` die angehakten Tenant-Schlüssel, Tokens holt das Skript selbst (`foreach ($k in $Tenants) { $t = Get-HUToken -Tenant $k; ... }`)
+- **Ausgabe als Karte senden** (Einstellung an der Meldung, Standard aus): ohne `Send-HUNotify` geht die Ausgabe des Snippets (Objekte/Text, sonst die `Write-Host`-Zeilen) als **eine** Karte – kann Gerätenamen enthalten; aus = `Write-Host` nur ins Log
 - geplant / *Jetzt senden*: läuft je Tenant mit den Werten der `# @param`-Felder, die an der Meldung stehen (gleiche Felder wie im Quick Script, je Meldung gespeichert)
-- im Quick-Script-Editor: gehört das Snippet zu einer Meldung, fragt HU-MultiTenant einmal (Ja / Nein = ohne Teams / Abbrechen) und sendet an deren Ziele; ohne Meldung sendet es nichts
+- im Quick-Script-Editor: gehört das Snippet zu einer Meldung, fragt HU-MultiTenant einmal (Ja / Nein = ohne Teams / Abbrechen) und sendet an deren Ziele; ohne Meldung sendet es nur, wenn es Ziele selbst nennt (`-TargetIds`, alte Kategorie) und Du mit Ja antwortest
 - `-WhatIf` = nur anzeigen, was gesendet würde
 - wirft nie – ein Teams-Fehler bricht das Snippet nicht ab
 - `-Level` `OK` | `Warning` | `Error` | `Info`; `-Facts` als `[ordered]@{ Name = Wert }`; `-Rows` als `@{ Name; Status; Text }` (Ampel)

@@ -319,11 +319,32 @@ Export-ModuleMember -Function Get-GraphToken
         $r.Message | Should -Match '1 Meldung'
         $r.Message | Should -Match '\[bad\] Kein Token'
     }
-    It 'ohne Send-HUNotify: Ausgabe wird als eine Karte gesendet (hier: kein Ziel)' {
-        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = (Get-HUTeamsCodeHash (Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Nur Ausgabe')) }; $j.Id = ''
+    It 'B37: Ausgabe geht nur mit Schalter sendOutput als Karte (hier: kein Ziel), Standard aus' {
+        $h = Get-HUTeamsCodeHash (Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Nur Ausgabe')
+        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = $h; sendOutput = $true }; $j.Id = ''
         $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
         $r.Message | Should -Match '1 Meldung'
         $r.Code | Should -Be 3
+        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = $h }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings ([pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'a' }) }) -AppRoot $script:App
+        $r.Code | Should -Be 0
+        $r.Message | Should -Match 'nichts gesendet'
+    }
+    It 'B38: runMode once - ein Lauf, $Tenants = Auswahl, kein $TenantKey/$Token' {
+        $code = "if (`$TenantKey -or `$Token) { throw 'TenantKey gesetzt' }; if (@(`$Tenants).Count -ne 2) { throw `"Tenants: `$(@(`$Tenants).Count)`" }; if (`$global:Merker) { throw 'zweiter Lauf' }; `$global:Merker = 1; 'x'"
+        $r = Invoke-HUTeamsScript -Code $code -Name 'O' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App -RunOnce -SendOutput
+        @($r.Errors).Count | Should -Be 0
+        $r.Calls | Should -Be 1
+        # je Tenant (Standard): zwei Laeufe mit $TenantKey
+        $r = Invoke-HUTeamsScript -Code "if (-not `$TenantKey -or -not `$Token) { throw 'kein TenantKey' }; Write-Host `$TenantKey" -Name 'E' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App
+        @($r.Errors).Count | Should -Be 0
+        $r.Calls | Should -Be 0
+    }
+    It 'B39: Zaehler gelten auch nach exit im Skript' {
+        $r = Invoke-HUTeamsScript -Code "Send-HUNotify -Title 'T' -Lines @('x'); exit" -Name 'X' -Tenants @('a') -Settings $script:Set -AppRoot $script:App
+        $r.Calls | Should -Be 1
+        $r = Invoke-HUTeamsScript -Code "Send-HUNotify -Title 'T' -Lines @('x'); break" -Name 'X' -Tenants @('a') -Settings $script:Set -AppRoot $script:App
+        $r.Calls | Should -Be 1
     }
     It 'B33: geaendertes oder unbestaetigtes Skript laeuft nicht (Code 3)' {
         $j = New-HUTeamsJob -Name 'X' -Kind Script -Options @{ snippet = 'Drucker'; snippetHash = 'abc' }; $j.Id = ''
@@ -338,15 +359,17 @@ Export-ModuleMember -Function Get-GraphToken
     }
     It 'B35: je Tenant ein frischer Runspace - Variablen bleiben nicht haengen' {
         $code = "if (`$global:Merker) { throw 'Variable aus dem vorigen Tenant' }; `$global:Merker = 1; 'NEU'"
-        $r = Invoke-HUTeamsScript -Code $code -Name 'R' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App
+        $r = Invoke-HUTeamsScript -Code $code -Name 'R' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App -SendOutput
         # haette Tenant b die Variable von a gesehen, stuende ein Fehler in Errors
         $r.Calls | Should -Be 1
         @($r.Errors).Count | Should -Be 0
     }
-    It 'ohne Ausgabe: Write-Host-Zeilen gehen als Karte; ohne Tenant-Bezug nur ein Lauf' {
-        $r = Invoke-HUTeamsScript -Code "Write-Host 'Zeile A'" -Name 'W' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App
+    It 'Write-Host-Zeilen: nur mit -SendOutput als (eine) Karte, sonst nur ins Log' {
+        $r = Invoke-HUTeamsScript -Code "Write-Host 'Zeile A'" -Name 'W' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App -SendOutput
         $r.Calls | Should -Be 1
         @($r.Errors).Count | Should -Be 0
+        $r = Invoke-HUTeamsScript -Code "Write-Host 'Zeile A'" -Name 'W' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App
+        $r.Calls | Should -Be 0
     }
     It '@param-Werte der Meldung gehen vor dem Standard' {
         $code = "# @param Anzahl|int|Anzahl|3`nif (`$Anzahl -ne 7) { throw `"Anzahl ist `$Anzahl`" }; 'ok'"

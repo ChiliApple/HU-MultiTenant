@@ -12,15 +12,17 @@
   dieselben Einstellungen: Ziele ("Senden an"), Tenants, "Jetzt senden" und auf Wunsch einen Zeitplan (Aufgabenplanung).
 - **Meldung aus Skript:** unter der eingebauten Meldung steht immer das Feld *oder Meldung aus Skript* mit allen gespeicherten Quick-Script-Snippets. Das Snippet
   laeuft je Tenant mit den Werten seiner `@param`-Felder (an der Meldung, wie oben im Quick Script); jedes `Send-HUNotify -Title ...` darin geht an die Ziele
-  der Meldung - eine Kategorie braucht es nicht. Ruft das Snippet kein `Send-HUNotify` auf, geht seine Ausgabe
-  (Objekte/Text, sonst die Write-Host-Zeilen) als eine Karte; ohne Ausgabe wird nichts gesendet. Snippets ohne
-  Tenant-Bezug (eigene Schleife ueber alle Schulen) laufen nur einmal statt je Tenant. Je Tenant ein eigener, frischer Runspace.
+  der Meldung - eine Kategorie braucht es nicht. Zwei Einstellungen an der Meldung: *Skript laeuft je Tenant* (Standard) oder
+  *einmal* (`$Tenants` = angehakte Tenants, eigene Schleife); *Ausgabe als Karte senden* (Standard aus) - dann geht die Ausgabe
+  (Objekte/Text, sonst die Write-Host-Zeilen) als eine Karte, wenn das Skript kein `Send-HUNotify` aufruft. Je Lauf ein eigener,
+  frischer Runspace; Zaehler gelten auch nach `exit`/`break` im Skript.
 - Skript-Meldungen merken sich beim Speichern einen Fingerabdruck (SHA-256) des Snippets; wurde es danach geaendert,
   laeuft die Meldung erst nach erneutem Speichern wieder ("! Skript geaendert" in der Liste). Steht ein
   Probelauf-Schalter (DryRun ...) im Standard auf aus, fragt "Speichern" und "Jetzt senden" vorher "ECHTER LAUF". Geplant ueber `Main.ps1 -Headless -Job <Id>` (nur gespeicherte
-  Meldungen und Snippets, kein freier Code), Laufzeit hoechstens 30 Minuten. Exit-Codes wie bei den eingebauten Meldungen.
+  Meldungen und Snippets, kein freier Code), Laufzeit hoechstens 25 Minuten (Aufgabenplanung bricht nach 30 ab; "von der Aufgabenplanung abgebrochen" im Reiter). Exit-Codes
+  wie bei den eingebauten Meldungen; gesendet mit Skriptfehler bei einem Tenant = 2 ("gesendet, Skriptfehler bei ...").
 - Im Quick-Script-Editor gehen die Karten eines Snippets, das zu einer Meldung gehoert, an deren Ziele; ein Snippet ohne
-  Meldung sendet nichts (Hinweis im Protokoll).
+  Meldung sendet nur, wenn es Ziele selbst nennt (`-TargetIds`, alte Kategorie) und die Rueckfrage mit Ja beantwortet wird.
 - Am Ziel steht nur noch ein Haken: Hinweis, wenn eine zeitgesteuerte Meldung nicht laufen kann. Die Begriffe "Art" und
   "Kategorie" sind aus der Oberflaeche verschwunden. Eigene Kategorien aus den Testversionen bleiben gespeichert und
   funktionieren fuer Erweiterungen weiter; Skripte ausserhalb von HU-MultiTenant senden mit `-TargetIds`.

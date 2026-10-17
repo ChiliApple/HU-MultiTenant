@@ -239,7 +239,7 @@ function Update-HUTeamsJobTaskLabel($Job) {
     if ($t.Exists) {
         $c['btnTeamsJobTask'].Content = 'Aufgabe entfernen'
         $next = if ($t.NextRun) { ([datetime]$t.NextRun).ToString('dd.MM. HH:mm') } else { '-' }
-        $codeTxt = switch ("$($t.LastResult)") { '0' { 'OK' } '1' { 'Fehler' } '2' { 'teilweise gesendet' } '3' { 'Konfiguration pruefen' } '267009' { 'laeuft' } default { "Code $($t.LastResult)" } }
+        $codeTxt = switch ("$($t.LastResult)") { '0' { 'OK' } '1' { 'Fehler' } '2' { 'teilweise gesendet' } '3' { 'Konfiguration pruefen' } '267009' { 'laeuft' } '267014' { 'von der Aufgabenplanung abgebrochen (Zeitlimit)' } default { "Code $($t.LastResult)" } }
         $last = if ($t.LastRun -and ([datetime]$t.LastRun).Year -gt 2000) { ([datetime]$t.LastRun).ToString('dd.MM. HH:mm') + " ($codeTxt)" } else { 'noch nie' }
         $c['lblTeamsJobTask'].Text = "$($warn)Aufgabenplanung: $($t.State), naechster Lauf $next, letzter Lauf $last.`nLetztes Ergebnis: $(if ($Job.LastResult) { $Job.LastResult } else { '-' })"
     }
@@ -268,6 +268,10 @@ function Show-HUTeamsJob($Job) {
         $pv = [ordered]@{}
         if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['params'] -and $Job.Options.params) { foreach ($pp in $Job.Options.params.PSObject.Properties) { $pv[$pp.Name] = $pp.Value } }
         Update-HUTeamsJobParams $pv
+        $o = if ($Job -and $Job.Options) { $Job.Options } else { $null }
+        $c['rbTeamsJobRunOnce'].IsChecked = [bool]($o -and $o.PSObject.Properties['runMode'] -and "$($o.runMode)" -eq 'once')
+        $c['rbTeamsJobRunEach'].IsChecked = -not $c['rbTeamsJobRunOnce'].IsChecked
+        $c['chkTeamsJobSendOutput'].IsChecked = [bool]($o -and $o.PSObject.Properties['sendOutput'] -and [bool]$o.sendOutput)   # Review 030 B37: Standard aus
         Update-HUTeamsMaskState
         Update-HUTeamsJobTargetChecks
         # Where-Object: $null | ForEach-Object laeuft einmal mit $null -> '' waere ein "Ziel" und kein Haken bliebe gesetzt
@@ -301,6 +305,8 @@ function Update-HUTeamsMaskState {
     $c['chkTeamsJobMask'].IsEnabled = $isDef
     $c['chkTeamsJobMask'].Opacity = $(if ($isDef) { 1.0 } else { 0.5 })
     $c['chkTeamsJobMask'].Visibility = $(if ($kind -eq 'Script') { 'Collapsed' } else { 'Visible' })
+    $sv = $(if ($kind -eq 'Script') { 'Visible' } else { 'Collapsed' })
+    $c['pnlTeamsJobScriptOpts'].Visibility = $sv; $c['chkTeamsJobSendOutput'].Visibility = $sv
 }
 
 # @param-Felder des gewaehlten Skripts an der Meldung (wie oben im Quick Script); Werte: gespeicherte, sonst Standard
@@ -432,11 +438,13 @@ function Get-HUTeamsJobFromForm {
             $tn = @($keys | ForEach-Object { $k = $_; $tt = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($tt) { "$($tt.displayName)" } else { $k } })
             if (-not $tn.Count) { $tn = @($script:Settings.tenants | ForEach-Object { "$($_.displayName)" }) }
             $what = if ($Purpose -eq 'Speichern') { "Die Meldung fuehrt das Skript bei JEDEM Lauf - auch zeitgesteuert, ohne Aufsicht - als echten Lauf aus." } else { 'Das Skript laeuft jetzt als echter Lauf.' }
-            if (-not (Confirm-HU "ECHTER LAUF - Aenderungen werden ausgefuehrt!`n`nSkript: $sn (Probelauf-Schalter ist aus)`nTenants: $($tn -join ', ')`n`n$what`n`nFortfahren?" 'Teams - Meldung aus Skript' -Warning)) { return $null }
+            if (-not (Confirm-HU "ECHTER LAUF - Aenderungen werden ausgefuehrt!`n`nSkript: $sn (Probelauf-Schalter ist aus)`nTenants: $($tn -join ', ') - $(if ($c['rbTeamsJobRunOnce'].IsChecked) { 'Skript laeuft einmal' } else { 'Skript laeuft je Tenant' })`n`n$what`n`nFortfahren?" 'Teams - Meldung aus Skript' -Warning)) { return $null }
         }
         $j.Options | Add-Member -NotePropertyName snippet -NotePropertyValue $sn -Force
         $j.Options | Add-Member -NotePropertyName snippetHash -NotePropertyValue (Get-HUTeamsCodeHash $code) -Force   # Review 030 B33
         $j.Options | Add-Member -NotePropertyName params -NotePropertyValue ([pscustomobject]$vals) -Force
+        $j.Options | Add-Member -NotePropertyName runMode -NotePropertyValue $(if ($c['rbTeamsJobRunOnce'].IsChecked) { 'once' } else { 'each' }) -Force   # Review 030 B38
+        $j.Options | Add-Member -NotePropertyName sendOutput -NotePropertyValue ([bool]$c['chkTeamsJobSendOutput'].IsChecked) -Force          # Review 030 B37
     }
     $allT = @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
     $selT = @($allT | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
