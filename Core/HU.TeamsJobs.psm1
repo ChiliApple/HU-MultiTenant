@@ -39,6 +39,12 @@ function Get-HUTeamsDateLabel {
     return "$($script:TeamsDayNames[[int]$Date.DayOfWeek]) $($Date.ToString('dd.MM.', [cultureinfo]::InvariantCulture))"
 }
 
+function Get-HUTeamsCountText {
+    # "1 Tenant" / "2 Tenants" (Review 030 B22)
+    param([int]$Count, [string]$One, [string]$Many)
+    return "$Count $(if ($Count -eq 1) { $One } else { $Many })"
+}
+
 function ConvertTo-HUTeamsBool {
     # Von Hand bearbeitete Dateien: "false"/"0"/"nein" als Text gelten als aus (Review 029 B21/Q7)
     param($Value, [bool]$Default = $true)
@@ -358,14 +364,14 @@ function New-HUSecretsCardSpec {
     }
     if (-not $rows.Count) { return $null }
     $first = @($Statuses | Where-Object { $_.Ok -and $null -ne $_.Days -and $_.Days -le $WarnDays }) | Sort-Object Days | Select-Object -First 1
-    $pv = "$($rows.Count) Tenant(s) betroffen"
+    $pv = "$(Get-HUTeamsCountText $rows.Count 'Tenant' 'Tenants') betroffen"
     if ($first) { $pv += $(if ($first.Days -le 0) { " - $($first.Name): App-Secret ABGELAUFEN" } else { " - zuerst $($first.Name) in $($first.Days) Tagen" }) }
     return @{
         Preview = $pv
         Title = "$Title - $(Get-HUTeamsDateLabel)"
         Level = @('OK', 'Warning', 'Error')[$worst]
         Rows  = $rows
-        Facts = [ordered]@{ 'Warnschwelle' = "unter $WarnDays Tagen"; 'Betroffen' = $rows.Count }
+        Facts = [ordered]@{ 'Warnschwelle' = "$WarnDays Tage oder weniger"; 'Betroffen' = $rows.Count }
         Lines = @('App-Registrierung: Entra admin center > App-Registrierungen > Zertifikate und Geheimnisse. Neues Secret danach in HU-MultiTenant unter Einstellungen > Tenants eintragen.')
     }
 }
@@ -416,7 +422,7 @@ function New-HULicenseCardSpec {
     }
     if (-not $rows.Count) { return $null }
     $tight = @($Statuses | Where-Object { $_.Ok } | ForEach-Object { $tn = $_.Name; @($_.Skus) | Where-Object { $_ -and $_.Total -gt 0 -and $_.Free -lt $MinFree } | ForEach-Object { [pscustomobject]@{ T = $tn; Sku = $_.Sku; Free = $_.Free } } }) | Sort-Object Free | Select-Object -First 1
-    $pv = "$($rows.Count) Tenant(s) betroffen"
+    $pv = "$(Get-HUTeamsCountText $rows.Count 'Tenant' 'Tenants') betroffen"
     if ($tight) { $pv += " - knappste: $($tight.T) $($tight.Sku) $(if ($tight.Free -lt 0) { "ueberbucht ($($tight.Free))" } else { "noch $($tight.Free) frei" })" }
     return @{
         Preview = $pv
@@ -467,7 +473,8 @@ function New-HUDefenderCardSpec {
         if (-not @($s.Findings).Count) { continue }
         if ($MaskDevices) {
             # B10: Geraetenamen ausblenden (Kanal mit breiterem Publikum) - nur Anzahl je Zustand
-            $txt = (@($s.Findings | Group-Object State | Sort-Object Name | ForEach-Object { "$($_.Count) $($_.Name)" }) -join ', ') + ' - Geraetenamen ausgeblendet'
+            $order = @('kompromittiert', 'Bedrohung (hoch)', 'Bedrohung (mittel)', 'fehlkonfiguriert')   # nach Dringlichkeit (Review 030 B22)
+            $txt = (@($s.Findings | Group-Object State | Sort-Object { $i = [array]::IndexOf($order, "$($_.Name)"); if ($i -lt 0) { 99 } else { $i } } | ForEach-Object { "$($_.Count)x $($_.Name)" }) -join ', ') + ' - Geraetenamen ausgeblendet'
         }
         else {
             $names = @($s.Findings | Select-Object -First $MaxDevices | ForEach-Object { "$($_.Device) ($($_.State))" })
@@ -483,7 +490,7 @@ function New-HUDefenderCardSpec {
     $hit = @($Statuses | Where-Object { $_.Ok -and @($_.Findings).Count } | ForEach-Object { "$($_.Name)" })
     $bad = @($Statuses | Where-Object { -not $_.Ok }).Count
     # Push-Vorschau ohne Geraetenamen (B16)
-    $pv = "$total Geraet(e) mit Befund$(if ($hit.Count) { " ($($hit -join ', '))" })$(if ($bad) { ", $bad Tenant(s) nicht lesbar" })"
+    $pv = "$(Get-HUTeamsCountText $total 'Geraet' 'Geraete') mit Befund$(if ($hit.Count) { " ($($hit -join ', '))" })$(if ($bad) { ", $(Get-HUTeamsCountText $bad 'Tenant' 'Tenants') nicht lesbar" })"
     return @{
         Preview = $pv
         Title = "$Title - $(Get-HUTeamsDateLabel)"
@@ -546,8 +553,15 @@ function Invoke-HUTeamsJob {
                 if ($low) { $detail = "knappste SKU: $($low.Sku) mit $($low.Free) frei" }
             }
             'Defender' {
+                # Review 030 B7: fail-closed - ein vorhandener, aber unklarer Wert maskiert
+                $mask = $false
+                if ($Job.Options -and $Job.Options.PSObject.Properties['maskDevices']) {
+                    $mv = $Job.Options.maskDevices
+                    $mask = if ($mv -is [string] -and "$mv".Trim() -notmatch '^(?i)(false|0|no|nein|aus|off|true|1|yes|ja|an|on|)$') { $true } else { ConvertTo-HUTeamsBool $mv $true }
+                    if ($mv -is [string] -and "$mv".Trim() -notmatch '^(?i)(false|0|no|nein|aus|off|true|1|yes|ja|an|on|)$' -and $log) { Write-HULog -Message "[Teams] $($Job.Name): maskDevices '$mv' nicht lesbar - Geraetenamen werden ausgeblendet" -Level WARN }
+                }
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HUDefenderStatus -TenantKey $k -Settings $Settings }
-                $spec = New-HUDefenderCardSpec -Statuses $st -Title "$($Job.Name)" -MaskDevices:([bool](& $opt 'maskDevices' 0))
+                $spec = New-HUDefenderCardSpec -Statuses $st -Title "$($Job.Name)" -MaskDevices:$mask
                 $detail = "$((@($st | ForEach-Object { @($_.Findings).Count }) | Measure-Object -Sum).Sum) Geraete mit Befund, $(@($st | Where-Object { -not $_.Ok }).Count) Tenants nicht lesbar"
             }
             default { $res.Message = "Unbekannte Auftragsart: $($Job.Kind)"; $res.Code = 3; return $res }

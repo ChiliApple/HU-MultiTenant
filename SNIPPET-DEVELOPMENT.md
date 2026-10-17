@@ -109,16 +109,19 @@ Eigene Kategorie zuerst im Reiter **Teams** anlegen (Ziele › *Eigene Kategorie
 und bei den gewünschten Zielen anhaken. Dann im Snippet:
 
 ```powershell
+$alt | ForEach-Object { Write-Host $_.deviceName }   # Geraetenamen nur ins Protokoll
 $r = Send-HUNotify -Category Sync -Level Warning `
         -Title "$($TenantKey): $($alt.Count) Geraete ohne Sync" `
         -Preview "$($alt.Count) von $($dev.Count) Geraeten" `
-        -Lines @($alt | Select-Object -First 15 | ForEach-Object { $_.deviceName })
+        -Lines @("$($alt.Count) von $($dev.Count) Geraeten ohne Sync - Liste im Quick-Script-Verlauf")
 Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed = Anzahl
 ```
 
 - wirft nie – ein Teams-Fehler bricht das Snippet nicht ab
 - `-Level` `OK` | `Warning` | `Error` | `Info`; `-Facts` als `[ordered]@{ Name = Wert }`; `-Rows` als `@{ Name; Status; Text }` (Ampel)
-- `-Preview` = Text der Handy-Benachrichtigung – **keine Gerätenamen, keine Secrets/Kennwörter** in Karten
+- `-Preview` = Text der Handy-Benachrichtigung – **keine Secrets/Kennwörter** in Karten; Gerätenamen nur in Kategorien, die ausschließlich Admin-Kanäle angehakt haben (im Zweifel nur Anzahlen senden)
+- neue eigene Kategorien sind nur beim Ziel angehakt, bei dem sie angelegt wurden
+- Snippets laufen mit Deinen Rechten und haben vollen Zugriff auf die Teams-Ziele – fremde Snippets vorher lesen
 - bei *Mehrere ▾* sendet jeder Tenant eine eigene Karte – für eine Sammelkarte die Ergebnisse sammeln und nur einmal senden
 - Details und alle Parameter: Anleitung (F1) › Teams › Eigene Kategorien
 

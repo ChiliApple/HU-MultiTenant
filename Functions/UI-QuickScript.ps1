@@ -244,6 +244,7 @@ function Start-HUQSRun([switch]$Selection) {
         Import-Module (Join-Path $AppRoot 'Core\HU.Auth.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
         Import-Module (Join-Path $AppRoot 'Core\HU.Graph.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
         Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue   # Send-HUNotify fuer Snippets (eigene Teams-Kategorien)
+        if (-not (Get-Command Send-HUNotify -ErrorAction SilentlyContinue)) { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'Teams: HU.Notify nicht geladen - nichts gesendet' } } }   # wirft nie (Review 030 B4)
         . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
         $__sb = [scriptblock]::Create($__UserCode)
         $__i = 0

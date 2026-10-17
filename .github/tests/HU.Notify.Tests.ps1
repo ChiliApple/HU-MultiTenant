@@ -230,8 +230,8 @@ Describe 'Teams: Kartengroesse und Push-Vorschau (v2.1.10)' {
         $facts = [ordered]@{}; 1..30 | ForEach-Object { $facts["Fakt $_"] = $long }
         $c = New-HUTeamsCard -Title 'Gross' -Lines @(1..40 | ForEach-Object { "$_ $long" }) -Facts $facts -Rows @(1..25 | ForEach-Object { @{ Name = "T$_"; Status = 'Error'; Text = $long } })
         $j = ConvertTo-Json -InputObject $c -Depth 20 -Compress
-        [System.Text.Encoding]::UTF8.GetByteCount($j) | Should -BeLessOrEqual 26000
-        $j | Should -Match 'Karte gekuerzt'
+        [System.Text.Encoding]::UTF8.GetByteCount($j) | Should -BeLessOrEqual 21000
+        $j | Should -Match 'Gekuerzt'
         { ConvertTo-HUTeamsCardJson -Card $c } | Should -Not -Throw
     }
     It 'normale Karte bleibt ungekuerzt' {
@@ -309,5 +309,70 @@ Describe 'Teams: eigene Kategorien (v2.1.10)' {
         Set-Content -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json') -Value '{ kaputt' -Encoding UTF8
         @(Get-HUNotifyCategories).Count | Should -Be 11
         Test-HUNotifyCat -Target $null -Category 'Daily' | Should -BeTrue
+    }
+}
+
+Describe 'Teams: Review 030' {
+    BeforeEach { Remove-Item -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json'), (Join-Path $env:APPDATA 'HU-MultiTenant\notify-history.json') -Force -ErrorAction SilentlyContinue }
+    It 'B3: reservierte Schluessel werden abgewiesen, eingebaute Kategorien bleiben intakt' {
+        foreach ($k in 'Keys', 'count', 'Values', 'Item', 'PSBase', 'Contains') { Add-HUNotifyCategory -Key $k -Label 'x' | Should -Match 'reserviert|eingebaute|Schluessel' }
+        @(Get-HUNotifyCategories).Count | Should -Be 11
+    }
+    It 'B3: reservierter Schluessel von Hand in der Datei legt nichts lahm' {
+        New-Item -Path (Join-Path $env:APPDATA 'HU-MultiTenant') -ItemType Directory -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json') -Encoding UTF8 -Value '{"v":1,"items":[{"Key":"Keys","Label":"x","Default":true},{"Key":"Backup","Label":"B","Default":false}]}'
+        $k = @(Get-HUNotifyCategories)
+        $k.Count | Should -Be 12
+        ($k | Where-Object Key -eq 'Keys') | Should -BeNullOrEmpty
+        $c = InModuleScope HU.Notify { ConvertTo-HUNotifyCats @{ Keys = $true; Daily = $false; Backup = $true } }
+        $c['Daily'] | Should -BeFalse
+        $c['Backup'] | Should -BeTrue
+        $c.ContainsKey('Keys') | Should -BeFalse
+    }
+    It 'B3b: Fakten mit Zahlen-Schluessel und Schluessel Keys bleiben erhalten' {
+        $c = New-HUTeamsCard -Title 'T' -Facts ([ordered]@{ 2024 = 'Jahr'; 5 = 'fuenf'; Keys = 'k'; A = '1' })
+        $fs = @($c.attachments[0].content.body | Where-Object { $_.type -eq 'FactSet' })[0].facts
+        @($fs | ForEach-Object { $_.value }) | Should -Be @('Jahr', 'fuenf', 'k', '1')
+    }
+    It 'B1: neue Kategorie ist standardmaessig AUS (Add-HUNotifyCategory -Default $false)' {
+        Add-HUNotifyCategory -Key 'Backup' -Label 'B' -Default $false | Should -Be ''
+        Test-HUNotifyCat -Target ([pscustomobject]@{ Cats = @{ Daily = $true } }) -Category 'Backup' | Should -BeFalse
+    }
+    It 'B5: hoechstens 5 Knoepfe, ueberlange Adressen fallen weg, auch mit 40 Aktionen unter der Grenze' {
+        $acts = 1..40 | ForEach-Object { @{ Title = "Link $_"; Url = 'https://example.com/' + ('x' * 1000) } }
+        $c = New-HUTeamsCard -Title 'T' -Actions $acts
+        @($c.attachments[0].content.actions).Count | Should -Be 5
+        [System.Text.Encoding]::UTF8.GetByteCount((ConvertTo-Json -InputObject $c -Depth 20 -Compress)) | Should -BeLessOrEqual 21000
+        (New-HUTeamsCard -Title 'T' -Actions @(@{ Title = 'lang'; Url = 'https://example.com/' + ('y' * 3000) })).attachments[0].content.Contains('actions') | Should -BeFalse
+    }
+    It 'B5: Send-HUTeamsCard prueft auch fertige JSON-Texte gegen die Grenze' {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Send-HUTeamsCard -Card ('{"x":"' + ('a' * 30000) + '"}') -Url 'https://prod-1.logic.azure.com/w' | Should -Match 'zu gross'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'B9: Send-HUNotify schreibt das Protokoll einmal fuer alle Ziele' {
+        Mock -ModuleName HU.Notify Start-Sleep { }
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @(
+            [pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'A'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = $null }
+            [pscustomobject]@{ Id = 'bbbbbbbb'; Name = 'B'; Url = 'https://prod-2.logic.azure.com/w'; Enabled = $true; Cats = $null }
+        ) } }
+        Mock -ModuleName HU.Notify Invoke-HUNotifyLocked { & $Do }
+        (Send-HUNotify -Category Daily -Title 'Zwei').Ok | Should -Be 2
+        Should -Invoke -ModuleName HU.Notify Invoke-HUNotifyLocked -Times 1 -Exactly
+        @(Get-HUNotifyHistory | Where-Object Title -eq 'Zwei').Count | Should -Be 2
+    }
+    It 'B9: Sperre dauerhaft belegt -> zweiter Versuch, dann WARN im Log, wirft nicht' {
+        Mock -ModuleName HU.Notify Start-Sleep { }
+        Mock -ModuleName HU.Notify Invoke-HUNotifyLocked { throw 'Datei gerade gesperrt' }
+        Mock -ModuleName HU.Notify Write-HUNotifyModuleLog { }
+        { Add-HUNotifyHistory -TargetName 'A' -Tag 'x' -Category 'Daily' -Title 'T' -Result 'ok' } | Should -Not -Throw
+        Should -Invoke -ModuleName HU.Notify Invoke-HUNotifyLocked -Times 2 -Exactly
+        Should -Invoke -ModuleName HU.Notify Write-HUNotifyModuleLog -Times 1 -ParameterFilter { $Level -eq 'WARN' -and $Message -match 'Sendeprotokoll' }
+    }
+    It 'B6: Grundgrenze 21000 Byte - grosse Karten werden darunter gekuerzt' {
+        $long = '"x' * 150
+        $c = New-HUTeamsCard -Title 'T' -Lines @(1..20 | ForEach-Object { $long }) -Rows @(1..25 | ForEach-Object { @{ Name = "T$_"; Status = 'OK'; Text = $long } })
+        [System.Text.Encoding]::UTF8.GetByteCount((ConvertTo-Json -InputObject $c -Depth 20 -Compress)) | Should -BeLessOrEqual 21000
     }
 }

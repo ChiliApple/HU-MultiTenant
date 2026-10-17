@@ -4,10 +4,10 @@
 
 ### Neu: eigene Teams-Kategorien
 - Im Reiter Teams unter den Kategorien-Haken: **Eigene Kategorie** mit Schluessel (fuer Skripte, z. B. `Backup`)
-  und Bezeichnung anlegen. Sie erscheint bei jedem Ziel als Haken `Bezeichnung [Schluessel]`; Rechtsklick darauf =
-  bearbeiten oder loeschen. Ablage im Benutzerprofil (`%APPDATA%\HU-MultiTenant\notify-categories.json`, Klartext,
+  und Anzeigename anlegen. Sie erscheint bei jedem Ziel als Haken `Anzeigename [Schluessel]`, ist aber nur beim
+  gerade gewaehlten Ziel angehakt; Rechtsklick darauf = bearbeiten oder loeschen (loescht auch die Haken). Ablage im Benutzerprofil (`%APPDATA%\HU-MultiTenant\notify-categories.json`, Klartext,
   keine Geheimnisse), hoechstens 30.
-- Quick-Script-Snippets und Erweiterungen haben jetzt `Send-HUNotify` zur Verfuegung und koennen an eigene (und
+- Quick-Script-Snippets und Erweiterungen (Standard-Laufzeit, nicht `.RUNTIME PS7`) haben jetzt `Send-HUNotify` zur Verfuegung und koennen an eigene (und
   eingebaute) Kategorien melden: `Send-HUNotify -Category Backup -Title 'Backup HLW fertig' -Level OK`.
   Anleitung mit Beispielen im Abschnitt Teams.
 
@@ -20,11 +20,19 @@
 
 ### Teams: Robustheit (Review 029, offene Punkte und Lueckentests)
 - Karten zu gross: statt die Meldung zu verwerfen, kuerzt HU-MultiTenant stufenweise (weniger/kuerzere Zeilen,
-  Fakten, Ampel-Zeilen) und vermerkt "Karte gekuerzt". Grundgrenzen 20 Zeilen, 15 Fakten, 25 Ampel-Zeilen.
+  Fakten, Ampel-Zeilen, zuletzt ohne Knoepfe) auf hoechstens ca. 21 KB und vermerkt "Gekuerzt". Grundgrenzen 20 Zeilen,
+  15 Fakten, 25 Ampel-Zeilen, 5 Knoepfe.
 - Webhook-Adresse mit Weiterleitung (z. B. Kurzlink): unter Windows PowerShell 5.1 jetzt sofort "Senden abgelehnt
   (Umleitung)" statt drei Versuchen mit unklarer Meldung; Zeitueberschreitungen werden nur noch einmal wiederholt.
 - Sperren: ist die Datei laenger als 5 s gesperrt, wird der Vorgang abgebrochen und gemeldet statt ungesperrt
-  zu schreiben (Auftraege, Sendeprotokoll, Ziele, Kategorien).
+  zu schreiben (Auftraege, Ziele, Kategorien). Das Sendeprotokoll fasst nach 1,5 s einmal nach und schreibt
+  sonst eine Warnung ins Log; je Meldung wird es nur einmal geschrieben. Ziele speichern liest und schreibt unter der Sperre.
+- Schluessel wie `Keys` oder `Count` sind fuer eigene Kategorien gesperrt (sie haetten alle Meldungen lahmgelegt);
+  Fakten mit Zahlen-Schluessel (`2024 = ...`) bleiben erhalten.
+- Senden je Ziel hoechstens ca. 45 s inkl. Wiederholungen.
+- Headless-Fehlerkarte kuerzt Pfade (`<Programmordner>`, `<Profil>`), damit kein Benutzername im Kanal steht.
+- Auftrag: "Geraetenamen ausblenden" nur beim Defender-Alarm waehlbar; ein unklarer Wert in der Datei blendet aus.
+- Ziel-Id wird im Reiter angezeigt (fuer `Send-HUNotify -TargetIds`).
 - `teams-jobs.json` nicht lesbar: die letzte gueltige Sicherung (`.bak`) wird verwendet (Warnung im Log).
 - `"Enabled": "false"` als Text (von Hand bearbeitet) gilt als aus.
 - Kartentitel mit deutschem Wochentag unabhaengig von der Sprache des Kontos ("Fr 16.10.").
@@ -35,7 +43,10 @@
   2 teilweise gesendet, 3 Konfiguration (Auftrag/Ziele/Tenants/settings.json). Der Reiter zeigt den Code als Text.
 - Groks Lueckentests aus Review 029 sind als `.github\tests\*.Review029.Tests.ps1` Teil der CI.
 
-## v2.1.9 (in Arbeit)
+### Quick Script
+- **Protokolldateien maskieren Secrets und Token** (z. B. ein neu angelegtes Client Secret, das ein Snippet ausgibt) - vorher standen sie im Klartext in `Logs\QuickScript\*.log` (aus PR #12 vorgezogen)
+
+## v2.1.9 (Vorab-Release, nicht freigegeben - aufgegangen in v2.1.10)
 
 ### Neu: Reiter Teams - Meldungen in Teams-Kanaele
 - **Ziele:** Teams-Workflows-Webhooks ("When a Teams webhook request is received") mit Name und Kategorien. Adressen
@@ -48,7 +59,7 @@
   (App-Secrets unter der Warnschwelle), **Lizenzen knapp** (SKUs mit weniger als 5 freien Lizenzen) und
   **Defender-Alarm** (Geraete mit gemeldeter Bedrohung oder Fehlkonfiguration). "Jetzt senden" aus der Oberflaeche oder als Aufgabe in der Windows-
   Aufgabenplanung (`\HU-MultiTenant\Teams-<Id>`, eigenes Konto, ohne erhoehte Rechte, nur bei Anmeldung).
-- **Ohne Oberflaeche:** `Main.ps1 -Headless -Job <Id>` fuehrt genau einen gespeicherten Auftrag aus (Exit 0/1);
+- **Ohne Oberflaeche:** `Main.ps1 -Headless -Job <Id>` fuehrt genau einen gespeicherten Auftrag aus (heute Exit 0/1/2/3, siehe v2.1.10);
   freie Skripte sind in diesem Modus nicht moeglich. Fehlschlaege werden als Karte (Kategorie "Zeitgesteuerte
   Laeufe") gemeldet.
 - Auftraege senden an die dort angehakten Ziele (keines angehakt = alle aktiven Ziele); "An Kanal ..." sendet einmalig an ein bestimmtes Ziel, z. B. an die Direktion. Die Kategorien am Ziel gelten fuer Meldungen ohne Auftrag (Test, Fehler zeitgesteuerter Laeufe, kuenftige Alarme).
@@ -66,7 +77,8 @@
   abzubrechen; ein fehlgeschlagener Kartenbau wird als Fehler gemeldet statt zu werfen.
 - Feinschliff nach den ersten Live-Tests: Auftragsliste zeigt die Art mit an; bei Standardnamen folgt der Name der
   gewaehlten Art; "Nichts zu melden" nennt den Grund (z. B. fruehester Secret-Ablauf, knappste SKU); die
-  Benachrichtigungs-Vorschau am Handy zeigt Titel plus die ersten Ampel-Zeilen, getrennt mit Aufzaehlungspunkten.
+  Benachrichtigungs-Vorschau am Handy zeigt - nach dem Workflow-Umbau (Anleitung > Teams) - Titel plus die ersten
+  Ampel-Zeilen, getrennt mit Aufzaehlungspunkten (ab v2.1.10 eigener Vorschautext je Art).
 - Neue Core-Module `HU.Notify.psm1` (Karten, Ziele, Senden) und `HU.TeamsJobs.psm1` (Auftraege, Kennzahlen,
   Aufgabenplanung) - ohne Oberflaeche, fuer Extensions und Snippets nutzbar: `Send-HUNotify -Category ... -Title ...`.
 - Reiter Teams als Start-Reiter waehlbar; Tests fuer Karten, Adressen, Textbereinigung, Ziele (Windows) und Auftraege.

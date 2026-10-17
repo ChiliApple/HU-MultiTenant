@@ -235,7 +235,8 @@ if ($r.Failed) { Write-HULog -Message "Teams: $($r.Text)" -Level 'WARN' -Tenant 
 
 - wirft nie; Rückgabe `Ok`, `Failed`, `Text` (ohne Webhook-Adressen)
 - nur in Extensions mit Standard-Runtime (Windows PowerShell 5.1), nicht bei `.RUNTIME PS7`
-- keine Secrets, Kennwörter oder Recovery-Keys in Karten; Gerätenamen nur in Admin-Kanäle
+- keine Secrets, Kennwörter oder Recovery-Keys in Karten; Gerätenamen nur in Kategorien, die ausschließlich Admin-Kanäle angehakt haben
+- Erweiterungen laufen mit den Rechten des Admins und haben vollen Zugriff auf die Teams-Ziele (Webhook-Adressen) – nur vertrauenswürdige Erweiterungen installieren
 - eigene Kategorie vorher im Reiter Teams anlegen, sonst `Unbekannte Kategorie` (Failed = 1)
 
 **WICHTIG:** Alle Excel-Reports verwenden ImportExcel (EPPlus-basiert). Excel-COM-Interop (`New-Object -ComObject Excel.Application`) ist **NICHT** mehr zulässig. Kein `Set-ExcelCellValue`, kein `ReleaseComObject`, kein COM-Cleanup nötig.

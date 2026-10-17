@@ -453,6 +453,7 @@ function Register-HUExtensionHandlers {
                     }
                 }
 
+                if (-not (Get-Command Send-HUNotify -ErrorAction SilentlyContinue)) { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'Teams: HU.Notify nicht geladen - nichts gesendet' } } }   # wirft nie (Review 030 B4)
                 Initialize-Logging -LogFilePath $BgLogFile -MinLevel 'DEBUG'
 
                 $execParams = @{

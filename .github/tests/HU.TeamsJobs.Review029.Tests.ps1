@@ -152,7 +152,7 @@ Describe 'Q: Sperre teams-jobs.json' {
         $j = New-HUTeamsJob -Name 'L'; Set-HUTeamsJobs -AppRoot $script:TestRoot -Jobs @($j)
         $ps = [powershell]::Create()
         [void]$ps.AddScript({ $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_TeamsJobs'); [void]$m.WaitOne(); Start-Sleep -Seconds 8; $m.ReleaseMutex(); $m.Dispose() })
-        $h = $ps.BeginInvoke(); Start-Sleep -Milliseconds 500
+        $h = $ps.BeginInvoke(); Start-Sleep -Milliseconds 1500   # Runspace muss die Sperre sicher halten
         Update-HUTeamsJobResult -AppRoot $script:TestRoot -Id $j.Id -Result 'ungesperrt'
         $lr = (Get-HUTeamsJob -AppRoot $script:TestRoot -Id $j.Id).LastResult
         $ps.EndInvoke($h); $ps.Dispose()

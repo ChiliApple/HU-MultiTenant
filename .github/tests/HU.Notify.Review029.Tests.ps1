@@ -190,9 +190,9 @@ Describe 'Q: Sendeprotokoll robust (kaputte Datei, Sperre, parallel)' {
     It '[029] Sperre belegt (WaitOne-Timeout): es wird NICHT ohne Sperre geschrieben' {
         # anderer Thread haelt die Sperre 8 s; Invoke-HUNotifyLocked wartet 5 s und laeuft dann trotzdem
         $ps = [powershell]::Create()
-        [void]$ps.AddScript({ $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_Notify'); [void]$m.WaitOne(); Start-Sleep -Seconds 8; $m.ReleaseMutex(); $m.Dispose() })
+        [void]$ps.AddScript({ $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_Notify'); [void]$m.WaitOne(); Start-Sleep -Seconds 14; $m.ReleaseMutex(); $m.Dispose() })
         $h = $ps.BeginInvoke()
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 1500   # Runspace muss die Sperre sicher halten (unter Last kann der Start dauern)
         Add-HUNotifyHistory -TargetName 'ohneSperre' -Tag 'x' -Category 'Daily' -Title 'T' -Result 'ok'
         $written = @(Get-HUNotifyHistory | Where-Object Target -eq 'ohneSperre').Count
         $ps.EndInvoke($h); $ps.Dispose()

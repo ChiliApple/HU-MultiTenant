@@ -10,7 +10,7 @@
     Start: HU-MultiTenant.exe (Einstellungen > Verknuepfung) oder Start-HUMultiTenant.cmd.
     Ohne Oberflaeche (Aufgabenplanung, Reiter Teams): Main.ps1 -Headless -Job <Id>
     Exit-Codes Headless: 0 OK / nichts zu melden, 1 Fehler, 2 teilweise gesendet, 3 Konfiguration (Auftrag/Ziele/Tenants/settings)
-      fuehrt NUR einen gespeicherten Teams-Auftrag (Config\teams-jobs.json) aus und beendet sich (Exit 0/1).
+      fuehrt NUR einen gespeicherten Teams-Auftrag (Config\teams-jobs.json) aus und beendet sich (Exit-Codes siehe oben).
 .NOTES
     Zielmaschine: der PC, auf dem HU-MultiTenant laeuft (Windows 10/11, Windows PowerShell 5.1).
 #>
@@ -52,7 +52,9 @@ function Show-HUFatal([string]$Text, [int]$Code = 1) {
         [Console]::Error.WriteLine("FEHLER $Text")
         try { Write-HULog -Message "Headless: $Text" -Level ERROR } catch { }
         # Befund B3 (Review 029): auch fruehe Abbrueche nach Teams melden, sofern HU.Notify schon geladen ist
-        try { if (Get-Command Send-HUNotify -ErrorAction SilentlyContinue) { [void](Send-HUNotify -Category 'Jobs' -Title 'Zeitgesteuerter Lauf fehlgeschlagen' -Level Error -Lines @("$Text") -Source ([Environment]::MachineName)) } } catch { }
+        # Review 030 B32: Pfade (Profil/Benutzername) nicht in den Kanal - Programmordner kuerzen
+        $short = "$Text"; try { if ($script:AppRoot) { $short = $short.Replace("$($script:AppRoot)", '<Programmordner>') }; $short = $short -replace '(?i)[A-Z]:\\Users\\[^\\]+', '<Profil>' } catch { }
+        try { if (Get-Command Send-HUNotify -ErrorAction SilentlyContinue) { [void](Send-HUNotify -Category 'Jobs' -Title 'Zeitgesteuerter Lauf fehlgeschlagen' -Level Error -Lines @($short) -Source ([Environment]::MachineName)) } } catch { }
         exit $Code
     }
     [void][System.Windows.MessageBox]::Show($Text, 'HU-MultiTenant - Fehler', 'OK', 'Error')

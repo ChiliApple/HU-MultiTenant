@@ -243,7 +243,7 @@ Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
         $s.Rows[0].Text | Should -Match 'PC-GEHEIM-1'
         $m = New-HUDefenderCardSpec -Statuses $st -MaskDevices
         $m.Rows[0].Text | Should -Not -Match 'GEHEIM'
-        $m.Rows[0].Text | Should -Match '2 Bedrohung'
+        $m.Rows[0].Text | Should -Match '2x Bedrohung'
         $m.Facts['Geraete mit Befund'] | Should -Be 2
     }
     It 'Secrets/Lizenzen: Vorschau nennt den dringendsten Fall' {
@@ -279,5 +279,40 @@ Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
         $j = New-HUTeamsJob -Name 'D' -Kind Defender -Options @{ maskDevices = 1 }
         $r = Invoke-HUTeamsJob -Job $j -Settings ([pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }) }) -AppRoot $script:TestRoot -NoSend
         $r.Spec.Rows[0].Text | Should -Not -Match 'PC-X'
+    }
+}
+
+Describe 'Teams-Auftraege: Review 030' {
+    BeforeAll {
+        $script:DefSt = [pscustomobject]@{ Key = 'T1'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 3; Findings = @(
+            [pscustomobject]@{ Device = 'PC-A'; State = 'fehlkonfiguriert' }
+            [pscustomobject]@{ Device = 'PC-B'; State = 'kompromittiert' }
+        ) }
+    }
+    It 'B7: maskDevices fail-closed - unklarer Text blendet aus, false/0 zeigt Namen' {
+        Mock -ModuleName HU.TeamsJobs Update-HUTeamsJobResult { }
+        Mock -ModuleName HU.TeamsJobs Get-HUDefenderStatus { $script:DefSt }
+        $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }) }
+        foreach ($v in @('true', 'ja', '1 ', 'vielleicht', $true, 1)) {
+            $r = Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'D' -Kind Defender -Options @{ maskDevices = $v }) -Settings $set -AppRoot $script:TestRoot -NoSend
+            $r.Spec.Rows[0].Text | Should -Not -Match 'PC-' -Because "maskDevices = '$v'"
+        }
+        foreach ($v in @('false', '0', 'nein', $false, 0)) {
+            $r = Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'D' -Kind Defender -Options @{ maskDevices = $v }) -Settings $set -AppRoot $script:TestRoot -NoSend
+            $r.Spec.Rows[0].Text | Should -Match 'PC-A' -Because "maskDevices = '$v'"
+        }
+    }
+    It 'B22: Maskierung nach Dringlichkeit, Ein-/Mehrzahl in der Vorschau' {
+        $m = New-HUDefenderCardSpec -Statuses @($script:DefSt) -MaskDevices
+        $m.Rows[0].Text | Should -Match '^1x kompromittiert, 1x fehlkonfiguriert'
+        $m.Preview | Should -Match '^2 Geraete mit Befund'
+        $one = [pscustomobject]@{ Key = 'T1'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 1; Findings = @([pscustomobject]@{ Device = 'X'; State = 'kompromittiert' }) }
+        (New-HUDefenderCardSpec -Statuses @($one)).Preview | Should -Match '^1 Geraet mit Befund'
+        (New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 5; DisplayName = 'x'; Status = 'OK' })).Preview | Should -Match '^1 Tenant betroffen'
+    }
+    It 'B29: Secret-Countdown meldet bei genau N Tagen, Text "N Tage oder weniger"' {
+        $s = New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 30; DisplayName = 'x'; Status = 'OK' }) -WarnDays 30
+        $s | Should -Not -BeNullOrEmpty
+        $s.Facts['Warnschwelle'] | Should -Be '30 Tage oder weniger'
     }
 }

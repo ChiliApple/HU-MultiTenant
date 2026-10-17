@@ -1275,13 +1275,24 @@
                                             <PasswordBox x:Name="pwdTeamsUrl" ToolTip="Webhook-Adresse aus Teams: Kanal &gt; Workflows &gt; 'Post to a channel when a webhook request is received'. Wird verschluesselt gespeichert und nie wieder angezeigt. Leer lassen = gespeicherte Adresse behalten." Style="{StaticResource DarkPasswordBox}" FontSize="12" Margin="0,2,0,6"/>
                                             <CheckBox x:Name="chkTeamsEnabled" ToolTip="Aus = Ziel bleibt gespeichert, bekommt aber keine Meldungen" Content="Ziel aktiv" IsChecked="True" Foreground="#CCCCCC" FontSize="11" Margin="0,0,0,6"/>
                                             <TextBlock Text="Kategorien" Style="{StaticResource FieldLabel}"/>
-                                            <WrapPanel x:Name="pnlTeamsCats" ToolTip="Welche Meldungen dieses Ziel bekommt. Eigene Kategorien sind mit [Schluessel] markiert - Rechtsklick zum Loeschen." Margin="0,2,0,6"/>
+                                            <WrapPanel x:Name="pnlTeamsCats" ToolTip="Welche Meldungen dieses Ziel bekommt. Eigene Kategorien sind mit [Schluessel] markiert - Rechtsklick (oder Umschalt+F10): bearbeiten oder loeschen." Margin="0,2,0,6"/>
                                             <TextBlock Text="Eigene Kategorie (fuer eigene Skripte, Snippets, Erweiterungen)" Style="{StaticResource FieldLabel}"/>
-                                            <DockPanel Margin="0,2,0,0">
-                                                <Button x:Name="btnTeamsCatAdd" DockPanel.Dock="Right" Content="+ Kategorie" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0" ToolTip="Kategorie anlegen (gleicher Schluessel = Bezeichnung aendern). Danach bei jedem Ziel anhaken, das sie bekommen soll. Senden aus Skripten: Send-HUNotify -Category &lt;Schluessel&gt; -Title '...'"/>
-                                                <TextBox x:Name="txtTeamsCatKey" DockPanel.Dock="Left" Width="110" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,0,6,0" ToolTip="Schluessel fuer Skripte: Buchstabe am Anfang, dann Buchstaben/Ziffern, 2-24 Zeichen (z. B. Backup, Drucker, WSUS). Eingebaute Namen (Daily, Secrets ...) sind vergeben."/>
-                                                <TextBox x:Name="txtTeamsCatLabel" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Bezeichnung - erscheint hier bei den Haken und in der Fusszeile der Karte (z. B. Backup: Ergebnisse)"/>
-                                            </DockPanel>
+                                            <Grid Margin="0,2,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="120"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Schluessel (fuer Skripte)" Foreground="#999999" FontSize="10" Margin="0,0,6,1"/>
+                                                <TextBlock Grid.Row="0" Grid.Column="1" Text="Anzeigename" Foreground="#999999" FontSize="10" Margin="0,0,0,1"/>
+                                                <TextBox x:Name="txtTeamsCatKey" Grid.Row="1" Grid.Column="0" AutomationProperties.Name="Schluessel der eigenen Kategorie" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,0,6,0" ToolTip="Schluessel fuer Skripte: 2-24 Zeichen, nur A-Z, a-z und Ziffern, am Anfang ein Buchstabe. Keine Umlaute, Leer- oder Sonderzeichen (z. B. Backup, Drucker2). Eingebaute Namen (Daily, Secrets ...) sind vergeben."/>
+                                                <TextBox x:Name="txtTeamsCatLabel" Grid.Row="1" Grid.Column="1" AutomationProperties.Name="Anzeigename der eigenen Kategorie" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Anzeigename - erscheint hier bei den Haken und in der Fusszeile der Karte (z. B. Backup: Ergebnisse)"/>
+                                                <Button x:Name="btnTeamsCatAdd" Grid.Row="1" Grid.Column="2" Content="+ Kategorie" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0" ToolTip="Kategorie anlegen (gleicher Schluessel = Anzeigename aendern). Sie wird NUR beim gerade gewaehlten Ziel angehakt - andere Ziele bekommen sie erst, wenn Du sie dort anhakst. Senden aus Skripten: Send-HUNotify -Category &lt;Schluessel&gt; -Title '...'"/>
+                                            </Grid>
                                         </StackPanel>
                                     </ScrollViewer>
                                 </DockPanel>
@@ -1323,14 +1334,14 @@
                                                     <TextBox x:Name="txtTeamsJobTime" ToolTip="Uhrzeit (HH:mm) fuer die Aufgabenplanung" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,0" Text="07:00"/>
                                                 </StackPanel>
                                             </DockPanel>
-                                            <TextBlock Text="Senden an (keines = alle aktiven Ziele)" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock Text="Senden an (alle angehakt = auch spaeter angelegte Ziele)" Style="{StaticResource FieldLabel}"/>
                                             <WrapPanel x:Name="pnlTeamsJobTargets" Margin="0,2,0,6" ToolTip="Welche Kanaele diese Meldung bekommen"/>
                                             <TextBlock Text="Wochentage (keiner = taeglich)" Style="{StaticResource FieldLabel}"/>
                                             <WrapPanel x:Name="pnlTeamsJobDays" ToolTip="Keiner angehakt = jeden Tag" Margin="0,2,0,6"/>
                                             <TextBlock Text="Tenants" Style="{StaticResource FieldLabel}"/>
                                             <WrapPanel x:Name="pnlTeamsJobTenants" ToolTip="Alle angehakt = auch spaeter angelegte Tenants" Margin="0,2,0,6"/>
-                                            <CheckBox x:Name="chkTeamsJobMask" ToolTip="Nur Defender-Alarm: statt Geraetenamen nur die Anzahl je Zustand senden - fuer Kanaele mit breiterem Publikum (z. B. Direktion)" Content="Geraetenamen ausblenden (Defender-Alarm)" Foreground="#CCCCCC" FontSize="11" Margin="0,0,0,4"/>
-                                            <CheckBox x:Name="chkTeamsJobEnabled" ToolTip="Aus = Aufgabe laeuft, sendet aber nichts" Content="Auftrag aktiv" IsChecked="True" Foreground="#CCCCCC" FontSize="11"/>
+                                            <CheckBox x:Name="chkTeamsJobMask" ToolTip="Statt Geraetenamen nur die Anzahl je Zustand senden - fuer Kanaele mit breiterem Publikum (z. B. Direktion). Nur beim Defender-Alarm verfuegbar." ToolTipService.ShowOnDisabled="True" Content="Geraetenamen ausblenden (nur Anzahlen senden)" Foreground="#CCCCCC" FontSize="11" Margin="0,0,0,4"/>
+                                            <CheckBox x:Name="chkTeamsJobEnabled" ToolTip="Aus = die geplante Aufgabe sendet nichts. 'Jetzt senden' und 'An Kanal ...' senden trotzdem." Content="Auftrag aktiv" IsChecked="True" Foreground="#CCCCCC" FontSize="11"/>
                                         </StackPanel>
                                     </ScrollViewer>
                                 </DockPanel>
