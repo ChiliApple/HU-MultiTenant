@@ -394,7 +394,8 @@ function Invoke-HUTeamsScript {
         $ps = $null
         try {
             $rs.Open()
-            $rs.SessionStateProxy.SetVariable('Settings', $Settings)
+            # Kopie je Tenant (Review 030 B35): Aenderungen des Skripts an $Settings wirken nicht auf den naechsten Tenant
+            $rs.SessionStateProxy.SetVariable('Settings', ($Settings | ConvertTo-Json -Depth 20 | ConvertFrom-Json))
             $rs.SessionStateProxy.SetVariable('AppRoot', $AppRoot)
             $rs.SessionStateProxy.SetVariable('__Code', $Code)
             $rs.SessionStateProxy.SetVariable('__Name', $Name)

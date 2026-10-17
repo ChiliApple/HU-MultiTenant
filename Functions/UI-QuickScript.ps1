@@ -143,6 +143,14 @@ function Save-HUQSSnippet([switch]$As) {
     Update-HUSnippetCombo -Select $name
     Update-HUQSSnippetInfo
     Write-QSOutput "[OK] Snippet '$name' gespeichert." '#4CAF50'
+    # Review 030 B33: gehoert das Snippet zu einer Teams-Meldung, muss sie neu bestaetigt werden
+    if (Get-Command Get-HUTeamsSnippetRoute -ErrorAction SilentlyContinue) {
+        $rt = Get-HUTeamsSnippetRoute $name
+        if ($rt) {
+            Write-QSOutput "[INFO] Teams-Meldung '$($rt.Jobs -join "', '")' nutzt dieses Snippet - dort einmal neu speichern, sonst laeuft sie nicht (Skript geaendert)." '#FFC107'
+            if (Get-Command Update-HUTeamsJobs -ErrorAction SilentlyContinue) { try { Update-HUTeamsJobs } catch { } }
+        }
+    }
     return $true
 }
 

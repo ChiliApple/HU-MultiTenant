@@ -129,7 +129,8 @@ Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed
 - wirft nie – ein Teams-Fehler bricht das Snippet nicht ab
 - `-Level` `OK` | `Warning` | `Error` | `Info`; `-Facts` als `[ordered]@{ Name = Wert }`; `-Rows` als `@{ Name; Status; Text }` (Ampel)
 - `-Preview` = Text der Handy-Benachrichtigung – **keine Secrets/Kennwörter** in Karten; Gerätenamen nur in Meldungen, die ausschließlich Admin-Kanäle haben (im Zweifel nur Anzahlen senden)
-- Snippets laufen mit Deinen Rechten – fremde Snippets vorher lesen
+- Snippets laufen mit Deinen Rechten – fremde Snippets vorher lesen; `Grant-HUSendApproval` **nie** in Snippets aufrufen (die Freigabe gibt die Rückfrage bzw. die gespeicherte Meldung)
+- als Meldung: je Tenant ein eigener Runspace – `$global:`-Zwischenspeicher gelten nur für diesen Tenant
 - bei mehreren Tenants sendet jeder Tenant eine eigene Karte – für eine Sammelkarte die Ergebnisse sammeln und nur einmal senden
 - Details und alle Parameter: Anleitung (F1) › Teams › Meldungen aus Skripten
 

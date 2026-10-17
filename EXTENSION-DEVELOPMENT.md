@@ -237,7 +237,7 @@ if ($r.Failed) { Write-HULog -Message "Teams: $($r.Text)" -Level 'WARN' -Tenant 
 - vor dem Start fragt HU-MultiTenant einmal, ob die Erweiterung an Teams senden darf; ohne "Ja" und im Probelauf (DryRun) sendet sie nichts
 - nur in Extensions mit Standard-Runtime (Windows PowerShell 5.1), nicht bei `.RUNTIME PS7`
 - keine Secrets, Kennwörter oder Recovery-Keys in Karten; Gerätenamen nur an Admin-Kanäle
-- Erweiterungen laufen mit den Rechten des Admins – nur vertrauenswürdige Erweiterungen installieren
+- Erweiterungen laufen mit den Rechten des Admins – nur vertrauenswürdige Erweiterungen installieren; `Grant-HUSendApproval` **nie** in Erweiterungen aufrufen (die Freigabe gibt die Rückfrage vor dem Start)
 - regelmäßige Meldungen mit Zeitplan lieber als Quick-Script-Snippet und Teams-Meldung "Aus Skript" bauen (Anleitung › Teams)
 
 **WICHTIG:** Alle Excel-Reports verwenden ImportExcel (EPPlus-basiert). Excel-COM-Interop (`New-Object -ComObject Excel.Application`) ist **NICHT** mehr zulässig. Kein `Set-ExcelCellValue`, kein `ReleaseComObject`, kein COM-Cleanup nötig.

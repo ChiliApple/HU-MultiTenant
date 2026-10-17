@@ -460,6 +460,23 @@ Describe 'Teams: Sendefreigabe (Review 030 B4a)' {
         Import-Module $p -Force -DisableNameChecking
         Test-HUSendApproval | Should -BeFalse
     }
+    It 'B36: frischer Runspace ohne Freigabe - auch ueber Alias und & $cmd wird nichts gesendet' {
+        $p = (Get-Module HU.Notify).Path
+        $ps = [powershell]::Create()
+        try {
+            [void]$ps.AddScript({
+                param($Mod)
+                Import-Module $Mod -Force -DisableNameChecking
+                Set-Alias x Send-HUTeamsCard
+                x -Card '{"type":"message"}' -Url 'https://prod-1.logic.azure.com/w' -Target 'T'
+                $cmd = 'Send-' + 'HUTeamsCard'
+                & $cmd -Card '{"type":"message"}' -Url 'https://prod-1.logic.azure.com/w' -Target 'T'
+            }).AddArgument($p)
+            $r = @($ps.Invoke())
+            $r.Count | Should -Be 2
+            $r | ForEach-Object { $_ | Should -Match 'nicht freigegeben' }
+        } finally { $ps.Dispose() }
+    }
     It 'Kategorie bei keinem Ziel angehakt -> Grund statt leerem Text' {
         $r = Send-HUNotify -Category Apps -Title 'T'
         $r.Ok | Should -Be 0; $r.Text | Should -Match "kein aktives Ziel hat Kategorie 'Apps'"

@@ -1304,7 +1304,26 @@
                                         </Grid.RowDefinitions>
                                         <DockPanel Grid.Row="0">
                                             <Button x:Name="btnTeamsJobNew" ToolTip="Neue Meldung anlegen (Felder leeren)" DockPanel.Dock="Right" VerticalAlignment="Top" Content="+ Neu" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Height="48" Margin="6,0,0,0"/>
-                                            <ListBox x:Name="lstTeamsJobs" ToolTip="Eingebaute Meldungen und Meldungen aus Skripten. Anklicken zum Bearbeiten." Style="{StaticResource DarkListBox}" MinHeight="60"/>
+                                            <DataGrid x:Name="lstTeamsJobs" ToolTip="Eingebaute Meldungen und Meldungen aus Skripten. Anklicken zum Bearbeiten. Spaltenbreite an der Trennlinie im Kopf ziehen." Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" CanUserSortColumns="False" CanUserResizeColumns="True" CanUserReorderColumns="False" MinHeight="60">
+                                                <DataGrid.RowStyle>
+                                                    <Style TargetType="DataGridRow">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Kopf}" Value="True">
+                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                                <Setter Property="Foreground" Value="#4FC3F7"/>
+                                                                <Setter Property="IsHitTestVisible" Value="False"/>
+                                                                <Setter Property="Background" Value="#252526"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </DataGrid.RowStyle>
+                                                <DataGrid.Columns>
+                                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="Auto" MinWidth="120"/>
+                                                    <DataGridTextColumn Header="Wochentage / Uhrzeit" Binding="{Binding Zeitplan}" Width="Auto" MinWidth="90"/>
+                                                    <DataGridTextColumn Header="Ziele" Binding="{Binding Ziele}" Width="Auto" MinWidth="70"/>
+                                                    <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="Auto" MinWidth="70"/>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
                                         </DockPanel>
                                         <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="Transparent" ResizeBehavior="PreviousAndNext" ResizeDirection="Rows" Cursor="SizeNS" ToolTip="Hoehe der Meldungsliste anpassen (ziehen)"/>
                                         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">

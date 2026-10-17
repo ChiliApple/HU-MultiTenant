@@ -173,31 +173,57 @@ function Get-HUTeamsJobLabel($Job) {
     return "$(if ($Job.Enabled) { '' } else { '(aus) ' })$nm  -  $when $($Job.Time)  -  an $to$(if ($st) { "  -  ! $st" })"
 }
 
+# Wochentage kompakt: 1..5 -> "Mo-Fr", 1,3,5 -> "Mo, Mi, Fr", keiner -> "taeglich"
+function Format-HUTeamsDays($Days) {
+    $n = @('Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So')
+    $d = @(@($Days) | ForEach-Object { [int]$_ } | Where-Object { $_ -ge 1 -and $_ -le 7 } | Sort-Object -Unique)
+    if (-not $d.Count -or $d.Count -eq 7) { return 'taeglich' }
+    $parts = @(); $i = 0
+    while ($i -lt $d.Count) {
+        $j = $i; while ($j + 1 -lt $d.Count -and $d[$j + 1] -eq $d[$j] + 1) { $j++ }
+        if ($j - $i -ge 2) { $parts += "$($n[$d[$i] - 1])-$($n[$d[$j] - 1])" } else { for ($k = $i; $k -le $j; $k++) { $parts += $n[$d[$k] - 1] } }
+        $i = $j + 1
+    }
+    return ($parts -join ', ')
+}
+
+# Zeile der Meldungsliste (Spalten Name | Wochentage/Uhrzeit | Ziele | Tenants)
+function ConvertTo-HUTeamsJobRow($Job, $AllTargets) {
+    $nm = "$($Job.Name)"
+    if ("$($Job.Kind)" -eq 'Script' -and "$($Job.Options.snippet)" -and $nm -ne "$($Job.Options.snippet)") { $nm = "$nm (Skript: $($Job.Options.snippet))" }
+    $st = Get-HUTeamsScriptState $Job
+    if ($st) { $nm = "! $nm - $st" }
+    if (-not $Job.Enabled) { $nm = "(aus) $nm" }
+    $tids = @(@($Job.Targets) | Where-Object { "$_" })
+    $to = if ($tids.Count) { (@($tids | ForEach-Object { $id = "$_"; $tt = $AllTargets | Where-Object { $_.Id -eq $id } | Select-Object -First 1; if ($tt) { "$($tt.Name)" } else { '?' } }) -join ', ') } else { 'alle' }
+    $keys = @(@($Job.Tenants) | Where-Object { "$_" })
+    $tn = if ($keys.Count) { (@($keys | ForEach-Object { $k = "$_"; $x = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($x) { "$($x.displayName)" } else { $k } }) -join ', ') } else { 'alle' }
+    return [pscustomobject]@{ Kopf = $false; Name = $nm; Zeitplan = "$(Format-HUTeamsDays $Job.Days) $($Job.Time)"; Ziele = $to; Tenants = $tn; Job = $Job }
+}
+
 function Update-HUTeamsJobs {
     $c = $script:Controls
     $lb = $c['lstTeamsJobs']
     $jobs = @()
     try { $jobs = @(Get-HUTeamsJobs -AppRoot $script:AppRoot) } catch { Write-HULogError $_.Exception.Message }
+    $allT = @((Get-HUNotifyConfig).Targets)
     $script:TeamsFillBusy = $true
     try {
-        $lb.Items.Clear()
+        $rows = New-Object System.Collections.ArrayList
         $sel = $null
         # zwei Gruppen: eingebaute Meldungen, Meldungen aus Skripten (Ueberschriften sind nicht waehlbar)
         foreach ($g in @(@{ Head = 'Eingebaute Meldungen'; Script = $false }, @{ Head = 'Meldungen aus Skripten'; Script = $true })) {
             $grp = @($jobs | Where-Object { ("$($_.Kind)" -eq 'Script') -eq $g.Script })
-            $hd = New-Object System.Windows.Controls.ListBoxItem
-            $hd.Content = "$($g.Head)$(if (-not $grp.Count) { ' - noch keine (+ Neu)' })"
-            $hd.IsEnabled = $false; $hd.Focusable = $false
-            $hd.FontWeight = 'SemiBold'; $hd.Foreground = Get-HUBrush '#4FC3F7'
-            [void]$lb.Items.Add($hd)
+            [void]$rows.Add([pscustomobject]@{ Kopf = $true; Name = "$($g.Head)$(if (-not $grp.Count) { ' - noch keine (+ Neu)' })"; Zeitplan = ''; Ziele = ''; Tenants = ''; Job = $null })
             foreach ($j in $grp) {
-                $li = New-Object System.Windows.Controls.ListBoxItem
-                $li.Content = "   $(Get-HUTeamsJobLabel $j)"
-                $li.Tag = $j
-                [void]$lb.Items.Add($li)
-                if ("$($j.Id)" -eq $script:TeamsJobCurrent) { $sel = $li }
+                $r = ConvertTo-HUTeamsJobRow $j $allT
+                [void]$rows.Add($r)
+                if ("$($j.Id)" -eq $script:TeamsJobCurrent) { $sel = $r }
             }
         }
+        $lb.ItemsSource = $rows
+        # Spalten wieder an den Inhalt anpassen (Auto waechst sonst nur); danach bleibt jede Spalte ziehbar
+        foreach ($col in $lb.Columns) { $col.Width = [System.Windows.Controls.DataGridLength]::new(0); $col.Width = [System.Windows.Controls.DataGridLength]::Auto }
         $lb.SelectedItem = $sel
     } finally { $script:TeamsFillBusy = $false }
 }
@@ -523,7 +549,7 @@ function Register-HUTeamsHandlers {
     $c['lstTeamsJobs'].Add_SelectionChanged({
         if ($script:TeamsFillBusy) { return }
         $it = $script:Controls['lstTeamsJobs'].SelectedItem
-        if ($it) { Show-HUTeamsJob $it.Tag }
+        if ($it -and -not $it.Kopf -and $it.Job) { Show-HUTeamsJob $it.Job }
     })
     $c['btnTeamsJobNew'].Add_Click({ $script:Controls['lstTeamsJobs'].SelectedItem = $null; Show-HUTeamsJob $null })
     $c['btnTeamsJobSave'].Add_Click({ Save-HUTeamsJob })
