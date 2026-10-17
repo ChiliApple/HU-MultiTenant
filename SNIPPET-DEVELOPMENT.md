@@ -23,6 +23,7 @@ Reports mit eigener Oberfläche im Extensions-Reiter: [EXTENSION-DEVELOPMENT.md]
 | `Invoke-GraphRequestAll -Token -Endpoint` | alle Seiten (`@odata.nextLink`), Rückgabe = Liste der `value`-Einträge |
 | `Invoke-GraphRequestWithRetry` | wie `Invoke-GraphRequest`, wiederholt bei 429/5xx |
 | `Get-HUToken [-Tenant <Schlüssel>]` | Token eines anderen Tenants |
+| `Send-HUNotify -Category -Title [-Level] [-Lines] [-Facts] [-Rows] [-Preview]` | Meldung als Karte an die Teams-Ziele, die diese Kategorie angehakt haben (ab v2.1.10) – siehe unten |
 
 - `-Endpoint` relativ (`'/users?$select=id,displayName'` → v1.0) oder absolut (`'https://graph.microsoft.com/beta/...'`)
 - `-Method`: `GET` (Standard), `POST`, `PATCH`, `DELETE`; `-Body` als Hashtable
@@ -101,6 +102,25 @@ foreach ($x in $d) {
 ```
 
 Weitere Beispiele: Snippet-Verwaltung › **Beispiele** (Datei `Config\quick-snippets.example.json`).
+
+### Teams-Meldung aus einem Snippet
+
+Eigene Kategorie zuerst im Reiter **Teams** anlegen (Ziele › *Eigene Kategorie*: Schlüssel + Bezeichnung › *+ Kategorie*)
+und bei den gewünschten Zielen anhaken. Dann im Snippet:
+
+```powershell
+$r = Send-HUNotify -Category Sync -Level Warning `
+        -Title "$($TenantKey): $($alt.Count) Geraete ohne Sync" `
+        -Preview "$($alt.Count) von $($dev.Count) Geraeten" `
+        -Lines @($alt | Select-Object -First 15 | ForEach-Object { $_.deviceName })
+Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed = Anzahl
+```
+
+- wirft nie – ein Teams-Fehler bricht das Snippet nicht ab
+- `-Level` `OK` | `Warning` | `Error` | `Info`; `-Facts` als `[ordered]@{ Name = Wert }`; `-Rows` als `@{ Name; Status; Text }` (Ampel)
+- `-Preview` = Text der Handy-Benachrichtigung – **keine Gerätenamen, keine Secrets/Kennwörter** in Karten
+- bei *Mehrere ▾* sendet jeder Tenant eine eigene Karte – für eine Sammelkarte die Ergebnisse sammeln und nur einmal senden
+- Details und alle Parameter: Anleitung (F1) › Teams › Eigene Kategorien
 
 ## 8. Vorhandene Skripte übernehmen
 

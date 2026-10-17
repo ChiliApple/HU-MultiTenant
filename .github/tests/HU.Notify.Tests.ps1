@@ -106,7 +106,7 @@ Describe 'Teams: Karte (New-HUTeamsCard)' {
     It 'begrenzt die Zeilenzahl' {
         $c = New-HUTeamsCard -Title 'T' -Lines @(1..60 | ForEach-Object { "z$_" })
         $tb = @($c.attachments[0].content.body | Where-Object { $_.type -eq 'TextBlock' })
-        $tb[-2].text | Should -Match 'und 20 weitere Zeilen'
+        $tb[-2].text | Should -Match 'und 40 weitere Zeilen'   # 60 Zeilen, Grenze 20 (v2.1.10)
     }
     It 'begrenzt die Ampel-Zeilen mit Hinweis' {
         $c = New-HUTeamsCard -Title 'T' -Rows @(1..30 | ForEach-Object { @{ Name = "S$_"; Status = 'OK'; Text = 'x' } })
@@ -221,5 +221,93 @@ Describe 'Teams: Ziele speichern (DPAPI, nur Windows)' -Skip:(-not $script:IsWin
     It 'hoechstens 10 Ziele' {
         $l = @(1..11 | ForEach-Object { @{ Name = "t$_"; Url = "https://prod-$_.logic.azure.com/w" } })
         Set-HUNotifyTargets -Targets $l | Should -Match '10'
+    }
+}
+
+Describe 'Teams: Kartengroesse und Push-Vorschau (v2.1.10)' {
+    It 'riesige Karte wird stufenweise gekuerzt statt verworfen' {
+        $long = '"x' * 200   # Anfuehrungszeichen werden in JSON immer maskiert (2 Byte) - auch unter PS 7
+        $facts = [ordered]@{}; 1..30 | ForEach-Object { $facts["Fakt $_"] = $long }
+        $c = New-HUTeamsCard -Title 'Gross' -Lines @(1..40 | ForEach-Object { "$_ $long" }) -Facts $facts -Rows @(1..25 | ForEach-Object { @{ Name = "T$_"; Status = 'Error'; Text = $long } })
+        $j = ConvertTo-Json -InputObject $c -Depth 20 -Compress
+        [System.Text.Encoding]::UTF8.GetByteCount($j) | Should -BeLessOrEqual 26000
+        $j | Should -Match 'Karte gekuerzt'
+        { ConvertTo-HUTeamsCardJson -Card $c } | Should -Not -Throw
+    }
+    It 'normale Karte bleibt ungekuerzt' {
+        (ConvertTo-Json -InputObject (New-HUTeamsCard -Title 'T' -Lines @('a', 'b')) -Depth 20 -Compress) | Should -Not -Match 'gekuerzt'
+    }
+    It '-Preview ersetzt die Vorschau aus den Zeilen' {
+        $c = New-HUTeamsCard -Title 'Ampel' -Rows @(@{ Name = 'HLW'; Status = 'Error'; Text = 'NB-GEHEIM-01 Bedrohung' }) -Preview '1 Geraet mit Befund (HLW)'
+        $c.summary | Should -Match '1 Geraet mit Befund'
+        $c.summary | Should -Not -Match 'NB-GEHEIM'
+        $c.attachments[0].content.fallbackText | Should -Be $c.summary
+    }
+}
+
+Describe 'Teams: eigene Kategorien (v2.1.10)' {
+    BeforeEach { Remove-Item -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json') -Force -ErrorAction SilentlyContinue }
+    It 'anlegen: erscheint nach den eingebauten mit Custom-Kennung' {
+        Add-HUNotifyCategory -Key 'Backup' -Label 'Backup: Ergebnisse' -Default $true | Should -Be ''
+        $k = @(Get-HUNotifyCategories)
+        $b = $k | Where-Object Key -eq 'Backup'
+        $b.Custom | Should -BeTrue
+        $b.Label | Should -Be 'Backup: Ergebnisse'
+        $k[-1].Key | Should -Be 'Backup'
+        ($k | Where-Object Key -eq 'Daily').Custom | Should -BeFalse
+    }
+    It 'Schluessel wird geprueft, eingebaute sind gesperrt' {
+        Add-HUNotifyCategory -Key '1abc' -Label 'x' | Should -Match 'Schluessel'
+        Add-HUNotifyCategory -Key 'a b' -Label 'x' | Should -Match 'Schluessel'
+        Add-HUNotifyCategory -Key 'daily' -Label 'x' | Should -Match 'eingebaute'
+        Add-HUNotifyCategory -Key 'Ok1' -Label '   ' | Should -Match 'Bezeichnung'
+        Remove-HUNotifyCategory -Key 'Secrets' | Should -Match 'eingebaute'
+    }
+    It 'gleicher Schluessel aendert nur Bezeichnung/Standard' {
+        Add-HUNotifyCategory -Key 'Drucker' -Label 'Drucker' -Default $true | Out-Null
+        Add-HUNotifyCategory -Key 'Drucker' -Label 'Druckerfehler' -Default $false | Should -Be ''
+        $d = @(Get-HUNotifyCategories | Where-Object Key -eq 'Drucker')
+        $d.Count | Should -Be 1
+        $d[0].Label | Should -Be 'Druckerfehler'
+        Test-HUNotifyCat -Target $null -Category 'Drucker' | Should -BeFalse
+    }
+    It 'eine eigene Kategorie bleibt Array (PS 5.1) und Datei ist lesbar' {
+        Add-HUNotifyCategory -Key 'Wsus' -Label 'WSUS' | Out-Null
+        $raw = Get-Content -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json') -Raw | ConvertFrom-Json
+        @($raw.items).Count | Should -Be 1
+        $raw.items[0].Key | Should -Be 'Wsus'
+    }
+    It 'Send-HUNotify sendet mit eigener Kategorie, Fusszeile zeigt die Bezeichnung' {
+        Add-HUNotifyCategory -Key 'Backup' -Label 'Backup: Ergebnisse' | Out-Null
+        Mock -ModuleName HU.Notify Start-Sleep { }
+        Mock -ModuleName HU.Notify Add-HUNotifyHistory { }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @(
+            [pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'Admin'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = @{ Backup = $true } }
+            [pscustomobject]@{ Id = 'bbbbbbbb'; Name = 'Direktion'; Url = 'https://prod-2.logic.azure.com/w'; Enabled = $true; Cats = @{ Backup = $false } }
+        ) } }
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $script:SentBody = [System.Text.Encoding]::UTF8.GetString($Body); $null }
+        $r = Send-HUNotify -Category 'Backup' -Title 'Backup HLW fertig' -Level OK
+        $r.Ok | Should -Be 1; $r.Failed | Should -Be 0
+        $r.Text | Should -Match 'Admin: gesendet'
+        $r.Text | Should -Not -Match 'Direktion'
+        $script:SentBody | Should -Match 'Backup: Ergebnisse'
+    }
+    It 'nach dem Entfernen: Unbekannte Kategorie' {
+        Add-HUNotifyCategory -Key 'Weg' -Label 'Weg' | Out-Null
+        Remove-HUNotifyCategory -Key 'Weg' | Should -Be ''
+        (Send-HUNotify -Category 'Weg' -Title 'T').Text | Should -Match 'Unbekannte Kategorie'
+        Remove-HUNotifyCategory -Key 'Weg' | Should -Match 'nicht gefunden'
+    }
+    It 'Haken unbekannter, gueltiger Schluessel bleiben am Ziel erhalten' {
+        $c = InModuleScope HU.Notify { ConvertTo-HUNotifyCats @{ Kommt = $true; Daily = $false; 'bad key' = $true } }
+        $c['Kommt'] | Should -BeTrue
+        $c['Daily'] | Should -BeFalse
+        $c.ContainsKey('bad key') | Should -BeFalse
+    }
+    It 'kaputte Kategorien-Datei: eingebaute funktionieren weiter' {
+        New-Item -Path (Join-Path $env:APPDATA 'HU-MultiTenant') -ItemType Directory -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json') -Value '{ kaputt' -Encoding UTF8
+        @(Get-HUNotifyCategories).Count | Should -Be 11
+        Test-HUNotifyCat -Target $null -Category 'Daily' | Should -BeTrue
     }
 }

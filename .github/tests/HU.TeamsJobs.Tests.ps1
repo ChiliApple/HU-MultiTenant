@@ -210,3 +210,74 @@ Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
         $r.Message | Should -Match 'NICHTS gesendet'
     }
 }
+
+Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
+    It 'Datumsbeschriftung ist deutsch und kulturunabhaengig' {
+        Get-HUTeamsDateLabel -Date ([datetime]'2026-10-16') | Should -Be 'Fr 16.10.'
+        Get-HUTeamsDateLabel -Date ([datetime]'2026-10-18') | Should -Be 'So 18.10.'
+    }
+    It 'Tages-Ampel: Vorschau mit Ampel-Zaehlung und Summen' {
+        $st = @(
+            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 100; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = 200; SecretStatus = 'OK' }
+            [pscustomobject]@{ Key = 'B'; Name = 'BORG'; Ok = $false; Error = 'Token'; Devices = 0; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = $null; SecretStatus = '' }
+        )
+        $s = New-HUDailyCardSpec -Statuses $st
+        $s.Preview | Should -Match '1 gruen, 0 gelb, 1 rot'
+        $s.Preview | Should -Match 'rot: BORG'
+        $s.Preview | Should -Match '100 Geraete'
+    }
+    It 'Tages-Ampel: OK ohne Ablaufdatum -> Hinweis, keine Warnung (B8c)' {
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 10; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = $null; SecretStatus = 'OK' })
+        $s = New-HUDailyCardSpec -Statuses $st
+        $s.Rows[0].Text | Should -Match 'kein Ablaufdatum'
+        $s.Level | Should -Be 'OK'
+    }
+    It 'Defender: Vorschau ohne Geraetenamen, Maskierung blendet Namen aus (B10/B16)' {
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 5; Findings = @(
+            [pscustomobject]@{ Device = 'PC-GEHEIM-1'; State = 'Bedrohung (hoch)' }
+            [pscustomobject]@{ Device = 'PC-GEHEIM-2'; State = 'Bedrohung (hoch)' }
+        ) })
+        $s = New-HUDefenderCardSpec -Statuses $st
+        $s.Preview | Should -Match '2 Geraet'
+        $s.Preview | Should -Not -Match 'GEHEIM'
+        $s.Rows[0].Text | Should -Match 'PC-GEHEIM-1'
+        $m = New-HUDefenderCardSpec -Statuses $st -MaskDevices
+        $m.Rows[0].Text | Should -Not -Match 'GEHEIM'
+        $m.Rows[0].Text | Should -Match '2 Bedrohung'
+        $m.Facts['Geraete mit Befund'] | Should -Be 2
+    }
+    It 'Secrets/Lizenzen: Vorschau nennt den dringendsten Fall' {
+        $s = New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 12; DisplayName = 'x'; Status = 'OK' }, [pscustomobject]@{ Key = 'B'; Name = 'Gym'; Ok = $true; Error = ''; Days = 5; DisplayName = 'y'; Status = 'OK' }) -WarnDays 30
+        $s.Preview | Should -Match 'zuerst Gym in 5 Tagen'
+        $l = New-HULicenseCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'EUGym'; Ok = $true; Error = ''; Skus = @([pscustomobject]@{ Sku = 'A3'; Total = 10; Used = 11; Free = -1 }) })
+        $l.Preview | Should -Match 'EUGym A3 ueberbucht'
+    }
+    It 'Invoke-HUTeamsJob: Code 0/2/3 und Vorschau wird uebergeben' {
+        Mock -ModuleName HU.TeamsJobs Update-HUTeamsJobResult { }
+        Mock -ModuleName HU.TeamsJobs Get-HUSecretStatus { [pscustomobject]@{ Key = $TenantKey; Name = $TenantKey; Ok = $true; Error = ''; Days = 3; DisplayName = 'x'; Status = 'OK' } }
+        $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }) }
+        Mock -ModuleName HU.TeamsJobs Send-HUNotify { [pscustomobject]@{ Ok = 1; Failed = 0; Text = 'A: gesendet' } }
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind Secrets) -Settings $set -AppRoot $script:TestRoot).Code | Should -Be 0
+        Should -Invoke -ModuleName HU.TeamsJobs Send-HUNotify -ParameterFilter { $Preview -match 'T1' }
+        Mock -ModuleName HU.TeamsJobs Send-HUNotify { [pscustomobject]@{ Ok = 1; Failed = 1; Text = 'A: gesendet; B: 404' } }
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind Secrets) -Settings $set -AppRoot $script:TestRoot).Code | Should -Be 2
+        Mock -ModuleName HU.TeamsJobs Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 0; Text = '' } }
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind Secrets) -Settings $set -AppRoot $script:TestRoot).Code | Should -Be 3
+        Mock -ModuleName HU.TeamsJobs Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'A: 401' } }
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind Secrets) -Settings $set -AppRoot $script:TestRoot).Code | Should -Be 1
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S') -Settings ([pscustomobject]@{ tenants = @() }) -AppRoot $script:TestRoot).Code | Should -Be 3
+    }
+    It 'ungueltige Auftrags-Id wird fuer Aufgabe und Speicher abgewiesen (B15)' {
+        $j = New-HUTeamsJob -Name 'x'; $j.Id = 'ab"; calc'
+        { Get-HUTeamsJobTaskName -Job $j } | Should -Throw '*ungueltig*'
+        Register-HUTeamsJobTask -Job $j -AppRoot $script:TestRoot | Should -Match 'ungueltig|nicht gefunden'
+        { Set-HUTeamsJobs -AppRoot $script:TestRoot -Jobs @($j) } | Should -Throw '*ungueltig*'
+    }
+    It 'Defender-Option maskDevices kommt im Auftrag an' {
+        Mock -ModuleName HU.TeamsJobs Update-HUTeamsJobResult { }
+        Mock -ModuleName HU.TeamsJobs Get-HUDefenderStatus { [pscustomobject]@{ Key = 'T1'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 1; Findings = @([pscustomobject]@{ Device = 'PC-X'; State = 'kompromittiert' }) } }
+        $j = New-HUTeamsJob -Name 'D' -Kind Defender -Options @{ maskDevices = 1 }
+        $r = Invoke-HUTeamsJob -Job $j -Settings ([pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }) }) -AppRoot $script:TestRoot -NoSend
+        $r.Spec.Rows[0].Text | Should -Not -Match 'PC-X'
+    }
+}

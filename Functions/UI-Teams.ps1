@@ -57,6 +57,58 @@ function Show-HUTeamsTarget($Target) {
     } finally { $script:TeamsFillBusy = $false }
 }
 
+# Kategorien-Haken (eingebaute + eigene) neu aufbauen; Haken bleiben, neue bekommen ihren Standard
+function Update-HUTeamsCatChecks {
+    $sp = $script:Controls['pnlTeamsCats']
+    $was = @{}
+    foreach ($cb in @($sp.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $was["$($cb.Tag)"] = [bool]$cb.IsChecked }
+    $sp.Children.Clear()
+    foreach ($k in @(Get-HUNotifyCategories)) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Tag = $k.Key
+        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
+        $cb.Margin = [System.Windows.Thickness]::new(0, 1, 12, 1)
+        $cb.IsChecked = if ($was.ContainsKey("$($k.Key)")) { $was["$($k.Key)"] } else { [bool]$k.Default }
+        if ($k.Custom) {
+            $cb.Content = "$($k.Label) [$($k.Key)]"
+            $cb.ToolTip = "Eigene Kategorie - Skripte senden mit: Send-HUNotify -Category $($k.Key) -Title '...'`nRechtsklick: bearbeiten oder loeschen"
+            $menu = New-Object System.Windows.Controls.ContextMenu
+            $miE = New-Object System.Windows.Controls.MenuItem; $miE.Header = 'Bearbeiten (in die Felder unten)'; $miE.Tag = $k
+            $miE.Add_Click({ $script:Controls['txtTeamsCatKey'].Text = "$($this.Tag.Key)"; $script:Controls['txtTeamsCatLabel'].Text = "$($this.Tag.Label)" })
+            $miD = New-Object System.Windows.Controls.MenuItem; $miD.Header = "Kategorie '$($k.Key)' loeschen"; $miD.Tag = "$($k.Key)"
+            $miD.Add_Click({ Remove-HUTeamsCategory "$($this.Tag)" })
+            [void]$menu.Items.Add($miE); [void]$menu.Items.Add($miD)
+            $cb.ContextMenu = $menu
+        }
+        else { $cb.Content = $k.Label }
+        [void]$sp.Children.Add($cb)
+    }
+}
+
+function Add-HUTeamsCategory {
+    $c = $script:Controls
+    $key = "$($c['txtTeamsCatKey'].Text)".Trim()
+    $lbl = "$($c['txtTeamsCatLabel'].Text)".Trim()
+    if (-not $key) { Show-HUMessage 'Bitte einen Schluessel eingeben (z. B. Backup).' -Icon Warning; return }
+    if (-not $lbl) { $lbl = $key }
+    $r = Add-HUNotifyCategory -Key $key -Label $lbl -Default $true
+    if ($r) { Show-HUMessage $r -Icon Warning; return }
+    Update-HUTeamsCatChecks
+    # beim gerade gewaehlten Ziel direkt anhaken (Speichern nicht vergessen)
+    foreach ($cb in @($c['pnlTeamsCats'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and "$($_.Tag)" -eq $key })) { $cb.IsChecked = $true }
+    $c['txtTeamsCatKey'].Text = ''; $c['txtTeamsCatLabel'].Text = ''
+    $c['lblTeamsHint'].Text = "Kategorie '$key' angelegt und hier angehakt - Ziel speichern nicht vergessen. Aus Skripten: Send-HUNotify -Category $key -Title '...'"
+    Write-HULogOK "Teams: eigene Kategorie '$key' ($lbl) gespeichert."
+}
+
+function Remove-HUTeamsCategory([string]$Key) {
+    if (-not (Confirm-HU "Eigene Kategorie '$Key' loeschen?`n`nSkripte, die damit senden, bekommen danach 'Unbekannte Kategorie'. Haken an den Zielen werden beim naechsten Speichern bereinigt." -Warning)) { return }
+    $r = Remove-HUNotifyCategory -Key $Key
+    if ($r) { Show-HUMessage $r -Icon Warning; return }
+    Update-HUTeamsCatChecks
+    Write-HULogOK "Teams: eigene Kategorie '$Key' geloescht."
+}
+
 function Get-HUTeamsCatsFromPanel {
     $h = @{}
     foreach ($cb in @($script:Controls['pnlTeamsCats'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $h["$($cb.Tag)"] = [bool]$cb.IsChecked }
@@ -165,7 +217,8 @@ function Update-HUTeamsJobTaskLabel($Job) {
     if ($t.Exists) {
         $c['btnTeamsJobTask'].Content = 'Aufgabe entfernen'
         $next = if ($t.NextRun) { ([datetime]$t.NextRun).ToString('dd.MM. HH:mm') } else { '-' }
-        $last = if ($t.LastRun -and ([datetime]$t.LastRun).Year -gt 2000) { ([datetime]$t.LastRun).ToString('dd.MM. HH:mm') + " (Code $($t.LastResult))" } else { 'noch nie' }
+        $codeTxt = switch ("$($t.LastResult)") { '0' { 'OK' } '1' { 'Fehler' } '2' { 'teilweise gesendet' } '3' { 'Konfiguration pruefen' } '267009' { 'laeuft' } default { "Code $($t.LastResult)" } }
+        $last = if ($t.LastRun -and ([datetime]$t.LastRun).Year -gt 2000) { ([datetime]$t.LastRun).ToString('dd.MM. HH:mm') + " ($codeTxt)" } else { 'noch nie' }
         $c['lblTeamsJobTask'].Text = "Aufgabenplanung: $($t.State), naechster Lauf $next, letzter Lauf $last.`nLetztes Ergebnis: $(if ($Job.LastResult) { $Job.LastResult } else { '-' })"
     }
     else {
@@ -182,6 +235,8 @@ function Show-HUTeamsJob($Job) {
         $c['txtTeamsJobName'].Text = if ($Job) { "$($Job.Name)" } else { 'Tages-Ampel' }   # neuer Auftrag: Name folgt der Art (siehe SelectionChanged)
         $c['txtTeamsJobTime'].Text = if ($Job -and "$($Job.Time)") { "$($Job.Time)" } else { '07:00' }
         $c['chkTeamsJobEnabled'].IsChecked = if ($Job) { [bool]$Job.Enabled } else { $true }
+        $mask = $false; if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['maskDevices']) { $mask = [bool][int]"$($Job.Options.maskDevices)" }
+        $c['chkTeamsJobMask'].IsChecked = $mask
         $kind = if ($Job) { "$($Job.Kind)" } else { 'Daily' }
         foreach ($i in $c['cmbTeamsJobKind'].Items) { if ("$($i.Tag)" -eq $kind) { $c['cmbTeamsJobKind'].SelectedItem = $i } }
         Update-HUTeamsJobTargetChecks
@@ -217,6 +272,8 @@ function Get-HUTeamsJobFromForm {
     $j = if ($old) { $old } else { New-HUTeamsJob -Name $name -Kind $kind }
     $j.Name = $name; $j.Kind = $kind; $j.Time = ('{0:D2}:{1}' -f [int]($time.Split(':')[0]), $time.Split(':')[1])
     $j.Days = $days; $j.Tenants = $keys; $j.Category = $cat; $j.Enabled = [bool]$c['chkTeamsJobEnabled'].IsChecked
+    if ($null -eq $j.Options) { $j | Add-Member -NotePropertyName Options -NotePropertyValue ([pscustomobject]@{}) -Force }
+    $j.Options | Add-Member -NotePropertyName maskDevices -NotePropertyValue $(if ($c['chkTeamsJobMask'].IsChecked) { 1 } else { 0 }) -Force
     $allT = @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
     $selT = @($allT | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
     if ($allT.Count -and -not $selT.Count) { throw 'Bitte mindestens ein Ziel anhaken (zum Stummschalten den Auftrag deaktivieren).' }   # Befund B1 (Review 029)
@@ -247,7 +304,8 @@ function Remove-HUTeamsJob {
     if (-not $j) { return }
     if (-not (Confirm-HU "Auftrag '$($j.Name)' entfernen (inkl. Aufgabe in der Aufgabenplanung)?" -Warning)) { return }
     $r = Unregister-HUTeamsJobTask -Job $j; if ($r) { Write-HULogWarn $r }
-    Invoke-HUTeamsJobsLocked { Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id }) }
+    try { Invoke-HUTeamsJobsLocked { Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id }) } }
+    catch { Show-HUMessage $_.Exception.Message -Icon Warning; return }
     $script:TeamsJobCurrent = ''
     Update-HUTeamsJobs
     Show-HUTeamsJob $null
@@ -336,15 +394,9 @@ function Update-HUTeamsHist {
 
 function Register-HUTeamsHandlers {
     $c = $script:Controls
-    # Kategorien-Haken
-    $c['pnlTeamsCats'].Children.Clear()
-    foreach ($k in @(Get-HUNotifyCategories)) {
-        $cb = New-Object System.Windows.Controls.CheckBox
-        $cb.Content = $k.Label; $cb.Tag = $k.Key; $cb.IsChecked = $k.Default
-        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
-        $cb.Margin = [System.Windows.Thickness]::new(0, 1, 12, 1)
-        [void]$c['pnlTeamsCats'].Children.Add($cb)
-    }
+    # Kategorien-Haken (eingebaute + eigene)
+    Update-HUTeamsCatChecks
+    $c['btnTeamsCatAdd'].Add_Click({ Add-HUTeamsCategory })
     # Wochentage
     $c['pnlTeamsJobDays'].Children.Clear()
     $i = 0

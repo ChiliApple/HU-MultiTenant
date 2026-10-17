@@ -243,6 +243,7 @@ function Start-HUQSRun([switch]$Selection) {
     [void]$ps.AddScript({
         Import-Module (Join-Path $AppRoot 'Core\HU.Auth.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
         Import-Module (Join-Path $AppRoot 'Core\HU.Graph.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
+        Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue   # Send-HUNotify fuer Snippets (eigene Teams-Kategorien)
         . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
         $__sb = [scriptblock]::Create($__UserCode)
         $__i = 0

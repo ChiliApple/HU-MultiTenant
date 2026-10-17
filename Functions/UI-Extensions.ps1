@@ -445,7 +445,7 @@ function Register-HUExtensionHandlers {
             [void]$bgPowerShell.AddScript({
                 param()
 
-                $coreModules = @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Excel')
+                $coreModules = @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Excel', 'HU.Notify')   # HU.Notify: Send-HUNotify fuer Erweiterungen
                 foreach ($mod in $coreModules) {
                     $modPath = Join-Path $AppRoot "Core\$mod.psm1"
                     if (Test-Path $modPath) {

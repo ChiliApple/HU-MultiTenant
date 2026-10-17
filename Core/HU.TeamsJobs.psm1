@@ -22,7 +22,7 @@
 .NOTES
     Modul: HU.TeamsJobs.psm1
     Projekt: HU-MultiTenant
-    Version: 1.0.0
+    Version: 1.1.0
     Zielmaschine: Admin-PC (Benutzerkontext).
 #>
 
@@ -30,6 +30,23 @@ $script:TeamsJobsFile = 'Config\teams-jobs.json'
 $script:TeamsTaskPath = '\HU-MultiTenant\'
 $script:TeamsTaskPrefix = 'Teams-'
 $script:TeamsJobKinds = @('Daily', 'Secrets', 'Licenses', 'Defender')
+$script:TeamsJobIdPattern = '^[0-9a-f]{8}$'
+$script:TeamsDayNames = @('So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa')   # [DayOfWeek] 0 = Sonntag
+
+function Get-HUTeamsDateLabel {
+    # Datum fuer Kartentitel, unabhaengig von der Kultur des Kontos (Review 029 B22/Q8): "Fr 16.10."
+    param([datetime]$Date = (Get-Date))
+    return "$($script:TeamsDayNames[[int]$Date.DayOfWeek]) $($Date.ToString('dd.MM.', [cultureinfo]::InvariantCulture))"
+}
+
+function ConvertTo-HUTeamsBool {
+    # Von Hand bearbeitete Dateien: "false"/"0"/"nein" als Text gelten als aus (Review 029 B21/Q7)
+    param($Value, [bool]$Default = $true)
+    if ($null -eq $Value) { return $Default }
+    if ($Value -is [bool]) { return $Value }
+    if ($Value -is [string]) { return ("$Value".Trim() -notmatch '^(?i)(false|0|no|nein|aus|off|)$') }
+    return [bool]$Value
+}
 
 # ============================================================================
 # AUFTRAEGE (SPEICHER)
@@ -91,12 +108,22 @@ function Get-HUTeamsJobs {
     $p = Get-HUTeamsJobsPath -AppRoot $AppRoot
     if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { return @() }
     try {
-        $raw = Get-Content -LiteralPath $p -Raw -Encoding UTF8 | ConvertFrom-Json
+        $raw = $null
+        try { $raw = Get-Content -LiteralPath $p -Raw -Encoding UTF8 | ConvertFrom-Json }
+        catch {
+            # Review 029 B20/Q6: kaputte Datei -> letzte gueltige Sicherung verwenden (sonst Fehler wie bisher)
+            $err = $_.Exception.Message
+            $bak = "$p.bak"
+            if (-not (Test-Path -LiteralPath $bak -PathType Leaf)) { throw $err }
+            try { $raw = Get-Content -LiteralPath $bak -Raw -Encoding UTF8 | ConvertFrom-Json } catch { throw $err }
+            $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
+            if ($log) { Write-HULog -Message "[TeamsJobs] teams-jobs.json nicht lesbar ($err) - verwende teams-jobs.json.bak" -Level WARN }
+        }
         $list = @($raw.jobs | Where-Object { $_ -and "$($_.Id)" })
         foreach ($j in $list) {
             foreach ($k in 'Tenants', 'Days', 'Targets') { if (-not $j.PSObject.Properties[$k] -or $null -eq $j.$k) { $j | Add-Member -NotePropertyName $k -NotePropertyValue @() -Force } }
             foreach ($k in 'LastRun', 'LastResult', 'Time', 'Category') { if (-not $j.PSObject.Properties[$k] -or $null -eq $j.$k) { $j | Add-Member -NotePropertyName $k -NotePropertyValue '' -Force } }
-            if (-not $j.PSObject.Properties['Enabled']) { $j | Add-Member -NotePropertyName Enabled -NotePropertyValue $true -Force }
+            $j | Add-Member -NotePropertyName Enabled -NotePropertyValue (ConvertTo-HUTeamsBool $(if ($j.PSObject.Properties['Enabled']) { $j.Enabled }) $true) -Force
             if (-not $j.PSObject.Properties['Options'] -or $null -eq $j.Options) { $j | Add-Member -NotePropertyName Options -NotePropertyValue ([pscustomobject]@{}) -Force }
         }
         return $list
@@ -110,8 +137,13 @@ function Invoke-HUTeamsJobsLocked {
     $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_TeamsJobs')
     $got = $false
     try { $got = $m.WaitOne(5000) } catch [System.Threading.AbandonedMutexException] { $got = $true }
-    if (-not $got) { $log = Get-Command Write-HULog -ErrorAction SilentlyContinue; if ($log) { Write-HULog -Message '[TeamsJobs] Sperre nicht erhalten (5 s) - schreibe trotzdem' -Level WARN } }
-    try { & $Do } finally { if ($got) { try { $m.ReleaseMutex() } catch { } }; $m.Dispose() }
+    if (-not $got) {
+        # Review 029 Q2: nach Zeitueberschreitung NICHT ungesperrt lesen+schreiben (lost update) - Aufrufer faengt ab
+        $m.Dispose()
+        $log = Get-Command Write-HULog -ErrorAction SilentlyContinue; if ($log) { Write-HULog -Message '[TeamsJobs] Sperre nicht erhalten (5 s) - Vorgang abgebrochen' -Level WARN }
+        throw 'teams-jobs.json gerade gesperrt (anderer HU-MultiTenant-Vorgang) - bitte erneut versuchen'
+    }
+    try { & $Do } finally { try { $m.ReleaseMutex() } catch { }; $m.Dispose() }
 }
 
 function Set-HUTeamsJobs {
@@ -126,6 +158,7 @@ function Set-HUTeamsJobs {
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     foreach ($j in $Jobs) {
         if ($j.Kind -notin $script:TeamsJobKinds) { throw "Unbekannte Auftragsart: $($j.Kind)" }
+        if ("$($j.Id)" -notmatch $script:TeamsJobIdPattern) { throw "Auftrags-Id ungueltig: '$($j.Id)'" }
         if ("$($j.Time)" -and "$($j.Time)" -notmatch '^([01]?\d|2[0-3]):[0-5]\d$') { throw "Uhrzeit ungueltig: $($j.Time) (HH:mm)" }
     }
     $doc = [ordered]@{ v = 1; updated = (Get-Date).ToString('s'); jobs = @($Jobs) }
@@ -156,7 +189,10 @@ function Update-HUTeamsJobResult {
             Set-HUTeamsJobs -AppRoot $AppRoot -Jobs $jobs
         }
     }
-    catch { Write-Verbose "[TeamsJobs] Ergebnis nicht gespeichert: $($_.Exception.Message)" }
+    catch {
+        $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
+        if ($log) { Write-HULog -Message "[TeamsJobs] Ergebnis nicht gespeichert: $($_.Exception.Message)" -Level WARN } else { Write-Verbose "[TeamsJobs] Ergebnis nicht gespeichert: $($_.Exception.Message)" }
+    }
 }
 
 # ============================================================================
@@ -248,16 +284,25 @@ function New-HUDailyCardSpec {
         }
         elseif ($s.Ok -and $s.SecretStatus -eq 'NoPermission') { $parts += 'Secret-Ablauf nicht lesbar (Application.Read.All)' }
         elseif ($s.Ok -and "$($s.SecretStatus)" -ne 'OK') { $parts += 'Secret-Ablauf unbekannt'; $lvl = [math]::Max($lvl, 1); $worst = [math]::Max($worst, 1) }
+        elseif ($s.Ok) { $parts += 'Secret-Ablauf unbekannt (kein Ablaufdatum)' }   # B8c: OK, aber kein Enddatum - nur Hinweis
         $worst = [math]::Max($worst, $lvl)
         $rows += @{ Name = $s.Name; Status = @('OK', 'Warning', 'Error')[$lvl]; Text = ($parts -join ', ') }
     }
     $facts = [ordered]@{ 'Geraete gesamt' = $sumDev; 'Nicht konform' = $sumNc; 'Ohne Sync' = $sumStale; 'Tenants' = "$(@($Statuses | Where-Object { $_.Ok }).Count) von $(@($Statuses).Count) erreichbar" }
+    # Push-Vorschau (B16): Zusammenfassung ohne Geraetenamen - Ampel je Tenant + Summen
+    $yel = @($rows | Where-Object { $_.Status -eq 'Warning' } | ForEach-Object { "$($_.Name)" })
+    $red = @($rows | Where-Object { $_.Status -eq 'Error' } | ForEach-Object { "$($_.Name)" })
+    $pv = "$(@($rows).Count - $yel.Count - $red.Count) gruen, $($yel.Count) gelb, $($red.Count) rot"
+    if ($red.Count) { $pv += " (rot: $($red -join ', '))" }
+    elseif ($yel.Count) { $pv += " (gelb: $($yel -join ', '))" }
+    $pv += " - $sumDev Geraete, $sumNc nicht konform"
     return @{
-        Title = "$Title - $((Get-Date).ToString('ddd dd.MM.'))"
-        Level = @('OK', 'Warning', 'Error')[$worst]
-        Rows  = $rows
-        Facts = $facts
-        Lines = $secretLines
+        Title   = "$Title - $(Get-HUTeamsDateLabel)"
+        Level   = @('OK', 'Warning', 'Error')[$worst]
+        Rows    = $rows
+        Facts   = $facts
+        Lines   = $secretLines
+        Preview = $pv
     }
 }
 
@@ -312,8 +357,12 @@ function New-HUSecretsCardSpec {
         elseif ($s.Days -le $WarnDays) { $rows += @{ Name = $s.Name; Status = 'Warning'; Text = "App-Secret laeuft in $($s.Days) Tagen ab ($($s.DisplayName))" }; $worst = [math]::Max($worst, 1) }
     }
     if (-not $rows.Count) { return $null }
+    $first = @($Statuses | Where-Object { $_.Ok -and $null -ne $_.Days -and $_.Days -le $WarnDays }) | Sort-Object Days | Select-Object -First 1
+    $pv = "$($rows.Count) Tenant(s) betroffen"
+    if ($first) { $pv += $(if ($first.Days -le 0) { " - $($first.Name): App-Secret ABGELAUFEN" } else { " - zuerst $($first.Name) in $($first.Days) Tagen" }) }
     return @{
-        Title = "$Title - $((Get-Date).ToString('ddd dd.MM.'))"
+        Preview = $pv
+        Title = "$Title - $(Get-HUTeamsDateLabel)"
         Level = @('OK', 'Warning', 'Error')[$worst]
         Rows  = $rows
         Facts = [ordered]@{ 'Warnschwelle' = "unter $WarnDays Tagen"; 'Betroffen' = $rows.Count }
@@ -366,8 +415,12 @@ function New-HULicenseCardSpec {
         $rows += @{ Name = $s.Name; Status = @('OK', 'Warning', 'Error')[$lvl]; Text = $txt }
     }
     if (-not $rows.Count) { return $null }
+    $tight = @($Statuses | Where-Object { $_.Ok } | ForEach-Object { $tn = $_.Name; @($_.Skus) | Where-Object { $_ -and $_.Total -gt 0 -and $_.Free -lt $MinFree } | ForEach-Object { [pscustomobject]@{ T = $tn; Sku = $_.Sku; Free = $_.Free } } }) | Sort-Object Free | Select-Object -First 1
+    $pv = "$($rows.Count) Tenant(s) betroffen"
+    if ($tight) { $pv += " - knappste: $($tight.T) $($tight.Sku) $(if ($tight.Free -lt 0) { "ueberbucht ($($tight.Free))" } else { "noch $($tight.Free) frei" })" }
     return @{
-        Title = "$Title - $((Get-Date).ToString('ddd dd.MM.'))"
+        Preview = $pv
+        Title = "$Title - $(Get-HUTeamsDateLabel)"
         Level = @('OK', 'Warning', 'Error')[$worst]
         Rows  = $rows
         Facts = [ordered]@{ 'Warnschwelle' = "weniger als $MinFree frei"; 'Tenants betroffen' = $rows.Count }
@@ -407,24 +460,36 @@ function New-HUDefenderCardSpec {
         Karteninhalt Defender-Alarm (reine Funktion). $null = nichts zu melden.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Statuses, [int]$MaxDevices = 10, [string]$Title = 'Defender-Alarm')
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Statuses, [int]$MaxDevices = 10, [string]$Title = 'Defender-Alarm', [switch]$MaskDevices)
     $rows = @(); $worst = 0
     foreach ($s in $Statuses) {
         if (-not $s.Ok) { $rows += @{ Name = $s.Name; Status = 'Error'; Text = "$($s.Error)" }; $worst = 2; continue }
         if (-not @($s.Findings).Count) { continue }
-        $names = @($s.Findings | Select-Object -First $MaxDevices | ForEach-Object { "$($_.Device) ($($_.State))" })
-        $more = @($s.Findings).Count - $names.Count
-        $txt = ConvertTo-HUNotifySafeText -Text ($names -join ', ') -Max 260
-        if ($more -gt 0) { $txt += " und $more weitere" }
+        if ($MaskDevices) {
+            # B10: Geraetenamen ausblenden (Kanal mit breiterem Publikum) - nur Anzahl je Zustand
+            $txt = (@($s.Findings | Group-Object State | Sort-Object Name | ForEach-Object { "$($_.Count) $($_.Name)" }) -join ', ') + ' - Geraetenamen ausgeblendet'
+        }
+        else {
+            $names = @($s.Findings | Select-Object -First $MaxDevices | ForEach-Object { "$($_.Device) ($($_.State))" })
+            $more = @($s.Findings).Count - $names.Count
+            $txt = ConvertTo-HUNotifySafeText -Text ($names -join ', ') -Max 260
+            if ($more -gt 0) { $txt += " und $more weitere" }
+        }
         $rows += @{ Name = $s.Name; Status = 'Error'; Text = $txt }
         $worst = 2
     }
     if (-not $rows.Count) { return $null }
+    $total = 0; foreach ($s in $Statuses) { $total += @($s.Findings).Count }
+    $hit = @($Statuses | Where-Object { $_.Ok -and @($_.Findings).Count } | ForEach-Object { "$($_.Name)" })
+    $bad = @($Statuses | Where-Object { -not $_.Ok }).Count
+    # Push-Vorschau ohne Geraetenamen (B16)
+    $pv = "$total Geraet(e) mit Befund$(if ($hit.Count) { " ($($hit -join ', '))" })$(if ($bad) { ", $bad Tenant(s) nicht lesbar" })"
     return @{
-        Title = "$Title - $((Get-Date).ToString('ddd dd.MM.'))"
+        Preview = $pv
+        Title = "$Title - $(Get-HUTeamsDateLabel)"
         Level = @('OK', 'Warning', 'Error')[$worst]
         Rows  = $rows
-        Facts = [ordered]@{ 'Geraete mit Befund' = (@($Statuses | ForEach-Object { @($_.Findings).Count } | Measure-Object -Sum).Sum) }
+        Facts = [ordered]@{ 'Geraete mit Befund' = $total }
         Lines = @('Quelle: von Defender an Intune gemeldeter Bedrohungszustand der Geraete.')
     }
 }
@@ -440,7 +505,8 @@ function Invoke-HUTeamsJob {
     .PARAMETER TargetIds
         Einmalig nur an diese Ziele senden (statt der am Auftrag gespeicherten Ziele).
     .OUTPUTS
-        @{ Success; Message; Sent; Spec }
+        @{ Success; Message; Sent; Spec; Code }
+        Code (= Exit-Code im Headless-Lauf, B24): 0 OK/nichts zu melden, 1 Fehler, 2 teilweise gesendet, 3 Konfiguration (Tenants/Ziele/Art)
     #>
     [CmdletBinding()]
     param(
@@ -450,11 +516,11 @@ function Invoke-HUTeamsJob {
         [switch]$NoSend,
         [string[]]$TargetIds = @()
     )
-    $res = [pscustomobject]@{ Success = $false; Message = ''; Sent = ''; Spec = $null }
+    $res = [pscustomobject]@{ Success = $false; Message = ''; Sent = ''; Spec = $null; Code = 1 }
     try {
         $keys = @($Job.Tenants | Where-Object { "$_" })
         if (-not $keys.Count) { $keys = @($Settings.tenants | ForEach-Object { "$($_.key)" } | Where-Object { "$_" }) }   # Eintraege ohne key ueberspringen (Review 029 B18)
-        if (-not $keys.Count) { $res.Message = 'Keine Tenants'; return $res }
+        if (-not $keys.Count) { $res.Message = 'Keine Tenants'; $res.Code = 3; return $res }
         $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
         $warn = 30; try { $warn = [int]$Settings.ui.secretWarnDays } catch { }
         if ($warn -le 0) { $warn = 30 }
@@ -481,23 +547,24 @@ function Invoke-HUTeamsJob {
             }
             'Defender' {
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HUDefenderStatus -TenantKey $k -Settings $Settings }
-                $spec = New-HUDefenderCardSpec -Statuses $st -Title "$($Job.Name)"
+                $spec = New-HUDefenderCardSpec -Statuses $st -Title "$($Job.Name)" -MaskDevices:([bool](& $opt 'maskDevices' 0))
                 $detail = "$((@($st | ForEach-Object { @($_.Findings).Count }) | Measure-Object -Sum).Sum) Geraete mit Befund, $(@($st | Where-Object { -not $_.Ok }).Count) Tenants nicht lesbar"
             }
-            default { $res.Message = "Unbekannte Auftragsart: $($Job.Kind)"; return $res }
+            default { $res.Message = "Unbekannte Auftragsart: $($Job.Kind)"; $res.Code = 3; return $res }
         }
         $res.Spec = $spec
-        if ($null -eq $spec) { $res.Success = $true; $res.Message = "Nichts zu melden - keine Karte gesendet$(if ($detail) { " ($detail)" })"; return $res }
-        if ($NoSend) { $res.Success = $true; $res.Message = 'Vorschau'; return $res }
+        if ($null -eq $spec) { $res.Success = $true; $res.Code = 0; $res.Message = "Nichts zu melden - keine Karte gesendet$(if ($detail) { " ($detail)" })"; return $res }
+        if ($NoSend) { $res.Success = $true; $res.Code = 0; $res.Message = 'Vorschau'; return $res }
         $cat = "$((Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($Job.Kind)" }).Category)"; if (-not $cat) { $cat = 'Daily' }
         # Ziele: einmalige Auswahl > am Auftrag gespeicherte > alle aktiven
         $ids = @($TargetIds | Where-Object { "$_" })
         if (-not $ids.Count) { $ids = @($Job.Targets | Where-Object { "$_" }) }
-        $sent = Send-HUNotify -Category $cat -Title $spec.Title -Level $spec.Level -Rows $spec.Rows -Facts $spec.Facts -Lines $spec.Lines -Source "$([Environment]::MachineName)" -TargetIds $ids -IgnoreCategory
+        $sent = Send-HUNotify -Category $cat -Title $spec.Title -Level $spec.Level -Rows $spec.Rows -Facts $spec.Facts -Lines $spec.Lines -Source "$([Environment]::MachineName)" -TargetIds $ids -IgnoreCategory -Preview "$($spec.Preview)"
         $res.Sent = "$($sent.Text)"
-        if ($sent.Ok -gt 0 -and $sent.Failed -eq 0) { $res.Success = $true; $res.Message = "$($sent.Text)" }
-        elseif ($sent.Ok -eq 0 -and $sent.Failed -eq 0) { $res.Message = $(if ($ids.Count) { 'Ziel nicht gefunden oder ausgeschaltet - NICHTS gesendet. Ziele am Auftrag pruefen.' } else { 'Kein aktives Ziel - NICHTS gesendet.' }) }
-        else { $res.Message = "Teilweise/nicht gesendet: $($sent.Text)" }
+        if ($sent.Ok -gt 0 -and $sent.Failed -eq 0) { $res.Success = $true; $res.Code = 0; $res.Message = "$($sent.Text)" }
+        elseif ($sent.Ok -eq 0 -and $sent.Failed -eq 0) { $res.Code = 3; $res.Message = $(if ($ids.Count) { 'Ziel nicht gefunden oder ausgeschaltet - NICHTS gesendet. Ziele am Auftrag pruefen.' } else { 'Kein aktives Ziel - NICHTS gesendet.' }) }
+        elseif ($sent.Ok -gt 0) { $res.Code = 2; $res.Message = "Teilweise gesendet: $($sent.Text)" }
+        else { $res.Message = "Nicht gesendet: $($sent.Text)" }
     }
     catch { $res.Message = "Fehler: $(($_.Exception.Message) -replace 'https?://\S+', '(Webhook)')" }
     finally {
@@ -513,6 +580,8 @@ function Invoke-HUTeamsJob {
 function Get-HUTeamsJobTaskName {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Job)
+    # B15: nur 8 Hex-Zeichen - die Id landet in Aufgabenname und Kommandozeile
+    if ("$($Job.Id)" -notmatch $script:TeamsJobIdPattern) { throw "Auftrags-Id ungueltig: '$($Job.Id)'" }
     return "$($script:TeamsTaskPrefix)$($Job.Id)"
 }
 
@@ -546,8 +615,10 @@ function Register-HUTeamsJobTask {
         $main = Join-Path $AppRoot 'Main.ps1'
         if (-not (Test-Path -LiteralPath $main)) { return "Main.ps1 nicht gefunden: $main" }
         if ("$($Job.Time)" -notmatch '^([01]?\d|2[0-3]):[0-5]\d$') { return "Uhrzeit ungueltig: $($Job.Time)" }
+        if ("$($Job.Id)" -notmatch $script:TeamsJobIdPattern) { return "Auftrags-Id ungueltig: '$($Job.Id)'" }
+        if ("$AppRoot" -match '["%]') { return 'Programmordner enthaelt unzulaessige Zeichen (" oder %) - Aufgabe nicht angelegt' }
         $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        $arg = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$main`" -Headless -Job $($Job.Id)"
+        $arg = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$main`" -Headless -Job `"$($Job.Id)`""
         $a = New-ScheduledTaskAction -Execute $ps -Argument $arg -WorkingDirectory $AppRoot
         $at = [datetime]::ParseExact("$($Job.Time)", 'H:mm', [cultureinfo]::InvariantCulture)
         $days = @($Job.Days | ForEach-Object { [int]$_ } | Where-Object { $_ -ge 1 -and $_ -le 7 })
@@ -589,6 +660,7 @@ Export-ModuleMember -Function @(
     'Set-HUTeamsJobs',
     'Update-HUTeamsJobResult',
     'Get-HUTeamsKinds',
+    'Get-HUTeamsDateLabel',
     'Get-HUDailyTenantStatus',
     'New-HUDailyCardSpec',
     'Get-HUSecretStatus',

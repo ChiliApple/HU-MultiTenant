@@ -9,6 +9,7 @@
       XAML\        Fenster und gemeinsames Theme
     Start: HU-MultiTenant.exe (Einstellungen > Verknuepfung) oder Start-HUMultiTenant.cmd.
     Ohne Oberflaeche (Aufgabenplanung, Reiter Teams): Main.ps1 -Headless -Job <Id>
+    Exit-Codes Headless: 0 OK / nichts zu melden, 1 Fehler, 2 teilweise gesendet, 3 Konfiguration (Auftrag/Ziele/Tenants/settings)
       fuehrt NUR einen gespeicherten Teams-Auftrag (Config\teams-jobs.json) aus und beendet sich (Exit 0/1).
 .NOTES
     Zielmaschine: der PC, auf dem HU-MultiTenant laeuft (Windows 10/11, Windows PowerShell 5.1).
@@ -45,14 +46,14 @@ $script:SmokeTestFile = $SmokeTest; $script:SmokeTimer = $null; $script:SmokeClo
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
-function Show-HUFatal([string]$Text) {
+function Show-HUFatal([string]$Text, [int]$Code = 1) {
     if ($SmokeTest) { "FEHLER $Text" | Set-Content -LiteralPath $SmokeTest -Encoding UTF8; exit 1 }
     if ($Headless) {
         [Console]::Error.WriteLine("FEHLER $Text")
         try { Write-HULog -Message "Headless: $Text" -Level ERROR } catch { }
         # Befund B3 (Review 029): auch fruehe Abbrueche nach Teams melden, sofern HU.Notify schon geladen ist
         try { if (Get-Command Send-HUNotify -ErrorAction SilentlyContinue) { [void](Send-HUNotify -Category 'Jobs' -Title 'Zeitgesteuerter Lauf fehlgeschlagen' -Level Error -Lines @("$Text") -Source ([Environment]::MachineName)) } } catch { }
-        exit 1
+        exit $Code
     }
     [void][System.Windows.MessageBox]::Show($Text, 'HU-MultiTenant - Fehler', 'OK', 'Error')
     exit 1
@@ -111,11 +112,11 @@ foreach ($f in $uiFiles) {
 $settingsPath = Join-Path $script:AppRoot 'Config\settings.json'
 $script:FirstRun = $false
 if (-not (Test-Path -LiteralPath $settingsPath)) {
-    if ($Headless) { Show-HUFatal "settings.json fehlt ($settingsPath) - Headless legt keine neue an." }
+    if ($Headless) { Show-HUFatal "settings.json fehlt ($settingsPath) - Headless legt keine neue an." 3 }
     try { New-HUSettingsFile -Path $settingsPath; $script:FirstRun = $true } catch { Show-HUFatal "settings.json konnte nicht angelegt werden:`n$($_.Exception.Message)" }
 }
 $script:Settings = Import-TenantSettings -SettingsPath $settingsPath
-if (-not $script:Settings) { Show-HUFatal "settings.json nicht lesbar:`n$settingsPath`n`nSicherung: settings.json.bak" }
+if (-not $script:Settings) { Show-HUFatal "settings.json nicht lesbar:`n$settingsPath`n`nSicherung: settings.json.bak" 3 }
 $script:Settings = Initialize-HUSettingsDefaults $script:Settings
 if (-not @($script:Settings.tenants).Count) { $script:FirstRun = $true }
 
@@ -127,17 +128,20 @@ if ($Headless) {
     if (-not $logFile) { $logFile = './Logs/HU-MultiTenant_{date}.log' }
     if (-not [System.IO.Path]::IsPathRooted($logFile)) { $logFile = Join-Path $script:AppRoot ($logFile -replace '^\.[\\/]', '') }
     Initialize-Logging -LogFilePath $logFile -MinLevel 'INFO'
-    if (-not $Job -or $Job -notmatch '^[0-9a-f]{8}$') { Show-HUFatal "Headless: -Job <Id> fehlt oder ungueltig (8 Zeichen aus Config\teams-jobs.json)." }
+    if (-not $Job -or $Job -notmatch '^[0-9a-f]{8}$') { Show-HUFatal "Headless: -Job <Id> fehlt oder ungueltig (8 Zeichen aus Config\teams-jobs.json)." 3 }
     $j = $null
-    try { $j = Get-HUTeamsJob -AppRoot $script:AppRoot -Id $Job } catch { Show-HUFatal "Headless: $($_.Exception.Message)" }
-    if (-not $j) { Show-HUFatal "Headless: Auftrag '$Job' nicht gefunden." }
-    if (-not [bool]$j.Enabled) { Write-HULogInfo "Headless: Auftrag '$($j.Name)' ist ausgeschaltet - nichts zu tun."; exit 0 }
+    try { $j = Get-HUTeamsJob -AppRoot $script:AppRoot -Id $Job } catch { Show-HUFatal "Headless: $($_.Exception.Message)" 3 }
+    if (-not $j) { Show-HUFatal "Headless: Auftrag '$Job' nicht gefunden." 3 }
+    if ($j.Enabled -ne $true) { Write-HULogInfo "Headless: Auftrag '$($j.Name)' ist ausgeschaltet - nichts zu tun."; exit 0 }   # B21: Enabled ist normalisiert (bool)
     Write-HULogInfo "Headless v$($script:Version): Auftrag '$($j.Name)' ($($j.Kind)) startet ..."
     $r = Invoke-HUTeamsJob -Job $j -Settings $script:Settings -AppRoot $script:AppRoot
     if ($r.Success) { Write-HULogOK "Headless: $($r.Message)"; exit 0 }
-    Write-HULogError "Headless: $($r.Message)"
-    [void](Send-HUNotify -Category 'Jobs' -Title "Auftrag '$($j.Name)' fehlgeschlagen" -Level Error -Lines @("$($r.Message)") -Source ([Environment]::MachineName))
-    exit 1
+    $code = 1; try { $code = [int]$r.Code } catch { }
+    if ($code -lt 1 -or $code -gt 3) { $code = 1 }
+    Write-HULogError "Headless (Exit $code): $($r.Message)"
+    $ttl = if ($code -eq 2) { "Auftrag '$($j.Name)' nur teilweise gesendet" } else { "Auftrag '$($j.Name)' fehlgeschlagen" }
+    try { [void](Send-HUNotify -Category 'Jobs' -Title $ttl -Level Error -Lines @("$($r.Message)") -Source ([Environment]::MachineName)) } catch { }
+    exit $code
 }
 
 $script:AppIcon = $null

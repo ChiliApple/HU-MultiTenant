@@ -224,6 +224,20 @@ Add-HUExcelDashboard -WorkbookPath $reportPath -TenantKey $TenantKey `
     -ReportTitle 'Device Report' -Metrics $dashMetrics -SheetDataSources $sheetLinks
 ```
 
+### HU.Notify (Teams-Meldungen, ab v2.1.10)
+
+```powershell
+# Meldung an alle Teams-Ziele, die die Kategorie angehakt haben (eingebaut oder eigene aus dem Reiter Teams)
+$r = Send-HUNotify -Category 'Backup' -Title "$($TenantKey): Backup fertig" -Level OK `
+        -Facts ([ordered]@{ Dateien = $n; Dauer = $dauer }) -Preview "$n Dateien gesichert"
+if ($r.Failed) { Write-HULog -Message "Teams: $($r.Text)" -Level 'WARN' -Tenant $TenantKey }
+```
+
+- wirft nie; Rückgabe `Ok`, `Failed`, `Text` (ohne Webhook-Adressen)
+- nur in Extensions mit Standard-Runtime (Windows PowerShell 5.1), nicht bei `.RUNTIME PS7`
+- keine Secrets, Kennwörter oder Recovery-Keys in Karten; Gerätenamen nur in Admin-Kanäle
+- eigene Kategorie vorher im Reiter Teams anlegen, sonst `Unbekannte Kategorie` (Failed = 1)
+
 **WICHTIG:** Alle Excel-Reports verwenden ImportExcel (EPPlus-basiert). Excel-COM-Interop (`New-Object -ComObject Excel.Application`) ist **NICHT** mehr zulässig. Kein `Set-ExcelCellValue`, kein `ReleaseComObject`, kein COM-Cleanup nötig.
 
 ## 6. Extension-Struktur (Vollständiges Template)

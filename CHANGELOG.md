@@ -1,5 +1,40 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.10 (in Arbeit)
+
+### Neu: eigene Teams-Kategorien
+- Im Reiter Teams unter den Kategorien-Haken: **Eigene Kategorie** mit Schluessel (fuer Skripte, z. B. `Backup`)
+  und Bezeichnung anlegen. Sie erscheint bei jedem Ziel als Haken `Bezeichnung [Schluessel]`; Rechtsklick darauf =
+  bearbeiten oder loeschen. Ablage im Benutzerprofil (`%APPDATA%\HU-MultiTenant\notify-categories.json`, Klartext,
+  keine Geheimnisse), hoechstens 30.
+- Quick-Script-Snippets und Erweiterungen haben jetzt `Send-HUNotify` zur Verfuegung und koennen an eigene (und
+  eingebaute) Kategorien melden: `Send-HUNotify -Category Backup -Title 'Backup HLW fertig' -Level OK`.
+  Anleitung mit Beispielen im Abschnitt Teams.
+
+### Teams: Push-Vorschau und Datenschutz
+- Jede Auftragsart liefert einen eigenen Vorschautext fuer die Handy-Benachrichtigung - ohne Geraetenamen:
+  Tages-Ampel "4 gruen, 1 gelb, 0 rot (gelb: HLW) - 1234 Geraete, 7 nicht konform", Secret-Countdown mit dem
+  dringendsten Tenant, Lizenzen mit der knappsten SKU, Defender mit Anzahl und betroffenen Tenants.
+- Neue Option am Auftrag **Geraetenamen ausblenden (Defender-Alarm)**: die Karte nennt dann nur die Anzahl je
+  Zustand - fuer Kanaele mit breiterem Publikum.
+
+### Teams: Robustheit (Review 029, offene Punkte und Lueckentests)
+- Karten zu gross: statt die Meldung zu verwerfen, kuerzt HU-MultiTenant stufenweise (weniger/kuerzere Zeilen,
+  Fakten, Ampel-Zeilen) und vermerkt "Karte gekuerzt". Grundgrenzen 20 Zeilen, 15 Fakten, 25 Ampel-Zeilen.
+- Webhook-Adresse mit Weiterleitung (z. B. Kurzlink): unter Windows PowerShell 5.1 jetzt sofort "Senden abgelehnt
+  (Umleitung)" statt drei Versuchen mit unklarer Meldung; Zeitueberschreitungen werden nur noch einmal wiederholt.
+- Sperren: ist die Datei laenger als 5 s gesperrt, wird der Vorgang abgebrochen und gemeldet statt ungesperrt
+  zu schreiben (Auftraege, Sendeprotokoll, Ziele, Kategorien).
+- `teams-jobs.json` nicht lesbar: die letzte gueltige Sicherung (`.bak`) wird verwendet (Warnung im Log).
+- `"Enabled": "false"` als Text (von Hand bearbeitet) gilt als aus.
+- Kartentitel mit deutschem Wochentag unabhaengig von der Sprache des Kontos ("Fr 16.10.").
+- Auftrags-Id wird beim Speichern und beim Anlegen der Aufgabe geprueft (nur 8 Hex-Zeichen), Kommandozeile mit
+  Anfuehrungszeichen.
+- Tages-Ampel: "Secret-Ablauf unbekannt (kein Ablaufdatum)" als Hinweis, wenn das Secret kein Enddatum liefert.
+- **Exit-Codes** des Headless-Laufs (Aufgabenplanung "Letztes Ergebnis"): 0 OK/nichts zu melden, 1 Fehler,
+  2 teilweise gesendet, 3 Konfiguration (Auftrag/Ziele/Tenants/settings.json). Der Reiter zeigt den Code als Text.
+- Groks Lueckentests aus Review 029 sind als `.github\tests\*.Review029.Tests.ps1` Teil der CI.
+
 ## v2.1.9 (in Arbeit)
 
 ### Neu: Reiter Teams - Meldungen in Teams-Kanaele

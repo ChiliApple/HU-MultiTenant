@@ -46,6 +46,8 @@ p{margin:8px 0}
 table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
 th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
 th{background:var(--panel2);font-weight:600}
+pre{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 14px;overflow-x:auto;font-size:13px;line-height:1.45;margin:10px 0}
+pre code{background:none;border:0;padding:0}
 tr:hover td{background:color-mix(in srgb,var(--panel2) 55%,transparent)}
 .ui{display:inline-block;padding:0 8px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);font-size:13px;font-weight:600;white-space:nowrap}
 .ui.g{border-color:var(--green);color:var(--green)}.ui.r{border-color:var(--red);color:var(--red)}.ui.b{border-color:var(--blue);color:var(--blue)}
@@ -310,8 +312,92 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <div class="note warn"><b class="h">Ablage</b>Standard: <code>%LOCALAPPDATA%\HU-MultiTenant\Backups</code> (nicht im Programmordner, nicht in OneDrive). Backups enthalten Skripte und Richtlinien im Klartext (auch Kennwörter aus Wartungsskripten) – nicht in einen geteilten Ordner legen. Nicht wiederherstellbar: Autopilot-Profile und Apps. Berechtigungen wie beim Vergleich, für <i>Geändert von</i> zusätzlich Lesen des Intune-Protokolls (<code>DeviceManagementApps.Read.All</code> oder <code>DeviceManagementConfiguration.Read.All</code>).</div>
 </section>
 
+<section id="teams">
+  <h2><span class="n">9</span>Teams</h2>
+  <p>Meldungen als Karte in Teams-Kanäle: zeitgesteuert (Tages-Ampel, Secret-Countdown, Lizenzen, Defender), aus eigenen Snippets und Skripten sowie Fehler von zeitgesteuerten Läufen. Gesendet wird über Teams-<b>Workflows</b> (Webhook) – keine App-Registrierung, keine zusätzlichen Graph-Rechte für das Senden.</p>
+  <h3 id="teams-ziel">Ziel einrichten</h3>
+  <ol class="steps">
+    <li>In Teams im gewünschten Kanal: <span class="ui">⋯</span> › <span class="ui">Workflows</span> › Vorlage <i>Post to a channel when a webhook request is received</i> (Webhookanforderung empfangen → im Kanal posten). Name vergeben, Team/Kanal bestätigen, <span class="ui">Workflow hinzufügen</span> und die angezeigte Adresse kopieren.</li>
+    <li>Reiter <b>Teams</b> › Ziele › <span class="ui">+ Neu</span>: Name (z. B. <i>Admin-Kanal</i>), Adresse einfügen, <b>Kategorien</b> anhaken (welche Meldungen ohne Auftrag dieses Ziel bekommt) → <span class="ui b">💾 Speichern</span>.</li>
+    <li><span class="ui">✉ Test senden</span> – die Testkarte muss im Kanal erscheinen. Fehler stehen im Klartext da (z. B. 404 = Workflow gelöscht/aus, Umleitung = Kurzlink statt vollständiger Adresse).</li>
+  </ol>
+  <div class="note warn"><b class="h">Adresse = Schlüssel</b>Wer die Webhook-Adresse kennt, kann in den Kanal posten. Sie liegt DPAPI-verschlüsselt im Benutzerprofil (<code>%APPDATA%\HU-MultiTenant\notify-targets.json</code>), wird nie angezeigt und nie geloggt – im Sendeprotokoll steht nur eine 8-stellige Kennung. Nicht weitergeben; bei Verdacht den Workflow in Teams löschen und neu anlegen. Alte Office-365-Connector-Adressen (<code>webhook.office.com</code>) sind seit Mai 2026 abgeschaltet und werden abgewiesen.</div>
+  <div class="note"><b class="h">Wer liest mit?</b>Karten enthalten Tenant-Namen, Zahlen und beim Defender-Alarm <b>Gerätenamen</b>. Admin-Meldungen nur in Kanäle mit eingeschränkter Mitgliedschaft (z. B. privater Kanal der Systembetreuung). Für Kanäle mit breiterem Publikum (Direktion) am Auftrag <span class="ui">Gerätenamen ausblenden</span> anhaken – dann stehen nur Anzahlen auf der Karte.</div>
+
+  <h3 id="teams-auftrag">Zeitgesteuerte Meldungen</h3>
+  <table>
+    <tr><th>Art</th><th>Inhalt</th><th>Sendet</th><th>Berechtigung (Graph, Anwendung)</th></tr>
+    <tr><td>Tages-Ampel</td><td>je Tenant Geräte, nicht konform, ohne Sync, Ablauf des App-Secrets – grün/gelb/rot</td><td>immer</td><td><code>DeviceManagementManagedDevices.Read.All</code>, <code>Application.Read.All</code> (Secret-Ablauf)</td></tr>
+    <tr><td>Secret-Countdown</td><td>App-Secrets unter der Warnschwelle (Einstellungen, Standard 30 Tage)</td><td>nur bei Befund</td><td><code>Application.Read.All</code></td></tr>
+    <tr><td>Lizenzen knapp</td><td>SKUs mit weniger als 5 freien Lizenzen, Überbuchung rot</td><td>nur bei Befund</td><td><code>Organization.Read.All</code> (oder <code>LicenseAssignment.Read.All</code>)</td></tr>
+    <tr><td>Defender-Alarm</td><td>Geräte mit gemeldeter Bedrohung / kompromittiert / fehlkonfiguriert (von Defender an Intune gemeldet)</td><td>nur bei Befund</td><td><code>DeviceManagementManagedDevices.Read.All</code></td></tr>
+  </table>
+  <ol class="steps">
+    <li>Rechts <span class="ui">+ Neu</span>: <b>Art</b> wählen (der Name folgt der Art, bis man ihn selbst ändert), Uhrzeit, <b>Senden an</b> (Ziele anhaken – alle angehakt = auch später angelegte), Wochentage (keiner = täglich), Tenants → <span class="ui b">💾 Speichern</span>.</li>
+    <li><span class="ui g">▶ Jetzt senden</span> probiert den Auftrag sofort aus (Fortschritt im Protokoll). <span class="ui">An Kanal …</span> sendet einmalig an genau ein Ziel – auch wenn es am Auftrag nicht angehakt ist.</li>
+    <li><span class="ui">Aufgabe anlegen</span> trägt den Auftrag in die Windows-Aufgabenplanung ein (<code>\HU-MultiTenant\Teams-&lt;Id&gt;</code>, eigenes Konto, ohne erhöhte Rechte, nur wenn angemeldet; verpasste Läufe werden nachgeholt). Sie ruft <code>Main.ps1 -Headless -Job &lt;Id&gt;</code> auf – dieser Modus führt nur gespeicherte Aufträge aus, keine freien Skripte.</li>
+  </ol>
+  <table>
+    <tr><th>Letztes Ergebnis (Exit-Code)</th><th>Bedeutung</th></tr>
+    <tr><td>0</td><td>gesendet oder nichts zu melden</td></tr>
+    <tr><td>1</td><td>Fehler (Senden fehlgeschlagen, Graph nicht erreichbar …) – Details im Log und als Karte <i>Zeitgesteuerte Läufe</i></td></tr>
+    <tr><td>2</td><td>nur teilweise gesendet (mindestens ein Ziel hat abgelehnt)</td></tr>
+    <tr><td>3</td><td>Konfiguration: Auftrag fehlt/ungültig, kein Ziel erreichbar, keine Tenants, <code>settings.json</code> fehlt</td></tr>
+  </table>
+  <p>Zu große Karten (Teams nimmt etwa 28 KB) werden automatisch gekürzt und mit „Karte gekürzt“ markiert; die vollständigen Daten stehen in HU-MultiTenant. Das <b>Sendeprotokoll</b> unten (Höhe mit dem Griff verstellbar) zeigt die letzten 200 Sendungen ohne Adressen.</p>
+
+  <h3 id="teams-kat">Eigene Kategorien</h3>
+  <p>Für Meldungen aus <b>eigenen Snippets, Erweiterungen und Skripten</b> – z. B. <i>Backup</i>, <i>Drucker</i>, <i>WSUS</i>. Jedes Ziel entscheidet per Haken, ob es eine Kategorie bekommt; das Skript nennt nur den Schlüssel.</p>
+  <ol class="steps">
+    <li>Reiter Teams › Ziele › <b>Eigene Kategorie</b>: links den <b>Schlüssel</b> (Buchstabe am Anfang, dann Buchstaben/Ziffern, 2–24 Zeichen, z. B. <code>Backup</code>), rechts die <b>Bezeichnung</b> (z. B. <i>Backup: Ergebnisse</i>) → <span class="ui">+ Kategorie</span>.</li>
+    <li>Die Kategorie erscheint bei den Haken als <i>Backup: Ergebnisse [Backup]</i> und ist beim gewählten Ziel schon angehakt. Bei jedem Ziel, das sie bekommen soll, anhaken und <span class="ui b">💾 Speichern</span>.</li>
+    <li>Im Skript senden (Beispiele unten). <b>Rechtsklick</b> auf den Haken: Bezeichnung bearbeiten (gleicher Schlüssel = ändern) oder Kategorie löschen.</li>
+  </ol>
+  <p><b>Im Quick Script / Snippet</b> – <code>Send-HUNotify</code> ist dort schon geladen:</p>
+<pre><code># Geraete ohne Sync melden (Kategorie "Sync" vorher im Reiter Teams anlegen)
+# @param Tage|int|Ohne Sync seit Tagen|30
+$grenze = (Get-Date).AddDays(-$Tage)
+$dev = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices?$select=deviceName,lastSyncDateTime')
+$alt = @($dev | Where-Object { [datetime]$_.lastSyncDateTime -lt $grenze })
+if ($alt.Count) {
+    $r = Send-HUNotify -Category Sync -Level Warning `
+        -Title "$($TenantKey): $($alt.Count) Geraete ohne Sync seit $Tage Tagen" `
+        -Preview "$($alt.Count) von $($dev.Count) Geraeten" `
+        -Lines @($alt | Select-Object -First 15 | ForEach-Object { $_.deviceName })
+    Write-Host $r.Text
+}</code></pre>
+  <p><b>In einem eigenen Skript</b> (z. B. Backup-Job in der Aufgabenplanung) – im <b>selben Windows-Konto</b> wie HU-MultiTenant, sonst kann die Ziel-Ablage nicht entschlüsselt werden:</p>
+<pre><code>Import-Module 'C:\Pfad\zu\HU-MultiTenant\Core\HU.Notify.psm1' -DisableNameChecking
+$r = Send-HUNotify -Category Backup -Title 'Backup HLW fertig' -Level OK `
+        -Facts ([ordered]@{ Dauer = '12 min'; Dateien = 4211; Ziel = 'NAS' })
+if ($r.Failed) { Write-Warning $r.Text }</code></pre>
+  <table>
+    <tr><th>Parameter</th><th>Bedeutung</th></tr>
+    <tr><td><code>-Category</code></td><td>Schlüssel einer eingebauten oder eigenen Kategorie (Pflicht). Unbekannt → nichts gesendet, <code>Failed = 1</code></td></tr>
+    <tr><td><code>-Title</code></td><td>Überschrift der Karte (Pflicht)</td></tr>
+    <tr><td><code>-Level</code></td><td><code>OK</code> (grün), <code>Warning</code> (gelb), <code>Error</code> (rot), <code>Info</code> (blau, Standard)</td></tr>
+    <tr><td><code>-Lines</code></td><td>Textzeilen (bis 20, Rest „und N weitere“)</td></tr>
+    <tr><td><code>-Facts</code></td><td><code>[ordered]@{ Name = Wert }</code> als zweispaltige Liste (bis 15)</td></tr>
+    <tr><td><code>-Rows</code></td><td>Ampel-Zeilen: <code>@{ Name = 'HLW'; Status = 'OK|Warning|Error'; Text = '…' }</code> (bis 25)</td></tr>
+    <tr><td><code>-Actions</code></td><td>Knöpfe: <code>@{ Title = 'Intune öffnen'; Url = 'https://…' }</code> (nur https)</td></tr>
+    <tr><td><code>-Preview</code></td><td>Text für die Push-Vorschau am Handy (sonst Titel + erste Zeilen) – keine Gerätenamen hineinschreiben</td></tr>
+    <tr><td><code>-TargetIds</code> · <code>-IgnoreCategory</code></td><td>nur an bestimmte Ziele; mit <code>-IgnoreCategory</code> auch dann, wenn die Kategorie dort aus ist</td></tr>
+  </table>
+  <p>Rückgabe: <code>Ok</code> (Ziele beliefert), <code>Failed</code> (abgelehnt), <code>Text</code> (Ergebnis je Ziel, ohne Adressen). <code>Send-HUNotify</code> wirft nie – ein Teams-Fehler bricht das Skript nicht ab. Text aus Tenants wird bereinigt (keine Links, kein Markdown). <b>Keine</b> Kennwörter, Secrets oder Wiederherstellungsschlüssel in Karten schreiben.</p>
+
+  <h3 id="teams-push">Push-Vorschau am Handy</h3>
+  <p>Karten, die ein Workflow postet, zeigen in der Handy-Benachrichtigung nur den Kanalnamen. Abhilfe: Der Workflow postet zuerst eine Textzeile (die Vorschau, die HU-MultiTenant als <code>summary</code> mitschickt) und hängt die Karte als Antwort darunter. Einmal je Workflow in Power Automate (<i>make.powerautomate.com</i> › Meine Flows › Workflow bearbeiten), ca. 10 Minuten:</p>
+  <ol class="steps">
+    <li>Im Zweig <b>Falsch</b> der Bedingung <i>Attachments is null</i>, <b>vor</b> der Schleife <i>For each</i>: Aktion <b>Nachricht in einem Chat oder Kanal veröffentlichen</b> – Veröffentlichen als <i>Flow-Bot</i>, in <i>Kanal</i>, Team/Kanal wie bisher. Feld <i>Meldung</i>: als <b>fx-Ausdruck</b> (blaues fx-Symbol am Feldrand, nicht als Text eintippen) <code>coalesce(triggerBody()?['summary'], 'HU-MultiTenant Meldung')</code>.</li>
+    <li><b>In</b> der Schleife: Aktion <b>Mit einer adaptiven Karte in einem Kanal antworten</b> (nicht „Mit einer Nachricht …“). Flow-Bot, Team/Kanal wie oben; <i>Nachrichten-ID</i>: dynamischer Wert (⚡) <i>Nachrichten-ID</i> aus Schritt 1 – vorher ins Feld Nachrichten-ID klicken; <i>Adaptive Karte</i>: fx-Ausdruck <code>item()?['content']</code>.</li>
+    <li>Die alte Aktion <i>Post card in a chat or channel</i> <b>in der Schleife</b> löschen (sonst kommt jede Karte doppelt). <i>Post card … 1</i> im Zweig Wahr bleibt. Speichern, mit <span class="ui">Test senden</span> prüfen.</li>
+    <li>In Teams beim Kanal › <span class="ui">⋯</span> › <span class="ui">Kanalbenachrichtigungen</span> › <i>Benutzerdefiniert</i>: <b>Alle neuen Beiträge</b> = Banner und Feed; <b>Antworten einschließen</b> <u>nicht</u> anhaken – sonst ersetzt die Benachrichtigung der Karten-Antwort die lesbare Vorschau.</li>
+  </ol>
+  <p>Die Vorschau ist je Art eine Zusammenfassung ohne Gerätenamen, z. B. <i>„Tages-Ampel - Fr 16.10. • 4 grün, 1 gelb, 0 rot (gelb: HLW) - 1234 Geräte, 7 nicht konform“</i>.</p>
+</section>
+
 <section id="secrets">
-  <h2><span class="n">9</span>Secrets und Ablaufdatum</h2>
+  <h2><span class="n">10</span>Secrets und Ablaufdatum</h2>
   <p>Bis wann das Client Secret gültig ist, steht in der Tenant-Leiste (Reiter Extensions) und unter Einstellungen › Tenants. Gewarnt wird ab 30 Tagen (einstellbar) in der Titelleiste – orange, ab 7 Tagen rot.</p>
   <table>
     <tr><th>Quelle</th><th>Wie</th></tr>
@@ -328,7 +414,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="update">
-  <h2><span class="n">10</span>Update</h2>
+  <h2><span class="n">11</span>Update</h2>
   <p>Beim Start wird im Hintergrund nach Updates gesucht; bei einer neuen Version wird <span class="ui">Update</span> gold. Klick: HU-MultiTenant schließt sich, <code>Pull.ps1</code> lädt alle Dateien, prüft jede gegen die SHA-256-Liste und die Signatur des Herausgebers und ersetzt erst dann – mit Sicherung: ist eine Datei gesperrt, wird alles zurückgestellt (nie halb aktualisiert). Dateien, die es in der neuen Version nicht mehr gibt, werden entfernt (nie aus <code>Config</code>, <code>Logs</code>, <code>Reports</code>, <code>Backups</code>). Danach startet das Tool neu. Meldet das Programm beim Start „Ein Update läuft gerade oder wurde abgebrochen“: <code>Pull.ps1</code> im Programmordner erneut ausführen.</p>
   <table>
     <tr><th>Rechtsklick auf Update</th><th>Wirkung</th></tr>
@@ -336,11 +422,11 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><td>Update-Einstellungen</td><td>Kanal <b>Stabil</b> (Standard) / <b>Test</b>, nur signierte Updates</td></tr>
     <tr><td>Info</td><td>Version, Kanal, Prüfung der installierten Version</td></tr>
   </table>
-  <p>Erhalten bleiben <code>Config\settings.json</code>, <code>Config\quick-snippets.json</code>, <code>Config\apps.json</code>, <code>Config\remediations.json</code>, <code>Config\update.json</code>, <code>Logs\</code>, <code>Reports\</code>, eigene Extensions und <code>HU-MultiTenant.exe</code>.</p>
+  <p>Erhalten bleiben <code>Config\settings.json</code>, <code>Config\quick-snippets.json</code>, <code>Config\apps.json</code>, <code>Config\remediations.json</code>, <code>Config\update.json</code>, <code>Config\teams-jobs.json</code>, <code>Logs\</code>, <code>Reports\</code>, eigene Extensions und <code>HU-MultiTenant.exe</code>.</p>
 </section>
 
 <section id="dateien">
-  <h2><span class="n">11</span>Dateien</h2>
+  <h2><span class="n">12</span>Dateien</h2>
   <table>
     <tr><th>Pfad</th><th>Inhalt</th></tr>
     <tr><td><code>Config\settings.json</code></td><td>Tenants und Einstellungen (Sicherung <code>.bak</code>)</td></tr>
@@ -348,6 +434,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><td><code>Config\update.json</code></td><td>Update-Kanal, Signaturpflicht</td></tr>
     <tr><td><code>Config\apps.json</code> · <code>Config\remediations.json</code></td><td>Apps- und Wartungs-Bibliothek mit Verteilstand je Tenant (Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>Config\app-icons\</code></td><td>App-Symbole (PNG je App)</td></tr>
+    <tr><td><code>Config\teams-jobs.json</code></td><td>Teams-Aufträge (ohne Adressen; Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>%LOCALAPPDATA%\HU-MultiTenant\Packages\</code> · <code>…\Sandbox\</code></td><td>gebaute App-Pakete (Knopf <span class="ui">Paket-Ordner</span>) · Testinstallationen mit Protokollen – liegt bewusst nicht in OneDrive</td></tr>
     <tr><td><code>%LOCALAPPDATA%\HU-MultiTenant\Backups\</code></td><td>Konfigurations-Backups: je Tenant und Stand ein Ordner mit <code>index.json</code> und einer JSON-Datei je Eintrag (Ordner in den Einstellungen änderbar; enthält Skripte im Klartext)</td></tr>
     <tr><td><code>Downloads\HU-App-Updates\</code></td><td>per winget geholte Installer (App\Version)</td></tr>
@@ -356,6 +443,8 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <tr><td><code>%APPDATA%\HU-MultiTenant\ui-state.json</code></td><td>Fenster und letzte Auswahl</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\lock.json</code></td><td>Prüfwert der Sperr-PIN (nicht die PIN)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\secret-expiry.json</code></td><td>zuletzt gelesene Ablaufdaten</td></tr>
+    <tr><td><code>%APPDATA%\HU-MultiTenant\notify-targets.json</code></td><td>Teams-Ziele mit Webhook-Adressen (DPAPI)</td></tr>
+    <tr><td><code>%APPDATA%\HU-MultiTenant\notify-categories.json</code> · <code>…\notify-history.json</code></td><td>eigene Teams-Kategorien · Sendeprotokoll (ohne Adressen)</td></tr>
     <tr><td><code>Config\quick-snippets.example.json</code></td><td>Beispiel-Snippets</td></tr>
     <tr><td><code>Logs\QuickScript\</code></td><td>Verlauf (<code>verlauf.jsonl</code>) und Protokoll je Lauf</td></tr>
     <tr><td><code>Logs\</code> · <code>Reports\</code></td><td>Tagesprotokoll · Reports</td></tr>
@@ -363,7 +452,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="tasten">
-  <h2><span class="n">12</span>Tastenkürzel</h2>
+  <h2><span class="n">13</span>Tastenkürzel</h2>
   <table>
     <tr><th>Taste</th><th>Wirkung</th></tr>
     <tr><td><kbd>F1</kbd></td><td>diese Anleitung</td></tr>
