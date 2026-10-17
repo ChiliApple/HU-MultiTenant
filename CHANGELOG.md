@@ -16,6 +16,13 @@
   *einmal* (`$Tenants` = angehakte Tenants, eigene Schleife); *Ausgabe als Karte senden* (Standard aus) - dann geht die Ausgabe
   (Objekte/Text, sonst die Write-Host-Zeilen) als eine Karte, wenn das Skript kein `Send-HUNotify` aufruft. Je Lauf ein eigener,
   frischer Runspace; Zaehler gelten auch nach `exit`/`break` im Skript.
+  **Achtung beim Update (Skript-Meldungen aus den Testversionen):**
+  - Sie senden keine Ausgabe-Karte mehr, bis an der Meldung der Haken *Ausgabe als Karte senden* gesetzt und sie neu
+    gespeichert ist (Karten aus `Send-HUNotify` gehen weiter raus).
+  - Sie laufen je Tenant. Skripte mit eigener Schleife ueber alle Schulen mit *Skript laeuft: einmal* neu speichern -
+    sonst laufen sie N x N-mal (Graph-Drosselung 429).
+- Tagesprotokolle (`Logs\HU-MultiTenant_*.log`) aelter als `logging.retentionDays` (Standard 30 Tage) werden beim Start
+  geloescht - wie schon die Quick-Script-Protokolle.
 - Skript-Meldungen merken sich beim Speichern einen Fingerabdruck (SHA-256) des Snippets; wurde es danach geaendert,
   laeuft die Meldung erst nach erneutem Speichern wieder ("! Skript geaendert" in der Liste). Steht ein
   Probelauf-Schalter (DryRun ...) im Standard auf aus, fragt "Speichern" und "Jetzt senden" vorher "ECHTER LAUF". Geplant ueber `Main.ps1 -Headless -Job <Id>` (nur gespeicherte

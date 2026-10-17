@@ -235,6 +235,16 @@ if (-not [System.IO.Path]::IsPathRooted($logFile)) { $logFile = Join-Path $scrip
 $minLevel = "$($script:Settings.logging.logLevel)".ToUpper()
 if ($minLevel -notin 'DEBUG', 'INFO', 'OK', 'WARN', 'ERROR') { $minLevel = 'INFO' }
 Initialize-Logging -LogFilePath $logFile -RichTextBox $script:Controls['rtbLog'] -MinLevel $minLevel -MaxGuiLines ([int]$script:Settings.ui.maxLogLines)
+# Tagesprotokolle aelter als logging.retentionDays (Standard 30) beim Start loeschen (Review 030 B72/D7)
+try {
+    $keep = 30; try { if ([int]$script:Settings.logging.retentionDays -gt 0) { $keep = [int]$script:Settings.logging.retentionDays } } catch { }
+    $leaf = Split-Path $logFile -Leaf
+    if ($leaf -match '\{date\}') {
+        $limit = (Get-Date).AddDays(-$keep)
+        Get-ChildItem -LiteralPath (Split-Path $logFile -Parent) -Filter ($leaf -replace '\{date\}', '*') -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -lt $limit } | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+} catch { }
 
 Initialize-AsyncPool -PoolSize 4
 

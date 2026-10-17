@@ -353,7 +353,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <p>Eigene Meldungen – z. B. <i>Drucker-Status</i>, <i>Backup</i>, <i>WSUS</i> – schreibst Du als <b>Snippet in Quick Script</b>. Das Skript entscheidet, <b>ob</b> und <b>was</b> gemeldet wird: mit <code>Send-HUNotify</code>. Die Meldung im Reiter Teams entscheidet, <b>an wen</b> und <b>wann</b> – und mit zwei festen Einstellungen, <b>wie</b>:</p>
   <ul>
     <li><b>Skript läuft je Tenant</b> (Standard): für jeden angehakten Tenant einzeln mit <code>$TenantKey</code> und <code>$Token</code>. <b>einmal ($Tenants)</b>: ein einziger Lauf; <code>$Tenants</code> enthält die angehakten Tenant-Schlüssel, das Skript holt Tokens selbst (<code>Get-HUToken -Tenant $k</code>) – für eine Sammelkarte über alle Schulen.</li>
-    <li><b>Ausgabe als Karte senden</b> (Standard: aus): ruft das Skript kein <code>Send-HUNotify</code> auf, geht seine Ausgabe (Objekte/Text, sonst die <code>Write-Host</code>-Zeilen) als <b>eine</b> Karte (je Objekt eine Zeile, höchstens 6 Eigenschaften, höchstens 60 Zeilen). Die Ausgabe kann Geräte- und Benutzernamen enthalten – nur einschalten, wenn die Ziele das sehen dürfen. Aus: <code>Write-Host</code> geht nur ins Log.</li>
+    <li><b>Ausgabe als Karte senden</b> (Standard: aus): ruft das Skript kein <code>Send-HUNotify</code> auf, geht seine Ausgabe (Objekte/Text, sonst die <code>Write-Host</code>-Zeilen) als <b>eine</b> Karte (je Objekt eine Zeile, höchstens 6 Eigenschaften, höchstens 60 Zeilen). Die Ausgabe kann Geräte- und Benutzernamen enthalten – nur einschalten, wenn die Ziele das sehen dürfen. Ist der Haken an, kommen auch die <code>Write-Host</code>-Zeilen in die Karte. Aus: <code>Write-Host</code> geht nur ins Tagesprotokoll (höchstens 30 Zeilen je Lauf, <code>Logs\HU-MultiTenant_&lt;Datum&gt;.log</code>, aufbewahrt wie unten).</li>
   </ul>
   <ol class="steps">
     <li>Quick Script: Snippet schreiben und unter einem Namen speichern (Beispiel unten).</li>
@@ -458,7 +458,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
     <tr><td><code>%APPDATA%\HU-MultiTenant\notify-categories.json</code> · <code>…\notify-history.json</code></td><td>eigene Teams-Kategorien aus Vorversionen (nur noch für Erweiterungen) · Sendeprotokoll (ohne Adressen)</td></tr>
     <tr><td><code>Config\quick-snippets.example.json</code></td><td>Beispiel-Snippets</td></tr>
     <tr><td><code>Logs\QuickScript\</code></td><td>Verlauf (<code>verlauf.jsonl</code>) und Protokoll je Lauf</td></tr>
-    <tr><td><code>Logs\</code> · <code>Reports\</code></td><td>Tagesprotokoll · Reports</td></tr>
+    <tr><td><code>Logs\</code> · <code>Reports\</code></td><td>Tagesprotokoll (Dateien älter als <code>logging.retentionDays</code>, Standard 30 Tage, werden beim Start gelöscht) · Reports</td></tr>
   </table>
 </section>
 

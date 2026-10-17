@@ -124,15 +124,16 @@ Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed
 - nach jeder Änderung am Snippet die Meldung im Reiter Teams **neu speichern** – sonst läuft sie nicht (Fingerabdruck); `DryRun`-Standard aus = Rückfrage „ECHTER LAUF“ beim Speichern
 - **Skript läuft** (Einstellung an der Meldung): *je Tenant* (Standard, mit `$TenantKey`/`$Token`) oder *einmal* – dann enthält `$Tenants` die angehakten Tenant-Schlüssel, Tokens holt das Skript selbst (`foreach ($k in $Tenants) { $t = Get-HUToken -Tenant $k; ... }`)
 - **Ausgabe als Karte senden** (Einstellung an der Meldung, Standard aus): ohne `Send-HUNotify` geht die Ausgabe des Snippets (Objekte/Text, sonst die `Write-Host`-Zeilen) als **eine** Karte – kann Gerätenamen enthalten; aus = `Write-Host` nur ins Log
-- geplant / *Jetzt senden*: läuft je Tenant mit den Werten der `# @param`-Felder, die an der Meldung stehen (gleiche Felder wie im Quick Script, je Meldung gespeichert)
+- geplant / *Jetzt senden*: läuft je Tenant (oder einmal, siehe oben) mit den Werten der `# @param`-Felder, die an der Meldung stehen (gleiche Felder wie im Quick Script, je Meldung gespeichert)
 - im Quick-Script-Editor: gehört das Snippet zu einer Meldung, fragt HU-MultiTenant einmal (Ja / Nein = ohne Teams / Abbrechen) und sendet an deren Ziele; ohne Meldung sendet es nur, wenn es Ziele selbst nennt (`-TargetIds`, alte Kategorie) und Du mit Ja antwortest
 - `-WhatIf` = nur anzeigen, was gesendet würde
 - wirft nie – ein Teams-Fehler bricht das Snippet nicht ab
 - `-Level` `OK` | `Warning` | `Error` | `Info`; `-Facts` als `[ordered]@{ Name = Wert }`; `-Rows` als `@{ Name; Status; Text }` (Ampel)
 - `-Preview` = Text der Handy-Benachrichtigung – **keine Secrets/Kennwörter** in Karten; Gerätenamen nur in Meldungen, die ausschließlich Admin-Kanäle haben (im Zweifel nur Anzahlen senden)
 - Snippets laufen mit Deinen Rechten – fremde Snippets vorher lesen; `Grant-HUSendApproval` **nie** in Snippets aufrufen (die Freigabe gibt die Rückfrage bzw. die gespeicherte Meldung)
-- als Meldung: je Tenant ein eigener Runspace – `$global:`-Zwischenspeicher gelten nur für diesen Tenant
-- bei mehreren Tenants sendet jeder Tenant eine eigene Karte – für eine Sammelkarte die Ergebnisse sammeln und nur einmal senden
+- als Meldung: je Lauf ein eigener Runspace – `$global:`-Zwischenspeicher gelten nur für diesen Tenant
+- *je Tenant* sendet jeder Tenant eine eigene Karte – für eine Sammelkarte *Skript läuft: einmal* wählen, im Skript über `$Tenants` laufen und einmal senden
+- *Ausgabe als Karte* aus: `Write-Host`-Zeilen gehen (höchstens 30 je Lauf) ins Tagesprotokoll `Logs\HU-MultiTenant_<Datum>.log` – aufbewahrt `logging.retentionDays` Tage (Standard 30)
 - Details und alle Parameter: Anleitung (F1) › Teams › Meldungen aus Skripten
 
 ## 8. Vorhandene Skripte übernehmen

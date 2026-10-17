@@ -738,8 +738,9 @@ function Invoke-HUTeamsJob {
             $pv = [ordered]@{}
             if ($Job.Options.PSObject.Properties['params'] -and $Job.Options.params) { foreach ($pp in $Job.Options.params.PSObject.Properties) { $pv[$pp.Name] = $pp.Value } }
             # Review 030 B38/B37: Laufart und Ausgabe-Karte sind feste Einstellungen der Meldung
-            $once = $Job.Options.PSObject.Properties['runMode'] -and "$($Job.Options.runMode)" -eq 'once'
-            $sendOut = $Job.Options.PSObject.Properties['sendOutput'] -and [bool]$Job.Options.sendOutput
+            # von Hand bearbeitet: "false"/"0"/"nein"/Unbekanntes = aus; nur 'once' = einmal (Review 030 B69/S1)
+            $once = [bool]($Job.Options.PSObject.Properties['runMode'] -and "$($Job.Options.runMode)".Trim() -eq 'once')
+            $sendOut = [bool]($Job.Options.PSObject.Properties['sendOutput'] -and (ConvertTo-HUTeamsBool $Job.Options.sendOutput -Default $false))
             $sr = Invoke-HUTeamsScript -Code $code -Name "$($Job.Name)" -Tenants $keys -Settings $Settings -AppRoot $AppRoot -TargetIds $ids -Params $pv -RunOnce:$once -SendOutput:$sendOut
             $errTxt = $(if (@($sr.Errors).Count) { " - Fehler: $((@($sr.Errors) | Select-Object -First 2) -join '; ')$(if (@($sr.Errors).Count -gt 2) { " (+$(@($sr.Errors).Count - 2))" })" } else { '' })
             $cards = Get-HUTeamsCountText $sr.Calls 'Meldung' 'Meldungen'

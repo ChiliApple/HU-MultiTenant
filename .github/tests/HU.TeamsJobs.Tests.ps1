@@ -330,6 +330,18 @@ Export-ModuleMember -Function Get-GraphToken
         $r.Code | Should -Be 0
         $r.Message | Should -Match 'nichts gesendet'
     }
+    It 'B69: sendOutput als Text "false"/"0"/"nein" gilt als aus' {
+        $h = Get-HUTeamsCodeHash (Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Nur Ausgabe')
+        $one = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'a' }) }
+        foreach ($v in 'false', '0', 'nein', ' FALSE ') {
+            $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = $h; sendOutput = $v }; $j.Id = ''
+            $r = Invoke-HUTeamsJob -Job $j -Settings $one -AppRoot $script:App
+            $r.Code | Should -Be 0
+            $r.Message | Should -Match 'Ausgabe als Karte: aus'
+        }
+        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = $h; sendOutput = 'true' }; $j.Id = ''
+        (Invoke-HUTeamsJob -Job $j -Settings $one -AppRoot $script:App).Message | Should -Match '1 Meldung'
+    }
     It 'B38: runMode once - ein Lauf, $Tenants = Auswahl, kein $TenantKey/$Token' {
         $code = "if (`$TenantKey -or `$Token) { throw 'TenantKey gesetzt' }; if (@(`$Tenants).Count -ne 2) { throw `"Tenants: `$(@(`$Tenants).Count)`" }; if (`$global:Merker) { throw 'zweiter Lauf' }; `$global:Merker = 1; 'x'"
         $r = Invoke-HUTeamsScript -Code $code -Name 'O' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App -RunOnce -SendOutput

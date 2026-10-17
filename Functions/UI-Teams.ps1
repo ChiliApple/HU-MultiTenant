@@ -269,9 +269,9 @@ function Show-HUTeamsJob($Job) {
         if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['params'] -and $Job.Options.params) { foreach ($pp in $Job.Options.params.PSObject.Properties) { $pv[$pp.Name] = $pp.Value } }
         Update-HUTeamsJobParams $pv
         $o = if ($Job -and $Job.Options) { $Job.Options } else { $null }
-        $c['rbTeamsJobRunOnce'].IsChecked = [bool]($o -and $o.PSObject.Properties['runMode'] -and "$($o.runMode)" -eq 'once')
+        $c['rbTeamsJobRunOnce'].IsChecked = [bool]($o -and $o.PSObject.Properties['runMode'] -and "$($o.runMode)".Trim() -eq 'once')
         $c['rbTeamsJobRunEach'].IsChecked = -not $c['rbTeamsJobRunOnce'].IsChecked
-        $c['chkTeamsJobSendOutput'].IsChecked = [bool]($o -and $o.PSObject.Properties['sendOutput'] -and [bool]$o.sendOutput)   # Review 030 B37: Standard aus
+        $c['chkTeamsJobSendOutput'].IsChecked = [bool]($o -and $o.PSObject.Properties['sendOutput'] -and (ConvertTo-HUTeamsBool $o.sendOutput -Default $false))   # Review 030 B37: Standard aus
         Update-HUTeamsMaskState
         Update-HUTeamsJobTargetChecks
         # Where-Object: $null | ForEach-Object laeuft einmal mit $null -> '' waere ein "Ziel" und kein Haken bliebe gesetzt
@@ -527,7 +527,7 @@ function Start-HUTeamsJobNow {
     if (-not $j) { return }
     if (-not (Get-HUNotifyConfig).Configured) { Show-HUMessage 'Noch kein Teams-Ziel gespeichert.' -Icon Warning; return }
     $c['btnTeamsJobRun'].IsEnabled = $false; $c['btnTeamsJobSendTo'].IsEnabled = $false
-    $c['lblTeamsJobTask'].Text = "'$($j.Name)' laeuft$(if ($TargetName) { " - einmalig an '$TargetName'" }) - $(if ("$($j.Kind)" -eq 'Script') { "Skript '$($j.Options.snippet)' laeuft je Tenant" } else { 'Tenants werden gelesen' }) (siehe Protokoll unten links) ..."
+    $c['lblTeamsJobTask'].Text = "'$($j.Name)' laeuft$(if ($TargetName) { " - einmalig an '$TargetName'" }) - $(if ("$($j.Kind)" -eq 'Script') { "Skript '$($j.Options.snippet)' laeuft $(if ("$($j.Options.runMode)" -eq 'once') { 'einmal' } else { 'je Tenant' })" } else { 'Tenants werden gelesen' }) (siehe Protokoll unten links) ..."
     $ids = @(); if ($TargetId) { $ids = @($TargetId) }
     Set-HUTeamsRunDot $true
     $ok = Start-HUJob -Name 'TeamsJob' -Output $c['rtbLog'] -Vars @{ TJob = $j; TIds = $ids } -Code {
