@@ -372,6 +372,12 @@ $script:HURemoteJs = @'
   function setConn(ok) { var d = $('conn'); d.classList.toggle('ok', ok === true); d.classList.toggle('bad', ok === false); d.setAttribute('aria-label', ok ? 'verbunden' : 'keine Verbindung'); }
   function guessName() { var u = navigator.userAgent || ''; if (/iPhone/.test(u)) { return 'iPhone'; } if (/iPad/.test(u)) { return 'iPad'; } if (/Android/.test(u)) { return 'Android-Handy'; } return 'Handy'; }
   function fmtDur(s) { s = Math.max(0, s | 0); var m = Math.floor(s / 60), x = s % 60; return m + ':' + String(x).padStart(2, '0'); }
+  // Fehlertext: Netzwerkfehler = PC nicht erreichbar, sonst der echte Fehler der Seite (zur Fehlersuche)
+  function failMsg(e, net) {
+    var m = String((e && e.message) || e || '');
+    if (!m || /fetch|network|load failed|abort/i.test(m)) { return net || 'PC nicht erreichbar.'; }
+    return 'Fehler auf dem Handy: ' + m;
+  }
   function err(id, t) { $(id).textContent = t || ''; show(id, !!t); }
 
   function api(method, path, body) {
@@ -613,7 +619,7 @@ $script:HURemoteJs = @'
       S.prep = j; S.prepUntil = Date.now() + (j.seconds || 120) * 1000;
       S.lastBody = body; S.lastItem = S.item;
       showConfirm(j);
-    }).catch(function () { $('sGo').disabled = false; if (again) { banner('PC nicht erreichbar.'); } else { err('sErr', 'PC nicht erreichbar.'); } });
+    }).catch(function (e) { $('sGo').disabled = false; if (again) { banner(failMsg(e)); } else { err('sErr', failMsg(e)); } });
   }
   // Wiederholen: dieselbe Auswahl wie beim letzten Start, wieder ueber die Bestaetigung (Kuerzel/PIN bei echtem Lauf)
   function again() {
@@ -673,7 +679,7 @@ $script:HURemoteJs = @'
         return;
       }
       S.prep = null; S.seq = S.seq; setView('vRun'); schedule(300);
-    }).catch(function () { err('cErr', 'PC nicht erreichbar - Zurueck und neu pruefen.'); S.prepUntil = 0; checkGo(); });
+    }).catch(function (e) { err('cErr', failMsg(e, 'PC nicht erreichbar - Zurueck und neu pruefen.')); S.prepUntil = 0; checkGo(); });
   }
 
   // --- Intune: Apps und Wartung (lesen ohne PIN; Zuweisen/Aufheben ueber Pruefen + Kuerzel + PIN)
@@ -690,7 +696,7 @@ $script:HURemoteJs = @'
       if (j.__status === 401) { needPair('Nicht mehr gekoppelt.'); return; }
       if (j.ok && j.pending) { if (tries > 240) { cb({ ok: false, error: 'Keine Antwort vom PC (Zeitlimit)' }); return; } setTimeout(function () { iq(slot, q, false, cb, tries + 1); }, 1500); return; }
       cb(j);
-    }).catch(function () { if (tok === S.iqTok[slot]) { cb({ ok: false, error: 'PC nicht erreichbar.' }); } });
+    }).catch(function (e) { if (tok === S.iqTok[slot]) { cb({ ok: false, error: failMsg(e) }); } });
   }
   function iShow() {
     var sel = $('iTen'), ts = (S.cat && S.cat.tenants) || [];
@@ -823,7 +829,7 @@ $script:HURemoteJs = @'
       S.prep = j; S.prepUntil = Date.now() + (j.seconds || 120) * 1000;
       S.lastBody = body; S.lastItem = it;
       showConfirm(j);
-    }).catch(function () { $('oGo').disabled = false; err('oErr', 'PC nicht erreichbar.'); });
+    }).catch(function (e) { $('oGo').disabled = false; err('oErr', failMsg(e)); });
   }
 
   // --- Push (wie HUMig): Abo im Browser, Inhalt holt der Service Worker beim PC
