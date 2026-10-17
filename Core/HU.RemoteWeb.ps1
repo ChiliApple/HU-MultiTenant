@@ -137,7 +137,7 @@ $script:HURemoteHtml = @'
     </div>
     <div id="rDone"></div>
     <button class="btn danger wide hidden" id="rCancel">Abbrechen</button>
-    <div class="row between"><h2>Ausgabe</h2><span class="row tools"><button class="ibtn" id="rCopy" title="Alles kopieren" aria-label="Ausgabe in die Zwischenablage kopieren">&#10697;</button><button class="ibtn" id="rClear" title="Leeren" aria-label="Ausgabe leeren">&#128465;</button><label class="muted small"><input type="checkbox" id="rFollow" checked> mitlaufen</label></span></div>
+    <div class="row between runhead"><h2>Ausgabe</h2><span class="row tools"><input id="rFind" class="find-s" type="search" placeholder="Filter" aria-label="Ausgabe filtern" autocomplete="off"><button class="ibtn" id="rCopy" title="Alles kopieren" aria-label="Ausgabe in die Zwischenablage kopieren">&#10697;</button><button class="ibtn" id="rClear" title="Leeren" aria-label="Ausgabe leeren">&#128465;</button><label class="muted small"><input type="checkbox" id="rFollow" checked> mitlaufen</label></span></div>
     <p class="muted small hidden" id="rLost"></p>
     <div class="console" id="rCon" aria-live="polite"></div>
   </section>
@@ -300,7 +300,9 @@ input.code4{font-size:24px;letter-spacing:6px;text-align:center;text-transform:u
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .ok-t{color:var(--green)}
 .ibtn{min-width:36px;min-height:36px;padding:0 8px;border:1px solid var(--s0);border-radius:10px;background:none;color:var(--ov);font-size:16px;line-height:1;cursor:pointer}
-.tools{position:relative;top:-4px}.ibtn:active{background:var(--s0)}.ibtn.done{color:var(--green);border-color:var(--green)}
+.runhead{margin:14px 0 8px}.runhead h2{margin:0}.tools{gap:6px;flex-wrap:nowrap}
+.find-s{width:110px;min-height:36px;padding:0 10px;border-radius:10px;border:1px solid var(--s0);background:var(--crust);color:var(--tx);font-size:14px;outline:none}
+.find-s:focus{border-color:var(--blue);width:150px}@media (max-width:430px){.runhead{flex-wrap:wrap;gap:6px}.find-s{width:84px}.find-s:focus{width:120px}}.console .ln.f{display:none}.console mark{background:rgba(249,226,175,.35);color:inherit;border-radius:3px}.ibtn:active{background:var(--s0)}.ibtn.done{color:var(--green);border-color:var(--green)}
 '@
 
 $script:HURemoteJs = @'
@@ -417,6 +419,7 @@ $script:HURemoteJs = @'
       lines.forEach(function (l) {
         var d = el('div', 'ln ' + (l.l || 'Info'));
         d.appendChild(el('span', 'z', l.t || '')); d.appendChild(document.createTextNode(l.z || ''));
+        fitLine(d, ($('rFind').value || '').trim().toLowerCase());
         c.appendChild(d);
       });
       while (c.childNodes.length > 1500) { c.removeChild(c.firstChild); }
@@ -688,9 +691,17 @@ $script:HURemoteJs = @'
     });
   }
 
+  // --- Ausgabe filtern (blendet nicht passende Zeilen aus)
+  function fitLine(d, q) { var hit = !q || (d.textContent || '').toLowerCase().indexOf(q) >= 0; d.classList.toggle('f', !hit); }
+  function applyFind() {
+    var q = ($('rFind').value || '').trim().toLowerCase();
+    Array.prototype.forEach.call($('rCon').childNodes, function (d) { fitLine(d, q); });
+    if (q) { var first = Array.prototype.filter.call($('rCon').childNodes, function (d) { return !d.classList.contains('f'); })[0]; if (first) { first.scrollIntoView({ block: 'nearest' }); } }
+  }
+
   // --- Ausgabe kopieren (Zwischenablage; ohne sichere Verbindung ueber ein verstecktes Textfeld)
   function copyOut() {
-    var txt = Array.prototype.map.call($('rCon').childNodes, function (d) { return d.textContent; }).join('\n');
+    var txt = Array.prototype.filter.call($('rCon').childNodes, function (d) { return !d.classList.contains('f'); }).map(function (d) { return d.textContent; }).join('\n');
     var ok = function () { var b = $('rCopy'); b.classList.add('done'); setTimeout(function () { b.classList.remove('done'); }, 1200); };
     var old = function () {
       var ta = el('textarea'); ta.value = txt; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
@@ -739,6 +750,7 @@ $script:HURemoteJs = @'
     $('rCancel').addEventListener('click', cancelRun);
     $('rFollow').addEventListener('change', function () { S.follow = $('rFollow').checked; });
     $('rCopy').addEventListener('click', copyOut);
+    $('rFind').addEventListener('input', applyFind);
     $('rClear').addEventListener('click', function () { clear($('rCon')); show('rLost', false); });
     $('mUnpair').addEventListener('click', unpair);
     $('nBtn').addEventListener('click', pushToggle);
