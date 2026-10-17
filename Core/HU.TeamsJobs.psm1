@@ -12,7 +12,7 @@
       Kind 'Defender' Defender-Alarm: Geraete mit gemeldeter Bedrohung oder Fehlkonfiguration. Sendet nur bei Befund.
     Meldung aus Skript:
       Kind 'Script'   fuehrt ein gespeichertes Quick-Script-Snippet (Options.snippet = Name) je Tenant aus, mit den
-                      Standardwerten seiner @param-Zeilen. Jedes Send-HUNotify im Snippet geht an die Ziele der Meldung.
+                      Werten seiner @param-Zeilen (an der Meldung gespeichert, sonst Standard). Jedes Send-HUNotify im Snippet geht an die Ziele der Meldung.
                       Ruft das Snippet kein Send-HUNotify auf, wird seine Ausgabe (Objekte/Text, sonst Write-Host) als eine Karte
                       gesendet. Nutzt es keinen Tenant-Bezug ($TenantKey/$Token ...), laeuft es nur einmal.
     Meldungen liegen in Config\teams-jobs.json (lokal, nicht im Repository). Sie enthalten keine Adressen -
@@ -381,7 +381,8 @@ function Invoke-HUTeamsScript {
         [Parameter(Mandatory)][string[]]$Tenants,
         [Parameter(Mandatory)][PSCustomObject]$Settings,
         [Parameter(Mandatory)][string]$AppRoot,
-        [string[]]$TargetIds = @()
+        [string[]]$TargetIds = @(),
+        [System.Collections.IDictionary]$Params = @{}   # Werte fuer die @param-Zeilen (an der Meldung gespeichert); fehlende = Standard
     )
     $out = [pscustomobject]@{ Calls = 0; Ok = 0; Failed = 0; Errors = @() }
     $errs = New-Object System.Collections.Generic.List[string]
@@ -414,6 +415,7 @@ function Invoke-HUTeamsScript {
             $rs.SessionStateProxy.SetVariable('__Multi', $multi)
             $rs.SessionStateProxy.SetVariable('__Label', $(if ($dn.ContainsKey("$tk")) { $dn["$tk"] } else { "$tk" }))
             $rs.SessionStateProxy.SetVariable('__Ids', [string[]]@($TargetIds))
+            $rs.SessionStateProxy.SetVariable('__Vals', $Params)
             $ps = [powershell]::Create()
             $ps.Runspace = $rs
             [void]$ps.AddScript({
@@ -427,9 +429,10 @@ function Invoke-HUTeamsScript {
                 $tokOk = $true
                 try { $global:Token = Get-HUToken -Tenant $__Tk } catch { $e += "[$__Tk] Kein Token: $($_.Exception.Message)"; $tokOk = $false }
                 if ($tokOk) {
-                    # Standardwerte der @param-Zeilen (wie leere Felder im Quick Script)
+                    # @param-Zeilen: Wert der Meldung, sonst Standard (wie die Felder im Quick Script)
                     foreach ($p in @(Get-HUQSParams $__Code)) {
-                        try { Set-Variable -Name $p.Name -Value (ConvertTo-HUQSParamValue $p $p.Default) -Scope Global } catch { $e += "[$__Tk] Parameter $($p.Name): $($_.Exception.Message)" }
+                        $raw = if ($__Vals -and $__Vals.Contains($p.Name)) { $__Vals[$p.Name] } else { $p.Default }
+                        try { Set-Variable -Name $p.Name -Value (ConvertTo-HUQSParamValue $p $raw) -Scope Global } catch { $e += "[$__Tk] Parameter $($p.Name): $($_.Exception.Message)" }
                     }
                     try {
                         # Ausgabe merken: ruft das Skript selbst kein Send-HUNotify auf, wird sie als Karte gesendet
@@ -705,7 +708,9 @@ function Invoke-HUTeamsJob {
             if ($NoSend) { $res.Success = $true; $res.Code = 0; $res.Message = 'Vorschau (Skript wird nicht ausgefuehrt)'; return $res }
             $ids = @($TargetIds | Where-Object { "$_" }); if (-not $ids.Count) { $ids = @($Job.Targets | Where-Object { "$_" }) }
             if ($log) { Write-HULog -Message "[Teams] $($Job.Name): Skript '$sn' auf $($keys.Count) Tenant(s) ..." -Level INFO }
-            $sr = Invoke-HUTeamsScript -Code $code -Name "$($Job.Name)" -Tenants $keys -Settings $Settings -AppRoot $AppRoot -TargetIds $ids
+            $pv = [ordered]@{}
+            if ($Job.Options.PSObject.Properties['params'] -and $Job.Options.params) { foreach ($pp in $Job.Options.params.PSObject.Properties) { $pv[$pp.Name] = $pp.Value } }
+            $sr = Invoke-HUTeamsScript -Code $code -Name "$($Job.Name)" -Tenants $keys -Settings $Settings -AppRoot $AppRoot -TargetIds $ids -Params $pv
             $errTxt = $(if (@($sr.Errors).Count) { " - Fehler: $((@($sr.Errors) | Select-Object -First 2) -join '; ')$(if (@($sr.Errors).Count -gt 2) { " (+$(@($sr.Errors).Count - 2))" })" } else { '' })
             $cards = Get-HUTeamsCountText $sr.Calls 'Meldung' 'Meldungen'
             $res.Sent = "$($sr.Ok) gesendet, $($sr.Failed) fehlgeschlagen"

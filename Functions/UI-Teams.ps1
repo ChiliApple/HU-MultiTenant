@@ -265,6 +265,9 @@ function Show-HUTeamsJob($Job) {
         $c['cmbTeamsJobKind'].SelectedItem = $null   # Skript-Meldung: oben nichts gewaehlt
         foreach ($i in $c['cmbTeamsJobKind'].Items) { if ("$($i.Tag)" -eq $kind) { $c['cmbTeamsJobKind'].SelectedItem = $i } }
         Update-HUTeamsSnippetCombo -Select $(if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['snippet']) { "$($Job.Options.snippet)" } else { '' })
+        $pv = [ordered]@{}
+        if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['params'] -and $Job.Options.params) { foreach ($pp in $Job.Options.params.PSObject.Properties) { $pv[$pp.Name] = $pp.Value } }
+        Update-HUTeamsJobParams $pv
         Update-HUTeamsMaskState
         Update-HUTeamsJobTargetChecks
         # Where-Object: $null | ForEach-Object laeuft einmal mit $null -> '' waere ein "Ziel" und kein Haken bliebe gesetzt
@@ -300,10 +303,77 @@ function Update-HUTeamsMaskState {
     $c['chkTeamsJobMask'].Visibility = $(if ($kind -eq 'Script') { 'Collapsed' } else { 'Visible' })
 }
 
+# @param-Felder des gewaehlten Skripts an der Meldung (wie oben im Quick Script); Werte: gespeicherte, sonst Standard
+$script:TeamsParamCtl = @{}
+$script:TeamsParamDefs = @()
+function Update-HUTeamsJobParams($Values = $null) {
+    $c = $script:Controls
+    $panel = $c['pnlTeamsJobParams']
+    # aktuelle Eingaben behalten, wenn keine gespeicherten Werte uebergeben werden (z. B. Skript neu gewaehlt)
+    if ($null -eq $Values) { $Values = Get-HUTeamsJobParamValues }
+    $panel.Children.Clear(); $script:TeamsParamCtl = @{}; $script:TeamsParamDefs = @()
+    $sn = $c['cmbTeamsJobSnippet'].SelectedItem
+    $code = ''
+    if ($sn -and "$($sn.Tag)") { try { $code = Get-HUTeamsSnippetCode -AppRoot $script:AppRoot -Name "$($sn.Tag)" } catch { } }
+    $defs = @(Get-HUQSParams $code)
+    $script:TeamsParamDefs = $defs
+    if (-not $defs.Count) { $panel.Visibility = 'Collapsed'; return }
+    foreach ($p in $defs) {
+        $has = ($Values -is [System.Collections.IDictionary]) -and $Values.Contains($p.Name)
+        $v = if ($has) { $Values[$p.Name] } else { $p.Default }
+        $sp = New-Object System.Windows.Controls.StackPanel
+        $sp.Orientation = 'Horizontal'; $sp.Margin = [System.Windows.Thickness]::new(0, 2, 16, 2)
+        if ($p.Type -eq 'bool') {
+            $ctl = New-Object System.Windows.Controls.CheckBox
+            $ctl.Content = $p.Label; $ctl.Foreground = Get-HUBrush '#CCCCCC'; $ctl.VerticalAlignment = 'Center'
+            $ctl.IsChecked = [bool](ConvertTo-HUQSParamValue $p $v)
+            if ($p.Name -match '^(DryRun|WhatIf|Simulation|Simulate|Test|TestMode|Probelauf|NurAnzeigen|Preview)$') { $ctl.Foreground = Get-HUBrush '#FF9800'; $ctl.ToolTip = 'Aus = echter Lauf (beim Speichern kommt eine Rueckfrage)' }
+            [void]$sp.Children.Add($ctl)
+        }
+        else {
+            $lb = New-Object System.Windows.Controls.TextBlock
+            $lb.Text = "$($p.Label):"; $lb.Foreground = Get-HUBrush '#AAAAAA'; $lb.VerticalAlignment = 'Center'; $lb.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
+            [void]$sp.Children.Add($lb)
+            if ($p.Type -eq 'choice') {
+                $ctl = New-Object System.Windows.Controls.ComboBox
+                $ctl.Style = $script:Window.FindResource('DarkComboBox'); $ctl.FontSize = 11
+                foreach ($ch in $p.Choices) { [void]$ctl.Items.Add($ch) }
+                if ($p.Choices -contains "$v") { $ctl.SelectedItem = "$v" } elseif ($ctl.Items.Count) { $ctl.SelectedIndex = 0 }
+            }
+            else {
+                $ctl = New-Object System.Windows.Controls.TextBox
+                $ctl.Style = $script:Window.FindResource('DarkTextBox'); $ctl.FontSize = 11
+                $ctl.Padding = [System.Windows.Thickness]::new(4, 2, 4, 2)
+                $ctl.MinWidth = $(if ($p.Type -eq 'int') { 60 } else { 140 })
+                $ctl.Text = "$v"
+            }
+            [void]$sp.Children.Add($ctl)
+        }
+        $script:TeamsParamCtl[$p.Name] = $ctl
+        [void]$panel.Children.Add($sp)
+    }
+    $panel.Visibility = 'Visible'
+}
+
+# Werte der @param-Felder an der Meldung (Name -> Wert); Typpruefung wie im Quick Script
+function Get-HUTeamsJobParamValues([switch]$Check) {
+    $h = [ordered]@{}
+    foreach ($p in @($script:TeamsParamDefs)) {
+        $ctl = $script:TeamsParamCtl[$p.Name]
+        if (-not $ctl) { continue }
+        $raw = if ($ctl -is [System.Windows.Controls.CheckBox]) { [bool]$ctl.IsChecked } elseif ($ctl -is [System.Windows.Controls.ComboBox]) { "$($ctl.SelectedItem)" } else { "$($ctl.Text)".Trim() }
+        if ($Check) { $raw = ConvertTo-HUQSParamValue $p $raw }   # wirft bei falscher Zahl
+        $h[$p.Name] = $raw
+    }
+    return $h
+}
+
 # Skript-Auswahl: gespeicherte Quick-Script-Snippets (Auswahl bleibt, auch wenn das Snippet inzwischen fehlt)
 function Update-HUTeamsSnippetCombo {
     param($Select = $null)   # untypisiert: [string] macht aus `$null '' - dann ginge die Auswahl beim Aufklappen verloren
     $cb = $script:Controls['cmbTeamsJobSnippet']
+    $wasBusy = $script:TeamsFillBusy; $script:TeamsFillBusy = $true   # Neuaufbau ist keine Auswahl (Felder-Werte bleiben)
+    try {
     $cur = if ($null -ne $Select) { $Select } elseif ($cb.SelectedItem) { "$($cb.SelectedItem.Tag)" } else { '' }
     $names = @(Get-HUSnippets | ForEach-Object { "$($_.name)" } | Sort-Object)
     $cb.Items.Clear()
@@ -314,6 +384,7 @@ function Update-HUTeamsSnippetCombo {
         $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = "$cur (fehlt!)"; $i.Tag = $cur; $i.Foreground = Get-HUBrush '#F44336'
         [void]$cb.Items.Insert(0, $i); $cb.SelectedItem = $i
     }
+    } finally { $script:TeamsFillBusy = $wasBusy }
 }
 
 # Skript-Meldung: wurde das Snippet seit dem Speichern geaendert? (Review 030 B33) - '' = passt, sonst Hinweistext
@@ -353,16 +424,19 @@ function Get-HUTeamsJobFromForm {
         if (-not $sn) { throw 'Bitte ein Skript waehlen (gespeichertes Snippet aus Quick Script).' }
         $code = Get-HUTeamsSnippetCode -AppRoot $script:AppRoot -Name $sn
         # Review 030 B34: Probelauf-Schalter (DryRun ...) steht im Standard auf aus -> echter Lauf ohne Aufsicht
-        $defs = @(Get-HUQSParams $code); $vals = @{}
-        foreach ($p in $defs) { try { $vals[$p.Name] = ConvertTo-HUQSParamValue $p $p.Default } catch { } }
+        $defs = @(Get-HUQSParams $code)
+        $form = Get-HUTeamsJobParamValues -Check   # Werte aus den Feldern an der Meldung
+        $vals = @{}
+        foreach ($p in $defs) { $vals[$p.Name] = $(if ($form.Contains($p.Name)) { $form[$p.Name] } else { try { ConvertTo-HUQSParamValue $p $p.Default } catch { $p.Default } }) }
         if ($Purpose -and (Test-HUQSLiveRun $defs $vals)) {
             $tn = @($keys | ForEach-Object { $k = $_; $tt = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($tt) { "$($tt.displayName)" } else { $k } })
             if (-not $tn.Count) { $tn = @($script:Settings.tenants | ForEach-Object { "$($_.displayName)" }) }
             $what = if ($Purpose -eq 'Speichern') { "Die Meldung fuehrt das Skript bei JEDEM Lauf - auch zeitgesteuert, ohne Aufsicht - als echten Lauf aus." } else { 'Das Skript laeuft jetzt als echter Lauf.' }
-            if (-not (Confirm-HU "ECHTER LAUF - Aenderungen werden ausgefuehrt!`n`nSkript: $sn (Probelauf-Schalter steht im Standard auf aus)`nTenants: $($tn -join ', ')`n`n$what`n`nFortfahren?" 'Teams - Meldung aus Skript' -Warning)) { return $null }
+            if (-not (Confirm-HU "ECHTER LAUF - Aenderungen werden ausgefuehrt!`n`nSkript: $sn (Probelauf-Schalter ist aus)`nTenants: $($tn -join ', ')`n`n$what`n`nFortfahren?" 'Teams - Meldung aus Skript' -Warning)) { return $null }
         }
         $j.Options | Add-Member -NotePropertyName snippet -NotePropertyValue $sn -Force
         $j.Options | Add-Member -NotePropertyName snippetHash -NotePropertyValue (Get-HUTeamsCodeHash $code) -Force   # Review 030 B33
+        $j.Options | Add-Member -NotePropertyName params -NotePropertyValue ([pscustomobject]$vals) -Force
     }
     $allT = @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
     $selT = @($allT | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
@@ -516,6 +590,7 @@ function Register-HUTeamsHandlers {
         $c2 = $script:Controls
         $it = $c2['cmbTeamsJobSnippet'].SelectedItem
         Update-HUTeamsMaskState
+        Update-HUTeamsJobParams @{}   # neues Skript: Standardwerte
         if (-not $it -or -not "$($it.Tag)") { return }
         # Skript gewaehlt: oben keine eingebaute Meldung (entweder - oder)
         $script:TeamsFillBusy = $true
@@ -559,6 +634,7 @@ function Register-HUTeamsHandlers {
             $script:TeamsFillBusy = $true
             try { $c2['cmbTeamsJobSnippet'].SelectedIndex = 0 } finally { $script:TeamsFillBusy = $false }
             Update-HUTeamsMaskState
+            Update-HUTeamsJobParams @{}
         }
         $labels = @(Get-HUTeamsKinds | ForEach-Object { "$($_.Label)" }) + @(Get-HUSnippets | ForEach-Object { "$($_.name)" })
         $cur = "$($c2['txtTeamsJobName'].Text)".Trim()

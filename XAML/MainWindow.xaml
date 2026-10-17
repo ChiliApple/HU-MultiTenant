@@ -1356,6 +1356,7 @@
                                                 <StackPanel x:Name="pnlTeamsJobScript" Margin="0,0,0,6">
                                                     <TextBlock Text="oder Meldung aus Skript (gespeichertes Snippet aus Quick Script)" Style="{StaticResource FieldLabel}"/>
                                                     <ComboBox x:Name="cmbTeamsJobSnippet" AutomationProperties.Name="Skript der Meldung" ToolTip="Snippet aus Quick Script. Es laeuft je Tenant mit den Standardwerten seiner @param-Zeilen." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,2"/>
+                                                    <WrapPanel x:Name="pnlTeamsJobParams" Visibility="Collapsed" Margin="0,4,0,2" ToolTip="Werte fuer die @param-Zeilen des Skripts - gelten fuer diese Meldung (Jetzt senden und Zeitplan)"/>
                                                     <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" FontSize="10" Text="Im Skript genuegt: Send-HUNotify -Title '...' -Lines @('...'). Jede Karte geht an die Ziele unten. Laeuft das Snippet im Quick-Script-Editor, gehen seine Karten (nach Rueckfrage) ebenfalls an diese Ziele."/>
                                                 </StackPanel>
                                                 <TextBlock Text="Senden an (alle angehakt = auch spaeter angelegte Ziele)" Style="{StaticResource FieldLabel}"/>

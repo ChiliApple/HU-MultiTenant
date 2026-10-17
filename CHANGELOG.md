@@ -11,7 +11,7 @@
   (Tages-Ampel, Secret-Countdown, Lizenzen knapp, Defender-Alarm) und *Meldungen aus Skripten*. Jede Meldung hat
   dieselben Einstellungen: Ziele ("Senden an"), Tenants, "Jetzt senden" und auf Wunsch einen Zeitplan (Aufgabenplanung).
 - **Meldung aus Skript:** unter der eingebauten Meldung steht immer das Feld *oder Meldung aus Skript* mit allen gespeicherten Quick-Script-Snippets. Das Snippet
-  laeuft je Tenant mit den Standardwerten seiner `@param`-Zeilen; jedes `Send-HUNotify -Title ...` darin geht an die Ziele
+  laeuft je Tenant mit den Werten seiner `@param`-Felder (an der Meldung, wie oben im Quick Script); jedes `Send-HUNotify -Title ...` darin geht an die Ziele
   der Meldung - eine Kategorie braucht es nicht. Ruft das Snippet kein `Send-HUNotify` auf, geht seine Ausgabe
   (Objekte/Text, sonst die Write-Host-Zeilen) als eine Karte; ohne Ausgabe wird nichts gesendet. Snippets ohne
   Tenant-Bezug (eigene Schleife ueber alle Schulen) laufen nur einmal statt je Tenant. Je Tenant ein eigener, frischer Runspace.

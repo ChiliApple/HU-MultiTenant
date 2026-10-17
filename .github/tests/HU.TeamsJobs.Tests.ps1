@@ -348,6 +348,13 @@ Export-ModuleMember -Function Get-GraphToken
         $r.Calls | Should -Be 1
         @($r.Errors).Count | Should -Be 0
     }
+    It '@param-Werte der Meldung gehen vor dem Standard' {
+        $code = "# @param Anzahl|int|Anzahl|3`nif (`$Anzahl -ne 7) { throw `"Anzahl ist `$Anzahl`" }; 'ok'"
+        $r = Invoke-HUTeamsScript -Code $code -Name 'P' -Tenants @('a') -Settings $script:Set -AppRoot $script:App -Params @{ Anzahl = '7' }
+        @($r.Errors).Count | Should -Be 0
+        $r = Invoke-HUTeamsScript -Code $code -Name 'P' -Tenants @('a') -Settings $script:Set -AppRoot $script:App
+        @($r.Errors) -join ' ' | Should -Match 'Anzahl ist 3'
+    }
     It 'Get-HUTeamsSnippetCode liefert den Code' {
         Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Drucker' | Should -Match 'Send-HUNotify'
     }
