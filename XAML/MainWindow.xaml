@@ -1322,6 +1322,11 @@
                                                     <DataGridTextColumn Header="Wochentage / Uhrzeit" Binding="{Binding Zeitplan}" Width="Auto" MinWidth="90"/>
                                                     <DataGridTextColumn Header="Ziele" Binding="{Binding Ziele}" Width="Auto" MinWidth="70"/>
                                                     <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="Auto" MinWidth="70"/>
+                                                    <DataGridTextColumn Header="Hinweis" Binding="{Binding Status}" Width="Auto" MinWidth="60">
+                                                        <DataGridTextColumn.ElementStyle>
+                                                            <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#FFC107"/></Style>
+                                                        </DataGridTextColumn.ElementStyle>
+                                                    </DataGridTextColumn>
                                                 </DataGrid.Columns>
                                             </DataGrid>
                                         </DockPanel>

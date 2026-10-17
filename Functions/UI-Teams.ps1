@@ -190,15 +190,16 @@ function Format-HUTeamsDays($Days) {
 # Zeile der Meldungsliste (Spalten Name | Wochentage/Uhrzeit | Ziele | Tenants)
 function ConvertTo-HUTeamsJobRow($Job, $AllTargets) {
     $nm = "$($Job.Name)"
-    if ("$($Job.Kind)" -eq 'Script' -and "$($Job.Options.snippet)" -and $nm -ne "$($Job.Options.snippet)") { $nm = "$nm (Skript: $($Job.Options.snippet))" }
-    $st = Get-HUTeamsScriptState $Job
-    if ($st) { $nm = "! $nm - $st" }
-    if (-not $Job.Enabled) { $nm = "(aus) $nm" }
+    # Hinweise in eine eigene Spalte - der Name bleibt kurz
+    $st = @()
+    $ss = Get-HUTeamsScriptState $Job
+    if ($ss) { $st += "! $(if ($ss -match 'geaendert') { 'Skript geaendert - neu speichern' } else { $ss })" }
+    if (-not $Job.Enabled) { $st += 'Zeitplan aus' }
     $tids = @(@($Job.Targets) | Where-Object { "$_" })
     $to = if ($tids.Count) { (@($tids | ForEach-Object { $id = "$_"; $tt = $AllTargets | Where-Object { $_.Id -eq $id } | Select-Object -First 1; if ($tt) { "$($tt.Name)" } else { '?' } }) -join ', ') } else { 'alle' }
     $keys = @(@($Job.Tenants) | Where-Object { "$_" })
     $tn = if ($keys.Count) { (@($keys | ForEach-Object { $k = "$_"; $x = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($x) { "$($x.displayName)" } else { $k } }) -join ', ') } else { 'alle' }
-    return [pscustomobject]@{ Kopf = $false; Name = $nm; Zeitplan = "$(Format-HUTeamsDays $Job.Days) $($Job.Time)"; Ziele = $to; Tenants = $tn; Job = $Job }
+    return [pscustomobject]@{ Kopf = $false; Name = $nm; Zeitplan = "$(Format-HUTeamsDays $Job.Days) $($Job.Time)"; Ziele = $to; Tenants = $tn; Status = ($st -join ', '); Job = $Job }
 }
 
 function Update-HUTeamsJobs {
@@ -214,7 +215,7 @@ function Update-HUTeamsJobs {
         # zwei Gruppen: eingebaute Meldungen, Meldungen aus Skripten (Ueberschriften sind nicht waehlbar)
         foreach ($g in @(@{ Head = 'Eingebaute Meldungen'; Script = $false }, @{ Head = 'Meldungen aus Skripten'; Script = $true })) {
             $grp = @($jobs | Where-Object { ("$($_.Kind)" -eq 'Script') -eq $g.Script })
-            [void]$rows.Add([pscustomobject]@{ Kopf = $true; Name = "$($g.Head)$(if (-not $grp.Count) { ' - noch keine (+ Neu)' })"; Zeitplan = ''; Ziele = ''; Tenants = ''; Job = $null })
+            [void]$rows.Add([pscustomobject]@{ Kopf = $true; Name = "$($g.Head)$(if (-not $grp.Count) { ' - noch keine (+ Neu)' })"; Zeitplan = ''; Ziele = ''; Tenants = ''; Status = ''; Job = $null })
             foreach ($j in $grp) {
                 $r = ConvertTo-HUTeamsJobRow $j $allT
                 [void]$rows.Add($r)
