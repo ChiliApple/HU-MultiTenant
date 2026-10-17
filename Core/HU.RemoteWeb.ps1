@@ -337,6 +337,8 @@ $script:HURemoteJs = @'
     VIEWS.forEach(function (x) { show(x, x === v); });
     show('tabs', v !== 'vPair');
     S.tab = v;
+    // Ansicht merken: Herunterziehen (Neuladen) bleibt auf dieser Seite
+    try { if (v !== 'vPair') { sessionStorage.setItem('hu_view', v === 'vConfirm' ? 'vStart' : v); if (S.item) { sessionStorage.setItem('hu_item', S.item.id); } } } catch (e) { }
     var tabOf = (v === 'vStart' || v === 'vConfirm') ? 'vList' : v;
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tabOf); });
     if (v === 'vRun' && S.follow) { var c = $('rCon'); c.scrollTop = c.scrollHeight; }
@@ -398,6 +400,11 @@ $script:HURemoteJs = @'
       if (!j.ok) { return; }
       S.cat = j; S.catVer = j.ver;
       renderList();
+      if (S.restoreItem) {
+        var it = (j.items || []).filter(function (x) { return x.id === S.restoreItem; })[0];
+        S.restoreItem = null;
+        if (it && S.tab === 'vList') { openItem(it); }
+      }
     }).catch(function () { });
   }
 
@@ -771,7 +778,12 @@ $script:HURemoteJs = @'
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) { b.addEventListener('click', function () { setView(b.getAttribute('data-tab')); }); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden) { schedule(50); } else { clearTimeout(S.timer); } });
     initSw();
-    if (S.token) { setView('vList'); poll(); } else { setView('vPair'); }
+    if (S.token) {
+      var v = 'vList'; try { v = sessionStorage.getItem('hu_view') || 'vList'; } catch (e) { }
+      if (v === 'vStart') { try { S.restoreItem = sessionStorage.getItem('hu_item'); } catch (e) { } v = 'vList'; }
+      if (['vList', 'vRun', 'vMore'].indexOf(v) < 0) { v = 'vList'; }
+      setView(v); poll();
+    } else { setView('vPair'); }
   });
 })();
 '@
