@@ -1288,7 +1288,7 @@
                                     <TextBlock DockPanel.Dock="Top" Text="Meldungen" Style="{StaticResource SectionTitle}" Margin="0,0,0,6"/>
                                     <StackPanel DockPanel.Dock="Bottom">
                                         <DockPanel Margin="0,4,0,6">
-                                            <Ellipse x:Name="dotTeamsJobRun" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,3,6,0" VerticalAlignment="Top" Visibility="Collapsed" ToolTip="Meldung laeuft ..."/>
+                                            <Ellipse x:Name="dotTeamsJobRun" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,1,6,0" VerticalAlignment="Top" Visibility="Collapsed" ToolTip="Meldung laeuft ..."/>
                                             <TextBlock x:Name="lblTeamsJobTask" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
                                         </DockPanel>
                                         <DockPanel>

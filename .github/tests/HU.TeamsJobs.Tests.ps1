@@ -343,6 +343,11 @@ Export-ModuleMember -Function Get-GraphToken
         $r.Calls | Should -Be 1
         @($r.Errors).Count | Should -Be 0
     }
+    It 'ohne Ausgabe: Write-Host-Zeilen gehen als Karte; ohne Tenant-Bezug nur ein Lauf' {
+        $r = Invoke-HUTeamsScript -Code "Write-Host 'Zeile A'" -Name 'W' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App
+        $r.Calls | Should -Be 1
+        @($r.Errors).Count | Should -Be 0
+    }
     It 'Get-HUTeamsSnippetCode liefert den Code' {
         Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Drucker' | Should -Match 'Send-HUNotify'
     }

@@ -13,7 +13,8 @@
     Meldung aus Skript:
       Kind 'Script'   fuehrt ein gespeichertes Quick-Script-Snippet (Options.snippet = Name) je Tenant aus, mit den
                       Standardwerten seiner @param-Zeilen. Jedes Send-HUNotify im Snippet geht an die Ziele der Meldung.
-                      Ruft das Snippet kein Send-HUNotify auf, wird seine Ausgabe (Objekte/Text) als eine Karte gesendet.
+                      Ruft das Snippet kein Send-HUNotify auf, wird seine Ausgabe (Objekte/Text, sonst Write-Host) als eine Karte
+                      gesendet. Nutzt es keinen Tenant-Bezug ($TenantKey/$Token ...), laeuft es nur einmal.
     Meldungen liegen in Config\teams-jobs.json (lokal, nicht im Repository). Sie enthalten keine Adressen -
     gesendet wird ueber die Ziele aus HU.Notify (am Auftrag gespeicherte Ziel-Ids).
 
@@ -387,7 +388,15 @@ function Invoke-HUTeamsScript {
     $lines = New-Object System.Collections.Generic.List[string]
     $deadline = (Get-Date).AddMinutes($script:TeamsScriptTimeoutMin)
     $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
-    foreach ($tk in $Tenants) {
+    # Skript ohne Tenant-Bezug (kein $TenantKey/$Schule/$Token/Get-HUToken - z. B. eigene Schleife ueber alle Schulen):
+    # nur EINMAL ausfuehren, sonst liefe es je Tenant erneut (doppelte Karten, Graph-Drosselung 429)
+    $runTenants = @($Tenants)
+    if ($runTenants.Count -gt 1 -and "$Code" -notmatch '(?i)\$(TenantKey|Schule|Token)\b|Get-HUToken') {
+        $runTenants = @($Tenants[0])
+        if ($log) { Write-HULog -Message "[Teams] $($Name): Skript nutzt keinen Tenant-Bezug - laeuft einmal statt je Tenant" -Level INFO }
+    }
+    $multi = $runTenants.Count -gt 1
+    foreach ($tk in $runTenants) {
         $left = ($deadline - (Get-Date)).TotalMilliseconds
         if ($left -le 0) { $errs.Add("[$tk] uebersprungen - Zeitlimit $($script:TeamsScriptTimeoutMin) Minuten erreicht"); continue }
         $rs = [runspacefactory]::CreateRunspace()
@@ -400,7 +409,7 @@ function Invoke-HUTeamsScript {
             $rs.SessionStateProxy.SetVariable('__Code', $Code)
             $rs.SessionStateProxy.SetVariable('__Name', $Name)
             $rs.SessionStateProxy.SetVariable('__Tk', $tk)
-            $rs.SessionStateProxy.SetVariable('__Multi', ($Tenants.Count -gt 1))
+            $rs.SessionStateProxy.SetVariable('__Multi', $multi)
             $rs.SessionStateProxy.SetVariable('__Ids', [string[]]@($TargetIds))
             $ps = [powershell]::Create()
             $ps.Runspace = $rs
@@ -439,11 +448,14 @@ function Invoke-HUTeamsScript {
             $res = @($ps.EndInvoke($h))
             $d = @($res | Where-Object { $_ -and $_.PSObject.Properties['__Done'] }) | Select-Object -First 1
             foreach ($se in @($ps.Streams.Error | Select-Object -First 3)) { $errs.Add("[$tk] $($se.Exception.Message)") }
-            if ($log) { foreach ($i in @($ps.Streams.Information | Select-Object -First 30)) { $s = "$($i.MessageData)".Trim(); if ($s) { Write-HULog -Message "[Teams] $($Name) [$tk]: $s" -Level INFO } } }
+            # Write-Host-Ausgabe: ins Log und - wenn das Skript sonst nichts liefert - als Zeilen der Karte
+            $hostLines = @(@($ps.Streams.Information) | ForEach-Object { "$($_.MessageData)".TrimEnd() } | Where-Object { "$_".Trim() })
+            if ($log) { foreach ($s in @($hostLines | Select-Object -First 30)) { Write-HULog -Message "[Teams] $($Name) [$tk]: $s" -Level INFO } }
             if ($d) {
                 $out.Calls += $d.Calls; $out.Ok += $d.Ok; $out.Failed += $d.Failed
                 foreach ($x in @($d.Errors)) { if ($x) { $errs.Add("$x") } }
-                foreach ($x in @($d.Lines)) { if ($x -and $lines.Count -lt 60) { $lines.Add("$x") } }
+                $src = if (@($d.Lines).Count) { @($d.Lines) } elseif ($d.Calls -eq 0) { @($hostLines | ForEach-Object { if ($multi) { "[$tk] $_" } else { "$_" } }) } else { @() }
+                foreach ($x in $src) { if ($x -and $lines.Count -lt 60) { $lines.Add("$x") } }
             }
             else { $errs.Add("[$tk] Skript ohne Ergebnis beendet") }
         }

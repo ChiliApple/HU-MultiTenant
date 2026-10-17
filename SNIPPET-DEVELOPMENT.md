@@ -122,7 +122,8 @@ Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed
 
 - keine Kategorie nötig – jede Karte geht an die Ziele der Meldung
 - nach jeder Änderung am Snippet die Meldung im Reiter Teams **neu speichern** – sonst läuft sie nicht (Fingerabdruck); `DryRun`-Standard aus = Rückfrage „ECHTER LAUF“ beim Speichern
-- ohne `Send-HUNotify`: die Ausgabe des Snippets (Objekte/Text) geht als **eine** Karte (je Objekt eine Zeile); keine Ausgabe = nichts gesendet
+- ohne `Send-HUNotify`: die Ausgabe des Snippets (Objekte/Text, sonst die `Write-Host`-Zeilen) geht als **eine** Karte; keine Ausgabe = nichts gesendet
+- ohne `$TenantKey`/`$Token` im Code (eigene Schleife über alle Schulen) läuft das Snippet nur **einmal** statt je Tenant
 - geplant / *Jetzt senden*: läuft je Tenant mit den **Standardwerten** der `# @param`-Zeilen (`DryRun` mit Standard `true` bleibt ein Probelauf)
 - im Quick-Script-Editor: gehört das Snippet zu einer Meldung, fragt HU-MultiTenant einmal (Ja / Nein = ohne Teams / Abbrechen) und sendet an deren Ziele; ohne Meldung sendet es nichts
 - `-WhatIf` = nur anzeigen, was gesendet würde

@@ -350,7 +350,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 
 
   <h3 id="teams-kat">Meldungen aus Skripten</h3>
-  <p>Eigene Meldungen – z. B. <i>Drucker-Status</i>, <i>Backup</i>, <i>WSUS</i> – schreibst Du als <b>Snippet in Quick Script</b>. Das Skript entscheidet, <b>ob</b> und <b>was</b> gemeldet wird: entweder selbst mit <code>Send-HUNotify</code> – oder es gibt einfach Objekte/Text aus, dann geht diese Ausgabe als <b>eine</b> Karte (je Objekt eine Zeile, höchstens 6 Eigenschaften; keine Ausgabe = nichts gesendet); die Meldung im Reiter Teams entscheidet, <b>an wen</b> und <b>wann</b>.</p>
+  <p>Eigene Meldungen – z. B. <i>Drucker-Status</i>, <i>Backup</i>, <i>WSUS</i> – schreibst Du als <b>Snippet in Quick Script</b>. Das Skript entscheidet, <b>ob</b> und <b>was</b> gemeldet wird: entweder selbst mit <code>Send-HUNotify</code> – oder es gibt einfach Objekte/Text aus (sonst zählen die <code>Write-Host</code>-Zeilen), dann geht diese Ausgabe als <b>eine</b> Karte (je Objekt eine Zeile, höchstens 6 Eigenschaften; keine Ausgabe = nichts gesendet). Ein Snippet ohne Tenant-Bezug (kein <code>$TenantKey</code>/<code>$Token</code>, z. B. mit eigener Schleife über alle Schulen) läuft nur <b>einmal</b>; die Meldung im Reiter Teams entscheidet, <b>an wen</b> und <b>wann</b>.</p>
   <ol class="steps">
     <li>Quick Script: Snippet schreiben und unter einem Namen speichern (Beispiel unten).</li>
     <li>Reiter Teams › Meldungen › <span class="ui">+ Neu</span> › im Feld <b>oder Meldung aus Skript</b> das Snippet wählen. Ziele anhaken, Tenants wählen → <span class="ui b">💾 Speichern</span>.</li>
