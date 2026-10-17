@@ -3,9 +3,12 @@
 ## v2.1.10 (in Arbeit)
 
 ### Neu: eigene Teams-Kategorien
-- Im Reiter Teams unter den Kategorien-Haken: **Eigene Kategorie** mit Schluessel (fuer Skripte, z. B. `Backup`)
-  und Anzeigename anlegen. Sie erscheint bei jedem Ziel als Haken `Anzeigename [Schluessel]`, ist aber nur beim
-  gerade gewaehlten Ziel angehakt; Rechtsklick darauf = bearbeiten oder loeschen (loescht auch die Haken). Ablage im Benutzerprofil (`%APPDATA%\HU-MultiTenant\notify-categories.json`, Klartext,
+- Reiter Teams, Ziele: **Eigene Kategorien** mit Schluessel (fuer Skripte, z. B. `Drucker`) und Anzeigename anlegen.
+  Sie stehen in einem eigenen Block mit Haken je Ziel, Stift (umbenennen) und X (loeschen, auch die Haken an allen
+  Zielen). Eine neue Kategorie wird nur beim gerade gewaehlten Ziel angehakt und gleich gespeichert.
+- Ziel-Haken aufgeraeumt: Am Ziel steht nur noch, was wirkt ("Bekommt ausserdem": Fehler zeitgesteuerter Auftraege
+  und eigene Kategorien). Die Kategorien Tages-Ampel, Secrets, Lizenzen, Defender usw. waren dort wirkungslos, weil
+  Auftraege ihre Ziele selbst waehlen; sie bleiben intern gespeichert und kommen zurueck, sobald eine Funktion sie nutzt. Ablage im Benutzerprofil (`%APPDATA%\HU-MultiTenant\notify-categories.json`, Klartext,
   keine Geheimnisse), hoechstens 30.
 - Quick-Script-Snippets und Erweiterungen (Standard-Laufzeit, nicht `.RUNTIME PS7`) haben jetzt `Send-HUNotify` zur Verfuegung und koennen an eigene (und
   eingebaute) Kategorien melden: `Send-HUNotify -Category Backup -Title 'Backup HLW fertig' -Level OK`.

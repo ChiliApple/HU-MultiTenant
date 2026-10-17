@@ -1274,9 +1274,12 @@
                                             <TextBlock Text="Webhook-Adresse (leer lassen = gespeicherte behalten)" Style="{StaticResource FieldLabel}"/>
                                             <PasswordBox x:Name="pwdTeamsUrl" ToolTip="Webhook-Adresse aus Teams: Kanal &gt; Workflows &gt; 'Post to a channel when a webhook request is received'. Wird verschluesselt gespeichert und nie wieder angezeigt. Leer lassen = gespeicherte Adresse behalten." Style="{StaticResource DarkPasswordBox}" FontSize="12" Margin="0,2,0,6"/>
                                             <CheckBox x:Name="chkTeamsEnabled" ToolTip="Aus = Ziel bleibt gespeichert, bekommt aber keine Meldungen" Content="Ziel aktiv" IsChecked="True" Foreground="#CCCCCC" FontSize="11" Margin="0,0,0,6"/>
-                                            <TextBlock Text="Kategorien" Style="{StaticResource FieldLabel}"/>
-                                            <WrapPanel x:Name="pnlTeamsCats" ToolTip="Welche Meldungen dieses Ziel bekommt. Eigene Kategorien sind mit [Schluessel] markiert - Rechtsklick (oder Umschalt+F10): bearbeiten oder loeschen." Margin="0,2,0,6"/>
-                                            <TextBlock Text="Eigene Kategorie (fuer eigene Skripte, Snippets, Erweiterungen)" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock Text="Bekommt ausserdem" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" FontSize="10" Margin="0,0,0,2" Text="Zeitgesteuerte Meldungen (Tages-Ampel, Defender ...) waehlen ihre Ziele selbst - rechts bei 'Senden an'. Hier steht nur, was dieser Kanal zusaetzlich bekommt."/>
+                                            <WrapPanel x:Name="pnlTeamsCats" Margin="0,2,0,8"/>
+                                            <TextBlock Text="Eigene Kategorien (Meldungen aus eigenen Skripten und Snippets)" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="lblTeamsCustomNone" Style="{StaticResource HintText}" FontSize="10" Margin="0,2,0,2" Text="Noch keine - unten anlegen, z. B. Schluessel 'Drucker', Anzeigename 'Druckerfehler'."/>
+                                            <StackPanel x:Name="pnlTeamsCustomCats" Margin="0,2,0,4" ToolTip="Haken = dieses Ziel bekommt Meldungen dieser Kategorie. Stift = Anzeigenamen aendern, X = Kategorie loeschen."/>
                                             <Grid Margin="0,2,0,0">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="120"/>

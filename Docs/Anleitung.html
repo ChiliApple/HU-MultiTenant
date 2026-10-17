@@ -318,7 +318,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <h3 id="teams-ziel">Ziel einrichten</h3>
   <ol class="steps">
     <li>In Teams im gewünschten Kanal: <span class="ui">⋯</span> › <span class="ui">Workflows</span> › Vorlage <i>Post to a channel when a webhook request is received</i> (Webhookanforderung empfangen → im Kanal posten). Name vergeben, Team/Kanal bestätigen, <span class="ui">Workflow hinzufügen</span> und die angezeigte Adresse kopieren.</li>
-    <li>Reiter <b>Teams</b> › Ziele › <span class="ui">+ Neu</span>: Name (z. B. <i>Admin-Kanal</i>), Adresse einfügen, <b>Kategorien</b> anhaken (welche Meldungen ohne Auftrag dieses Ziel bekommt) → <span class="ui b">💾 Speichern</span>.</li>
+    <li>Reiter <b>Teams</b> › Ziele › <span class="ui">+ Neu</span>: Name (z. B. <i>Admin-Kanal</i>), Adresse einfügen → <span class="ui b">💾 Speichern</span>. Unter <b>Bekommt außerdem</b> steht nur, was der Kanal zusätzlich zu den Aufträgen bekommt: <i>Fehler zeitgesteuerter Aufträge</i> und – darunter – Deine <b>eigenen Kategorien</b>. Welche Kanäle die Tages-Ampel, den Defender-Alarm usw. bekommen, legst Du beim Auftrag fest (rechts, <i>Senden an</i>).</li>
     <li><span class="ui">✉ Test senden</span> – die Testkarte muss im Kanal erscheinen. Fehler stehen im Klartext da (z. B. 404 = Workflow gelöscht/aus, Umleitung = Kurzlink statt vollständiger Adresse).</li>
   </ol>
   <div class="note warn"><b class="h">Adresse = Schlüssel</b>Wer die Webhook-Adresse kennt, kann in den Kanal posten. Sie liegt DPAPI-verschlüsselt im Benutzerprofil (<code>%APPDATA%\HU-MultiTenant\notify-targets.json</code>) und ist an das <b>Windows-Konto und diesen PC</b> gebunden – ein anderes Konto oder ein neuer PC kann die Ziele nicht lesen (bei Roaming-Profilen beachten; dann Ziele neu eintragen). Sie wird nie angezeigt und nie geloggt – im Sendeprotokoll steht nur eine 8-stellige Kennung. Nicht weitergeben; bei Verdacht den Workflow in Teams löschen und neu anlegen. Alte Office-365-Connector-Adressen (<code>webhook.office.com</code>) sind seit Mai 2026 abgeschaltet und werden abgewiesen.</div>
@@ -351,8 +351,8 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <p>Für Meldungen aus <b>eigenen Snippets, Erweiterungen und Skripten</b> – z. B. <i>Backup</i>, <i>Drucker</i>, <i>WSUS</i>. Jedes Ziel entscheidet per Haken, ob es eine Kategorie bekommt; das Skript nennt nur den Schlüssel.</p>
   <ol class="steps">
     <li>Reiter Teams › Ziele › <b>Eigene Kategorie</b>: links den <b>Schlüssel</b> (Buchstabe am Anfang, dann Buchstaben/Ziffern, 2–24 Zeichen, z. B. <code>Backup</code>), rechts die <b>Bezeichnung</b> (z. B. <i>Backup: Ergebnisse</i>) → <span class="ui">+ Kategorie</span>.</li>
-    <li>Die Kategorie erscheint bei den Haken als <i>Backup: Ergebnisse [Backup]</i> und ist <b>nur beim gerade gewählten Ziel</b> angehakt – alle anderen Ziele bekommen sie erst, wenn Du sie dort anhakst. Jeweils <span class="ui b">💾 Speichern</span>.</li>
-    <li>Im Skript senden (Beispiele unten). <b>Rechtsklick</b> (oder <kbd>Umschalt</kbd>+<kbd>F10</kbd>) auf den Haken: Anzeigename bearbeiten (gleicher Schlüssel = ändern) oder Kategorie löschen – beim Löschen verschwinden auch die Haken an allen Zielen.</li>
+    <li>Die Kategorie erscheint im Block <b>Eigene Kategorien</b> und ist beim gerade gewählten Ziel sofort angehakt und gespeichert – alle anderen Ziele bekommen sie erst, wenn Du sie dort anhakst und speicherst.</li>
+    <li>Im Skript senden (Beispiele unten). Neben jeder eigenen Kategorie: <b>✎</b> = Anzeigenamen ändern (Felder unten, Knopf heißt dann <span class="ui">Ändern</span>), <b>✕</b> = Kategorie löschen – dabei verschwinden auch die Haken an allen Zielen.</li>
   </ol>
   <p><b>Im Quick Script / Snippet</b> – <code>Send-HUNotify</code> ist dort schon geladen:</p>
 <pre><code># Geraete ohne Sync melden (Kategorie "Sync" vorher im Reiter Teams anlegen)

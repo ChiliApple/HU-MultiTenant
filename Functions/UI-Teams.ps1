@@ -48,58 +48,107 @@ function Show-HUTeamsTarget($Target) {
         $c['txtTeamsName'].Text = if ($Target) { "$($Target.Name)" } else { 'Admin-Kanal' }
         $c['pwdTeamsUrl'].Password = ''
         $c['chkTeamsEnabled'].IsChecked = if ($Target) { [bool]$Target.Enabled } else { $true }
-        foreach ($cb in @($c['pnlTeamsCats'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) {
+        foreach ($cb in @(Get-HUTeamsCatBoxes)) {
             $cb.IsChecked = (Test-HUNotifyCat -Target $Target -Category "$($cb.Tag)")
         }
         $c['btnTeamsDel'].IsEnabled = [bool]$Target
         $c['btnTeamsTest'].IsEnabled = $true
-        $c['lblTeamsHint'].Text = if ($Target) { "Ziel $($Target.Name) - Id $($Target.Id) (fuer Send-HUNotify -TargetIds), Kennung $(Get-HUNotifyUrlTag $Target.Url). Adresse ist gespeichert (verschluesselt) und wird nicht angezeigt." } else { 'Neues Ziel: Name, Webhook-Adresse, Kategorien - dann Speichern.' }
+        $c['lblTeamsHint'].Text = if ($Target) { "Ziel $($Target.Name) - Id $($Target.Id) (fuer Send-HUNotify -TargetIds), Kennung $(Get-HUNotifyUrlTag $Target.Url). Adresse ist gespeichert (verschluesselt) und wird nicht angezeigt." } else { 'Neues Ziel: Name und Webhook-Adresse eintragen, dann Speichern.' }
     } finally { $script:TeamsFillBusy = $false }
 }
 
-# Kategorien-Haken (eingebaute + eigene) neu aufbauen; Haken bleiben, neue bekommen ihren Standard
+# Am Ziel nur Haken zeigen, die wirken: Auftraege waehlen ihre Ziele selbst (rechts), die Ziel-Haken gelten nur fuer
+# Meldungen OHNE Auftrag - Fehler zeitgesteuerter Laeufe und eigene Kategorien aus Skripten. Die uebrigen eingebauten
+# Kategorien (Daily, Secrets ...) bleiben intern gespeichert, werden aber erst angezeigt, wenn eine Funktion sie nutzt.
+$script:TeamsVisibleBuiltin = @('Jobs')
+
+function Get-HUTeamsCatBoxes {
+    $c = $script:Controls
+    @($c['pnlTeamsCats'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
+    foreach ($row in @($c['pnlTeamsCustomCats'].Children)) { @($row.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] }) }
+}
+
+function New-HUTeamsSmallButton([string]$Text, [string]$Tip, [string]$Bg) {
+    $b = New-Object System.Windows.Controls.Button
+    $b.Content = $Text; $b.ToolTip = $Tip
+    $b.Style = $script:Window.FindResource('DarkButton')
+    $b.Background = Get-HUBrush $Bg
+    $b.FontSize = 11; $b.Padding = [System.Windows.Thickness]::new(6, 0, 6, 0); $b.Margin = [System.Windows.Thickness]::new(4, 1, 0, 1)
+    [System.Windows.Controls.DockPanel]::SetDock($b, 'Right')
+    return $b
+}
+
 function Update-HUTeamsCatChecks {
-    $sp = $script:Controls['pnlTeamsCats']
+    $c = $script:Controls
     $was = @{}
-    foreach ($cb in @($sp.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $was["$($cb.Tag)"] = [bool]$cb.IsChecked }
-    $sp.Children.Clear()
+    foreach ($cb in @(Get-HUTeamsCatBoxes)) { $was["$($cb.Tag)"] = [bool]$cb.IsChecked }
+    $c['pnlTeamsCats'].Children.Clear()
+    $c['pnlTeamsCustomCats'].Children.Clear()
+    $custom = 0
     foreach ($k in @(Get-HUNotifyCategories)) {
+        if (-not $k.Custom -and $script:TeamsVisibleBuiltin -notcontains $k.Key) { continue }
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Tag = $k.Key
         $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
-        $cb.Margin = [System.Windows.Thickness]::new(0, 1, 12, 1)
+        $cb.VerticalAlignment = 'Center'
         $cb.IsChecked = if ($was.ContainsKey("$($k.Key)")) { $was["$($k.Key)"] } else { [bool]$k.Default }
-        if ($k.Custom) {
-            $cb.Content = "$($k.Label) [$($k.Key)]"
-            $cb.ToolTip = "Eigene Kategorie - Skripte senden mit: Send-HUNotify -Category $($k.Key) -Title '...'`nRechtsklick: bearbeiten oder loeschen"
-            $menu = New-Object System.Windows.Controls.ContextMenu
-            $miE = New-Object System.Windows.Controls.MenuItem; $miE.Header = 'Bearbeiten (in die Felder unten)'; $miE.Tag = $k
-            $miE.Add_Click({ $script:Controls['txtTeamsCatKey'].Text = "$($this.Tag.Key)"; $script:Controls['txtTeamsCatLabel'].Text = "$($this.Tag.Label)" })
-            $miD = New-Object System.Windows.Controls.MenuItem; $miD.Header = "Kategorie '$($k.Key)' loeschen"; $miD.Tag = "$($k.Key)"
-            $miD.Add_Click({ Remove-HUTeamsCategory "$($this.Tag)" })
-            [void]$menu.Items.Add($miE); [void]$menu.Items.Add($miD)
-            $cb.ContextMenu = $menu
+        if (-not $k.Custom) {
+            $cb.Content = $(if ($k.Key -eq 'Jobs') { 'Fehler zeitgesteuerter Auftraege' } else { $k.Label })
+            $cb.ToolTip = 'Scheitert eine geplante Aufgabe (Headless-Lauf), kommt eine Fehlerkarte an dieses Ziel.'
+            $cb.Margin = [System.Windows.Thickness]::new(0, 1, 12, 1)
+            [void]$c['pnlTeamsCats'].Children.Add($cb)
+            continue
         }
-        else { $cb.Content = $k.Label }
-        [void]$sp.Children.Add($cb)
+        $custom++
+        $cb.Content = "$($k.Label)"
+        $cb.ToolTip = "Eigene Kategorie '$($k.Key)'. Haken = dieses Ziel bekommt Meldungen aus Skripten mit: Send-HUNotify -Category $($k.Key) -Title '...'"
+        $row = New-Object System.Windows.Controls.DockPanel
+        $row.LastChildFill = $true
+        $row.Margin = [System.Windows.Thickness]::new(0, 0, 0, 1)
+        $bDel = New-HUTeamsSmallButton ([string][char]0x2715) "Kategorie '$($k.Key)' loeschen (bei allen Zielen)" '#C62828'
+        $bDel.Tag = "$($k.Key)"
+        $bDel.Add_Click({ Remove-HUTeamsCategory "$($this.Tag)" })
+        $bEdit = New-HUTeamsSmallButton ([string][char]0x270E) 'Anzeigenamen aendern (in die Felder unten)' '#3E3E42'
+        $bEdit.Tag = $k
+        $bEdit.Add_Click({ $script:Controls['txtTeamsCatKey'].Text = "$($this.Tag.Key)"; $script:Controls['txtTeamsCatLabel'].Text = "$($this.Tag.Label)"; $script:Controls['txtTeamsCatLabel'].Focus() })
+        $key = New-Object System.Windows.Controls.TextBlock
+        $key.Text = "Schluessel: $($k.Key)"; $key.Foreground = Get-HUBrush '#888888'; $key.FontSize = 10
+        $key.VerticalAlignment = 'Center'; $key.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
+        [System.Windows.Controls.DockPanel]::SetDock($key, 'Right')
+        [void]$row.Children.Add($bDel); [void]$row.Children.Add($bEdit); [void]$row.Children.Add($key); [void]$row.Children.Add($cb)
+        [void]$c['pnlTeamsCustomCats'].Children.Add($row)
     }
+    $c['lblTeamsCustomNone'].Visibility = $(if ($custom) { 'Collapsed' } else { 'Visible' })
+    Update-HUTeamsCatButton
+}
+
+# "+ Kategorie" wird zu "Aendern", wenn der Schluessel schon existiert
+function Update-HUTeamsCatButton {
+    $c = $script:Controls
+    $k = "$($c['txtTeamsCatKey'].Text)".Trim()
+    $exists = $k -and @(Get-HUNotifyCategories | Where-Object { $_.Custom -and $_.Key -eq $k }).Count
+    $c['btnTeamsCatAdd'].Content = $(if ($exists) { 'Aendern' } else { '+ Kategorie' })
 }
 
 function Add-HUTeamsCategory {
     $c = $script:Controls
     $key = "$($c['txtTeamsCatKey'].Text)".Trim()
     $lbl = "$($c['txtTeamsCatLabel'].Text)".Trim()
-    if (-not $key) { Show-HUMessage 'Bitte einen Schluessel eingeben (z. B. Backup).' -Icon Warning; return }
+    if (-not $key) { Show-HUMessage 'Bitte einen Schluessel eingeben (z. B. Drucker).' -Icon Warning; return }
     if (-not $lbl) { $lbl = $key }
     # Review 030 B1: Standard AUS - andere Ziele (z. B. Direktion) bekommen die Kategorie erst nach eigenem Haken
     $exists = @(Get-HUNotifyCategories | Where-Object { $_.Custom -and $_.Key -eq $key }).Count -gt 0
     $r = Add-HUNotifyCategory -Key $key -Label $lbl -Default $false
     if ($r) { Show-HUMessage $r -Icon Warning; return }
     Update-HUTeamsCatChecks
-    # beim gerade gewaehlten Ziel direkt anhaken (Speichern nicht vergessen)
-    foreach ($cb in @($c['pnlTeamsCats'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and "$($_.Tag)" -eq $key })) { $cb.IsChecked = $true }
     $c['txtTeamsCatKey'].Text = ''; $c['txtTeamsCatLabel'].Text = ''
-    $c['lblTeamsHint'].Text = $(if ($exists) { "Kategorie '$key' geaendert. " } else { "Kategorie '$key' angelegt und NUR bei diesem Ziel angehakt - Ziel speichern nicht vergessen; andere Ziele bei Bedarf dort anhaken. " }) + "Aus Skripten: Send-HUNotify -Category $key -Title '...'"
+    if (-not $exists) {
+        # beim gewaehlten Ziel gleich anhaken UND speichern - kein Haken, der beim Wechseln verloren geht
+        foreach ($cb in @(Get-HUTeamsCatBoxes | Where-Object { "$($_.Tag)" -eq $key })) { $cb.IsChecked = $true }
+        if ($script:TeamsCurrent) { Save-HUTeamsTarget -Quiet }
+    }
+    $who = "$($c['txtTeamsName'].Text)".Trim()
+    $c['lblTeamsHint'].Text = $(if ($exists) { "Kategorie '$key' geaendert." } elseif ($script:TeamsCurrent) { "Kategorie '$key' angelegt - '$who' bekommt sie (gespeichert). Andere Ziele bekommen sie erst, wenn Du sie dort anhakst." } else { "Kategorie '$key' angelegt und hier angehakt - Ziel speichern nicht vergessen." }) + " Aus Skripten: Send-HUNotify -Category $key -Title '...'"
     Write-HULogOK "Teams: eigene Kategorie '$key' ($lbl) gespeichert."
 }
 
@@ -109,16 +158,22 @@ function Remove-HUTeamsCategory([string]$Key) {
     if ($r) { Show-HUMessage $r -Icon Warning; return }
     Update-HUTeamsCatChecks
     Update-HUTeamsTargets
+    $t = (Get-HUNotifyConfig).Targets | Where-Object { $_.Id -eq $script:TeamsCurrent } | Select-Object -First 1
+    Show-HUTeamsTarget $t
     Write-HULogOK "Teams: eigene Kategorie '$Key' geloescht."
 }
 
 function Get-HUTeamsCatsFromPanel {
+    # Nicht angezeigte (eingebaute) Kategorien behalten ihren gespeicherten Wert
+    param($Old)
     $h = @{}
-    foreach ($cb in @($script:Controls['pnlTeamsCats'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $h["$($cb.Tag)"] = [bool]$cb.IsChecked }
+    if ($Old -and $Old.Cats) { foreach ($k in @($Old.Cats.PSBase.Keys)) { $h["$k"] = [bool]$Old.Cats[$k] } }
+    foreach ($cb in @(Get-HUTeamsCatBoxes)) { $h["$($cb.Tag)"] = [bool]$cb.IsChecked }
     return $h
 }
 
 function Save-HUTeamsTarget {
+    param([switch]$Quiet)
     $c = $script:Controls
     $name = "$($c['txtTeamsName'].Text)".Trim()
     if (-not $name) { Show-HUMessage 'Bitte einen Namen eingeben.' -Icon Warning; return }
@@ -136,7 +191,7 @@ function Save-HUTeamsTarget {
             if (-not (Confirm-HU "Die Adresse stammt nicht erkennbar aus der Workflows-App / Power Automate.`n`nTrotzdem speichern?" -Warning)) { return }
         }
     }
-    $newT = [pscustomobject]@{ Id = $script:TeamsCurrent; Name = $name; Url = $url; Enabled = [bool]$c['chkTeamsEnabled'].IsChecked; Cats = (Get-HUTeamsCatsFromPanel); Created = $(if ($old) { $old.Created } else { '' }) }
+    $newT = [pscustomobject]@{ Id = $script:TeamsCurrent; Name = $name; Url = $url; Enabled = [bool]$c['chkTeamsEnabled'].IsChecked; Cats = (Get-HUTeamsCatsFromPanel -Old $old); Created = $(if ($old) { $old.Created } else { '' }) }
     # Review 030 B18: Lesen + Schreiben unter der Sperre (parallel z. B. ein Snippet mit Add-HUNotifyTarget)
     $script:__teamsSaveOut = ''
     try {
@@ -419,6 +474,7 @@ function Register-HUTeamsHandlers {
     # Kategorien-Haken (eingebaute + eigene)
     Update-HUTeamsCatChecks
     $c['btnTeamsCatAdd'].Add_Click({ Add-HUTeamsCategory })
+    $c['txtTeamsCatKey'].Add_TextChanged({ Update-HUTeamsCatButton })
     # Wochentage
     $c['pnlTeamsJobDays'].Children.Clear()
     $i = 0
