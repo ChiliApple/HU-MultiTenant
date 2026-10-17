@@ -271,7 +271,7 @@ function Show-HUTeamsJob($Job) {
         $o = if ($Job -and $Job.Options) { $Job.Options } else { $null }
         $c['rbTeamsJobRunOnce'].IsChecked = [bool]($o -and $o.PSObject.Properties['runMode'] -and "$($o.runMode)".Trim() -eq 'once')
         $c['rbTeamsJobRunEach'].IsChecked = -not $c['rbTeamsJobRunOnce'].IsChecked
-        $c['chkTeamsJobSendOutput'].IsChecked = [bool]($o -and $o.PSObject.Properties['sendOutput'] -and (ConvertTo-HUTeamsBool $o.sendOutput -Default $false))   # Review 030 B37: Standard aus
+        $c['chkTeamsJobSendOutput'].IsChecked = [bool]($o -and $o.PSObject.Properties['sendOutput'] -and ($o.sendOutput -eq $true -or "$($o.sendOutput)".Trim() -match '^(?i)(true|1|ja|yes|on|an)$'))   # Review 030 B37: Standard aus, Text "false" = aus
         Update-HUTeamsMaskState
         Update-HUTeamsJobTargetChecks
         # Where-Object: $null | ForEach-Object laeuft einmal mit $null -> '' waere ein "Ziel" und kein Haken bliebe gesetzt
