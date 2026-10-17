@@ -523,6 +523,7 @@ function Set-HUTeamsRunDot([bool]$On) {
 function Start-HUTeamsJobNow {
     param([string]$TargetId = '', [string]$TargetName = '')
     $c = $script:Controls
+    if ((Get-Command Test-HURemoteRunBusy -ErrorAction SilentlyContinue) -and (Test-HURemoteRunBusy -Message)) { return }   # gemeinsame Laufsperre mit dem Handy
     try { $j = Get-HUTeamsJobFromForm -Purpose 'Jetzt senden' } catch { Show-HUMessage $_.Exception.Message -Icon Warning; return }
     if (-not $j) { return }
     if (-not (Get-HUNotifyConfig).Configured) { Show-HUMessage 'Noch kein Teams-Ziel gespeichert.' -Icon Warning; return }

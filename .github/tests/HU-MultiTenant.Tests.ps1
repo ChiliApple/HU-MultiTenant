@@ -288,6 +288,17 @@ Describe 'Analyse: Zuweisungen' {
     }
 }
 
+Describe 'Quelltext-Fallen' {
+    It '[char] nur bis 0xFFFF (Emoji ueber [char]::ConvertFromUtf32) - sonst bricht der Start ab' {
+        $bad = @()
+        foreach ($f in @(Get-ChildItem (Join-Path $script:AppRoot 'Functions'), (Join-Path $script:AppRoot 'Core') -Include *.ps1, *.psm1 -Recurse -File)) {
+            $n = 0
+            foreach ($ln in Get-Content -LiteralPath $f.FullName -Encoding UTF8) { $n++; if ($ln -match '\[char\]0x[0-9A-Fa-f]{5,}') { $bad += "$($f.Name):$n" } }
+        }
+        $bad | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Release-Texte' {
     It 'keine @-Erwaehnungen ausserhalb von Code (GitHub macht daraus Benutzer-Erwaehnungen/Contributors)' {
         $bad = @()

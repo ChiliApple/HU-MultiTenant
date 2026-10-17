@@ -424,11 +424,19 @@ function Get-HUPanicUrls {
 }
 
 function Invoke-HUPanic {
-    $msg = "NOT-AUS`n`nAlle auf diesem PC gespeicherten Client-Secrets (und das GitHub-Signier-Token) werden sofort geloescht, alle Verbindungen getrennt und HU-MultiTenant beendet.`n`nDanach oeffnen sich die App-Registrierungen der Tenants im Browser - dort die Secrets widerrufen, falls sie schon kopiert wurden.`n`nFortfahren?"
+    $msg = "NOT-AUS`n`nAlle auf diesem PC gespeicherten Client-Secrets (und das GitHub-Signier-Token) werden sofort geloescht, alle Verbindungen getrennt, gekoppelte Handys entfernt und HU-MultiTenant beendet.`n`nDanach oeffnen sich die App-Registrierungen der Tenants im Browser - dort die Secrets widerrufen, falls sie schon kopiert wurden.`n`nFortfahren?"
     if (-not (Confirm-HU $msg -Title 'Not-Aus' -Warning)) { return }
     $base = Join-Path $env:APPDATA 'HU-MultiTenant'
     $n = 0
     try { Clear-TokenCache } catch { }
+    # Review 032 B12: Handy-Fernbedienung beenden, gekoppelte Handys entfernen, Autostart aus
+    try {
+        if (Get-Command Stop-HURemote -ErrorAction SilentlyContinue) { Stop-HURemote 'Not-Aus' }
+        if (Get-Command Get-HURemoteConfig -ErrorAction SilentlyContinue) { $rc = Get-HURemoteConfig; if ($rc.AutoStart) { $rc.AutoStart = $false; Save-HURemoteConfig $rc } }
+        $rd = Join-Path $base 'remote-devices.json'
+        if (Test-Path -LiteralPath $rd) { Remove-Item -LiteralPath $rd -Force -ErrorAction Stop }
+        Write-HULog -Message 'Not-Aus: Handy-Fernbedienung beendet, gekoppelte Handys entfernt, Autostart aus' -Level 'WARN'
+    } catch { try { Write-HULog -Message "Not-Aus: Fernbedienung nicht vollstaendig zurueckgesetzt: $($_.Exception.Message)" -Level 'ERROR' } catch { } }
     $files = @(Get-ChildItem -LiteralPath $base -Filter '*.cred' -File -ErrorAction SilentlyContinue)
     $files += @(Get-ChildItem -LiteralPath $base -Filter 'GitHubSignToken.xml' -File -ErrorAction SilentlyContinue)
     foreach ($f in $files) {

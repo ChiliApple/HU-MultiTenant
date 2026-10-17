@@ -1,6 +1,49 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.1.10 (in Arbeit)
+## v2.1.11
+
+### Handy-Fernbedienung (neu)
+- Snippets, Erweiterungen und Teams-Meldungen vom Handy am PC starten: Web-App (PWA) im Heimnetz bzw. ueber das VPN des
+  Routers, responsiv fuer Handy, Foldable und Tablet. Knopf "Remote FB" oben rechts: Ein/Aus, Kopplung per QR-Code,
+  gekoppelte Handys, PIN, Freigaben, Einrichtung.
+- Am Handy: Tenants (vorausgewaehlt wie am Snippet bzw. an der Meldung) und `@param`-Felder waehlen, Zusammenfassung
+  pruefen, starten; Live-Ausgabe, Ergebnis je Tenant, Abbrechen. Teams-Meldungen auch einmalig an ein gespeichertes Ziel.
+- Echter Lauf (Einstufung "aendert Daten" ohne angehakten Probelauf): roter Bestaetigungsschritt, Kuerzel abtippen und
+  Fernbedienungs-PIN (nur Ziffern, mind. 4 Stellen; am PC nur als PBKDF2-Pruefwert). Falsche Eingabe verbraucht die
+  Bestaetigung, 3 falsche PINs sperren das Handy (entsperren nur am PC). Bestaetigung 120 s gueltig. Hinweis an Teams
+  (Ziele mit "Hinweis, wenn eine zeitgesteuerte Meldung nicht laufen kann") bei jedem echten Lauf vom Handy.
+- Freigaben fuers Handy je Snippet/Erweiterung mit Pflicht-Einstufung "nur lesend" / "aendert Daten" und Fingerabdruck
+  (SHA-256): geaenderter Code ist erst nach neuer Freigabe startbar. Parameter vom Handy nur fuer deklarierte
+  `@param`-Felder, Auswahl/Laenge geprueft, geschuetzte Namen ($Token, $TenantKey, *Preference ...) gesperrt.
+- Laeufe ohne Oberflaeche: je Tenant ein frischer Runspace, nie ein Dialog am PC (auch bei gesperrter App - abschaltbar),
+  gemeinsame Laufsperre mit Quick Script, Erweiterungen und "Jetzt senden". Titelleiste und Protokoll zeigen
+  "Remote FB". Client Secrets und Webhook-Adressen bleiben am PC; was ein Skript selbst ausgibt, erscheint am Handy.
+  Vollstaendiges Protokoll in Logs\Remote (aufgeraeumt nach logging.retentionDays). Haengt ein Lauf nach dem Abbruch,
+  bleibt die Laufsperre bis zum echten Ende.
+- Probelauf erkennt das Handy nur an eindeutigen Schaltern (DryRun, WhatIf, Probelauf); alles andere gilt als echter Lauf.
+- Freigaben: wurde der Code seit der Freigabe geaendert, fragt das Speichern mit Liste nach (Nein = bleibt gesperrt).
+- Not-Aus beendet auch die Fernbedienung, entfernt die gekoppelten Handys und schaltet den Autostart aus.
+- Einrichtung: gestartet wird als Administrator eine gepruefte Kopie (SHA-256) in einem je Lauf neu angelegten, nur fuer
+  Administratoren beschreibbaren Ordner (%windir%\Temp, zufaelliger Name, Besitzer und Rechte geprueft), Zusatznetze nur als Ziffern/Punkt/Schraegstrich.
+- Teams-Meldung vom Handy: Bestaetigung "Sendet jetzt eine Teams-Meldung an ..." und Knopf "Jetzt senden"; Reiter und
+  Hinweistexte kontrastreicher. Herunterziehen bleibt auf der Seite (auch Art Snippets/Erweiterungen/Meldungen).
+- Intune am Handy (Reiter "Intune"): Apps und Wartungsskripte je Tenant, Installationsstand bzw. Ergebnis (Anzahl und
+  Liste je Geraet mit Filter), Zuweisungen aufheben und setzen (Gruppe suchen, Ausschluss, alle Geraete/Benutzer; Apps:
+  Erforderlich/Verfuegbar/Deinstallieren; Wartung: Zeitplan) - Aendern immer mit Kuerzel + PIN, abschaltbar.
+- Empfohlen nur fuer sichere Homeoffice-Umgebungen (eigener PC, eigenes Heimnetz bzw. eigenes VPN).
+- Ausgabe am Handy: Filterfeld (zeigt nur passende Zeilen) und kleine Symbole - letzten Lauf mit derselben Auswahl wiederholen (wieder mit Bestaetigung), in die Zwischenablage kopieren, Anzeige leeren.
+- Push-Meldungen ueber den Handy-Browser: Ende eines Laufs mit Ergebnis (der Inhalt kommt direkt vom PC, nur im
+  Heimnetz/VPN; sonst "Lauf beendet").
+- Einmalige Einrichtung per UAC (Zertifikat - dieselbe CA wie HUMig -, HTTPS-Bindung, Port-Freigabe fuer das Konto,
+  Firewall-Regel fuer lokales Subnetz + eingetragene Netze); danach ohne Adminrechte. Port 8444 (HUMig 8443), eine
+  Bindung von HUMig wird erkannt und nie veraendert. PC wach halten waehrend eines Laufs (einstellbar: solange an).
+- Kopplung nur ueber den Knopf am PC (Code 6 Ziffern, 10 Minuten, einmal gueltig), hoechstens 5 Handys, ungenutzte
+  Kopplungen verfallen nach 90 Tagen, "Alle entfernen" fuer ein verlorenes Handy.
+
+### README
+- Reiter Teams (v2.1.10) und Handy-Fernbedienung in der Funktionsuebersicht.
+
+## v2.1.10
 
 ### Startbildschirm wieder da
 - Logo, Name und Version erscheinen sofort beim Start, darunter was gerade geladen wird; schliesst sich, sobald das

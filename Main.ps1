@@ -160,7 +160,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 $uiFiles = @('Core-Async', 'Core-Update', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-             'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-AppUpdates', 'UI-Teams')
+             'UI-Extensions', 'UI-Permissions', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote')
 # ohne Oberflaeche nur das Noetige (Einstellungen lesen/ergaenzen)
 if ($Headless) { $uiFiles = @('UI-Common', 'UI-Settings') }
 foreach ($f in $uiFiles) {
@@ -244,6 +244,12 @@ try {
         Get-ChildItem -LiteralPath (Split-Path $logFile -Parent) -Filter ($leaf -replace '\{date\}', '*') -File -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -lt $limit } | Remove-Item -Force -ErrorAction SilentlyContinue
     }
+    # Handy-Fernbedienung (Logs\Remote: Tageslaeufe und Zugriffe je Monat) nach derselben Frist (Review 032 B15)
+    $remLog = Join-Path $script:AppRoot 'Logs\Remote'
+    if (Test-Path -LiteralPath $remLog) {
+        Get-ChildItem -LiteralPath $remLog -Filter '*.log' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$keep) } | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
 } catch { }
 
 Initialize-AsyncPool -PoolSize 4
@@ -271,6 +277,7 @@ Register-HUUpdHandlers
 Register-HUTeamsHandlers
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
 $script:Controls['btnSupport'].Add_Click({ Show-HUSupport })
+$script:Controls['btnRemote'].Add_Click({ Show-HURemoteDialog })
 $script:Controls['btnPanic'].Add_Click({ Invoke-HUPanic })
 # Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
 $script:Controls['tabMain'].Add_SelectionChanged({ param($s, $e) if ($e.OriginalSource -eq $script:Controls['tabMain']) { Update-HULeftPanel } })
@@ -477,6 +484,7 @@ $script:Window.Add_Closing({
         }
     }
     Close-HUQuickScript
+    try { Close-HURemote } catch { }
     try { Close-HUApps; Close-HUMaint } catch { }
     try { if ($script:BgPowerShell) { $script:BgPowerShell.Stop() } } catch { }
     try { if ($script:BgProcess -and -not $script:BgProcess.HasExited) { $script:BgProcess.Kill() } } catch { }
@@ -498,6 +506,7 @@ Initialize-HUMaint
 Initialize-HURint
 Restore-HUWindowState
 Select-HUStartTab
+try { Initialize-HURemote } catch { Write-HULogWarn "Fernbedienung: $($_.Exception.Message)" }
 Write-HULogOK "Bereit - $(@($script:Settings.tenants).Count) Tenant(s), $($script:ExtensionItems.Count) Extension(s)."
 
 try { [void]$script:Window.ShowDialog() }

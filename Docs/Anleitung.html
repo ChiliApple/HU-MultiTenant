@@ -126,9 +126,9 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <p>Ebenfalls unter <b>Allgemein</b>: <b>Quelle für App-Updates</b> (winget-Quelle, Standard <code>winget</code>), <b>Backup-Ordner</b> (leer = lokal unter <code>%LOCALAPPDATA%</code>) und <b>Backup</b> – automatisch beim Start einmal täglich für alle Tenants (Standard an) und wie viele Stände je Tenant bleiben (Standard 30).</p>
   <h3 id="sperre">Sperre</h3>
   <p><b>Warum?</b> Mit HU-MultiTenant hat man Zugriff auf mehrere Tenants gleichzeitig – entsprechend groß ist die Verantwortung. Sperre und Not-Aus sind eine zusätzliche Sicherheitsebene: Sie sollen verhindern, dass jemand am unbeaufsichtigten PC in wenigen Sekunden etwas in allen Tenants verändert, und erlauben bei Verdacht auf Schadsoftware, die gespeicherten Zugänge sofort zu entfernen.</p>
-  <p><span class="ui">⚙ Einstellungen</span> › <b>Allgemein</b> › <b>Sperre</b>: zuerst <span class="ui">PIN festlegen …</span>, dann <i>sperren nach … Minuten ohne Eingabe in HU-MultiTenant</i> und auf Wunsch <i>auch beim Start</i>. Entsperrt wird mit Windows Hello (Gesicht, Fingerabdruck, Windows-PIN) oder der PIN; <kbd>Strg</kbd>+<kbd>L</kbd> sperrt sofort. Laufende Aufträge laufen im Hintergrund weiter. Das ist ein Schutz gegen schnelles Mitbenutzen am offenen PC – der eigentliche Schutz bleibt die Windows-Sperre. PIN vergessen und kein Hello: in <code>Config\settings.json</code> <code>"lockEnabled": false</code> setzen.</p>
+  <p><span class="ui">⚙ Einstellungen</span> › <b>Allgemein</b> › <b>Sperre</b>: zuerst <span class="ui">PIN festlegen …</span>, dann <i>sperren nach … Minuten ohne Eingabe in HU-MultiTenant</i> und auf Wunsch <i>auch beim Start</i>. Entsperrt wird mit Windows Hello (Gesicht, Fingerabdruck, Windows-PIN) oder der PIN; <kbd>Strg</kbd>+<kbd>L</kbd> sperrt sofort. Laufende Aufträge laufen im Hintergrund weiter; die Handy-Fernbedienung kann – wenn so eingestellt (Standard) – auch bei gesperrter App starten. Das ist ein Schutz gegen schnelles Mitbenutzen am offenen PC – der eigentliche Schutz bleibt die Windows-Sperre. PIN vergessen und kein Hello: in <code>Config\settings.json</code> <code>"lockEnabled": false</code> setzen.</p>
   <figure><a href="screenshot-sperre.png"><img src="screenshot-sperre.png" style="max-width:300px" alt="Windows Hello über HU-MultiTenant"></a><figcaption>Windows Hello erscheint mittig über dem gesperrten Fenster (Windows 11).</figcaption></figure>
-  <p><b>Not-Aus</b> (<span class="ui">&#x26D4;</span> oben rechts): bei Verdacht auf Schadsoftware nach Rückfrage alle auf diesem PC gespeicherten Secrets löschen und HU-MultiTenant beenden. Danach öffnen sich die App-Registrierungen der Tenants – dort die Secrets widerrufen, denn bereits kopierte Secrets bleiben sonst gültig. Anschließend neue Secrets anlegen und in den Einstellungen eintragen.</p>
+  <p><b>Not-Aus</b> (<span class="ui">&#x26D4;</span> oben rechts): bei Verdacht auf Schadsoftware nach Rückfrage alle auf diesem PC gespeicherten Secrets löschen, die Handy-Fernbedienung beenden, gekoppelte Handys entfernen und HU-MultiTenant beenden. Danach öffnen sich die App-Registrierungen der Tenants – dort die Secrets widerrufen, denn bereits kopierte Secrets bleiben sonst gültig. Anschließend neue Secrets anlegen und in den Einstellungen eintragen.</p>
   <h3 id="verkn">Verknüpfung</h3>
   <p><span class="ui">⚙ Einstellungen</span> › <b>Allgemein</b> › <span class="ui b">Desktop-Verknüpfung</span> oder <span class="ui b">Startmenü-Eintrag</span>. Dabei entsteht <code>HU-MultiTenant.exe</code> im Programmordner: eigenes Logo, kein Konsolenfenster, an die Taskleiste anheftbar. Ohne Administratorrechte.</p>
 </section>
@@ -407,8 +407,24 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
   <p>Die Vorschau ist je Art eine Zusammenfassung ohne Gerätenamen, z. B. <i>„Tages-Ampel - Fr 16.10. • 4 gruen, 1 gelb, 0 rot (gelb: HLW) - 1234 Geraete, 7 nicht konform“</i> (Karten schreiben Umlaute als ae/oe/ue). Ohne den Umbau zeigt das Handy nur den Kanalnamen.</p>
 </section>
 
+<section id="handy">
+  <h2><span class="n">10</span>Handy-Fernbedienung</h2>
+  <div class="note warn"><b class="h">Nur für sichere Homeoffice-Umgebungen</b>Remote FB wird nur für den eigenen PC in einem vertrauenswürdigen Heimnetz empfohlen (eigener Router, kein Gäste- oder Fremd-WLAN, unterwegs nur über das eigene VPN). Nicht auf gemeinsam genutzten PCs, in Schul- oder Firmennetzen oder in öffentlichen Netzen einschalten.</div>
+  <p>Vom Handy aus Snippets, Erweiterungen und Teams-Meldungen am PC starten – mit Tenant-Auswahl, Parametern, Rückfrage und Live-Ausgabe. Gedacht für den eigenen PC (z. B. im Homeoffice): Das Handy erreicht ihn im Heimnetz oder unterwegs über das VPN des Routers. Gestartet wird immer <b>am PC</b>; Client Secrets und Webhook-Adressen verlassen ihn nie – was ein Skript selbst ausgibt, erscheint aber am Handy. Knopf <span class="ui">📱 Remote FB</span> oben rechts (links neben Berechtigungen).</p>
+  <ol class="steps">
+    <li><b>Einmal einrichten</b> – Fenster Remote FB › <span class="ui">Einstellungen</span> › <span class="ui b">🛡 Einrichten / erneuern</span>. Windows fragt einmal nach Administratorrechten: Zertifikat (dieselbe Zertifizierungsstelle wie HUMig), HTTPS-Bindung, Port-Freigabe für Dein Konto, Firewall-Regel (lokales Subnetz + eingetragene Netze, z. B. das VPN). Danach läuft alles ohne Adminrechte. Standard-Port 8444 (HUMig: 8443) – beide können gleichzeitig laufen.</li>
+    <li><b>PIN festlegen</b> – nur Ziffern, mindestens 4 Stellen. Sie wird am Handy bei jedem <b>echten Lauf</b> abgefragt; 3 falsche PINs sperren das Handy (entsperren nur am PC, Hinweis an Teams).</li>
+    <li><b>Freigeben</b> – Reiter <span class="ui">Freigaben fürs Handy</span>: in der Spalte <i>Handy</i> je Snippet/Erweiterung <i>nur lesend</i> oder <i>ändert Daten</i> wählen und <span class="ui b">💾 Freigaben speichern</span>. Nur Freigegebenes erscheint am Handy. Wird der Code danach geändert, ist die Freigabe ungültig, bis sie neu gespeichert wird. Teams-Meldungen stehen immer zur Verfügung (auch einmalig an ein gespeichertes Ziel). Erweiterungen nur mit Windows PowerShell 5.1.</li>
+    <li><b>Einschalten und koppeln</b> – Reiter <span class="ui">Status</span> › <span class="ui g">Einschalten</span> › <span class="ui">📱 Handy koppeln</span>: QR-Code scannen, am Handy zuerst das Zertifikat installieren (Anleitung auf der Seite, Fingerabdruck vergleichen), dann den Code eingeben und die Seite als App auf den Startbildschirm legen.</li>
+  </ol>
+  <p><b>Am Handy:</b> <i>Starten</i> zeigt Snippets, Erweiterungen und Meldungen. Tenants (vorausgewählt wie am Snippet bzw. an der Meldung) und Parameter wählen › <span class="ui">Prüfen</span> › Zusammenfassung (was, wo, Parameter, Teams-Ziel). Ein <b>echter Lauf</b> – Einstufung <i>ändert Daten</i> und kein Probelauf-Schalter angehakt – steht rot da und braucht das angezeigte Kürzel und die PIN. Die Bestätigung gilt 120 Sekunden. <i>Lauf</i> zeigt die Ausgabe live, Fortschritt je Tenant und <span class="ui">Abbrechen</span> (der laufende Tenant wird gestoppt, weitere nicht gestartet); das Feld <i>Filter</i> neben „Ausgabe“ zeigt nur passende Zeilen; die kleinen Symbole daneben wiederholen den letzten Lauf mit derselben Auswahl (↻, wieder mit Bestätigung), kopieren den (gefilterten) Inhalt in die Zwischenablage (⧉) bzw. leeren die Anzeige (🗑 – am PC bleibt alles erhalten). Unter <i>Mehr</i> lassen sich Benachrichtigungen einschalten: Wenn ein Lauf endet, kommt eine Meldung mit dem Ergebnis (das Handy holt es beim PC ab – nur im Heimnetz bzw. über VPN, sonst „Lauf beendet“).</p>
+  <p><b>Intune (Apps und Wartung):</b> Reiter <i>Intune</i> am Handy – Tenant und <i>Apps</i> oder <i>Wartung</i> wählen, Eintrag antippen: Installationsstand (Anzahl Geräte, <span class="ui">Geräte anzeigen</span> für die Liste je Gerät, mit Filter nach Gerät, Benutzer oder Status), Zuweisungen mit ✕ zum Aufheben, darunter <i>Zuweisen</i>: Ziel (Gruppe suchen und antippen, Ausschluss, alle Geräte, alle Benutzer), bei Apps die Art (Erforderlich, Verfügbar, Deinstallieren), bei Wartung der Zeitplan (täglich, stündlich, einmalig). Lesen geht ohne PIN; Zuweisen und Aufheben sind immer ein echter Lauf mit Kürzel und PIN. Abschaltbar unter Remote FB › Einstellungen. Berechtigungen wie in Apps und Wartung am PC (DeviceManagementApps- bzw. DeviceManagementScripts.ReadWrite.All, Group.Read.All).</p>
+  <p><b>Am PC:</b> Läuft etwas vom Handy, zeigen Titelleiste und Knopf „Remote FB ▶“, das Protokoll nennt Handy, Art, Tenants und „ECHTER LAUF“. Bei einem echten Lauf geht zusätzlich ein Hinweis an die Teams-Ziele mit „Hinweis, wenn eine zeitgesteuerte Meldung nicht laufen kann“. PC und Handy starten nie gleichzeitig (Quick Script, Erweiterungen, „Jetzt senden“). Am PC öffnet sich durch das Handy nie ein Dialog. Einstellung: Starten vom Handy auch bei gesperrter App (Standard an) und PC wach halten, solange die Fernbedienung an ist (sonst nur während eines Laufs).</p>
+  <div class="note warn"><b class="h">Sicherheit</b>Das Handy ist ein Schlüssel zu allen freigegebenen Skripten in allen Tenants. Handy verloren: Fenster Remote FB › <span class="ui">Alle entfernen</span>. Ungenutzte Kopplungen verfallen nach 90 Tagen. Tipp: im Router eine feste Adresse (DHCP-Reservierung) für den PC – bei einer neuen Adresse muss die Einrichtung erneuert werden. Starten vom Handy geht standardmäßig <b>auch bei gesperrter App</b> (abschaltbar unter Remote FB › Einstellungen) – die Sperre schützt den offenen PC, nicht das gekoppelte Handy. Kopplungen, PIN und Freigaben liegen in <code>%APPDATA%\HU-MultiTenant</code> und wandern bei servergespeicherten Profilen mit dem Konto auf andere PCs. Der Not-Aus beendet auch die Fernbedienung und entfernt alle gekoppelten Handys. Protokolle: <code>Logs\Remote\</code> (Zugriffe und jeder Lauf vollständig, gelöscht nach der Aufbewahrungsfrist der Protokolle).</div>
+</section>
+
 <section id="secrets">
-  <h2><span class="n">10</span>Secrets und Ablaufdatum</h2>
+  <h2><span class="n">11</span>Secrets und Ablaufdatum</h2>
   <p>Bis wann das Client Secret gültig ist, steht in der Tenant-Leiste (Reiter Extensions) und unter Einstellungen › Tenants. Gewarnt wird ab 30 Tagen (einstellbar) in der Titelleiste – orange, ab 7 Tagen rot.</p>
   <table>
     <tr><th>Quelle</th><th>Wie</th></tr>
@@ -425,7 +441,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
 </section>
 
 <section id="update">
-  <h2><span class="n">11</span>Update</h2>
+  <h2><span class="n">12</span>Update</h2>
   <p>Beim Start wird im Hintergrund nach Updates gesucht; bei einer neuen Version wird <span class="ui">Update</span> gold. Klick: HU-MultiTenant schließt sich, <code>Pull.ps1</code> lädt alle Dateien, prüft jede gegen die SHA-256-Liste und die Signatur des Herausgebers und ersetzt erst dann – mit Sicherung: ist eine Datei gesperrt, wird alles zurückgestellt (nie halb aktualisiert). Dateien, die es in der neuen Version nicht mehr gibt, werden entfernt (nie aus <code>Config</code>, <code>Logs</code>, <code>Reports</code>, <code>Backups</code>). Danach startet das Tool neu. Meldet das Programm beim Start „Ein Update läuft gerade oder wurde abgebrochen“: <code>Pull.ps1</code> im Programmordner erneut ausführen.</p>
   <table>
     <tr><th>Rechtsklick auf Update</th><th>Wirkung</th></tr>
@@ -437,7 +453,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
 </section>
 
 <section id="dateien">
-  <h2><span class="n">12</span>Dateien</h2>
+  <h2><span class="n">13</span>Dateien</h2>
   <table>
     <tr><th>Pfad</th><th>Inhalt</th></tr>
     <tr><td><code>Config\settings.json</code></td><td>Tenants und Einstellungen (Sicherung <code>.bak</code>)</td></tr>
@@ -457,13 +473,15 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
     <tr><td><code>%APPDATA%\HU-MultiTenant\notify-targets.json</code></td><td>Teams-Ziele mit Webhook-Adressen (DPAPI)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\notify-categories.json</code> · <code>…\notify-history.json</code></td><td>eigene Teams-Kategorien aus Vorversionen (nur noch für Erweiterungen) · Sendeprotokoll (ohne Adressen)</td></tr>
     <tr><td><code>Config\quick-snippets.example.json</code></td><td>Beispiel-Snippets</td></tr>
+    <tr><td><code>%APPDATA%\HU-MultiTenant\remote*.json</code></td><td>Fernbedienung: Einstellungen, Freigaben (mit Fingerabdruck), gekoppelte Handys (nur Hashes), PIN-Prüfwert, Push-Schlüssel (DPAPI)</td></tr>
+    <tr><td><code>Logs\Remote\</code></td><td>Fernbedienung: Zugriffe (Monat) und Läufe vom Handy (Tag)</td></tr>
     <tr><td><code>Logs\QuickScript\</code></td><td>Verlauf (<code>verlauf.jsonl</code>) und Protokoll je Lauf</td></tr>
     <tr><td><code>Logs\</code> · <code>Reports\</code></td><td>Tagesprotokoll (Dateien älter als <code>logging.retentionDays</code>, Standard 30 Tage, werden beim Start gelöscht) · Reports</td></tr>
   </table>
 </section>
 
 <section id="tasten">
-  <h2><span class="n">13</span>Tastenkürzel</h2>
+  <h2><span class="n">14</span>Tastenkürzel</h2>
   <table>
     <tr><th>Taste</th><th>Wirkung</th></tr>
     <tr><td><kbd>F1</kbd></td><td>diese Anleitung</td></tr>

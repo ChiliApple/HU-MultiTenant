@@ -248,6 +248,7 @@ function Register-HUExtensionHandlers {
     # --- START Button ---
     $script:Controls['btnStart'].Add_Click({
         if ($script:IsRunning) { return }
+        if ((Get-Command Test-HURemoteRunBusy -ErrorAction SilentlyContinue) -and (Test-HURemoteRunBusy -Message)) { return }   # gemeinsame Laufsperre mit dem Handy
         if (-not $script:SelectedExtension) {
             Write-HULogWarn 'Keine Extension ausgewaehlt.'
             return
