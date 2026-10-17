@@ -1247,9 +1247,10 @@
                             </Grid.RowDefinitions>
                         <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
+                                <!-- Ziele schmal (hoechstens so breit wie der Hinweistext), schrumpfen mit dem Fenster -->
+                                <ColumnDefinition Width="*" MinWidth="300" MaxWidth="560"/>
                                 <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="2*"/>
                             </Grid.ColumnDefinitions>
                             <!-- Ziele -->
                             <Border Grid.Column="0" Background="#252526" CornerRadius="4" Padding="10">
