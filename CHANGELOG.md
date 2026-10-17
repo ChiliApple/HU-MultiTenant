@@ -28,7 +28,7 @@
 - Teams-Meldung vom Handy: Bestaetigung "Sendet jetzt eine Teams-Meldung an ..." und Knopf "Jetzt senden"; Reiter und
   Hinweistexte kontrastreicher. Herunterziehen bleibt auf der Seite (auch Art Snippets/Erweiterungen/Meldungen).
 - Intune am Handy (Reiter "Intune"): Apps und Wartungsskripte je Tenant, Installationsstand bzw. Ergebnis (Anzahl und
-  Liste je Geraet), Zuweisungen aufheben und setzen (Gruppe suchen, Ausschluss, alle Geraete/Benutzer; Apps:
+  Liste je Geraet mit Filter), Zuweisungen aufheben und setzen (Gruppe suchen, Ausschluss, alle Geraete/Benutzer; Apps:
   Erforderlich/Verfuegbar/Deinstallieren; Wartung: Zeitplan) - Aendern immer mit Kuerzel + PIN, abschaltbar.
 - Empfohlen nur fuer sichere Homeoffice-Umgebungen (eigener PC, eigenes Heimnetz bzw. eigenes VPN).
 - Ausgabe am Handy: Filterfeld (zeigt nur passende Zeilen) und kleine Symbole - letzten Lauf mit derselben Auswahl wiederholen (wieder mit Bestaetigung), in die Zwischenablage kopieren, Anzeige leeren.

@@ -166,6 +166,7 @@ $script:HURemoteHtml = @'
     </div>
     <button class="btn wide" id="oDevBtn">Geraete anzeigen</button>
     <p class="muted small hidden" id="oDevHint"></p>
+    <input id="oDevFind" class="txt find hidden" type="search" placeholder="Geraet, Benutzer oder Status filtern ..." aria-label="Geraete filtern" autocomplete="off">
     <div id="oDev"></div>
     <div class="row between"><h2>Zuweisungen</h2><button class="ibtn" id="oReload" title="Neu laden" aria-label="Neu laden">&#8635;</button></div>
     <div id="oAsg"></div>
@@ -729,7 +730,7 @@ $script:HURemoteJs = @'
     S.iobjId = x.id; S.iobj = { name: x.name };
     $('oTitle').textContent = x.name; $('oDesc').textContent = ''; S.igSel = null;
     $('oGrpFind').value = ''; clear($('oGrpList')); $('oGrpSel').textContent = 'Keine Gruppe gewaehlt';
-    clear($('oDev')); show('oDevHint', false); err('oErr', '');
+    clear($('oDev')); show('oDevHint', false); show('oDevFind', false); $('oDevFind').value = ''; S.idev = null; err('oErr', '');
     setView('vIObj');
   }
   function oForm() {
@@ -764,13 +765,24 @@ $script:HURemoteJs = @'
     });
   }
   function oDevices() {
-    var b = $('oDev'); clear(b); show('oDevHint', true);
+    var b = $('oDev'); clear(b); show('oDevHint', true); show('oDevFind', false); S.idev = null;
     $('oDevHint').textContent = S.ia === 'app' ? 'Intune erstellt den Geraetebericht - das kann eine Minute dauern ...' : 'Lade Geraete ...';
     iq('dev', { op: 'devices', area: S.ia, id: S.iobjId }, true, function (j) {
       if (!j.ok || j.error) { $('oDevHint').textContent = j.error || 'Nicht lesbar'; return; }
-      var rows = j.data || []; $('oDevHint').textContent = rows.length + ' Geraet(e), Stand ' + (j.at || '');
-      rows.forEach(function (r) { var d = el('div', 'dev'); d.appendChild(el('div', '', (r.d || '-') + ' - ' + (r.s || ''))); var s = [r.u, r.x].filter(function (z) { return z; }).join(' - '); if (s) { d.appendChild(el('div', 's', s)); } b.appendChild(d); });
+      S.idev = j.data || []; S.idevAt = j.at || '';
+      show('oDevFind', S.idev.length > 0);
+      dRender();
     });
+  }
+  // Geraeteliste filtern (Name, Benutzer, Status, Version/Hinweis)
+  function dRender() {
+    var b = $('oDev'); clear(b);
+    if (!S.idev) { return; }
+    var q = ($('oDevFind').value || '').toLowerCase().trim();
+    var rows = S.idev.filter(function (r) { return !q || [r.d, r.u, r.s, r.x].join(' ').toLowerCase().indexOf(q) >= 0; });
+    $('oDevHint').textContent = (q ? rows.length + ' von ' : '') + S.idev.length + ' Geraet(e), Stand ' + S.idevAt;
+    rows.slice(0, 500).forEach(function (r) { var d = el('div', 'dev'); d.appendChild(el('div', '', (r.d || '-') + ' - ' + (r.s || ''))); var s = [r.u, r.x].filter(function (z) { return z; }).join(' - '); if (s) { d.appendChild(el('div', 's', s)); } b.appendChild(d); });
+    if (rows.length > 500) { b.appendChild(el('div', 'empty', 'Weitere ' + (rows.length - 500) + ' - Filter verfeinern.')); }
   }
   function gLoad() {
     var ten = S.iten; $('oGrpSel').textContent = 'Lade Gruppen ...';
@@ -981,6 +993,7 @@ $script:HURemoteJs = @'
     $('oBack').addEventListener('click', function () { setView('vIntune'); });
     $('oReload').addEventListener('click', function () { oLoad(true); });
     $('oDevBtn').addEventListener('click', oDevices);
+    $('oDevFind').addEventListener('input', dRender);
     $('oKind').addEventListener('change', oForm);
     $('oSch').addEventListener('change', oForm);
     $('oGrpFind').addEventListener('input', gRender);
