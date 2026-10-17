@@ -396,6 +396,8 @@ function Invoke-HUTeamsScript {
         if ($log) { Write-HULog -Message "[Teams] $($Name): Skript nutzt keinen Tenant-Bezug - laeuft einmal statt je Tenant" -Level INFO }
     }
     $multi = $runTenants.Count -gt 1
+    $perTenant = ($runTenants.Count -eq $Tenants.Count)   # $false = Skript ohne Tenant-Bezug (lief nur einmal)
+    $dn = @{}; foreach ($x in @($Settings.tenants)) { if ($x -and "$($x.key)") { $dn["$($x.key)"] = $(if ("$($x.displayName)") { "$($x.displayName)" } else { "$($x.key)" }) } }
     foreach ($tk in $runTenants) {
         $left = ($deadline - (Get-Date)).TotalMilliseconds
         if ($left -le 0) { $errs.Add("[$tk] uebersprungen - Zeitlimit $($script:TeamsScriptTimeoutMin) Minuten erreicht"); continue }
@@ -410,6 +412,7 @@ function Invoke-HUTeamsScript {
             $rs.SessionStateProxy.SetVariable('__Name', $Name)
             $rs.SessionStateProxy.SetVariable('__Tk', $tk)
             $rs.SessionStateProxy.SetVariable('__Multi', $multi)
+            $rs.SessionStateProxy.SetVariable('__Label', $(if ($dn.ContainsKey("$tk")) { $dn["$tk"] } else { "$tk" }))
             $rs.SessionStateProxy.SetVariable('__Ids', [string[]]@($TargetIds))
             $ps = [powershell]::Create()
             $ps.Runspace = $rs
@@ -433,7 +436,7 @@ function Invoke-HUTeamsScript {
                         foreach ($o in @(& ([scriptblock]::Create($__Code)))) {
                             if ($null -eq $o -or $ol.Count -ge 60) { continue }
                             $txt = if ($o -is [string] -or $o -is [ValueType]) { "$o" } else { (@($o.PSObject.Properties | Where-Object { $_.MemberType -match 'Property' } | Select-Object -First 6 | ForEach-Object { "$($_.Name): $($_.Value)" }) -join ' | ') }
-                            if ("$txt".Trim()) { $ol += $(if ($__Multi) { "[$__Tk] $txt" } else { "$txt" }) }
+                            if ("$txt".Trim()) { $ol += $(if ($__Multi) { "[$__Label] $txt" } else { "$txt" }) }
                         }
                     } catch { $e += "[$__Tk] $($_.Exception.Message)" }
                 }
@@ -454,7 +457,7 @@ function Invoke-HUTeamsScript {
             if ($d) {
                 $out.Calls += $d.Calls; $out.Ok += $d.Ok; $out.Failed += $d.Failed
                 foreach ($x in @($d.Errors)) { if ($x) { $errs.Add("$x") } }
-                $src = if (@($d.Lines).Count) { @($d.Lines) } elseif ($d.Calls -eq 0) { @($hostLines | ForEach-Object { if ($multi) { "[$tk] $_" } else { "$_" } }) } else { @() }
+                $src = if (@($d.Lines).Count) { @($d.Lines) } elseif ($d.Calls -eq 0) { @($hostLines | ForEach-Object { if ($multi) { "[$($dn["$tk"])] $_" } else { "$_" } }) } else { @() }
                 foreach ($x in $src) { if ($x -and $lines.Count -lt 60) { $lines.Add("$x") } }
             }
             else { $errs.Add("[$tk] Skript ohne Ergebnis beendet") }
@@ -469,7 +472,9 @@ function Invoke-HUTeamsScript {
     if ($out.Calls -eq 0 -and $lines.Count) {
         try {
             Set-HUNotifyRoute -Name $Name -TargetIds $TargetIds
-            [void](Send-HUNotify -Title $Name -Level Info -Lines @($lines) -Preview "$($lines.Count) Eintraege")
+            # ein Tenant: Name des Tenants in den Titel (bei mehreren steht er vor jeder Zeile)
+            $ttl = if ($perTenant -and -not $multi -and $runTenants.Count -eq 1) { "$Name - $($dn["$($runTenants[0])"])" } else { $Name }
+            [void](Send-HUNotify -Title $ttl -Level Info -Lines @($lines) -Preview "$ttl - $($lines.Count) Eintraege")
             $rt = Get-HUNotifyRoute
             $out.Calls += $rt.Calls; $out.Ok += $rt.Ok; $out.Failed += $rt.Failed
         }
