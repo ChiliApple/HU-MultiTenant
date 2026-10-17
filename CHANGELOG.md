@@ -13,7 +13,10 @@
 - **Meldung aus Skript:** unter der eingebauten Meldung steht immer das Feld *oder Meldung aus Skript* mit allen gespeicherten Quick-Script-Snippets. Das Snippet
   laeuft je Tenant mit den Standardwerten seiner `@param`-Zeilen; jedes `Send-HUNotify -Title ...` darin geht an die Ziele
   der Meldung - eine Kategorie braucht es nicht. Ruft das Snippet kein `Send-HUNotify` auf, geht seine Ausgabe
-  (Objekte/Text) als eine Karte; ohne Ausgabe wird nichts gesendet. Geplant ueber `Main.ps1 -Headless -Job <Id>` (nur gespeicherte
+  (Objekte/Text) als eine Karte; ohne Ausgabe wird nichts gesendet. Je Tenant ein eigener, frischer Runspace.
+- Skript-Meldungen merken sich beim Speichern einen Fingerabdruck (SHA-256) des Snippets; wurde es danach geaendert,
+  laeuft die Meldung erst nach erneutem Speichern wieder ("! Skript geaendert" in der Liste). Steht ein
+  Probelauf-Schalter (DryRun ...) im Standard auf aus, fragt "Speichern" und "Jetzt senden" vorher "ECHTER LAUF". Geplant ueber `Main.ps1 -Headless -Job <Id>` (nur gespeicherte
   Meldungen und Snippets, kein freier Code), Laufzeit hoechstens 30 Minuten. Exit-Codes wie bei den eingebauten Meldungen.
 - Im Quick-Script-Editor gehen die Karten eines Snippets, das zu einer Meldung gehoert, an deren Ziele; ein Snippet ohne
   Meldung sendet nichts (Hinweis im Protokoll).

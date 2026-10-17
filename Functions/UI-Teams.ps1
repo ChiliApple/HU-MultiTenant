@@ -169,7 +169,8 @@ function Get-HUTeamsJobLabel($Job) {
         $names = @($tids | ForEach-Object { $id = "$_"; $t = $all | Where-Object { $_.Id -eq $id } | Select-Object -First 1; if ($t) { "$($t.Name)" } else { '?' } })
         $to = $names -join ', '
     }
-    return "$(if ($Job.Enabled) { '' } else { '(aus) ' })$nm  -  $when $($Job.Time)  -  an $to"
+    $st = Get-HUTeamsScriptState $Job
+    return "$(if ($Job.Enabled) { '' } else { '(aus) ' })$nm  -  $when $($Job.Time)  -  an $to$(if ($st) { "  -  ! $st" })"
 }
 
 function Update-HUTeamsJobs {
@@ -206,16 +207,18 @@ function Update-HUTeamsJobTaskLabel($Job) {
     if (-not $Job) { $c['lblTeamsJobTask'].Text = 'Neue Meldung: was gemeldet wird, Name, Ziele, Tenants - dann Speichern. "Jetzt senden" geht sofort; fuer den Zeitplan danach "Aufgabe anlegen".'; $c['btnTeamsJobTask'].Content = 'Aufgabe anlegen'; $c['btnTeamsJobTask'].IsEnabled = $false; return }
     $t = Get-HUTeamsJobTask -Job $Job
     $c['btnTeamsJobTask'].IsEnabled = $true
+    $warn = Get-HUTeamsScriptState $Job
+    if ($warn) { $warn = "ACHTUNG: $warn (geplante Laeufe fuehren es bis dahin nicht aus).`n" }
     if ($t.Exists) {
         $c['btnTeamsJobTask'].Content = 'Aufgabe entfernen'
         $next = if ($t.NextRun) { ([datetime]$t.NextRun).ToString('dd.MM. HH:mm') } else { '-' }
         $codeTxt = switch ("$($t.LastResult)") { '0' { 'OK' } '1' { 'Fehler' } '2' { 'teilweise gesendet' } '3' { 'Konfiguration pruefen' } '267009' { 'laeuft' } default { "Code $($t.LastResult)" } }
         $last = if ($t.LastRun -and ([datetime]$t.LastRun).Year -gt 2000) { ([datetime]$t.LastRun).ToString('dd.MM. HH:mm') + " ($codeTxt)" } else { 'noch nie' }
-        $c['lblTeamsJobTask'].Text = "Aufgabenplanung: $($t.State), naechster Lauf $next, letzter Lauf $last.`nLetztes Ergebnis: $(if ($Job.LastResult) { $Job.LastResult } else { '-' })"
+        $c['lblTeamsJobTask'].Text = "$($warn)Aufgabenplanung: $($t.State), naechster Lauf $next, letzter Lauf $last.`nLetztes Ergebnis: $(if ($Job.LastResult) { $Job.LastResult } else { '-' })"
     }
     else {
         $c['btnTeamsJobTask'].Content = 'Aufgabe anlegen'
-        $c['lblTeamsJobTask'].Text = "Kein Zeitplan - die Meldung sendet nur ueber 'Jetzt senden'. Zeitplan: 'Aufgabe anlegen'.`nLetztes Ergebnis: $(if ($Job.LastResult) { $Job.LastResult } else { '-' })"
+        $c['lblTeamsJobTask'].Text = "$($warn)Kein Zeitplan - die Meldung sendet nur ueber 'Jetzt senden'. Zeitplan: 'Aufgabe anlegen'.`nLetztes Ergebnis: $(if ($Job.LastResult) { $Job.LastResult } else { '-' })"
     }
 }
 
@@ -286,7 +289,18 @@ function Update-HUTeamsSnippetCombo {
     }
 }
 
+# Skript-Meldung: wurde das Snippet seit dem Speichern geaendert? (Review 030 B33) - '' = passt, sonst Hinweistext
+function Get-HUTeamsScriptState($Job) {
+    if (-not $Job -or "$($Job.Kind)" -ne 'Script') { return '' }
+    $sn = "$($Job.Options.snippet)"
+    try { $code = Get-HUTeamsSnippetCode -AppRoot $script:AppRoot -Name $sn } catch { return "Skript '$sn' fehlt" }
+    $want = "$(if ($Job.Options.PSObject.Properties['snippetHash']) { $Job.Options.snippetHash })"
+    if ($want -ne (Get-HUTeamsCodeHash $code)) { return "Skript '$sn' geaendert - Meldung neu speichern" }
+    return ''
+}
+
 function Get-HUTeamsJobFromForm {
+    param([string]$Purpose = '')   # 'Speichern' / 'Jetzt senden': echter Lauf eines Skripts wird bestaetigt (Review 030 B34)
     $c = $script:Controls
     $name = "$($c['txtTeamsJobName'].Text)".Trim()
     if (-not $name) { throw 'Bitte einen Namen eingeben.' }
@@ -310,7 +324,18 @@ function Get-HUTeamsJobFromForm {
     if ($kind -eq 'Script') {
         $sn = if ($c['cmbTeamsJobSnippet'].SelectedItem) { "$($c['cmbTeamsJobSnippet'].SelectedItem.Tag)" } else { '' }
         if (-not $sn) { throw 'Bitte ein Skript waehlen (gespeichertes Snippet aus Quick Script).' }
+        $code = Get-HUTeamsSnippetCode -AppRoot $script:AppRoot -Name $sn
+        # Review 030 B34: Probelauf-Schalter (DryRun ...) steht im Standard auf aus -> echter Lauf ohne Aufsicht
+        $defs = @(Get-HUQSParams $code); $vals = @{}
+        foreach ($p in $defs) { try { $vals[$p.Name] = ConvertTo-HUQSParamValue $p $p.Default } catch { } }
+        if ($Purpose -and (Test-HUQSLiveRun $defs $vals)) {
+            $tn = @($keys | ForEach-Object { $k = $_; $tt = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($tt) { "$($tt.displayName)" } else { $k } })
+            if (-not $tn.Count) { $tn = @($script:Settings.tenants | ForEach-Object { "$($_.displayName)" }) }
+            $what = if ($Purpose -eq 'Speichern') { "Die Meldung fuehrt das Skript bei JEDEM Lauf - auch zeitgesteuert, ohne Aufsicht - als echten Lauf aus." } else { 'Das Skript laeuft jetzt als echter Lauf.' }
+            if (-not (Confirm-HU "ECHTER LAUF - Aenderungen werden ausgefuehrt!`n`nSkript: $sn (Probelauf-Schalter steht im Standard auf aus)`nTenants: $($tn -join ', ')`n`n$what`n`nFortfahren?" 'Teams - Meldung aus Skript' -Warning)) { return $null }
+        }
         $j.Options | Add-Member -NotePropertyName snippet -NotePropertyValue $sn -Force
+        $j.Options | Add-Member -NotePropertyName snippetHash -NotePropertyValue (Get-HUTeamsCodeHash $code) -Force   # Review 030 B33
     }
     $allT = @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
     $selT = @($allT | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
@@ -322,7 +347,8 @@ function Get-HUTeamsJobFromForm {
 
 function Save-HUTeamsJob {
     try {
-        $j = Get-HUTeamsJobFromForm
+        $j = Get-HUTeamsJobFromForm -Purpose 'Speichern'
+        if (-not $j) { return }
         Invoke-HUTeamsJobsLocked {
             $jobs = @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id })
             $jobs += $j
@@ -371,7 +397,8 @@ function Switch-HUTeamsJobTask {
 function Start-HUTeamsJobNow {
     param([string]$TargetId = '', [string]$TargetName = '')
     $c = $script:Controls
-    try { $j = Get-HUTeamsJobFromForm } catch { Show-HUMessage $_.Exception.Message -Icon Warning; return }
+    try { $j = Get-HUTeamsJobFromForm -Purpose 'Jetzt senden' } catch { Show-HUMessage $_.Exception.Message -Icon Warning; return }
+    if (-not $j) { return }
     if (-not (Get-HUNotifyConfig).Configured) { Show-HUMessage 'Noch kein Teams-Ziel gespeichert.' -Icon Warning; return }
     $c['btnTeamsJobRun'].IsEnabled = $false; $c['btnTeamsJobSendTo'].IsEnabled = $false
     $c['lblTeamsJobTask'].Text = "'$($j.Name)' laeuft$(if ($TargetName) { " - einmalig an '$TargetName'" }) - $(if ("$($j.Kind)" -eq 'Script') { "Skript '$($j.Options.snippet)' laeuft je Tenant" } else { 'Tenants werden gelesen' }) (siehe Protokoll unten links) ..."

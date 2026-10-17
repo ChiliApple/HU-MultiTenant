@@ -351,12 +351,27 @@ function Get-HUTeamsSnippetCode {
     return "$($s.code)"
 }
 
+function Get-HUTeamsCodeHash {
+    <#
+    .SYNOPSIS
+        SHA-256 des Skript-Codes (Zeilenenden vereinheitlicht) - Fingerabdruck fuer die Freigabe einer Skript-Meldung (Review 030 B33).
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([AllowEmptyString()][string]$Code)
+    $norm = ("$Code" -replace "`r`n", "`n").TrimEnd()
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { return (([BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($norm)))) -replace '-', '').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+}
+
 function Invoke-HUTeamsScript {
     <#
     .SYNOPSIS
-        Meldung aus Skript: Snippet je Tenant in einem eigenen Runspace ausfuehren, Send-HUNotify geht an die Ziele.
+        Meldung aus Skript: Snippet je Tenant in einem EIGENEN, frischen Runspace ausfuehren (Review 030 B35);
+        Send-HUNotify geht an die Ziele der Meldung. Ruft das Skript nichts davon auf, geht seine Ausgabe als eine Karte.
     .OUTPUTS
-        @{ Calls; Ok; Failed; Errors }  (Calls = Anzahl Send-HUNotify-Aufrufe)
+        @{ Calls; Ok; Failed; Errors }  (Calls = Anzahl Send-HUNotify-Aufrufe, inkl. Ausgabe-Karte)
     #>
     [CmdletBinding()]
     param(
@@ -368,67 +383,87 @@ function Invoke-HUTeamsScript {
         [string[]]$TargetIds = @()
     )
     $out = [pscustomobject]@{ Calls = 0; Ok = 0; Failed = 0; Errors = @() }
-    $rs = [runspacefactory]::CreateRunspace()
-    $ps = $null
-    try {
-        $rs.Open()
-        $rs.SessionStateProxy.SetVariable('Settings', $Settings)
-        $rs.SessionStateProxy.SetVariable('AppRoot', $AppRoot)
-        $rs.SessionStateProxy.SetVariable('__Code', $Code)
-        $rs.SessionStateProxy.SetVariable('__Name', $Name)
-        $rs.SessionStateProxy.SetVariable('__Tenants', [string[]]$Tenants)
-        $rs.SessionStateProxy.SetVariable('__Ids', [string[]]@($TargetIds))
-        $ps = [powershell]::Create()
-        $ps.Runspace = $rs
-        [void]$ps.AddScript({
-            $errs = @(); $outLines = New-Object System.Collections.Generic.List[string]
-            foreach ($m in 'HU.Auth', 'HU.Graph', 'HU.Notify') { Import-Module (Join-Path $AppRoot "Core\$m.psm1") -Force -DisableNameChecking -ErrorAction Stop }
-            . (Join-Path $AppRoot 'Core\HU.QSParams.ps1')
-            . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
-            Grant-HUSendApproval -Reason "Meldung $__Name"     # gespeicherte Meldung = freigegeben (Review 030 B4a)
-            Set-HUNotifyRoute -Name $__Name -TargetIds $__Ids
-            $sb = [scriptblock]::Create($__Code)
-            foreach ($tk in $__Tenants) {
-                $global:TenantKey = $tk; $global:Schule = $tk
-                try { $global:Token = Get-HUToken -Tenant $tk } catch { $errs += "[$tk] Kein Token: $($_.Exception.Message)"; continue }
-                # Standardwerte der @param-Zeilen (wie leere Felder im Quick Script)
-                foreach ($p in @(Get-HUQSParams $__Code)) {
-                    try { Set-Variable -Name $p.Name -Value (ConvertTo-HUQSParamValue $p $p.Default) -Scope Global } catch { $errs += "[$tk] Parameter $($p.Name): $($_.Exception.Message)" }
-                }
-                try {
-                    # Ausgabe merken: ruft das Skript selbst kein Send-HUNotify auf, wird sie als Karte gesendet
-                    foreach ($o in @(& $sb)) {
-                        if ($null -eq $o -or $outLines.Count -ge 60) { continue }
-                        $txt = if ($o -is [string] -or $o -is [ValueType]) { "$o" } else { (@($o.PSObject.Properties | Where-Object { $_.MemberType -match 'Property' } | Select-Object -First 6 | ForEach-Object { "$($_.Name): $($_.Value)" }) -join ' | ') }
-                        if ("$txt".Trim()) { $outLines.Add($(if ($__Tenants.Count -gt 1) { "[$tk] $txt" } else { "$txt" })) }
+    $errs = New-Object System.Collections.Generic.List[string]
+    $lines = New-Object System.Collections.Generic.List[string]
+    $deadline = (Get-Date).AddMinutes($script:TeamsScriptTimeoutMin)
+    $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
+    foreach ($tk in $Tenants) {
+        $left = ($deadline - (Get-Date)).TotalMilliseconds
+        if ($left -le 0) { $errs.Add("[$tk] uebersprungen - Zeitlimit $($script:TeamsScriptTimeoutMin) Minuten erreicht"); continue }
+        $rs = [runspacefactory]::CreateRunspace()
+        $ps = $null
+        try {
+            $rs.Open()
+            $rs.SessionStateProxy.SetVariable('Settings', $Settings)
+            $rs.SessionStateProxy.SetVariable('AppRoot', $AppRoot)
+            $rs.SessionStateProxy.SetVariable('__Code', $Code)
+            $rs.SessionStateProxy.SetVariable('__Name', $Name)
+            $rs.SessionStateProxy.SetVariable('__Tk', $tk)
+            $rs.SessionStateProxy.SetVariable('__Multi', ($Tenants.Count -gt 1))
+            $rs.SessionStateProxy.SetVariable('__Ids', [string[]]@($TargetIds))
+            $ps = [powershell]::Create()
+            $ps.Runspace = $rs
+            [void]$ps.AddScript({
+                $e = @(); $ol = @()
+                foreach ($m in 'HU.Auth', 'HU.Graph', 'HU.Notify') { Import-Module (Join-Path $AppRoot "Core\$m.psm1") -Force -DisableNameChecking -ErrorAction Stop }
+                . (Join-Path $AppRoot 'Core\HU.QSParams.ps1')
+                . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
+                Grant-HUSendApproval -Reason "Meldung $__Name"     # gespeicherte Meldung = freigegeben (Review 030 B4a/B33)
+                Set-HUNotifyRoute -Name $__Name -TargetIds $__Ids
+                $global:TenantKey = $__Tk; $global:Schule = $__Tk
+                $tokOk = $true
+                try { $global:Token = Get-HUToken -Tenant $__Tk } catch { $e += "[$__Tk] Kein Token: $($_.Exception.Message)"; $tokOk = $false }
+                if ($tokOk) {
+                    # Standardwerte der @param-Zeilen (wie leere Felder im Quick Script)
+                    foreach ($p in @(Get-HUQSParams $__Code)) {
+                        try { Set-Variable -Name $p.Name -Value (ConvertTo-HUQSParamValue $p $p.Default) -Scope Global } catch { $e += "[$__Tk] Parameter $($p.Name): $($_.Exception.Message)" }
                     }
-                } catch { $errs += "[$tk] $($_.Exception.Message)" }
-            }
-            $r = Get-HUNotifyRoute
-            if ($r.Calls -eq 0 -and $outLines.Count) {
-                [void](Send-HUNotify -Title $__Name -Level Info -Lines @($outLines) -Preview "$($outLines.Count) Eintraege")
+                    try {
+                        # Ausgabe merken: ruft das Skript selbst kein Send-HUNotify auf, wird sie als Karte gesendet
+                        foreach ($o in @(& ([scriptblock]::Create($__Code)))) {
+                            if ($null -eq $o -or $ol.Count -ge 60) { continue }
+                            $txt = if ($o -is [string] -or $o -is [ValueType]) { "$o" } else { (@($o.PSObject.Properties | Where-Object { $_.MemberType -match 'Property' } | Select-Object -First 6 | ForEach-Object { "$($_.Name): $($_.Value)" }) -join ' | ') }
+                            if ("$txt".Trim()) { $ol += $(if ($__Multi) { "[$__Tk] $txt" } else { "$txt" }) }
+                        }
+                    } catch { $e += "[$__Tk] $($_.Exception.Message)" }
+                }
                 $r = Get-HUNotifyRoute
+                [pscustomobject]@{ __Done = $true; Calls = [int]$r.Calls; Ok = [int]$r.Ok; Failed = [int]$r.Failed; Errors = @($e); Lines = @($ol) }
+            }.ToString())
+            $h = $ps.BeginInvoke()
+            if (-not $h.AsyncWaitHandle.WaitOne([TimeSpan]::FromMilliseconds($left))) {
+                try { $ps.Stop() } catch { }
+                $errs.Add("[$tk] abgebrochen - Zeitlimit $($script:TeamsScriptTimeoutMin) Minuten erreicht"); continue
             }
-            [pscustomobject]@{ __Done = $true; Calls = [int]$r.Calls; Ok = [int]$r.Ok; Failed = [int]$r.Failed; Errors = @($errs) }
-        }.ToString())
-        $h = $ps.BeginInvoke()
-        if (-not $h.AsyncWaitHandle.WaitOne([TimeSpan]::FromMinutes($script:TeamsScriptTimeoutMin))) {
-            try { $ps.Stop() } catch { }
-            $out.Errors = @("Abgebrochen nach $($script:TeamsScriptTimeoutMin) Minuten"); return $out
+            $res = @($ps.EndInvoke($h))
+            $d = @($res | Where-Object { $_ -and $_.PSObject.Properties['__Done'] }) | Select-Object -First 1
+            foreach ($se in @($ps.Streams.Error | Select-Object -First 3)) { $errs.Add("[$tk] $($se.Exception.Message)") }
+            if ($log) { foreach ($i in @($ps.Streams.Information | Select-Object -First 30)) { $s = "$($i.MessageData)".Trim(); if ($s) { Write-HULog -Message "[Teams] $($Name) [$tk]: $s" -Level INFO } } }
+            if ($d) {
+                $out.Calls += $d.Calls; $out.Ok += $d.Ok; $out.Failed += $d.Failed
+                foreach ($x in @($d.Errors)) { if ($x) { $errs.Add("$x") } }
+                foreach ($x in @($d.Lines)) { if ($x -and $lines.Count -lt 60) { $lines.Add("$x") } }
+            }
+            else { $errs.Add("[$tk] Skript ohne Ergebnis beendet") }
         }
-        $res = @($ps.EndInvoke($h))
-        $d = @($res | Where-Object { $_ -and $_.PSObject.Properties['__Done'] }) | Select-Object -First 1
-        $streamErr = @($ps.Streams.Error | Select-Object -First 5 | ForEach-Object { "$($_.Exception.Message)" })
-        $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
-        if ($log) { foreach ($i in @($ps.Streams.Information | Select-Object -First 50)) { $s = "$($i.MessageData)".Trim(); if ($s) { Write-HULog -Message "[Teams] $($Name): $s" -Level INFO } } }
-        if ($d) { $out.Calls = $d.Calls; $out.Ok = $d.Ok; $out.Failed = $d.Failed; $out.Errors = @(@($d.Errors) + $streamErr | Where-Object { $_ }) }
-        else { $out.Errors = @(@($streamErr) + 'Skript ohne Ergebnis beendet' | Where-Object { $_ }) }
+        catch { $errs.Add("[$tk] $($_.Exception.Message)") }
+        finally {
+            if ($ps) { $ps.Dispose() }
+            $rs.Dispose()
+        }
     }
-    catch { $out.Errors = @(@($out.Errors) + "$($_.Exception.Message)") }
-    finally {
-        if ($ps) { $ps.Dispose() }
-        $rs.Dispose()
+    # kein Send-HUNotify im Skript: Ausgabe aller Tenants als EINE Karte an die Ziele der Meldung
+    if ($out.Calls -eq 0 -and $lines.Count) {
+        try {
+            Set-HUNotifyRoute -Name $Name -TargetIds $TargetIds
+            [void](Send-HUNotify -Title $Name -Level Info -Lines @($lines) -Preview "$($lines.Count) Eintraege")
+            $rt = Get-HUNotifyRoute
+            $out.Calls += $rt.Calls; $out.Ok += $rt.Ok; $out.Failed += $rt.Failed
+        }
+        catch { $errs.Add("Ausgabe-Karte: $($_.Exception.Message)") }
+        finally { Clear-HUNotifyRoute }
     }
+    $out.Errors = @($errs)
     return $out
 }
 
@@ -646,6 +681,9 @@ function Invoke-HUTeamsJob {
             $sn = "$($Job.Options.snippet)"
             if (-not $sn) { $res.Message = 'Kein Skript gewaehlt'; $res.Code = 3; return $res }
             try { $code = Get-HUTeamsSnippetCode -AppRoot $AppRoot -Name $sn } catch { $res.Message = "$($_.Exception.Message)"; $res.Code = 3; return $res }
+            # Review 030 B33: nur der beim Speichern bestaetigte Code laeuft
+            $want = "$(if ($Job.Options.PSObject.Properties['snippetHash']) { $Job.Options.snippetHash })"
+            if (-not $want -or $want -ne (Get-HUTeamsCodeHash $code)) { $res.Message = "Skript '$sn' wurde seit dem Speichern der Meldung geaendert - nichts ausgefuehrt. Meldung im Reiter Teams pruefen und neu speichern."; $res.Code = 3; return $res }
             if ($NoSend) { $res.Success = $true; $res.Code = 0; $res.Message = 'Vorschau (Skript wird nicht ausgefuehrt)'; return $res }
             $ids = @($TargetIds | Where-Object { "$_" }); if (-not $ids.Count) { $ids = @($Job.Targets | Where-Object { "$_" }) }
             if ($log) { Write-HULog -Message "[Teams] $($Job.Name): Skript '$sn' auf $($keys.Count) Tenant(s) ..." -Level INFO }
@@ -804,6 +842,7 @@ Export-ModuleMember -Function @(
     'Get-HUTeamsKinds',
     'Get-HUTeamsSnippetCode',
     'Invoke-HUTeamsScript',
+    'Get-HUTeamsCodeHash',
     'Get-HUTeamsDateLabel',
     'Get-HUDailyTenantStatus',
     'New-HUDailyCardSpec',

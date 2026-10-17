@@ -313,17 +313,35 @@ Export-ModuleMember -Function Get-GraphToken
         (Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App).Code | Should -Be 3
     }
     It 'laeuft je Tenant mit @param-Standardwerten, Send-HUNotify geht an die Meldung (hier: kein Ziel)' {
-        $j = New-HUTeamsJob -Name 'Drucker-Status' -Kind Script -Options @{ snippet = 'Drucker' }; $j.Id = ''
+        $j = New-HUTeamsJob -Name 'Drucker-Status' -Kind Script -Options @{ snippet = 'Drucker'; snippetHash = (Get-HUTeamsCodeHash (Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Drucker')) }; $j.Id = ''
         $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
         $r.Code | Should -Be 3
         $r.Message | Should -Match '1 Meldung'
         $r.Message | Should -Match '\[bad\] Kein Token'
     }
     It 'ohne Send-HUNotify: Ausgabe wird als eine Karte gesendet (hier: kein Ziel)' {
-        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe' }; $j.Id = ''
+        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = (Get-HUTeamsCodeHash (Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Nur Ausgabe')) }; $j.Id = ''
         $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
         $r.Message | Should -Match '1 Meldung'
         $r.Code | Should -Be 3
+    }
+    It 'B33: geaendertes oder unbestaetigtes Skript laeuft nicht (Code 3)' {
+        $j = New-HUTeamsJob -Name 'X' -Kind Script -Options @{ snippet = 'Drucker'; snippetHash = 'abc' }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
+        $r.Code | Should -Be 3; $r.Message | Should -Match 'geaendert'
+        $j = New-HUTeamsJob -Name 'X' -Kind Script -Options @{ snippet = 'Drucker' }; $j.Id = ''
+        (Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App).Code | Should -Be 3
+    }
+    It 'B33: Fingerabdruck unabhaengig von CRLF/LF' {
+        Get-HUTeamsCodeHash "a`r`nb" | Should -Be (Get-HUTeamsCodeHash "a`nb")
+        Get-HUTeamsCodeHash 'a' | Should -Not -Be (Get-HUTeamsCodeHash 'b')
+    }
+    It 'B35: je Tenant ein frischer Runspace - Variablen bleiben nicht haengen' {
+        $code = "if (`$global:Merker) { throw 'Variable aus dem vorigen Tenant' }; `$global:Merker = 1; 'NEU'"
+        $r = Invoke-HUTeamsScript -Code $code -Name 'R' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App
+        # haette Tenant b die Variable von a gesehen, stuende ein Fehler in Errors
+        $r.Calls | Should -Be 1
+        @($r.Errors).Count | Should -Be 0
     }
     It 'Get-HUTeamsSnippetCode liefert den Code' {
         Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Drucker' | Should -Match 'Send-HUNotify'
