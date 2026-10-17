@@ -145,7 +145,19 @@ Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed
 5. Ergebnislisten als `[pscustomobject]` ausgeben statt als Text
 6. lokale Pfade → `string`-Parameter mit dem bisherigen Wert als Standard
 
-## 9. Grenzen
+## 9. Vom Handy starten
+
+Ein Snippet erscheint in der Handy-Fernbedienung erst, wenn es am PC freigegeben ist (Knopf **Handy** › *Freigaben fürs Handy*: *nur lesend* oder *ändert Daten*). Danach gilt:
+
+- läuft **je Tenant in einem eigenen Runspace** mit `$TenantKey`, `$Token`, `$Tenants` (alle gewählten) und den `@param`-Werten vom Handy – wie eine Meldung aus Skript
+- die `@param`-Felder erscheinen am Handy; `choice` nur aus der Liste, `string` höchstens 256 Zeichen, eine Zeile
+- *ändert Daten* = **echter Lauf** (Kürzel + PIN am Handy), außer ein Probelauf-Schalter (`DryRun`, `WhatIf`, `Probelauf` …) ist angehakt – deshalb bei ändernden Snippets immer `# @param DryRun|bool|Probelauf|true`
+- Ausgabe (`Write-Host`, Objekte, Warnungen, Fehler) erscheint live am Handy; Token und Kennwörter werden ausgeblendet, trotzdem keine Geheimnisse ausgeben
+- keine Eingaben (`Read-Host`, `Out-GridView`, Dialoge) – vom Handy sieht sie niemand; der Lauf hängt sonst bis zum Abbruch
+- nach jeder Änderung am Code ist die Freigabe ungültig, bis sie am PC neu gespeichert ist (Fingerabdruck)
+- `Send-HUNotify` sendet vom Handy nur, wenn das Snippet zu einer Teams-Meldung gehört (an deren Ziele)
+
+## 10. Grenzen
 
 - kein PowerShell 7 (nur Extensions mit `.RUNTIME PS7`)
 - kein `Connect-ExchangeOnline` (braucht Zertifikats-Anmeldung)

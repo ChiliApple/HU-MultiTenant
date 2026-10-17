@@ -948,3 +948,14 @@ Jedes Dashboard MUSS `@media print` Styles enthalten, die Dark Mode → Light Mo
 - [ ] Permissions mit `.ReadWrite.All` statt `.Read.All`
 - [ ] Alle Write-Operationen im DryRun nur geloggt, nicht ausgeführt
 - [ ] Bestätigungs-Log vor jeder Schreiboperation: `Write-HULog "Executing: POST /users/..." -Level 'WARN'`
+
+## 17. Vom Handy starten (Fernbedienung)
+
+Erweiterungen erscheinen in der Handy-Fernbedienung erst nach Freigabe am PC (Knopf **Handy** › *Freigaben fürs Handy*). Gestartet wird am PC, je gewähltem Tenant (höchstens 5) in einem eigenen Runspace, mit `Invoke-ExtensionScript` wie im Reiter Extensions.
+
+- nur Windows PowerShell 5.1 – Erweiterungen mit `.RUNTIME PS7` sind am Handy nicht verfügbar
+- `.MODE ReadWrite` gilt immer als *ändert Daten*; mit `.DRY_RUN_CAPABLE` erscheint am Handy der Schalter *Probelauf* (Standard an = `-WhatIf`), ohne ihn ist jeder Lauf ein **echter Lauf** (Kürzel + PIN)
+- `.PARAM`-Felder erscheinen am Handy (Typen wie im Reiter Extensions)
+- Ausgabe: alles, was über `Write-HULog` (ab INFO) ins Protokoll geht, erscheint live am Handy; Reports bleiben am PC (der Dateiname wird gemeldet)
+- keine Dialoge oder Eingaben – vom Handy sieht sie niemand
+- nach jeder Änderung an der Datei ist die Freigabe ungültig, bis sie am PC neu gespeichert ist (Fingerabdruck)
