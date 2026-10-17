@@ -1,6 +1,6 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.1.11 (in Arbeit)
+## v2.1.11
 
 ### Handy-Fernbedienung (neu)
 - Snippets, Erweiterungen und Teams-Meldungen vom Handy am PC starten: Web-App (PWA) im Heimnetz bzw. ueber das VPN des
