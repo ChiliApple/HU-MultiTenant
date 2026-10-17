@@ -234,6 +234,7 @@ if ($r.Failed) { Write-HULog -Message "Teams: $($r.Text)" -Level 'WARN' -Tenant 
 ```
 
 - wirft nie; Rückgabe `Ok`, `Failed`, `Text` (ohne Webhook-Adressen)
+- vor dem Start fragt HU-MultiTenant einmal, ob die Erweiterung an Teams senden darf; im Probelauf (DryRun) wird nie gesendet
 - nur in Extensions mit Standard-Runtime (Windows PowerShell 5.1), nicht bei `.RUNTIME PS7`
 - keine Secrets, Kennwörter oder Recovery-Keys in Karten; Gerätenamen nur in Kategorien, die ausschließlich Admin-Kanäle angehakt haben
 - Erweiterungen laufen mit den Rechten des Admins und haben vollen Zugriff auf die Teams-Ziele (Webhook-Adressen) – nur vertrauenswürdige Erweiterungen installieren

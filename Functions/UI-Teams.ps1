@@ -559,3 +559,25 @@ function Update-HUTeamsJobTenantChecks {
     }
     Add-HUTenantAllToggle $sp { }
 }
+
+# Review 030 B4 (Entscheidung Udo): Snippets/Erweiterungen, die Teams-Meldungen senden, fragen EINMAL je Lauf vorher.
+# Rueckgabe: 'send' (mit Teams), 'skip' (ausfuehren, aber nichts an Teams), 'cancel' (nicht ausfuehren)
+function Confirm-HUTeamsSend {
+    param([string]$Code, [string]$What = 'Snippet')
+    if ("$Code" -notmatch '(?i)\bSend-HU(Notify|TeamsCard)\b') { return 'send' }
+    $cfg = Get-HUNotifyConfig
+    $targets = @($cfg.Targets | Where-Object { $_ -and $_.Enabled })
+    if (-not $targets.Count) { return 'send' }   # kein Ziel - es kann nichts rausgehen
+    $cats = @([regex]::Matches("$Code", '(?i)-Category\s+[''"]?([A-Za-z][A-Za-z0-9]*)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    $to = if ($cats.Count) { @($targets | Where-Object { $t = $_; @($cats | Where-Object { Test-HUNotifyCat -Target $t -Category $_ }).Count } | ForEach-Object { $_.Name }) } else { @() }
+    $txt = "Dieses $What kann Meldungen an Teams senden (Send-HUNotify).`n`n"
+    $txt += "Kategorie(n): $(if ($cats.Count) { $cats -join ', ' } else { 'im Code nicht erkennbar' })`n"
+    $txt += "Geht an: $(if ($to.Count) { $to -join ', ' } elseif ($cats.Count) { 'kein Ziel hat diese Kategorie angehakt' } else { 'je nach Kategorie' })`n`n"
+    $txt += "Ja = ausfuehren UND an Teams senden`nNein = ausfuehren, aber nichts an Teams senden`nAbbrechen = nicht ausfuehren"
+    switch (Confirm-HUYesNoCancel -Text $txt -Title 'Teams-Meldungen senden?') {
+        'Yes' { return 'send' }
+        'No' { return 'skip' }
+        default { return 'cancel' }
+    }
+}
+

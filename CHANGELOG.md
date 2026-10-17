@@ -13,6 +13,9 @@
 - Quick-Script-Snippets und Erweiterungen (Standard-Laufzeit, nicht `.RUNTIME PS7`) haben jetzt `Send-HUNotify` zur Verfuegung und koennen an eigene (und
   eingebaute) Kategorien melden: `Send-HUNotify -Category Backup -Title 'Backup HLW fertig' -Level OK`.
   Anleitung mit Beispielen im Abschnitt Teams.
+- **Rueckfrage vor dem Senden:** Enthaelt ein Snippet oder eine Erweiterung `Send-HUNotify`, fragt HU-MultiTenant einmal
+  vor dem Start, an welche Kanaele es gehen kann (Ja = senden, Nein = ohne Teams ausfuehren, Abbrechen). Zeitgesteuerte
+  Auftraege fragen nicht. Erweiterungen im Probelauf senden nie. `Send-HUNotify`/`Send-HUTeamsCard` unterstuetzen `-WhatIf`.
 
 ### Teams: Push-Vorschau und Datenschutz
 - Jede Auftragsart liefert einen eigenen Vorschautext fuer die Handy-Benachrichtigung - ohne Geraetenamen:

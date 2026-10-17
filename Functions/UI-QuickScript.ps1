@@ -207,6 +207,10 @@ function Start-HUQSRun([switch]$Selection) {
         if (-not (Confirm-HU "ECHTER LAUF - Aenderungen werden ausgefuehrt!`n`nSnippet: $(if ($script:QS_Current) { $script:QS_Current } else { '(Editor)' })`nTenants: $($names -join ', ')`n`nFortfahren?" 'Quick Script - Live' -Warning)) { return }
     }
 
+    # Teams: einmal je Lauf fragen, wenn das Snippet Meldungen senden kann (Review 030 B4)
+    $teams = 'send'; if (Get-Command Confirm-HUTeamsSend -ErrorAction SilentlyContinue) { $teams = Confirm-HUTeamsSend -Code $code -What 'Snippet' }
+    if ($teams -eq 'cancel') { return }
+
     $what = if ($isSel) { 'Markierung' } elseif ($script:QS_Current) { $script:QS_Current } else { 'Editor' }
     $script:QS_RunLines = [System.Collections.Generic.List[string]]::new()
     $script:QS_Objects.Clear()
@@ -237,13 +241,15 @@ function Start-HUQSRun([switch]$Selection) {
     $rs.SessionStateProxy.SetVariable('__Tenants', [string[]]$tenants)
     $rs.SessionStateProxy.SetVariable('__Params', $pv)
     $rs.SessionStateProxy.SetVariable('__Multi', ($tenants.Count -gt 1))
+    $rs.SessionStateProxy.SetVariable('__TeamsAllowed', ($teams -eq 'send'))
 
     $ps = [System.Management.Automation.PowerShell]::Create()
     $ps.Runspace = $rs
     [void]$ps.AddScript({
         Import-Module (Join-Path $AppRoot 'Core\HU.Auth.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
         Import-Module (Join-Path $AppRoot 'Core\HU.Graph.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
-        Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue   # Send-HUNotify fuer Snippets (eigene Teams-Kategorien)
+        if ($__TeamsAllowed) { Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue }   # Send-HUNotify fuer Snippets (eigene Teams-Kategorien)
+        else { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 0; Text = 'Teams: fuer diesen Lauf abgelehnt - nichts gesendet' } }; function global:Send-HUTeamsCard { 'Teams: fuer diesen Lauf abgelehnt - nichts gesendet' } }
         if (-not (Get-Command Send-HUNotify -ErrorAction SilentlyContinue)) { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'Teams: HU.Notify nicht geladen - nichts gesendet' } } }   # wirft nie (Review 030 B4)
         . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
         $__sb = [scriptblock]::Create($__UserCode)

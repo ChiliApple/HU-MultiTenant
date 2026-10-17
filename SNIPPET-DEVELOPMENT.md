@@ -117,6 +117,8 @@ $r = Send-HUNotify -Category Sync -Level Warning `
 Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed = Anzahl
 ```
 
+- vor dem Start fragt HU-MultiTenant einmal, ob das Snippet an Teams senden darf (Ja / Nein = ohne Teams / Abbrechen)
+- `-WhatIf` = nur anzeigen, was gesendet würde
 - wirft nie – ein Teams-Fehler bricht das Snippet nicht ab
 - `-Level` `OK` | `Warning` | `Error` | `Info`; `-Facts` als `[ordered]@{ Name = Wert }`; `-Rows` als `@{ Name; Status; Text }` (Ampel)
 - `-Preview` = Text der Handy-Benachrichtigung – **keine Secrets/Kennwörter** in Karten; Gerätenamen nur in Kategorien, die ausschließlich Admin-Kanäle angehakt haben (im Zweifel nur Anzahlen senden)

@@ -669,13 +669,20 @@ function Send-HUTeamsCard {
     .PARAMETER Retries
         Wiederholungen bei 429/5xx (Standard 2, Wartezeit 3 s / 6 s bzw. Retry-After); Zeitueberschreitung nur einmal.
         Umleitungen (3xx) werden nie wiederholt und nie gefolgt.
+    .PARAMETER Target
+        Anzeigename des Ziels fuer -WhatIf/-Confirm (nie die Adresse - sie enthaelt die Signatur).
+    .NOTES
+        -WhatIf und -Confirm werden unterstuetzt (Review 030 B4). Bewusst ConfirmImpact Medium: kein automatischer
+        Dialog bei jedem Aufruf (WPF/Headless haben keine Konsole). Die Rueckfrage je Snippet-/Erweiterungslauf macht die
+        Oberflaeche einmal vor dem Start.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]$Card,
         [Parameter(Mandatory)][string]$Url,
-        [int]$Retries = 2
+        [int]$Retries = 2,
+        [string]$Target = '(Webhook)'
     )
     $why = Test-HUWebhookUrl $Url
     if ($why) { return "Webhook-Adresse ungueltig: $why" }
@@ -687,6 +694,7 @@ function Send-HUTeamsCard {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+    if (-not $PSCmdlet.ShouldProcess($Target, "Teams-Karte senden ($($bytes.Length) Byte)")) { return 'Nicht gesendet (Probelauf/abgelehnt)' }
     $last = ''
     for ($i = 0; $i -le $Retries; $i++) {
         try {
@@ -799,7 +807,7 @@ function Send-HUNotify {
     .EXAMPLE
         Send-HUNotify -Category Backup -Title 'Backup HLW fertig' -Level OK -Facts ([ordered]@{ Dauer = '12 min'; Dateien = 4211 })
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$Category,
         [Parameter(Mandatory)][string]$Title,
@@ -825,7 +833,8 @@ function Send-HUNotify {
     foreach ($t in @($c.Targets | Where-Object { $_ -and $_.Enabled })) {
         if ($TargetIds.Count -and ($TargetIds -notcontains $t.Id)) { continue }
         if (-not $IgnoreCategory -and -not (Test-HUNotifyCat -Target $t -Category $Category)) { continue }
-        $r = Send-HUTeamsCard -Card $card -Url $t.Url
+        # -WhatIf ausdruecklich weiterreichen (Script-Module erben es nicht zuverlaessig), nie nachfragen
+        $r = Send-HUTeamsCard -Card $card -Url $t.Url -Target $t.Name -WhatIf:$WhatIfPreference -Confirm:$false
         if ($r) { $res.Failed++ } else { $res.Ok++ }
         $tag = Get-HUNotifyUrlTag $t.Url
         $hist += [pscustomobject]@{ TargetName = $t.Name; Tag = $tag; Category = $Category; Title = $Title; Result = $(if ($r) { $r } else { 'gesendet' }) }
@@ -852,7 +861,7 @@ function Send-HUNotifyTest {
         $Url = $t.Url; $Name = $t.Name
     }
     $card = New-HUTeamsCard -Title "$($script:NotifyAppName) - Testnachricht ($Name)" -Level OK -Lines @('Der Teams-Webhook funktioniert.') -Facts ([ordered]@{ 'Computer' = $env:COMPUTERNAME; 'Benutzer' = $env:USERNAME }) -Category 'Testnachricht'
-    $r = Send-HUTeamsCard -Card $card -Url $Url -Retries 0
+    $r = Send-HUTeamsCard -Card $card -Url $Url -Retries 0 -Target $Name -Confirm:$false
     Add-HUNotifyHistory -TargetName $Name -Tag (Get-HUNotifyUrlTag $Url) -Category 'Test' -Title 'Testnachricht' -Result $(if ($r) { $r } else { 'gesendet' })
     return $r
 }

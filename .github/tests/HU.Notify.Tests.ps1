@@ -376,3 +376,21 @@ Describe 'Teams: Review 030' {
         [System.Text.Encoding]::UTF8.GetByteCount((ConvertTo-Json -InputObject $c -Depth 20 -Compress)) | Should -BeLessOrEqual 21000
     }
 }
+
+Describe 'Teams: -WhatIf (Review 030 B4)' {
+    It 'Send-HUTeamsCard -WhatIf sendet nichts' {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Send-HUTeamsCard -Card (New-HUTeamsCard -Title 'T') -Url 'https://prod-1.logic.azure.com/w' -Target 'A' -WhatIf | Should -Match 'Nicht gesendet'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'Send-HUNotify -WhatIf reicht weiter, ohne Rueckfrage bei normalem Aufruf' {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Mock -ModuleName HU.Notify Add-HUNotifyHistory { }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @([pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'A'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = $null }) } }
+        (Send-HUNotify -Category Daily -Title 'T' -WhatIf).Ok | Should -Be 0
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+        (Send-HUNotify -Category Daily -Title 'T').Ok | Should -Be 1
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 1 -Exactly
+    }
+}
+

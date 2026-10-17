@@ -354,7 +354,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <li>Die Kategorie erscheint im Block <b>Eigene Kategorien</b> und ist beim gerade gewählten Ziel sofort angehakt und gespeichert – alle anderen Ziele bekommen sie erst, wenn Du sie dort anhakst und speicherst.</li>
     <li>Im Skript senden (Beispiele unten). Neben jeder eigenen Kategorie: <b>✎</b> = Anzeigenamen ändern (Felder unten, Knopf heißt dann <span class="ui">Ändern</span>), <b>✕</b> = Kategorie löschen – dabei verschwinden auch die Haken an allen Zielen.</li>
   </ol>
-  <p><b>Im Quick Script / Snippet</b> – <code>Send-HUNotify</code> ist dort schon geladen:</p>
+  <p><b>Im Quick Script / Snippet</b> – <code>Send-HUNotify</code> ist dort schon geladen. Enthält ein Snippet (oder eine Erweiterung) <code>Send-HUNotify</code>, fragt HU-MultiTenant <b>einmal vor dem Start</b>, an welche Kanäle es gehen kann: <i>Ja</i> = ausführen und senden, <i>Nein</i> = ausführen ohne Teams, <i>Abbrechen</i>. Zeitgesteuerte Aufträge fragen nicht – sie sind beim Anlegen freigegeben. Erweiterungen im Probelauf senden nie. <code>Send-HUNotify -WhatIf</code> zeigt nur, was gesendet würde.</p>
 <pre><code># Geraete ohne Sync melden (Kategorie "Sync" vorher im Reiter Teams anlegen)
 # @param Tage|int|Ohne Sync seit Tagen|30
 $grenze = (Get-Date).AddDays(-$Tage)
