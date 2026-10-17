@@ -137,7 +137,7 @@ $script:HURemoteHtml = @'
     </div>
     <div id="rDone"></div>
     <button class="btn danger wide hidden" id="rCancel">Abbrechen</button>
-    <div class="row between"><h2>Ausgabe</h2><label class="muted small"><input type="checkbox" id="rFollow" checked> mitlaufen</label></div>
+    <div class="row between"><h2>Ausgabe</h2><span class="row"><button class="ibtn" id="rCopy" title="Alles kopieren" aria-label="Ausgabe in die Zwischenablage kopieren">&#10697;</button><button class="ibtn" id="rClear" title="Leeren" aria-label="Ausgabe leeren">&#128465;</button><label class="muted small"><input type="checkbox" id="rFollow" checked> mitlaufen</label></span></div>
     <p class="muted small hidden" id="rLost"></p>
     <div class="console" id="rCon" aria-live="polite"></div>
   </section>
@@ -299,6 +299,8 @@ input.code4{font-size:24px;letter-spacing:6px;text-align:center;text-transform:u
 @media (orientation:landscape) and (max-height:500px){.console{height:60vh}.top{padding-top:6px;padding-bottom:6px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .ok-t{color:var(--green)}
+.ibtn{min-width:36px;min-height:36px;padding:0 8px;border:1px solid var(--s0);border-radius:10px;background:none;color:var(--ov);font-size:16px;line-height:1;cursor:pointer}
+.ibtn:active{background:var(--s0)}.ibtn.done{color:var(--green);border-color:var(--green)}
 '@
 
 $script:HURemoteJs = @'
@@ -686,6 +688,19 @@ $script:HURemoteJs = @'
     });
   }
 
+  // --- Ausgabe kopieren (Zwischenablage; ohne sichere Verbindung ueber ein verstecktes Textfeld)
+  function copyOut() {
+    var txt = Array.prototype.map.call($('rCon').childNodes, function (d) { return d.textContent; }).join('\n');
+    var ok = function () { var b = $('rCopy'); b.classList.add('done'); setTimeout(function () { b.classList.remove('done'); }, 1200); };
+    var old = function () {
+      var ta = el('textarea'); ta.value = txt; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { if (document.execCommand('copy')) { ok(); } else { banner('Kopieren nicht moeglich'); } } catch (e) { banner('Kopieren nicht moeglich'); }
+      document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(txt).then(ok, old); } else { old(); }
+  }
+
   // --- Zertifikat / App
   function certState(ok) {
     S.secure = ok;
@@ -723,6 +738,8 @@ $script:HURemoteJs = @'
     $('cPin').addEventListener('input', checkGo);
     $('rCancel').addEventListener('click', cancelRun);
     $('rFollow').addEventListener('change', function () { S.follow = $('rFollow').checked; });
+    $('rCopy').addEventListener('click', copyOut);
+    $('rClear').addEventListener('click', function () { clear($('rCon')); show('rLost', false); });
     $('mUnpair').addEventListener('click', unpair);
     $('nBtn').addEventListener('click', pushToggle);
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) { b.addEventListener('click', function () { setView(b.getAttribute('data-tab')); }); });
