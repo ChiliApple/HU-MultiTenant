@@ -56,11 +56,11 @@ $script:HURemoteHtml = @'
         <li>Einstellungen &rsaquo; Allgemein &rsaquo; Info &rsaquo; <b>Zertifikatsvertrauenseinstellungen</b> &rsaquo; <i>HUMig Fernbedienung CA</i> einschalten.</li>
         <li>Seite neu laden, dann <b>Teilen</b> &rsaquo; <b>Zum Home-Bildschirm</b>. Erst <b>in der App</b> koppeln (Safari und App sind getrennt).</li>
       </ol></details>
-      <p class="muted small">Sicherheit: den SHA-256-Fingerabdruck in den Zertifikatsdetails am Handy mit dem im Fenster <b>Handy</b> am PC vergleichen.</p>
+      <p class="muted small">Sicherheit: den SHA-256-Fingerabdruck in den Zertifikatsdetails am Handy mit dem im Fenster <b>Remote FB</b> am PC vergleichen.</p>
     </div>
     <div class="card hero">
       <h1>2. Koppeln</h1>
-      <p class="muted">Code aus HU-MultiTenant eingeben (Einstellungen &rsaquo; Fernbedienung &rsaquo; <b>Handy koppeln</b>).</p>
+      <p class="muted">Code aus HU-MultiTenant eingeben (Knopf <b>Remote FB</b> &rsaquo; <b>Handy koppeln</b>).</p>
       <label class="lbl" for="pCode">Kopplungscode</label>
       <input id="pCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000">
       <label class="lbl" for="pName">Name dieses Geraets</label>

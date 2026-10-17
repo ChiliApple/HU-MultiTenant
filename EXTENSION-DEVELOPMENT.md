@@ -951,7 +951,7 @@ Jedes Dashboard MUSS `@media print` Styles enthalten, die Dark Mode → Light Mo
 
 ## 17. Vom Handy starten (Fernbedienung)
 
-Erweiterungen erscheinen in der Handy-Fernbedienung erst nach Freigabe am PC (Knopf **Handy** › *Freigaben fürs Handy*). Gestartet wird am PC, je gewähltem Tenant (höchstens 5) in einem eigenen Runspace, mit `Invoke-ExtensionScript` wie im Reiter Extensions.
+Erweiterungen erscheinen in der Handy-Fernbedienung erst nach Freigabe am PC (Knopf **Remote FB** › *Freigaben fürs Handy*). Gestartet wird am PC, je gewähltem Tenant (höchstens 5) in einem eigenen Runspace, mit `Invoke-ExtensionScript` wie im Reiter Extensions.
 
 - nur Windows PowerShell 5.1 – Erweiterungen mit `.RUNTIME PS7` sind am Handy nicht verfügbar
 - `.MODE ReadWrite` gilt immer als *ändert Daten*; mit `.DRY_RUN_CAPABLE` erscheint am Handy der Schalter *Probelauf* (Standard an = `-WhatIf`), ohne ihn ist jeder Lauf ein **echter Lauf** (Kürzel + PIN)

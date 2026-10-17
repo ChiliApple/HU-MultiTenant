@@ -256,7 +256,7 @@ function Start-HURemote([switch]$Quiet, $Owner = $null) {
     if ($script:HURem) { return $true }
     $msg = { param($t, $lvl) if ($Quiet) { if ($lvl -eq 'Error') { Write-HULogError "Fernbedienung: $t" } else { Write-HULogWarn "Fernbedienung: $t" } } else { Show-HUMessage $t -Title 'Handy-Fernbedienung' -Icon $lvl -Owner $Owner } }
     $st = Get-HURemoteSetupState
-    if (-not $st.Ok) { & $msg "Nicht gestartet: $($st.Text)`n`nEinmalig einrichten: Fenster Handy > Einstellungen > Einrichten (Windows fragt nach Administratorrechten)." 'Warning'; return $false }
+    if (-not $st.Ok) { & $msg "Nicht gestartet: $($st.Text)`n`nEinmalig einrichten: Fenster Remote FB > Einstellungen > Einrichten (Windows fragt nach Administratorrechten)." 'Warning'; return $false }
     if ($st.Warn) { Write-HULogWarn "Fernbedienung: $($st.Warn)" }
     $ips = @(Get-HURemoteIPv4List | Where-Object { $_.Private })
     if (-not $ips.Count) { & $msg 'Keine private IPv4-Adresse gefunden - die Fernbedienung laeuft nur im lokalen Netz bzw. ueber das VPN.' 'Warning'; return $false }
@@ -293,7 +293,7 @@ function Start-HURemote([switch]$Quiet, $Owner = $null) {
     $t.Add_Tick({ try { Update-HURemoteTick } catch { Write-HULogWarn "Fernbedienung: $($_.Exception.Message)" } })
     $script:HURem.Timer = $t
     $t.Start()
-    Write-HULogOK "Fernbedienung aktiv: https://$($ips[0].IP):$($cfg.Port)$(if (-not $S.Pin) { ' - noch keine PIN: echte Laeufe vom Handy erst nach PIN (Fenster Handy > Einstellungen)' })"
+    Write-HULogOK "Fernbedienung aktiv: https://$($ips[0].IP):$($cfg.Port)$(if (-not $S.Pin) { ' - noch keine PIN: echte Laeufe vom Handy erst nach PIN (Fenster Remote FB > Einstellungen)' })"
     Update-HURemoteButton
     return $true
 }
@@ -355,10 +355,10 @@ function Update-HURemoteTick {
         $ev = $S.Events.Dequeue()
         switch ("$($ev.Kind)") {
             'Paired' { Write-HULogOK "Fernbedienung: Handy '$($ev.Name)' gekoppelt ($($ev.Ip))"; if ($script:HURemDlg) { try { $script:HURemDlg.C['pnlRemPair'].Visibility = 'Collapsed' } catch { } } }
-            'PairLocked' { Write-HULogWarn 'Fernbedienung: Kopplung gesperrt - 5 falsche Codes. Im Fenster Handy neu oeffnen.' }
+            'PairLocked' { Write-HULogWarn 'Fernbedienung: Kopplung gesperrt - 5 falsche Codes. Im Fenster Remote FB neu oeffnen.' }
             'Unpaired' { Write-HULogInfo "Fernbedienung: Handy '$($ev.Name)' hat sich entkoppelt" }
             'DevLocked' {
-                Write-HULogWarn "Fernbedienung: Handy '$($ev.Name)' gesperrt - 3 falsche PINs. Entsperren im Fenster Handy."
+                Write-HULogWarn "Fernbedienung: Handy '$($ev.Name)' gesperrt - 3 falsche PINs. Entsperren im Fenster Remote FB."
                 try { [void](Send-HUNotify -Category Jobs -Level Warning -Source 'Fernbedienung' -Title "Handy '$($ev.Name)' gesperrt" -Lines @('3 falsche PINs fuer einen echten Lauf - das Handy ist gesperrt, entsperren nur am PC.')) } catch { }
             }
         }
@@ -407,7 +407,7 @@ function Start-HURemoteRunner($Rq) {
     $tn = @($Rq.Tenants | ForEach-Object { $k = $_; $t = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($t) { "$($t.displayName)" } else { $k } })
     $log = "HANDY '$($Rq.By)' startet $what '$($Rq.Item.Name)'$(if ($Rq.Live) { ' - ECHTER LAUF' }) - Tenants: $($tn -join ', ')$(if ($Rq.Target) { ' - einmalig an ein Ziel' })"
     if ($Rq.Live) { Write-HULogWarn $log } else { Write-HULogInfo $log }
-    Update-HURemoteTitle "Handy steuert: $($Rq.Item.Name)"
+    Update-HURemoteTitle "Remote FB: $($Rq.Item.Name) (vom Handy)"
     Update-HURemoteButton
 }
 function Receive-HURemoteRunner {
@@ -463,9 +463,9 @@ function Update-HURemotePushRuns {
 function Update-HURemoteButton {
     $b = $script:Controls['btnRemote']; if (-not $b) { return }
     $r = $script:HURem
-    if ($r -and $r.Runner) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Handy steuert'; $b.Foreground = Get-HUBrush '#FFB74D'; $b.ToolTip = "Vom Handy laeuft: $($r.S.Job.Title)" }
-    elseif ($r) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Handy ' + [char]0x25CF; $b.Foreground = Get-HUBrush '#81C784'; $b.ToolTip = "Fernbedienung aktiv: https://$($r.Ip):$($r.Port)" }
-    else { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Handy'; $b.Foreground = Get-HUBrush '#CCCCCC'; $b.ToolTip = 'Handy-Fernbedienung: Snippets, Erweiterungen und Teams-Meldungen vom Handy starten' }
+    if ($r -and $r.Runner) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Remote FB ' + [char]0x25B6; $b.Foreground = Get-HUBrush '#FFB74D'; $b.ToolTip = "Vom Handy laeuft: $($r.S.Job.Title)" }
+    elseif ($r) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Remote FB ' + [char]0x25CF; $b.Foreground = Get-HUBrush '#81C784'; $b.ToolTip = "Fernbedienung aktiv: https://$($r.Ip):$($r.Port)" }
+    else { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Remote FB'; $b.Foreground = Get-HUBrush '#CCCCCC'; $b.ToolTip = 'Handy-Fernbedienung: Snippets, Erweiterungen und Teams-Meldungen vom Handy starten' }
 }
 
 # Beim Start: Knopf, ggf. automatisch einschalten

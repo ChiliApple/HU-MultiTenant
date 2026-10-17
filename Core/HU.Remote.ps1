@@ -907,7 +907,7 @@ function Get-HURemoteResponse($S, $Req) {
     if ($path -eq '/api/pair') {
         if ($method -ne 'POST') { return (New-HURemoteJson 405 @{ ok = $false; error = 'Methode nicht erlaubt' }) }
         $pr = $S.Pair
-        if (-not $pr -or $pr.Until -lt $now) { return (New-HURemoteJson 409 @{ ok = $false; error = 'Kopplung ist nicht offen - in HU-MultiTenant den Knopf Handy druecken' } 'Kopplung nicht offen') }
+        if (-not $pr -or $pr.Until -lt $now) { return (New-HURemoteJson 409 @{ ok = $false; error = 'Kopplung ist nicht offen - in HU-MultiTenant den Knopf Remote FB druecken' } 'Kopplung nicht offen') }
         if ($pr.Locked) { return (New-HURemoteJson 409 @{ ok = $false; error = 'Kopplung gesperrt (zu viele falsche Codes) - am PC neuen Code erzeugen' } 'Kopplung gesperrt') }
         $code = "$($body.code)" -replace '\s', ''
         if ($code -notmatch '^\d{6}$' -or -not (Test-HURemoteEqual $code $pr.Code)) {

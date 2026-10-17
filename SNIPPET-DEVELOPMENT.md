@@ -147,7 +147,7 @@ Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed
 
 ## 9. Vom Handy starten
 
-Ein Snippet erscheint in der Handy-Fernbedienung erst, wenn es am PC freigegeben ist (Knopf **Handy** › *Freigaben fürs Handy*: *nur lesend* oder *ändert Daten*). Danach gilt:
+Ein Snippet erscheint in der Handy-Fernbedienung erst, wenn es am PC freigegeben ist (Knopf **Remote FB** › *Freigaben fürs Handy*: *nur lesend* oder *ändert Daten*). Danach gilt:
 
 - läuft **je Tenant in einem eigenen Runspace** mit `$TenantKey`, `$Token`, `$Tenants` (alle gewählten) und den `@param`-Werten vom Handy – wie eine Meldung aus Skript
 - die `@param`-Felder erscheinen am Handy; `choice` nur aus der Liste, `string` höchstens 256 Zeichen, eine Zeile

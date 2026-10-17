@@ -4,7 +4,7 @@
 
 ### Handy-Fernbedienung (neu)
 - Snippets, Erweiterungen und Teams-Meldungen vom Handy am PC starten: Web-App (PWA) im Heimnetz bzw. ueber das VPN des
-  Routers, responsiv fuer Handy, Foldable und Tablet. Knopf "Handy" oben rechts: Ein/Aus, Kopplung per QR-Code,
+  Routers, responsiv fuer Handy, Foldable und Tablet. Knopf "Remote FB" oben rechts: Ein/Aus, Kopplung per QR-Code,
   gekoppelte Handys, PIN, Freigaben, Einrichtung.
 - Am Handy: Tenants (vorausgewaehlt wie am Snippet bzw. an der Meldung) und `@param`-Felder waehlen, Zusammenfassung
   pruefen, starten; Live-Ausgabe, Ergebnis je Tenant, Abbrechen. Teams-Meldungen auch einmalig an ein gespeichertes Ziel.
@@ -17,7 +17,7 @@
   `@param`-Felder, Auswahl/Laenge geprueft, geschuetzte Namen ($Token, $TenantKey, *Preference ...) gesperrt.
 - Laeufe ohne Oberflaeche: je Tenant ein frischer Runspace, nie ein Dialog am PC (auch bei gesperrter App - abschaltbar),
   gemeinsame Laufsperre mit Quick Script, Erweiterungen und "Jetzt senden". Titelleiste und Protokoll zeigen
-  "Handy steuert". Kennwoerter/Token in der Ausgabe werden ausgeblendet. Vollstaendiges Protokoll in Logs\Remote.
+  "Remote FB". Kennwoerter/Token in der Ausgabe werden ausgeblendet. Vollstaendiges Protokoll in Logs\Remote.
 - Ausgabe am Handy: Filterfeld (zeigt nur passende Zeilen) und kleine Symbole - letzten Lauf mit derselben Auswahl wiederholen (wieder mit Bestaetigung), in die Zwischenablage kopieren, Anzeige leeren.
 - Push-Meldungen ueber den Handy-Browser: Ende eines Laufs mit Ergebnis (der Inhalt kommt direkt vom PC, nur im
   Heimnetz/VPN; sonst "Lauf beendet").
