@@ -330,6 +330,20 @@ Export-ModuleMember -Function Get-GraphToken
         $r.Code | Should -Be 0
         $r.Message | Should -Match 'nichts gesendet'
     }
+    It 'Ausgabe-Karte mit genau einem Tenant: Anzeigename im Titel (nicht der erste Buchstabe)' {
+        $set1 = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'Gym-Leoben'; displayName = 'Gym Leoben' }) }
+        $global:__HUCard = $null
+        function global:Send-HUNotify { param($Title, $Level, $Lines, $Preview) $global:__HUCard = [pscustomobject]@{ Title = $Title; Preview = $Preview }; [pscustomobject]@{ Ok = 0; Failed = 0 } }
+        try {
+            [void](Invoke-HUTeamsScript -Code "Write-Host 'x'" -Name 'B' -Tenants @('Gym-Leoben') -Settings $set1 -AppRoot $script:App -SendOutput)
+            $global:__HUCard.Title | Should -Be 'B - Gym Leoben'
+            $global:__HUCard.Preview | Should -Match '^Gym Leoben - '
+        } finally {
+            Remove-Item function:global:Send-HUNotify -ErrorAction SilentlyContinue; Remove-Variable __HUCard -Scope Global -ErrorAction SilentlyContinue
+            # das Original wieder sichtbar machen (die Attrappe hat es im globalen Bereich ersetzt)
+            Import-Module (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Core\HU.Notify.psm1') -Force -DisableNameChecking; Grant-HUSendApproval -Reason 'Test'
+        }
+    }
     It 'B69: sendOutput als Text "false"/"0"/"nein" gilt als aus' {
         $h = Get-HUTeamsCodeHash (Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Nur Ausgabe')
         $one = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'a' }) }

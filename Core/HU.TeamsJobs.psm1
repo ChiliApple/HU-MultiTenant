@@ -398,7 +398,7 @@ function Invoke-HUTeamsScript {
     $deadline = (Get-Date).AddMinutes($script:TeamsScriptTimeoutMin)
     $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
     $dn = @{}; foreach ($x in @($Settings.tenants)) { if ($x -and "$($x.key)") { $dn["$($x.key)"] = $(if ("$($x.displayName)") { "$($x.displayName)" } else { "$($x.key)" }) } }
-    $runs = if ($RunOnce) { @('*') } else { @($Tenants) }
+    $runs = @(if ($RunOnce) { '*' } else { $Tenants })   # @( ) aussen: sonst wird aus einem Tenant ein String und $runs[0] ein Buchstabe
     $multi = (-not $RunOnce) -and $runs.Count -gt 1
     foreach ($tk in $runs) {
         $tag = if ($RunOnce) { 'einmal' } else { $tk }
