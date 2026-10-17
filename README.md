@@ -40,6 +40,7 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
 | **Apps** | MSI, EXE und Store-Apps an mehrere Tenants verteilen: Setup hineinziehen, Testinstallation in der Windows Sandbox ermittelt Erkennung und Deinstallation, Abhängigkeiten, Status je Gerät; vorhandene Intune-Apps tenantübergreifend verwalten; neue Versionen über winget erkennen und holen |
 | **Wartung** | Intune Remediations mit KI erstellen, automatisch prüfen, in der Windows Sandbox wie Intune (als SYSTEM) testen, Werte als Eingabefelder, mit Zeitplan verteilen, Ergebnisse je Gerät; vorhandene Skripte verwalten und in andere Tenants kopieren |
 | **Analyse** | Was bekommt eine Gruppe, ein Gerät oder ein Benutzer? Alle Apps, Profile, Richtlinien und Skripte über alle Tenants – inkl. verschachtelter Gruppen und Ausschlüsse; Tenant-Vergleich mit Kopieren fehlender Richtlinien; Backup mit Verlauf (wer hat was geändert) und Wiederherstellen |
+| **Teams** | Meldungen in Teams-Kanäle (Workflows): eingebaut – Tages-Ampel, Secret-Countdown, Lizenzen knapp, Defender-Alarm – oder aus eigenen Snippets; je Meldung Ziele, Tenants und Zeitplan (Aufgabenplanung), Jetzt senden, Push-Vorschau am Handy, Rückfrage vor jedem Senden, Sendeprotokoll ohne Adressen |
 | **Secrets** | DPAPI-verschlüsselt, Ablaufdatum je Tenant, Warnung vor Ablauf |
 | **Update** | Kanal Stabil/Test, jede Datei per SHA-256 geprüft, nur signierte Releases |
 
