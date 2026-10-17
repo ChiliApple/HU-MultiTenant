@@ -314,69 +314,71 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 
 <section id="teams">
   <h2><span class="n">9</span>Teams</h2>
-  <p>Meldungen als Karte in Teams-Kanäle: zeitgesteuert (Tages-Ampel, Secret-Countdown, Lizenzen, Defender), aus eigenen Snippets und Skripten sowie Fehler von zeitgesteuerten Läufen. Gesendet wird über Teams-<b>Workflows</b> (Webhook) – keine App-Registrierung, keine zusätzlichen Graph-Rechte für das Senden.</p>
+  <p>Meldungen als Karte in Teams-Kanäle. Es gibt <b>Ziele</b> (Kanäle) und <b>Meldungen</b>: <i>eingebaute Meldungen</i> (Tages-Ampel, Secret-Countdown, Lizenzen, Defender) und <i>Meldungen aus Skripten</i> (Deine Quick-Script-Snippets). Jede Meldung hat ihre Ziele, sendet auf Knopfdruck und auf Wunsch nach Zeitplan. Gesendet wird über Teams-<b>Workflows</b> (Webhook) – keine App-Registrierung, keine zusätzlichen Graph-Rechte für das Senden.</p>
   <h3 id="teams-ziel">Ziel einrichten</h3>
   <ol class="steps">
     <li>In Teams im gewünschten Kanal: <span class="ui">⋯</span> › <span class="ui">Workflows</span> › Vorlage <i>Post to a channel when a webhook request is received</i> (Webhookanforderung empfangen → im Kanal posten). Name vergeben, Team/Kanal bestätigen, <span class="ui">Workflow hinzufügen</span> und die angezeigte Adresse kopieren.</li>
-    <li>Reiter <b>Teams</b> › Ziele › <span class="ui">+ Neu</span>: Name (z. B. <i>Admin-Kanal</i>), Adresse einfügen → <span class="ui b">💾 Speichern</span>. Unter <b>Bekommt außerdem</b> steht nur, was der Kanal zusätzlich zu den Aufträgen bekommt: <i>Fehler zeitgesteuerter Aufträge</i> und – darunter – Deine <b>eigenen Kategorien</b>. Welche Kanäle die Tages-Ampel, den Defender-Alarm usw. bekommen, legst Du beim Auftrag fest (rechts, <i>Senden an</i>).</li>
+    <li>Reiter <b>Teams</b> › Ziele › <span class="ui">+ Neu</span>: Name (z. B. <i>Admin-Kanal</i>), Adresse einfügen → <span class="ui b">💾 Speichern</span>. Unter <b>Fehlermeldungen</b> nur ein Haken: ob dieser Kanal einen Hinweis bekommt, wenn eine zeitgesteuerte Meldung nicht laufen kann. Welche Meldungen ein Kanal bekommt, stellst Du bei der Meldung ein (rechts, <i>Senden an</i>).</li>
     <li><span class="ui">✉ Test senden</span> – die Testkarte muss im Kanal erscheinen. Fehler stehen im Klartext da (z. B. 404 = Workflow gelöscht/aus, Umleitung = Kurzlink statt vollständiger Adresse).</li>
   </ol>
   <div class="note warn"><b class="h">Adresse = Schlüssel</b>Wer die Webhook-Adresse kennt, kann in den Kanal posten. Sie liegt DPAPI-verschlüsselt im Benutzerprofil (<code>%APPDATA%\HU-MultiTenant\notify-targets.json</code>) und ist an das <b>Windows-Konto und diesen PC</b> gebunden – ein anderes Konto oder ein neuer PC kann die Ziele nicht lesen (bei Roaming-Profilen beachten; dann Ziele neu eintragen). Sie wird nie angezeigt und nie geloggt – im Sendeprotokoll steht nur eine 8-stellige Kennung. Nicht weitergeben; bei Verdacht den Workflow in Teams löschen und neu anlegen. Alte Office-365-Connector-Adressen (<code>webhook.office.com</code>) sind seit Mai 2026 abgeschaltet und werden abgewiesen.</div>
   <div class="note"><b class="h">Wer liest mit?</b>Karten enthalten Tenant-Namen, Zahlen und beim Defender-Alarm <b>Gerätenamen</b>; jede Karte nennt in der Fußzeile den <b>PC-Namen</b>, die Testkarte zusätzlich den <b>Windows-Benutzernamen</b>. Admin-Meldungen nur in Kanäle mit eingeschränkter Mitgliedschaft (z. B. privater Kanal der Systembetreuung). Für Kanäle mit breiterem Publikum (Direktion) beim Defender-Alarm <span class="ui">Gerätenamen ausblenden</span> anhaken – dann stehen nur Anzahlen auf der Karte; Tenant-Namen, Fehlerzeilen und die Fußzeile bleiben.</div>
 
-  <h3 id="teams-auftrag">Zeitgesteuerte Meldungen</h3>
+  <h3 id="teams-auftrag">Meldungen</h3>
+  <p>Rechts im Reiter steht die Liste <b>Meldungen</b>, getrennt in <i>Eingebaute Meldungen</i> und <i>Meldungen aus Skripten</i>. Jede Meldung hat dieselben Einstellungen: <b>Senden an</b> (Ziele), <b>Tenants</b>, <span class="ui g">▶ Jetzt senden</span> und – auf Wunsch – einen <b>Zeitplan</b> (Uhrzeit, Wochentage, <span class="ui">Aufgabe anlegen</span>).</p>
   <table>
-    <tr><th>Art</th><th>Inhalt</th><th>Sendet</th><th>Berechtigung (Graph, Anwendung)</th></tr>
+    <tr><th>Eingebaute Meldung</th><th>Inhalt</th><th>Sendet</th><th>Berechtigung (Graph, Anwendung)</th></tr>
     <tr><td>Tages-Ampel</td><td>je Tenant Geräte, nicht konform, ohne Sync, Ablauf des App-Secrets – grün/gelb/rot</td><td>immer</td><td><code>DeviceManagementManagedDevices.Read.All</code>, <code>Application.Read.All</code> (Secret-Ablauf)</td></tr>
     <tr><td>Secret-Countdown</td><td>App-Secrets, die in höchstens N Tagen ablaufen (Warnschwelle aus den Einstellungen, Standard 30)</td><td>nur bei Befund</td><td><code>Application.Read.All</code></td></tr>
     <tr><td>Lizenzen knapp</td><td>SKUs mit weniger als 5 freien Lizenzen, Überbuchung rot</td><td>nur bei Befund</td><td><code>Organization.Read.All</code></td></tr>
     <tr><td>Defender-Alarm</td><td>Geräte mit gemeldeter Bedrohung / kompromittiert / fehlkonfiguriert (von Defender an Intune gemeldet). Voraussetzung: Intune-Connector für Microsoft Defender for Endpoint ist aktiv – sonst bleibt das Feld leer und der Alarm meldet nie etwas.</td><td>nur bei Befund</td><td><code>DeviceManagementManagedDevices.Read.All</code></td></tr>
   </table>
   <ol class="steps">
-    <li>Rechts <span class="ui">+ Neu</span>: <b>Art</b> wählen (der Name folgt der Art, bis man ihn selbst ändert), Uhrzeit, <b>Senden an</b> (mindestens ein Ziel; alle angehakt = auch später angelegte), Wochentage (keiner = täglich), Tenants → <span class="ui b">💾 Speichern</span>. <i>Auftrag aktiv</i> aus = die geplante Aufgabe sendet nichts; <span class="ui">Jetzt senden</span> und <span class="ui">An Kanal …</span> senden trotzdem.</li>
-    <li><span class="ui g">▶ Jetzt senden</span> probiert den Auftrag sofort aus (Fortschritt im Protokoll). <span class="ui">An Kanal …</span> sendet einmalig an genau ein Ziel – auch wenn es am Auftrag nicht angehakt ist.</li>
-    <li><span class="ui">Aufgabe anlegen</span> trägt den Auftrag in die Windows-Aufgabenplanung ein (<code>\HU-MultiTenant\Teams-&lt;Id&gt;</code>, eigenes Konto, ohne erhöhte Rechte, nur wenn angemeldet; verpasste Läufe werden nachgeholt). Sie ruft <code>Main.ps1 -Headless -Job &lt;Id&gt;</code> auf – dieser Modus führt nur gespeicherte Aufträge aus, keine freien Skripte.</li>
+    <li>Rechts <span class="ui">+ Neu</span>: unter <b>Was wird gemeldet</b> eine eingebaute Meldung wählen oder <b>Aus Skript …</b> (siehe unten). Der Name folgt der Auswahl, bis Du ihn selbst änderst. <b>Senden an</b> (mindestens ein Ziel; alle angehakt = auch später angelegte), Tenants, Uhrzeit, Wochentage (keiner = täglich) → <span class="ui b">💾 Speichern</span>.</li>
+    <li><span class="ui g">▶ Jetzt senden</span> sendet sofort an die angehakten Ziele (Fortschritt im Protokoll). <span class="ui">An Kanal …</span> sendet einmalig an genau ein Ziel – auch wenn es an der Meldung nicht angehakt ist.</li>
+    <li><span class="ui">Aufgabe anlegen</span> trägt die Meldung in die Windows-Aufgabenplanung ein (<code>\HU-MultiTenant\Teams-&lt;Id&gt;</code>, eigenes Konto, ohne erhöhte Rechte, nur wenn angemeldet; verpasste Läufe werden nachgeholt). Sie ruft <code>Main.ps1 -Headless -Job &lt;Id&gt;</code> auf – dieser Modus führt nur gespeicherte Meldungen und die darin gewählten gespeicherten Snippets aus, keinen freien Code. <i>Zeitplan aktiv</i> aus = die geplante Aufgabe sendet nichts; <span class="ui">Jetzt senden</span> und <span class="ui">An Kanal …</span> senden trotzdem.</li>
   </ol>
   <table>
     <tr><th>Letztes Ergebnis (Exit-Code)</th><th>Bedeutung</th></tr>
-    <tr><td>0</td><td>gesendet, nichts zu melden oder Auftrag ausgeschaltet</td></tr>
-    <tr><td>1</td><td>Fehler: alle angesprochenen Ziele haben abgelehnt oder waren nicht erreichbar, Graph nicht erreichbar, früher Abbruch (Update läuft, Programmdatei fehlt) – Details im Log und, wenn möglich, als Karte <i>Zeitgesteuerte Läufe</i></td></tr>
+    <tr><td>0</td><td>gesendet, nichts zu melden (auch: Skript hat nichts gesendet) oder Zeitplan ausgeschaltet</td></tr>
+    <tr><td>1</td><td>Fehler: Skriptfehler ohne gesendete Karte, alle angesprochenen Ziele haben abgelehnt oder waren nicht erreichbar, Graph nicht erreichbar, früher Abbruch (Update läuft, Programmdatei fehlt) – Details im Log und, wenn möglich, als Karte <i>Zeitgesteuerte Läufe</i></td></tr>
     <tr><td>2</td><td>nur teilweise gesendet (mindestens ein Ziel hat abgelehnt)</td></tr>
-    <tr><td>3</td><td>Konfiguration: kein Ziel angesprochen (gelöscht, ausgeschaltet oder keines aktiv), Auftrag fehlt/ungültig, unbekannte Auftragsart, keine Tenants, <code>settings.json</code> oder <code>teams-jobs.json</code> fehlt bzw. nicht lesbar</td></tr>
+    <tr><td>3</td><td>Konfiguration: kein Ziel angesprochen (gelöscht, ausgeschaltet oder keines aktiv), Meldung fehlt/ungültig, unbekannte Art, Skript (Snippet) nicht gefunden oder nicht gewählt, keine Tenants, <code>settings.json</code> oder <code>teams-jobs.json</code> fehlt bzw. nicht lesbar</td></tr>
   </table>
   <p>Die Aufgabenplanung zeigt 2 und 3 als <code>(0x2)</code> / <code>(0x3)</code> – das sieht aus wie ein Windows-Fehler („Datei nicht gefunden“), ist aber der Code von HU-MultiTenant. Der Reiter Teams zeigt ihn als Text. „Gesendet“ heißt: vom Workflow angenommen – ob Teams die Karte dann wirklich postet, steht im Verlauf des Workflows in Power Automate.</p>
   <p>Zu große Karten (Teams nimmt etwa 28 KB) werden automatisch gekürzt und mit „Gekürzt …“ markiert; die vollständigen Daten stehen in HU-MultiTenant. Höchstens 5 Knöpfe je Karte. Das <b>Sendeprotokoll</b> unten (Höhe mit dem Griff verstellbar) zeigt die letzten 200 Sendungen ohne Adressen.</p>
 
-  <h3 id="teams-kat">Eigene Kategorien</h3>
-  <p>Für Meldungen aus <b>eigenen Snippets, Erweiterungen und Skripten</b> – z. B. <i>Backup</i>, <i>Drucker</i>, <i>WSUS</i>. Jedes Ziel entscheidet per Haken, ob es eine Kategorie bekommt; das Skript nennt nur den Schlüssel.</p>
+
+  <h3 id="teams-kat">Meldungen aus Skripten</h3>
+  <p>Eigene Meldungen – z. B. <i>Drucker-Status</i>, <i>Backup</i>, <i>WSUS</i> – schreibst Du als <b>Snippet in Quick Script</b>. Das Skript entscheidet, <b>ob</b> und <b>was</b> gemeldet wird (<code>Send-HUNotify</code>); die Meldung im Reiter Teams entscheidet, <b>an wen</b> und <b>wann</b>.</p>
   <ol class="steps">
-    <li>Reiter Teams › Ziele › <b>Eigene Kategorie</b>: links den <b>Schlüssel</b> (Buchstabe am Anfang, dann Buchstaben/Ziffern, 2–24 Zeichen, z. B. <code>Backup</code>), rechts die <b>Bezeichnung</b> (z. B. <i>Backup: Ergebnisse</i>) → <span class="ui">+ Kategorie</span>.</li>
-    <li>Die Kategorie erscheint im Block <b>Eigene Kategorien</b> und ist beim gerade gewählten Ziel sofort angehakt und gespeichert – alle anderen Ziele bekommen sie erst, wenn Du sie dort anhakst und speicherst.</li>
-    <li>Im Skript senden (Beispiele unten). Neben jeder eigenen Kategorie: <b>✎</b> = Anzeigenamen ändern (Felder unten, Knopf heißt dann <span class="ui">Ändern</span>), <b>✕</b> = Kategorie löschen – dabei verschwinden auch die Haken an allen Zielen.</li>
+    <li>Quick Script: Snippet schreiben und unter einem Namen speichern (Beispiel unten).</li>
+    <li>Reiter Teams › Meldungen › <span class="ui">+ Neu</span> › <b>Was wird gemeldet</b>: <i>Aus Skript …</i> › darunter das Snippet wählen. Ziele anhaken, Tenants wählen → <span class="ui b">💾 Speichern</span>.</li>
+    <li><span class="ui g">▶ Jetzt senden</span> zum Ausprobieren, <span class="ui">Aufgabe anlegen</span> für den Zeitplan. Das Snippet läuft je Tenant mit den <b>Standardwerten</b> seiner <code># @param</code>-Zeilen (wie leere Felder im Quick Script) – ein <code>DryRun</code> mit Standard <code>true</code> bleibt also ein Probelauf.</li>
   </ol>
-  <p><b>Im Quick Script / Snippet</b> – <code>Send-HUNotify</code> ist dort schon geladen. Enthält ein Snippet (oder eine Erweiterung) <code>Send-HUNotify</code>, fragt HU-MultiTenant <b>einmal vor dem Start</b>, an welche Kanäle es gehen kann: <i>Ja</i> = ausführen und senden, <i>Nein</i> = ausführen ohne Teams, <i>Abbrechen</i>. Zeitgesteuerte Aufträge fragen nicht – sie sind beim Anlegen freigegeben. Erweiterungen im Probelauf senden nie. <code>Send-HUNotify -WhatIf</code> zeigt nur, was gesendet würde.</p>
-<pre><code># Geraete ohne Sync melden (Kategorie "Sync" vorher im Reiter Teams anlegen)
+  <p><b>Im Quick-Script-Editor</b> ausgeführt, gehen die Karten eines Snippets, das zu einer Meldung gehört, an deren Ziele – vorher fragt HU-MultiTenant <b>einmal</b>: <i>Ja</i> = ausführen und senden, <i>Nein</i> = ausführen ohne Teams, <i>Abbrechen</i>. Ein Snippet ohne Meldung sendet nichts (Hinweis im Protokoll). Geplante Läufe und <span class="ui">Jetzt senden</span> fragen nicht – die gespeicherte Meldung ist die Freigabe. Gesperrt wird im Modul selbst: ohne Freigabe sendet ein Lauf nichts, auch nicht über Alias, Hilfsdatei oder eigenes <code>Import-Module</code>. <code>Send-HUNotify -WhatIf</code> zeigt nur, was gesendet würde.</p>
+<pre><code># Snippet "Drucker-Status": Geraete ohne Sync melden
 # @param Tage|int|Ohne Sync seit Tagen|30
 $grenze = (Get-Date).AddDays(-$Tage)
 $dev = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices?$select=deviceName,lastSyncDateTime')
 $alt = @($dev | Where-Object { [datetime]$_.lastSyncDateTime -lt $grenze })
 $alt | ForEach-Object { Write-Host $_.deviceName }      # Namen nur ins Protokoll
 if ($alt.Count) {
-    $r = Send-HUNotify -Category Sync -Level Warning `
+    $r = Send-HUNotify -Level Warning `
         -Title "$($TenantKey): $($alt.Count) Geraete ohne Sync seit $Tage Tagen" `
         -Preview "$($alt.Count) von $($dev.Count) Geraeten" `
         -Lines @("$($alt.Count) von $($dev.Count) Geraeten ohne Sync seit $Tage Tagen - Liste im Quick-Script-Verlauf")
     Write-Host $r.Text
 }</code></pre>
-  <div class="note"><b class="h">Gerätenamen</b>Schreib Gerätenamen nur in Karten von Kategorien, die ausschließlich Admin-Kanäle angehakt haben. Im Zweifel nur Anzahlen senden und die Namen ins Protokoll (<code>Write-Host</code>) schreiben.</div>
-  <p><b>In einem eigenen Skript</b> (z. B. Backup-Job in der Aufgabenplanung) – im <b>selben Windows-Konto</b> wie HU-MultiTenant, sonst kann die Ziel-Ablage nicht entschlüsselt werden:</p>
+  <div class="note"><b class="h">Gerätenamen</b>Schreib Gerätenamen nur in Meldungen, die ausschließlich Admin-Kanäle angehakt haben. Im Zweifel nur Anzahlen senden und die Namen ins Protokoll (<code>Write-Host</code>) schreiben.</div>
+  <p><b>In einem Skript außerhalb von HU-MultiTenant</b> (z. B. Backup-Job in der Aufgabenplanung) – im <b>selben Windows-Konto</b>, sonst kann die Ziel-Ablage nicht entschlüsselt werden. Das Skript gibt das Senden selbst frei und nennt die Ziel-Id:</p>
 <pre><code>Import-Module 'C:\Pfad\zu\HU-MultiTenant\Core\HU.Notify.psm1' -DisableNameChecking
-$r = Send-HUNotify -Category Backup -Title 'Backup HLW fertig' -Level OK `
+Grant-HUSendApproval -Reason 'Backup'
+$r = Send-HUNotify -TargetIds 'a1b2c3d4' -Source 'Backup' -Title 'Backup HLW fertig' -Level OK `
         -Facts ([ordered]@{ Dauer = '12 min'; Dateien = 4211; Ziel = 'NAS' })
 if ($r.Failed) { Write-Warning $r.Text }</code></pre>
   <table>
     <tr><th>Parameter</th><th>Bedeutung</th></tr>
-    <tr><td><code>-Category</code></td><td>Schlüssel einer eingebauten oder eigenen Kategorie (Pflicht). Unbekannt → nichts gesendet, <code>Failed = 1</code></td></tr>
     <tr><td><code>-Title</code></td><td>Überschrift der Karte (Pflicht)</td></tr>
     <tr><td><code>-Level</code></td><td><code>OK</code> (grün), <code>Warning</code> (gelb), <code>Error</code> (rot), <code>Info</code> (blau, Standard)</td></tr>
     <tr><td><code>-Lines</code></td><td>Textzeilen (bis 20, Rest „und N weitere“)</td></tr>
@@ -384,9 +386,10 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
     <tr><td><code>-Rows</code></td><td>Ampel-Zeilen: <code>@{ Name = 'HLW'; Status = 'OK|Warning|Error'; Text = '…' }</code> (bis 25)</td></tr>
     <tr><td><code>-Actions</code></td><td>Knöpfe: <code>@{ Title = 'Intune öffnen'; Url = 'https://…' }</code> (nur https)</td></tr>
     <tr><td><code>-Preview</code></td><td>Text für die Push-Vorschau am Handy (sonst Titel + erste Zeilen) – keine Gerätenamen hineinschreiben</td></tr>
-    <tr><td><code>-TargetIds</code> · <code>-IgnoreCategory</code></td><td>nur an bestimmte Ziele (die Id steht im Reiter Teams unter dem gewählten Ziel); mit <code>-IgnoreCategory</code> auch dann, wenn die Kategorie dort aus ist</td></tr>
+    <tr><td><code>-TargetIds</code></td><td>nur für Skripte <b>außerhalb</b> von HU-MultiTenant: an diese Ziele (die Id steht im Reiter Teams unter dem gewählten Ziel). In Meldungen aus Skripten nicht nötig – dort gelten die Ziele der Meldung</td></tr>
+    <tr><td><code>-Source</code></td><td>Text in der Fußzeile (Standard: PC-Name)</td></tr>
   </table>
-  <p>Rückgabe: <code>Ok</code> (Ziele beliefert), <code>Failed</code> (abgelehnt), <code>Text</code> (Ergebnis je Ziel, ohne Adressen). <code>Send-HUNotify</code> wirft nie – ein Teams-Fehler bricht das Skript nicht ab. Text aus Tenants wird bereinigt (keine Links, kein Markdown). <b>Keine</b> Kennwörter, Secrets oder Wiederherstellungsschlüssel in Karten schreiben. Snippets und Erweiterungen laufen mit Deinen Rechten und haben vollen Zugriff auf die Teams-Ziele – nur Code ausführen, dem Du vertraust. Nur Erweiterungen mit Standard-Laufzeit (Windows PowerShell 5.1), nicht <code>.RUNTIME PS7</code>.</p>
+  <p>Rückgabe: <code>Ok</code> (Ziele beliefert), <code>Failed</code> (abgelehnt), <code>Text</code> (Ergebnis je Ziel oder der Grund, warum nichts gesendet wurde – ohne Adressen). <code>Send-HUNotify</code> wirft nie – ein Teams-Fehler bricht das Skript nicht ab. Text aus Tenants wird bereinigt (keine Links, kein Markdown). <b>Keine</b> Kennwörter, Secrets oder Wiederherstellungsschlüssel in Karten schreiben. Snippets laufen mit Deinen Rechten – nur Code ausführen, dem Du vertraust. Wer <code>Config\quick-snippets.json</code> ändern kann, ändert auch, was geplante Meldungen ausführen; der Programmordner gehört deshalb nur Dir. Erweiterungen senden weiterhin nur mit eigener Kategorie und nach der Rückfrage (nur Standard-Laufzeit Windows PowerShell 5.1, nicht <code>.RUNTIME PS7</code>).</p>
 
   <h3 id="teams-push">Push-Vorschau am Handy</h3>
   <p>Karten, die ein Workflow postet, zeigen in der Handy-Benachrichtigung nur den Kanalnamen. Abhilfe: Der Workflow postet zuerst eine Textzeile (die Vorschau, die HU-MultiTenant als <code>summary</code> mitschickt) und hängt die Karte als Antwort darunter. Einmal je Workflow in Power Automate (<i>make.powerautomate.com</i> › Meine Flows › Workflow bearbeiten), ca. 10 Minuten:</p>
@@ -437,7 +440,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
     <tr><td><code>Config\update.json</code></td><td>Update-Kanal, Signaturpflicht</td></tr>
     <tr><td><code>Config\apps.json</code> · <code>Config\remediations.json</code></td><td>Apps- und Wartungs-Bibliothek mit Verteilstand je Tenant (Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>Config\app-icons\</code></td><td>App-Symbole (PNG je App)</td></tr>
-    <tr><td><code>Config\teams-jobs.json</code></td><td>Teams-Aufträge (ohne Adressen; Sicherung <code>.bak</code>)</td></tr>
+    <tr><td><code>Config\teams-jobs.json</code></td><td>Teams-Meldungen mit Zielen und Zeitplan (ohne Adressen; Sicherung <code>.bak</code>)</td></tr>
     <tr><td><code>%LOCALAPPDATA%\HU-MultiTenant\Packages\</code> · <code>…\Sandbox\</code></td><td>gebaute App-Pakete (Knopf <span class="ui">Paket-Ordner</span>) · Testinstallationen mit Protokollen – liegt bewusst nicht in OneDrive</td></tr>
     <tr><td><code>%LOCALAPPDATA%\HU-MultiTenant\Backups\</code></td><td>Konfigurations-Backups: je Tenant und Stand ein Ordner mit <code>index.json</code> und einer JSON-Datei je Eintrag (Ordner in den Einstellungen änderbar; enthält Skripte im Klartext)</td></tr>
     <tr><td><code>Downloads\HU-App-Updates\</code></td><td>per winget geholte Installer (App\Version)</td></tr>
@@ -447,7 +450,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
     <tr><td><code>%APPDATA%\HU-MultiTenant\lock.json</code></td><td>Prüfwert der Sperr-PIN (nicht die PIN)</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\secret-expiry.json</code></td><td>zuletzt gelesene Ablaufdaten</td></tr>
     <tr><td><code>%APPDATA%\HU-MultiTenant\notify-targets.json</code></td><td>Teams-Ziele mit Webhook-Adressen (DPAPI)</td></tr>
-    <tr><td><code>%APPDATA%\HU-MultiTenant\notify-categories.json</code> · <code>…\notify-history.json</code></td><td>eigene Teams-Kategorien · Sendeprotokoll (ohne Adressen)</td></tr>
+    <tr><td><code>%APPDATA%\HU-MultiTenant\notify-categories.json</code> · <code>…\notify-history.json</code></td><td>eigene Teams-Kategorien aus Vorversionen (nur noch für Erweiterungen) · Sendeprotokoll (ohne Adressen)</td></tr>
     <tr><td><code>Config\quick-snippets.example.json</code></td><td>Beispiel-Snippets</td></tr>
     <tr><td><code>Logs\QuickScript\</code></td><td>Verlauf (<code>verlauf.jsonl</code>) und Protokoll je Lauf</td></tr>
     <tr><td><code>Logs\</code> · <code>Reports\</code></td><td>Tagesprotokoll · Reports</td></tr>

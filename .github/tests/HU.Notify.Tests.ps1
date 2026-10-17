@@ -395,6 +395,38 @@ Describe 'Teams: -WhatIf (Review 030 B4)' {
     }
 }
 
+Describe 'Teams: Meldungs-Route (v2.1.10)' {
+    BeforeEach {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Mock -ModuleName HU.Notify Add-HUNotifyHistory { }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @(
+            [pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'A'; Url = 'https://prod-1.logic.azure.com/a'; Enabled = $true; Cats = $null }
+            [pscustomobject]@{ Id = 'bbbbbbbb'; Name = 'B'; Url = 'https://prod-1.logic.azure.com/b'; Enabled = $true; Cats = $null }) } }
+    }
+    AfterEach { Clear-HUNotifyRoute }
+    It 'ohne Meldung und ohne Kategorie: nichts gesendet, Hinweis' {
+        $r = Send-HUNotify -Title 'T'
+        $r.Ok | Should -Be 0; $r.Text | Should -Match 'keiner Meldung zugeordnet'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'mit Meldung: nur deren Ziele, Kategorie egal, Zaehler' {
+        Set-HUNotifyRoute -Name 'Drucker-Status' -TargetIds @('bbbbbbbb')
+        $r = Send-HUNotify -Title 'T' -Category 'Apps'
+        $r.Ok | Should -Be 1; $r.Text | Should -Match 'B: gesendet'; $r.Text | Should -Not -Match 'A: '
+        (Get-HUNotifyRoute).Calls | Should -Be 1
+        (Get-HUNotifyRoute).Ok | Should -Be 1
+        Should -Invoke -ModuleName HU.Notify Add-HUNotifyHistory -ParameterFilter { $Entries[0].Category -eq 'Drucker-Status' }
+    }
+    It 'Skript ausserhalb: -TargetIds ohne Kategorie sendet nur dorthin' {
+        $r = Send-HUNotify -Title 'T' -TargetIds @('aaaaaaaa') -Source 'Backup'
+        $r.Ok | Should -Be 1; $r.Text | Should -Match 'A: gesendet'; $r.Text | Should -Not -Match 'B: '
+    }
+    It 'mit Meldung ohne Ziel-Ids: alle aktiven Ziele' {
+        Set-HUNotifyRoute -Name 'M'
+        (Send-HUNotify -Title 'T').Ok | Should -Be 2
+    }
+}
+
 Describe 'Teams: Sendefreigabe (Review 030 B4a)' {
     BeforeEach {
         Mock -ModuleName HU.Notify Invoke-WebRequest { $null }

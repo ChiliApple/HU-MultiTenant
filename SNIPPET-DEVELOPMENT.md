@@ -23,7 +23,7 @@ Reports mit eigener Oberfläche im Extensions-Reiter: [EXTENSION-DEVELOPMENT.md]
 | `Invoke-GraphRequestAll -Token -Endpoint` | alle Seiten (`@odata.nextLink`), Rückgabe = Liste der `value`-Einträge |
 | `Invoke-GraphRequestWithRetry` | wie `Invoke-GraphRequest`, wiederholt bei 429/5xx |
 | `Get-HUToken [-Tenant <Schlüssel>]` | Token eines anderen Tenants |
-| `Send-HUNotify -Category -Title [-Level] [-Lines] [-Facts] [-Rows] [-Preview]` | Meldung als Karte an die Teams-Ziele, die diese Kategorie angehakt haben (ab v2.1.10) – siehe unten |
+| `Send-HUNotify -Title [-Level] [-Lines] [-Facts] [-Rows] [-Preview]` | Karte an die Ziele der Teams-Meldung, zu der das Snippet gehört (ab v2.1.10) – siehe unten |
 
 - `-Endpoint` relativ (`'/users?$select=id,displayName'` → v1.0) oder absolut (`'https://graph.microsoft.com/beta/...'`)
 - `-Method`: `GET` (Standard), `POST`, `PATCH`, `DELETE`; `-Body` als Hashtable
@@ -103,29 +103,33 @@ foreach ($x in $d) {
 
 Weitere Beispiele: Snippet-Verwaltung › **Beispiele** (Datei `Config\quick-snippets.example.json`).
 
-### Teams-Meldung aus einem Snippet
+### Teams-Meldung aus einem Snippet ("Meldung aus Skript")
 
-Eigene Kategorie zuerst im Reiter **Teams** anlegen (Ziele › *Eigene Kategorie*: Schlüssel + Bezeichnung › *+ Kategorie*)
-und bei den gewünschten Zielen anhaken. Dann im Snippet:
+Das Snippet entscheidet, **ob** und **was** gemeldet wird; die Meldung im Reiter **Teams** entscheidet, **an wen** und **wann**.
+
+1. Snippet schreiben und speichern, z. B. "Drucker-Status".
+2. Reiter **Teams** › Meldungen › *+ Neu* › *Was wird gemeldet*: **Aus Skript …** › Snippet wählen, Ziele anhaken, Tenants wählen › *Speichern*.
+3. *Jetzt senden* zum Ausprobieren, *Aufgabe anlegen* für den Zeitplan.
 
 ```powershell
 $alt | ForEach-Object { Write-Host $_.deviceName }   # Geraetenamen nur ins Protokoll
-$r = Send-HUNotify -Category Sync -Level Warning `
+$r = Send-HUNotify -Level Warning `
         -Title "$($TenantKey): $($alt.Count) Geraete ohne Sync" `
         -Preview "$($alt.Count) von $($dev.Count) Geraeten" `
         -Lines @("$($alt.Count) von $($dev.Count) Geraeten ohne Sync - Liste im Quick-Script-Verlauf")
 Write-Host $r.Text          # Ergebnis je Ziel, ohne Adressen; $r.Ok / $r.Failed = Anzahl
 ```
 
-- vor dem Start fragt HU-MultiTenant einmal, ob das Snippet an Teams senden darf (Ja / Nein = ohne Teams / Abbrechen)
+- keine Kategorie nötig – jede Karte geht an die Ziele der Meldung
+- geplant / *Jetzt senden*: läuft je Tenant mit den **Standardwerten** der `# @param`-Zeilen (`DryRun` mit Standard `true` bleibt ein Probelauf)
+- im Quick-Script-Editor: gehört das Snippet zu einer Meldung, fragt HU-MultiTenant einmal (Ja / Nein = ohne Teams / Abbrechen) und sendet an deren Ziele; ohne Meldung sendet es nichts
 - `-WhatIf` = nur anzeigen, was gesendet würde
 - wirft nie – ein Teams-Fehler bricht das Snippet nicht ab
 - `-Level` `OK` | `Warning` | `Error` | `Info`; `-Facts` als `[ordered]@{ Name = Wert }`; `-Rows` als `@{ Name; Status; Text }` (Ampel)
-- `-Preview` = Text der Handy-Benachrichtigung – **keine Secrets/Kennwörter** in Karten; Gerätenamen nur in Kategorien, die ausschließlich Admin-Kanäle angehakt haben (im Zweifel nur Anzahlen senden)
-- neue eigene Kategorien sind nur beim Ziel angehakt, bei dem sie angelegt wurden
-- Snippets laufen mit Deinen Rechten und haben vollen Zugriff auf die Teams-Ziele – fremde Snippets vorher lesen
-- bei *Mehrere ▾* sendet jeder Tenant eine eigene Karte – für eine Sammelkarte die Ergebnisse sammeln und nur einmal senden
-- Details und alle Parameter: Anleitung (F1) › Teams › Eigene Kategorien
+- `-Preview` = Text der Handy-Benachrichtigung – **keine Secrets/Kennwörter** in Karten; Gerätenamen nur in Meldungen, die ausschließlich Admin-Kanäle haben (im Zweifel nur Anzahlen senden)
+- Snippets laufen mit Deinen Rechten – fremde Snippets vorher lesen
+- bei mehreren Tenants sendet jeder Tenant eine eigene Karte – für eine Sammelkarte die Ergebnisse sammeln und nur einmal senden
+- Details und alle Parameter: Anleitung (F1) › Teams › Meldungen aus Skripten
 
 ## 8. Vorhandene Skripte übernehmen
 

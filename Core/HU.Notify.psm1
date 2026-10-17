@@ -72,6 +72,9 @@ $script:NotifyCats = [ordered]@{
 # gibt frei; Snippet- und Erweiterungs-Runspaces nur nach "Ja" in der Teams-Rueckfrage. Ein neu geladenes Modul ist gesperrt -
 # auch wenn ein Snippet HU.Notify selbst importiert oder ueber Alias/Hilfsdatei sendet.
 $script:NotifySendApproval = $null
+# Meldung (v2.1.10): laeuft ein Skript als "Meldung aus Skript", gehen alle Send-HUNotify-Aufrufe an die Ziele dieser Meldung
+# (Kategorie egal). Gesetzt nur vom Lauf (Auftrag, Quick Script) - das Skript selbst muss nichts tun.
+$script:NotifyRoute = $null
 $script:NotifyKnownHosts = '(?i)(\.logic\.azure\.com|\.powerplatform\.com|\.powerautomate\.com|\.azure-apim\.net)$'
 
 # ============================================================================
@@ -682,6 +685,36 @@ function Revoke-HUSendApproval {
     $script:NotifySendApproval = $null
 }
 
+function Set-HUNotifyRoute {
+    <#
+    .SYNOPSIS
+        Ab jetzt gehen Send-HUNotify-Aufrufe an die Ziele dieser Meldung (leer = alle aktiven Ziele), Kategorie egal.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Name, [string[]]$TargetIds = @())
+    $script:NotifyRoute = [pscustomobject]@{ Name = $Name; TargetIds = @($TargetIds | Where-Object { "$_" }); Ok = 0; Failed = 0; Calls = 0 }
+}
+
+function Clear-HUNotifyRoute {
+    <#
+    .SYNOPSIS
+        Meldungs-Route entfernen (danach wieder Kategorien).
+    #>
+    [CmdletBinding()]
+    param()
+    $script:NotifyRoute = $null
+}
+
+function Get-HUNotifyRoute {
+    <#
+    .SYNOPSIS
+        Aktuelle Meldungs-Route mit Zaehlern (Calls, Ok, Failed) oder $null.
+    #>
+    [CmdletBinding()]
+    param()
+    return $script:NotifyRoute
+}
+
 function Test-HUSendApproval {
     <#
     .SYNOPSIS
@@ -849,7 +882,7 @@ function Send-HUNotify {
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        [Parameter(Mandatory)][string]$Category,
+        [string]$Category = '',
         [Parameter(Mandatory)][string]$Title,
         [string[]]$Lines = @(),
         [ValidateSet('OK', 'Warning', 'Error', 'Info')][string]$Level = 'Info',
@@ -862,13 +895,26 @@ function Send-HUNotify {
         [string]$Preview = ''
     )
     $res = [pscustomobject]@{ Ok = 0; Failed = 0; Text = '' }
-    $map = Get-HUNotifyCatMap
-    if (-not $map.Contains($Category)) { $res.Text = "Unbekannte Kategorie: $Category (eigene Kategorien im Reiter Teams anlegen)"; $res.Failed = 1; return $res }
+    $route = $script:NotifyRoute
+    if ($route) {
+        # Meldung aus Skript: Ziele der Meldung, Kategorie egal (Fusszeile/Protokoll zeigen den Namen der Meldung)
+        $route.Calls++
+        $TargetIds = @($route.TargetIds); $IgnoreCategory = $true
+        $catLabel = "$($route.Name)"; $histCat = "$($route.Name)"
+    }
+    else {
+        $map = Get-HUNotifyCatMap
+        if (-not $Category -and $TargetIds.Count) { $IgnoreCategory = $true; $Category = 'Skript' }   # eigenes Skript: direkt an diese Ziele
+        elseif (-not $Category) { $res.Text = "Teams: nichts gesendet - dieses Skript ist keiner Meldung zugeordnet (Reiter Teams > Meldungen > + Neu > 'Aus Skript')"; return $res }
+        if ($Category -eq 'Skript' -and $IgnoreCategory) { $map = [ordered]@{ Skript = @($(if ($Source) { $Source } else { 'Skript' }), $false, $true) } }
+        if (-not $map.Contains($Category)) { $res.Text = "Unbekannte Kategorie: $Category - nichts gesendet. Skript im Reiter Teams als Meldung 'Aus Skript' anlegen."; $res.Failed = 1; return $res }
+        $catLabel = $map[$Category][0]; $histCat = $Category
+    }
     $c = Get-HUNotifyConfig
-    if ($c.Error) { $res.Text = "Teams-Benachrichtigung: Ziele nicht lesbar: $($c.Error)"; $res.Failed = 1; return $res }
+    if ($c.Error) { $res.Text = "Teams-Benachrichtigung: Ziele nicht lesbar: $($c.Error)"; $res.Failed = 1; if ($route) { $route.Failed++ }; return $res }
     if (-not $c.Configured) { $res.Text = 'Teams: kein Ziel eingerichtet - nichts gesendet'; return $res }
-    try { $card = New-HUTeamsCard -Title $Title -Lines $Lines -Level $Level -Facts $Facts -Rows $Rows -Actions $Actions -Source $Source -Category $map[$Category][0] -Preview $Preview }
-    catch { $res.Failed = 1; $res.Text = "Karte nicht gebaut: $(Hide-HUNotifyUrl "$($_.Exception.Message)")"; return $res }
+    try { $card = New-HUTeamsCard -Title $Title -Lines $Lines -Level $Level -Facts $Facts -Rows $Rows -Actions $Actions -Source $Source -Category $catLabel -Preview $Preview }
+    catch { $res.Failed = 1; $res.Text = "Karte nicht gebaut: $(Hide-HUNotifyUrl "$($_.Exception.Message)")"; if ($route) { $route.Failed++ }; return $res }
     $out = @(); $hist = @(); $blocked = $false
     foreach ($t in @($c.Targets | Where-Object { $_ -and $_.Enabled })) {
         if ($TargetIds.Count -and ($TargetIds -notcontains $t.Id)) { continue }
@@ -878,18 +924,20 @@ function Send-HUNotify {
         $r = Send-HUTeamsCard -Card $card -Url $t.Url -Target $t.Name -WhatIf:$WhatIfPreference -Confirm:$false
         if ($r) { $res.Failed++ } else { $res.Ok++ }
         $tag = Get-HUNotifyUrlTag $t.Url
-        $hist += [pscustomobject]@{ TargetName = $t.Name; Tag = $tag; Category = $Category; Title = $Title; Result = $(if ($r) { $r } else { 'gesendet' }) }
-        Write-HUNotifyModuleLog "$($t.Name) [$tag] $Category - $(if ($r) { $r } else { 'gesendet' })" $(if ($r) { 'WARN' } else { 'OK' })
+        $hist += [pscustomobject]@{ TargetName = $t.Name; Tag = $tag; Category = $histCat; Title = $Title; Result = $(if ($r) { $r } else { 'gesendet' }) }
+        Write-HUNotifyModuleLog "$($t.Name) [$tag] $histCat - $(if ($r) { $r } else { 'gesendet' })" $(if ($r) { 'WARN' } else { 'OK' })
         $out += "$($t.Name): $(if ($r) { $r } else { 'gesendet' })"
     }
     if ($hist.Count) { Add-HUNotifyHistory -Entries $hist }   # ein Schreibvorgang je Meldung (Review 030 B9)
     if ($blocked) {
-        Write-HUNotifyModuleLog "$Category - nicht freigegeben, nichts gesendet" 'WARN'
+        Write-HUNotifyModuleLog "$histCat - nicht freigegeben, nichts gesendet" 'WARN'
         $res.Text = 'Teams: fuer diesen Lauf nicht freigegeben - nichts gesendet'
     }
     elseif ($out.Count) { $res.Text = "Teams-Benachrichtigung: $($out -join '; ')" }
+    elseif ($route) { $res.Text = "Teams: Meldung '$($route.Name)' hat kein aktives Ziel - nichts gesendet" }
     elseif ($TargetIds.Count) { $res.Text = "Teams: keines der angegebenen Ziele ist aktiv$(if (-not $IgnoreCategory) { " bzw. hat Kategorie '$Category' angehakt" }) - nichts gesendet" }
     else { $res.Text = "Teams: kein aktives Ziel hat Kategorie '$Category' angehakt - nichts gesendet" }
+    if ($route) { $route.Ok += $res.Ok; $route.Failed += $res.Failed }
     return $res
 }
 
@@ -937,6 +985,9 @@ Export-ModuleMember -Function @(
     'Grant-HUSendApproval',
     'Revoke-HUSendApproval',
     'Test-HUSendApproval',
+    'Set-HUNotifyRoute',
+    'Clear-HUNotifyRoute',
+    'Get-HUNotifyRoute',
     'Send-HUNotifyTest',
     'Add-HUNotifyHistory',
     'Invoke-HUNotifyLocked',

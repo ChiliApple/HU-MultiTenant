@@ -344,7 +344,7 @@ function Register-HUExtensionHandlers {
         $bgDryRun    = $isDryRun
 
         # Teams: einmal je Lauf fragen, wenn die Erweiterung Meldungen senden kann (Review 030 B4)
-        $bgTeams = 'send'
+        $bgTeams = 'none'   # ohne Ja keine Sendefreigabe (Review 030 B4a)
         if (-not $isDryRun -and (Get-Command Confirm-HUTeamsSend -ErrorAction SilentlyContinue)) {
             $extCode = ''; try { $extCode = Get-Content -LiteralPath $bgExtension.Path -Raw -Encoding UTF8 } catch { }
             $bgTeams = Confirm-HUTeamsSend -Code $extCode -What 'Erweiterung'

@@ -133,7 +133,7 @@ Describe 'Teams-Auftraege: Ausfuehrung ohne Ziele' {
 Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
     It 'Kinds-Liste und Kategorien' {
         $k = @(Get-HUTeamsKinds)
-        $k.Key | Should -Be @('Daily', 'Secrets', 'Licenses', 'Defender')
+        $k.Key | Should -Be @('Daily', 'Secrets', 'Licenses', 'Defender', 'Script')
         ($k | Where-Object Key -eq 'Daily').OnlyFindings | Should -BeFalse
         ($k | Where-Object Key -eq 'Secrets').Category | Should -Be 'Secrets'
     }
@@ -280,6 +280,47 @@ Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
         $j = New-HUTeamsJob -Name 'D' -Kind Defender -Options @{ maskDevices = 1 }
         $r = Invoke-HUTeamsJob -Job $j -Settings ([pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }) }) -AppRoot $script:TestRoot -NoSend
         $r.Spec.Rows[0].Text | Should -Not -Match 'PC-X'
+    }
+}
+
+Describe 'Meldung aus Skript (v2.1.10)' {
+    BeforeAll {
+        $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $script:App = Join-Path $script:TestRoot 'app'
+        New-Item -Path (Join-Path $script:App 'Core') -ItemType Directory -Force | Out-Null
+        New-Item -Path (Join-Path $script:App 'Config') -ItemType Directory -Force | Out-Null
+        foreach ($f in 'HU.Notify.psm1', 'HU.Graph.psm1', 'HU.QSParams.ps1', 'HU.QSRuntime.ps1') { Copy-Item (Join-Path $repo "Core\$f") (Join-Path $script:App 'Core') }
+        # Attrappe statt HU.Auth: Token ohne Netz, Tenant 'bad' hat kein Secret
+        Set-Content -LiteralPath (Join-Path $script:App 'Core\HU.Auth.psm1') -Encoding UTF8 -Value @'
+function Get-GraphToken { param($TenantKey, $Settings) if ($TenantKey -eq 'bad') { throw 'kein Secret' }; "tok-$TenantKey" }
+Export-ModuleMember -Function Get-GraphToken
+'@
+        $code = "# @param Anzahl|int|Anzahl|3`nSend-HUNotify -Title `"`$TenantKey`" -Lines @(`"`$Anzahl Drucker offline`")"
+        @{ snippets = @(@{ name = 'Drucker'; code = $code }) } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $script:App 'Config\quick-snippets.json') -Encoding UTF8
+        # eigenes, leeres Profil: auf einem echten Admin-PC duerfen keine Karten an echte Kanaele gehen
+        $script:OldAppData = $env:APPDATA
+        $env:APPDATA = Join-Path $script:TestRoot 'appdata'
+        $script:Set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'a' }, [pscustomobject]@{ key = 'bad' }) }
+    }
+    AfterAll { $env:APPDATA = $script:OldAppData }
+    It 'fehlendes Snippet -> Code 3' {
+        $j = New-HUTeamsJob -Name 'X' -Kind Script -Options @{ snippet = 'Weg' }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
+        $r.Code | Should -Be 3; $r.Message | Should -Match "Snippet 'Weg' nicht gefunden"
+    }
+    It 'ohne Skript -> Code 3' {
+        $j = New-HUTeamsJob -Name 'X' -Kind Script; $j.Id = ''
+        (Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App).Code | Should -Be 3
+    }
+    It 'laeuft je Tenant mit @param-Standardwerten, Send-HUNotify geht an die Meldung (hier: kein Ziel)' {
+        $j = New-HUTeamsJob -Name 'Drucker-Status' -Kind Script -Options @{ snippet = 'Drucker' }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
+        $r.Code | Should -Be 3
+        $r.Message | Should -Match '1 Meldung'
+        $r.Message | Should -Match '\[bad\] Kein Token'
+    }
+    It 'Get-HUTeamsSnippetCode liefert den Code' {
+        Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Drucker' | Should -Match 'Send-HUNotify'
     }
 }
 

@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Reiter Teams: Ziele (Workflows-Webhooks), zeitgesteuerte Meldungen (Auftraege + Aufgabenplanung), Sendeprotokoll.
+    Reiter Teams: Ziele (Workflows-Webhooks), Meldungen (eingebaut oder aus Skript, mit Zielen und Zeitplan), Sendeprotokoll.
 .DESCRIPTION
     Logik in Core\HU.Notify.psm1 (Ziele, Karten, Senden) und Core\HU.TeamsJobs.psm1 (Auftraege, Datenerhebung,
     Aufgabenplanung). Hier nur Oberflaeche.
@@ -57,110 +57,26 @@ function Show-HUTeamsTarget($Target) {
     } finally { $script:TeamsFillBusy = $false }
 }
 
-# Am Ziel nur Haken zeigen, die wirken: Auftraege waehlen ihre Ziele selbst (rechts), die Ziel-Haken gelten nur fuer
-# Meldungen OHNE Auftrag - Fehler zeitgesteuerter Laeufe und eigene Kategorien aus Skripten. Die uebrigen eingebauten
-# Kategorien (Daily, Secrets ...) bleiben intern gespeichert, werden aber erst angezeigt, wenn eine Funktion sie nutzt.
-$script:TeamsVisibleBuiltin = @('Jobs')
-
+# Am Ziel steht nur noch, ob es Fehlermeldungen zeitgesteuerter Laeufe bekommt (Kategorie 'Jobs'). Welche Meldungen ein
+# Ziel bekommt, steht an der Meldung selbst (rechts, "Senden an"). Alte Kategorie-Haken - auch eigene Kategorien aus den
+# 2.1.10-Testversionen - bleiben gespeichert (Get-HUTeamsCatsFromPanel), werden aber nicht mehr angezeigt.
 function Get-HUTeamsCatBoxes {
-    $c = $script:Controls
-    @($c['pnlTeamsCats'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
-    foreach ($row in @($c['pnlTeamsCustomCats'].Children)) { @($row.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] }) }
-}
-
-function New-HUTeamsSmallButton([string]$Text, [string]$Tip, [string]$Bg) {
-    $b = New-Object System.Windows.Controls.Button
-    $b.Content = $Text; $b.ToolTip = $Tip
-    $b.Style = $script:Window.FindResource('DarkButton')
-    $b.Background = Get-HUBrush $Bg
-    $b.FontSize = 11; $b.Padding = [System.Windows.Thickness]::new(6, 0, 6, 0); $b.Margin = [System.Windows.Thickness]::new(4, 1, 0, 1)
-    [System.Windows.Controls.DockPanel]::SetDock($b, 'Right')
-    return $b
+    @($script:Controls['pnlTeamsCats'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
 }
 
 function Update-HUTeamsCatChecks {
     $c = $script:Controls
-    $was = @{}
-    foreach ($cb in @(Get-HUTeamsCatBoxes)) { $was["$($cb.Tag)"] = [bool]$cb.IsChecked }
     $c['pnlTeamsCats'].Children.Clear()
-    $c['pnlTeamsCustomCats'].Children.Clear()
-    $custom = 0
-    foreach ($k in @(Get-HUNotifyCategories)) {
-        if (-not $k.Custom -and $script:TeamsVisibleBuiltin -notcontains $k.Key) { continue }
-        $cb = New-Object System.Windows.Controls.CheckBox
-        $cb.Tag = $k.Key
-        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
-        $cb.VerticalAlignment = 'Center'
-        $cb.IsChecked = if ($was.ContainsKey("$($k.Key)")) { $was["$($k.Key)"] } else { [bool]$k.Default }
-        if (-not $k.Custom) {
-            $cb.Content = $(if ($k.Key -eq 'Jobs') { 'Fehler zeitgesteuerter Auftraege' } else { $k.Label })
-            $cb.ToolTip = 'Scheitert eine geplante Aufgabe (Headless-Lauf), kommt eine Fehlerkarte an dieses Ziel.'
-            $cb.Margin = [System.Windows.Thickness]::new(0, 1, 12, 1)
-            [void]$c['pnlTeamsCats'].Children.Add($cb)
-            continue
-        }
-        $custom++
-        $cb.Content = "$($k.Label)"
-        $cb.ToolTip = "Eigene Kategorie '$($k.Key)'. Haken = dieses Ziel bekommt Meldungen aus Skripten mit: Send-HUNotify -Category $($k.Key) -Title '...'"
-        $row = New-Object System.Windows.Controls.DockPanel
-        $row.LastChildFill = $true
-        $row.Margin = [System.Windows.Thickness]::new(0, 0, 0, 1)
-        $bDel = New-HUTeamsSmallButton ([string][char]0x2715) "Kategorie '$($k.Key)' loeschen (bei allen Zielen)" '#C62828'
-        $bDel.Tag = "$($k.Key)"
-        $bDel.Add_Click({ Remove-HUTeamsCategory "$($this.Tag)" })
-        $bEdit = New-HUTeamsSmallButton ([string][char]0x270E) 'Anzeigenamen aendern (in die Felder unten)' '#3E3E42'
-        $bEdit.Tag = $k
-        $bEdit.Add_Click({ $script:Controls['txtTeamsCatKey'].Text = "$($this.Tag.Key)"; $script:Controls['txtTeamsCatLabel'].Text = "$($this.Tag.Label)"; $script:Controls['txtTeamsCatLabel'].Focus() })
-        $key = New-Object System.Windows.Controls.TextBlock
-        $key.Text = "Schluessel: $($k.Key)"; $key.Foreground = Get-HUBrush '#888888'; $key.FontSize = 10
-        $key.VerticalAlignment = 'Center'; $key.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
-        [System.Windows.Controls.DockPanel]::SetDock($key, 'Right')
-        [void]$row.Children.Add($bDel); [void]$row.Children.Add($bEdit); [void]$row.Children.Add($key); [void]$row.Children.Add($cb)
-        [void]$c['pnlTeamsCustomCats'].Children.Add($row)
-    }
-    $c['lblTeamsCustomNone'].Visibility = $(if ($custom) { 'Collapsed' } else { 'Visible' })
-    Update-HUTeamsCatButton
-}
-
-# "+ Kategorie" wird zu "Aendern", wenn der Schluessel schon existiert
-function Update-HUTeamsCatButton {
-    $c = $script:Controls
-    $k = "$($c['txtTeamsCatKey'].Text)".Trim()
-    $exists = $k -and @(Get-HUNotifyCategories | Where-Object { $_.Custom -and $_.Key -eq $k }).Count
-    $c['btnTeamsCatAdd'].Content = $(if ($exists) { 'Aendern' } else { '+ Kategorie' })
-}
-
-function Add-HUTeamsCategory {
-    $c = $script:Controls
-    $key = "$($c['txtTeamsCatKey'].Text)".Trim()
-    $lbl = "$($c['txtTeamsCatLabel'].Text)".Trim()
-    if (-not $key) { Show-HUMessage 'Bitte einen Schluessel eingeben (z. B. Drucker).' -Icon Warning; return }
-    if (-not $lbl) { $lbl = $key }
-    # Review 030 B1: Standard AUS - andere Ziele (z. B. Direktion) bekommen die Kategorie erst nach eigenem Haken
-    $exists = @(Get-HUNotifyCategories | Where-Object { $_.Custom -and $_.Key -eq $key }).Count -gt 0
-    $r = Add-HUNotifyCategory -Key $key -Label $lbl -Default $false
-    if ($r) { Show-HUMessage $r -Icon Warning; return }
-    Update-HUTeamsCatChecks
-    $c['txtTeamsCatKey'].Text = ''; $c['txtTeamsCatLabel'].Text = ''
-    if (-not $exists) {
-        # beim gewaehlten Ziel gleich anhaken UND speichern - kein Haken, der beim Wechseln verloren geht
-        foreach ($cb in @(Get-HUTeamsCatBoxes | Where-Object { "$($_.Tag)" -eq $key })) { $cb.IsChecked = $true }
-        if ($script:TeamsCurrent) { Save-HUTeamsTarget -Quiet }
-    }
-    $who = "$($c['txtTeamsName'].Text)".Trim()
-    $c['lblTeamsHint'].Text = $(if ($exists) { "Kategorie '$key' geaendert." } elseif ($script:TeamsCurrent) { "Kategorie '$key' angelegt - '$who' bekommt sie (gespeichert). Andere Ziele bekommen sie erst, wenn Du sie dort anhakst." } else { "Kategorie '$key' angelegt und hier angehakt - Ziel speichern nicht vergessen." }) + " Aus Skripten: Send-HUNotify -Category $key -Title '...'"
-    Write-HULogOK "Teams: eigene Kategorie '$key' ($lbl) gespeichert."
-}
-
-function Remove-HUTeamsCategory([string]$Key) {
-    if (-not (Confirm-HU "Eigene Kategorie '$Key' loeschen?`n`nSkripte, die damit senden, bekommen danach 'Unbekannte Kategorie'. Die Haken an allen Zielen werden mit entfernt." -Warning)) { return }
-    $r = Remove-HUNotifyCategory -Key $Key
-    if ($r) { Show-HUMessage $r -Icon Warning; return }
-    Update-HUTeamsCatChecks
-    Update-HUTeamsTargets
-    $t = (Get-HUNotifyConfig).Targets | Where-Object { $_.Id -eq $script:TeamsCurrent } | Select-Object -First 1
-    Show-HUTeamsTarget $t
-    Write-HULogOK "Teams: eigene Kategorie '$Key' geloescht."
+    $k = Get-HUNotifyCategories | Where-Object { $_.Key -eq 'Jobs' } | Select-Object -First 1
+    if (-not $k) { return }
+    $cb = New-Object System.Windows.Controls.CheckBox
+    $cb.Tag = 'Jobs'
+    $cb.Content = 'Hinweis, wenn eine zeitgesteuerte Meldung nicht laufen kann'
+    $cb.ToolTip = 'Scheitert eine geplante Aufgabe (z. B. Secret abgelaufen, Einstellungen nicht lesbar), kommt eine Fehlerkarte an dieses Ziel.'
+    $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
+    $cb.Margin = [System.Windows.Thickness]::new(0, 1, 12, 1)
+    $cb.IsChecked = [bool]$k.Default
+    [void]$c['pnlTeamsCats'].Children.Add($cb)
 }
 
 function Get-HUTeamsCatsFromPanel {
@@ -237,15 +153,15 @@ function Test-HUTeamsTarget {
 }
 
 # ============================================================================
-# AUFTRAEGE
+# MELDUNGEN (intern: Auftraege / Jobs)
 # ============================================================================
 
 function Get-HUTeamsJobLabel($Job) {
     $d = @($Job.Days | ForEach-Object { [int]$_ })
     $when = if ($d.Count) { ($d | Sort-Object | ForEach-Object { @('Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So')[$_ - 1] }) -join '' } else { 'taeglich' }
-    $kindLabel = "$((Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($Job.Kind)" }).Label)"
+    $kindLabel = if ("$($Job.Kind)" -eq 'Script') { "Skript: $($Job.Options.snippet)" } else { "$((Get-HUTeamsKinds | Where-Object { $_.Key -eq "$($Job.Kind)" }).Label)" }
     $nm = "$($Job.Name)"
-    if ($kindLabel -and $nm -ne $kindLabel) { $nm = "$nm ($kindLabel)" }
+    if ($kindLabel -and $nm -ne $kindLabel -and $nm -ne "$($Job.Options.snippet)") { $nm = "$nm ($kindLabel)" }
     $tids = @($Job.Targets | Where-Object { "$_" })
     $to = 'alle Ziele'
     if ($tids.Count) {
@@ -265,12 +181,21 @@ function Update-HUTeamsJobs {
     try {
         $lb.Items.Clear()
         $sel = $null
-        foreach ($j in $jobs) {
-            $li = New-Object System.Windows.Controls.ListBoxItem
-            $li.Content = (Get-HUTeamsJobLabel $j)
-            $li.Tag = $j
-            [void]$lb.Items.Add($li)
-            if ("$($j.Id)" -eq $script:TeamsJobCurrent) { $sel = $li }
+        # zwei Gruppen: eingebaute Meldungen, Meldungen aus Skripten (Ueberschriften sind nicht waehlbar)
+        foreach ($g in @(@{ Head = 'Eingebaute Meldungen'; Script = $false }, @{ Head = 'Meldungen aus Skripten'; Script = $true })) {
+            $grp = @($jobs | Where-Object { ("$($_.Kind)" -eq 'Script') -eq $g.Script })
+            $hd = New-Object System.Windows.Controls.ListBoxItem
+            $hd.Content = "$($g.Head)$(if (-not $grp.Count) { ' - noch keine (+ Neu)' })"
+            $hd.IsEnabled = $false; $hd.Focusable = $false
+            $hd.FontWeight = 'SemiBold'; $hd.Foreground = Get-HUBrush '#4FC3F7'
+            [void]$lb.Items.Add($hd)
+            foreach ($j in $grp) {
+                $li = New-Object System.Windows.Controls.ListBoxItem
+                $li.Content = "   $(Get-HUTeamsJobLabel $j)"
+                $li.Tag = $j
+                [void]$lb.Items.Add($li)
+                if ("$($j.Id)" -eq $script:TeamsJobCurrent) { $sel = $li }
+            }
         }
         $lb.SelectedItem = $sel
     } finally { $script:TeamsFillBusy = $false }
@@ -278,7 +203,7 @@ function Update-HUTeamsJobs {
 
 function Update-HUTeamsJobTaskLabel($Job) {
     $c = $script:Controls
-    if (-not $Job) { $c['lblTeamsJobTask'].Text = 'Neuer Auftrag: Name, Uhrzeit, Tenants - dann Speichern. Danach "Aufgabe anlegen" fuer den automatischen Lauf.'; $c['btnTeamsJobTask'].Content = 'Aufgabe anlegen'; $c['btnTeamsJobTask'].IsEnabled = $false; return }
+    if (-not $Job) { $c['lblTeamsJobTask'].Text = 'Neue Meldung: was gemeldet wird, Name, Ziele, Tenants - dann Speichern. "Jetzt senden" geht sofort; fuer den Zeitplan danach "Aufgabe anlegen".'; $c['btnTeamsJobTask'].Content = 'Aufgabe anlegen'; $c['btnTeamsJobTask'].IsEnabled = $false; return }
     $t = Get-HUTeamsJobTask -Job $Job
     $c['btnTeamsJobTask'].IsEnabled = $true
     if ($t.Exists) {
@@ -290,7 +215,7 @@ function Update-HUTeamsJobTaskLabel($Job) {
     }
     else {
         $c['btnTeamsJobTask'].Content = 'Aufgabe anlegen'
-        $c['lblTeamsJobTask'].Text = "Keine Aufgabe in der Aufgabenplanung - der Auftrag laeuft nur ueber 'Jetzt senden'.`nLetztes Ergebnis: $(if ($Job.LastResult) { $Job.LastResult } else { '-' })"
+        $c['lblTeamsJobTask'].Text = "Kein Zeitplan - die Meldung sendet nur ueber 'Jetzt senden'. Zeitplan: 'Aufgabe anlegen'.`nLetztes Ergebnis: $(if ($Job.LastResult) { $Job.LastResult } else { '-' })"
     }
 }
 
@@ -308,6 +233,8 @@ function Show-HUTeamsJob($Job) {
         Update-HUTeamsMaskState
         $kind = if ($Job) { "$($Job.Kind)" } else { 'Daily' }
         foreach ($i in $c['cmbTeamsJobKind'].Items) { if ("$($i.Tag)" -eq $kind) { $c['cmbTeamsJobKind'].SelectedItem = $i } }
+        Update-HUTeamsSnippetCombo -Select $(if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['snippet']) { "$($Job.Options.snippet)" } else { '' })
+        Update-HUTeamsMaskState
         Update-HUTeamsJobTargetChecks
         $tids = @(if ($Job) { $Job.Targets | ForEach-Object { "$_" } } else { @() })
         # leer = alle Ziele -> alle anhaken (so wird es auch gesendet)
@@ -323,12 +250,29 @@ function Show-HUTeamsJob($Job) {
     } finally { $script:TeamsFillBusy = $false }
 }
 
-# "Geraetenamen ausblenden" gibt es nur beim Defender-Alarm (Review 030 B2)
+# "Geraetenamen ausblenden" gibt es nur beim Defender-Alarm (Review 030 B2); die Skript-Auswahl nur bei "Aus Skript"
 function Update-HUTeamsMaskState {
     $c = $script:Controls
-    $isDef = ("$($c['cmbTeamsJobKind'].SelectedItem.Tag)" -eq 'Defender')
+    $kind = "$($c['cmbTeamsJobKind'].SelectedItem.Tag)"
+    $isDef = ($kind -eq 'Defender')
     $c['chkTeamsJobMask'].IsEnabled = $isDef
     $c['chkTeamsJobMask'].Opacity = $(if ($isDef) { 1.0 } else { 0.5 })
+    $c['chkTeamsJobMask'].Visibility = $(if ($kind -eq 'Script') { 'Collapsed' } else { 'Visible' })
+    $c['pnlTeamsJobScript'].Visibility = $(if ($kind -eq 'Script') { 'Visible' } else { 'Collapsed' })
+}
+
+# Skript-Auswahl: gespeicherte Quick-Script-Snippets (Auswahl bleibt, auch wenn das Snippet inzwischen fehlt)
+function Update-HUTeamsSnippetCombo {
+    param($Select = $null)   # untypisiert: [string] macht aus `$null '' - dann ginge die Auswahl beim Aufklappen verloren
+    $cb = $script:Controls['cmbTeamsJobSnippet']
+    $cur = if ($null -ne $Select) { $Select } elseif ($cb.SelectedItem) { "$($cb.SelectedItem.Tag)" } else { '' }
+    $names = @(Get-HUSnippets | ForEach-Object { "$($_.name)" } | Sort-Object)
+    $cb.Items.Clear()
+    foreach ($n in $names) { $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = $n; $i.Tag = $n; [void]$cb.Items.Add($i); if ($n -eq $cur) { $cb.SelectedItem = $i } }
+    if ($cur -and $names -notcontains $cur) {
+        $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = "$cur (fehlt!)"; $i.Tag = $cur; $i.Foreground = Get-HUBrush '#F44336'
+        [void]$cb.Items.Insert(0, $i); $cb.SelectedItem = $i
+    }
 }
 
 function Get-HUTeamsJobFromForm {
@@ -351,6 +295,11 @@ function Get-HUTeamsJobFromForm {
     $j.Days = $days; $j.Tenants = $keys; $j.Category = $cat; $j.Enabled = [bool]$c['chkTeamsJobEnabled'].IsChecked
     if ($null -eq $j.Options) { $j | Add-Member -NotePropertyName Options -NotePropertyValue ([pscustomobject]@{}) -Force }
     $j.Options | Add-Member -NotePropertyName maskDevices -NotePropertyValue ([bool]$c['chkTeamsJobMask'].IsChecked) -Force
+    if ($kind -eq 'Script') {
+        $sn = if ($c['cmbTeamsJobSnippet'].SelectedItem) { "$($c['cmbTeamsJobSnippet'].SelectedItem.Tag)" } else { '' }
+        if (-not $sn) { throw 'Bitte ein Skript waehlen (gespeichertes Snippet aus Quick Script).' }
+        $j.Options | Add-Member -NotePropertyName snippet -NotePropertyValue $sn -Force
+    }
     $allT = @($c['pnlTeamsJobTargets'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
     $selT = @($allT | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
     if ($allT.Count -and -not $selT.Count) { throw 'Bitte mindestens ein Ziel anhaken (zum Stummschalten den Auftrag deaktivieren).' }   # Befund B1 (Review 029)
@@ -371,7 +320,7 @@ function Save-HUTeamsJob {
         if ((Get-HUTeamsJobTask -Job $j).Exists) { $r = Register-HUTeamsJobTask -Job $j -AppRoot $script:AppRoot; if ($r) { Write-HULogWarn $r } }
         Update-HUTeamsJobs
         Show-HUTeamsJob $j
-        Write-HULogOK "Teams-Auftrag '$($j.Name)' gespeichert."
+        Write-HULogOK "Teams-Meldung '$($j.Name)' gespeichert."
     } catch { Show-HUMessage $_.Exception.Message -Icon Warning }
 }
 
@@ -379,7 +328,7 @@ function Remove-HUTeamsJob {
     if (-not $script:TeamsJobCurrent) { return }
     $j = Get-HUTeamsJob -AppRoot $script:AppRoot -Id $script:TeamsJobCurrent
     if (-not $j) { return }
-    if (-not (Confirm-HU "Auftrag '$($j.Name)' entfernen (inkl. Aufgabe in der Aufgabenplanung)?" -Warning)) { return }
+    if (-not (Confirm-HU "Meldung '$($j.Name)' entfernen (inkl. Aufgabe in der Aufgabenplanung)?$(if ("$($j.Kind)" -eq 'Script') { "`n`nDas Snippet selbst bleibt in Quick Script erhalten." })" -Warning)) { return }
     $r = Unregister-HUTeamsJobTask -Job $j; if ($r) { Write-HULogWarn $r }
     try { Invoke-HUTeamsJobsLocked { Set-HUTeamsJobs -AppRoot $script:AppRoot -Jobs @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { $_.Id -ne $j.Id }) } }
     catch { Show-HUMessage $_.Exception.Message -Icon Warning; return }
@@ -389,7 +338,7 @@ function Remove-HUTeamsJob {
 }
 
 function Switch-HUTeamsJobTask {
-    if (-not $script:TeamsJobCurrent) { Show-HUMessage 'Bitte den Auftrag zuerst speichern.' -Icon Warning; return }
+    if (-not $script:TeamsJobCurrent) { Show-HUMessage 'Bitte die Meldung zuerst speichern.' -Icon Warning; return }
     $j = Get-HUTeamsJob -AppRoot $script:AppRoot -Id $script:TeamsJobCurrent
     if (-not $j) { return }
     $t = Get-HUTeamsJobTask -Job $j
@@ -412,7 +361,7 @@ function Start-HUTeamsJobNow {
     try { $j = Get-HUTeamsJobFromForm } catch { Show-HUMessage $_.Exception.Message -Icon Warning; return }
     if (-not (Get-HUNotifyConfig).Configured) { Show-HUMessage 'Noch kein Teams-Ziel gespeichert.' -Icon Warning; return }
     $c['btnTeamsJobRun'].IsEnabled = $false; $c['btnTeamsJobSendTo'].IsEnabled = $false
-    $c['lblTeamsJobTask'].Text = "'$($j.Name)' laeuft$(if ($TargetName) { " - einmalig an '$TargetName'" }) - Tenants werden gelesen (siehe Protokoll unten links) ..."
+    $c['lblTeamsJobTask'].Text = "'$($j.Name)' laeuft$(if ($TargetName) { " - einmalig an '$TargetName'" }) - $(if ("$($j.Kind)" -eq 'Script') { "Skript '$($j.Options.snippet)' laeuft je Tenant" } else { 'Tenants werden gelesen' }) (siehe Protokoll unten links) ..."
     $ids = @(); if ($TargetId) { $ids = @($TargetId) }
     $ok = Start-HUJob -Name 'TeamsJob' -Output $c['rtbLog'] -Vars @{ TJob = $j; TIds = $ids } -Code {
         foreach ($m in 'HU.Notify', 'HU.TeamsJobs') { Import-Module (Join-Path $AppRoot "Core\$m.psm1") -Force -DisableNameChecking -ErrorAction Stop }
@@ -434,7 +383,7 @@ function Start-HUTeamsJobNow {
     if (-not $ok) { $c['btnTeamsJobRun'].IsEnabled = $true; $c['btnTeamsJobSendTo'].IsEnabled = $true }
 }
 
-# "An Kanal ...": Menue mit allen aktiven Zielen, Klick sendet den Auftrag einmalig nur dorthin
+# "An Kanal ...": Menue mit allen aktiven Zielen, Klick sendet die Meldung einmalig nur dorthin
 function Show-HUTeamsSendToMenu {
     $c = $script:Controls
     $cfg = Get-HUNotifyConfig
@@ -472,10 +421,20 @@ function Update-HUTeamsHist {
 
 function Register-HUTeamsHandlers {
     $c = $script:Controls
-    # Kategorien-Haken (eingebaute + eigene)
+    # Ziel: nur noch der Haken fuer Fehlermeldungen
     Update-HUTeamsCatChecks
-    $c['btnTeamsCatAdd'].Add_Click({ Add-HUTeamsCategory })
-    $c['txtTeamsCatKey'].Add_TextChanged({ Update-HUTeamsCatButton })
+    # Skript-Auswahl beim Aufklappen neu lesen (Snippets koennen inzwischen gespeichert worden sein)
+    $c['cmbTeamsJobSnippet'].Add_DropDownOpened({ Update-HUTeamsSnippetCombo })
+    $c['cmbTeamsJobSnippet'].Add_SelectionChanged({
+        if ($script:TeamsFillBusy) { return }
+        $c2 = $script:Controls
+        $it = $c2['cmbTeamsJobSnippet'].SelectedItem
+        if (-not $it) { return }
+        # Name folgt dem Skript, solange im Feld ein Standardname steht
+        $cur = "$($c2['txtTeamsJobName'].Text)".Trim()
+        $std = @(Get-HUTeamsKinds | ForEach-Object { "$($_.Label)" }) + @(Get-HUSnippets | ForEach-Object { "$($_.name)" })
+        if (-not $cur -or $std -contains $cur) { $c2['txtTeamsJobName'].Text = "$($it.Tag)" }
+    })
     # Wochentage
     $c['pnlTeamsJobDays'].Children.Clear()
     $i = 0
@@ -561,31 +520,46 @@ function Update-HUTeamsJobTenantChecks {
     Add-HUTenantAllToggle $sp { }
 }
 
+# Meldung(en) "Aus Skript", die dieses Snippet verwenden -> Route fuer Laeufe im Quick-Script-Editor (oder $null).
+# Mehrere Meldungen mit demselben Snippet: Ziele zusammen; eine davon mit "alle Ziele" = alle.
+function Get-HUTeamsSnippetRoute([string]$Snippet) {
+    if (-not $Snippet) { return $null }
+    $jobs = @()
+    try { $jobs = @(Get-HUTeamsJobs -AppRoot $script:AppRoot | Where-Object { "$($_.Kind)" -eq 'Script' -and "$($_.Options.snippet)" -eq $Snippet }) } catch { return $null }
+    if (-not $jobs.Count) { return $null }
+    $all = @($jobs | Where-Object { -not @($_.Targets | Where-Object { "$_" }).Count }).Count -gt 0
+    $ids = if ($all) { @() } else { @($jobs | ForEach-Object { $_.Targets } | Where-Object { "$_" } | ForEach-Object { "$_" } | Sort-Object -Unique) }
+    return [pscustomobject]@{ Name = "$($jobs[0].Name)"; Ids = [string[]]$ids; Jobs = @($jobs | ForEach-Object { "$($_.Name)" }) }
+}
+
 # Review 030 B4 (Entscheidung Udo): Snippets/Erweiterungen, die Teams-Meldungen senden, fragen EINMAL je Lauf vorher.
-# Rueckgabe: 'send' (mit Teams), 'skip' (ausfuehren, aber nichts an Teams), 'cancel' (nicht ausfuehren)
 function Confirm-HUTeamsSend {
-    param([string]$Code, [string]$What = 'Snippet')
+    param([string]$Code, [string]$What = 'Snippet', $Route = $null)
     # Rueckgabe: send = Ja (Lauf bekommt die Sendefreigabe), skip = Nein, cancel = Abbrechen,
     # none = keine Frage noetig (kein Send-Aufruf im Code oder sicher kein Empfaenger) - der Lauf bekommt KEINE Freigabe.
     # Die Textsuche dient nur der Anzeige; gesperrt wird im Modul selbst (Review 030 B4a).
+    # -Route: das Snippet gehoert zu einer Meldung "Aus Skript" - dann gehen alle Karten an deren Ziele.
     if ("$Code" -notmatch '(?i)\bSend-HU(Notify|TeamsCard)\b') { return 'none' }
     $cfg = Get-HUNotifyConfig
     $targets = @($cfg.Targets | Where-Object { $_ -and $_.Enabled })
     if (-not $targets.Count) { return 'none' }   # kein aktives Ziel - es kann nichts rausgehen
-    $known = @(Get-HUNotifyCategories | ForEach-Object { $_.Key })
-    $cats = @([regex]::Matches("$Code", '(?i)-Category\s+[''"]?([A-Za-z][A-Za-z0-9]*)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-    $unknown = @($cats | Where-Object { $known -notcontains $_ })
-    $cats = @($cats | Where-Object { $known -contains $_ })
-    $direct = "$Code" -match '(?i)-TargetIds\b|-IgnoreCategory\b|\bSend-HUTeamsCard\b|-Category\s+\$'   # Ziel/Kategorie nicht sicher erkennbar
-    $to = if ($cats.Count) { @($targets | Where-Object { $t = $_; @($cats | Where-Object { Test-HUNotifyCat -Target $t -Category $_ }).Count } | ForEach-Object { $_.Name }) } else { @() }
-    if (-not $direct -and ($cats.Count -or $unknown.Count) -and -not $to.Count) {
-        if ($unknown.Count) { Write-HULogWarn "Teams: Kategorie '$($unknown -join "', '")' gibt es nicht - im Reiter Teams unter 'Eigene Kategorien' anlegen. Es wird nichts gesendet." }
-        return 'none'   # sicher kein Empfaenger - keine Frage (Send-HUNotify meldet den Grund im Ergebnis)
+    if ($Route) {
+        $to = @($targets | Where-Object { -not @($Route.Ids).Count -or @($Route.Ids) -contains "$($_.Id)" } | ForEach-Object { "$($_.Name)" })
+        if (-not $to.Count) { Write-HULogWarn "Teams: Meldung '$($Route.Name)' hat kein aktives Ziel - es wird nichts gesendet."; return 'none' }
+        $txt = "Dieses $What gehoert zur Meldung '$($Route.Name)'$(if (@($Route.Jobs).Count -gt 1) { " (und $(@($Route.Jobs).Count - 1) weiteren)" }) und sendet an:`n`n   $($to -join ', ')`n`n"
     }
-    $txt = "Dieses $What kann Meldungen an Teams senden (Send-HUNotify).`n`n"
-    $txt += "Kategorie(n): $(if ($cats.Count) { $cats -join ', ' } elseif ($direct) { 'im Code nicht sicher erkennbar' } else { 'im Code nicht erkennbar' })`n"
-    if ($unknown.Count) { $txt += "Gibt es nicht (im Reiter Teams anlegen): $($unknown -join ', ')`n" }
-    $txt += "Geht an: $(if ($to.Count) { $to -join ', ' } elseif ($cats.Count) { 'kein Ziel hat diese Kategorie angehakt' } else { 'je nach Kategorie/Ziel' })`n`n"
+    else {
+        # ohne Meldung: nur noch alte eigene Kategorien aus den 2.1.10-Testversionen senden
+        $known = @(Get-HUNotifyCategories | ForEach-Object { $_.Key })
+        $cats = @([regex]::Matches("$Code", '(?i)-Category\s+[''"]?([A-Za-z][A-Za-z0-9]*)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique | Where-Object { $known -contains $_ })
+        $direct = "$Code" -match '(?i)-TargetIds\b|-IgnoreCategory\b|\bSend-HUTeamsCard\b|-Category\s+\$'   # Ziel/Kategorie nicht sicher erkennbar
+        $to = @($targets | Where-Object { $t = $_; @($cats | Where-Object { Test-HUNotifyCat -Target $t -Category $_ }).Count } | ForEach-Object { "$($_.Name)" })
+        if (-not $direct -and -not $to.Count) {
+            Write-HULogWarn "Teams: Dieses $What ist keiner Meldung zugeordnet - es wird nichts gesendet. Reiter Teams > Meldungen > + Neu > 'Aus Skript ...' und dieses Snippet waehlen."
+            return 'none'
+        }
+        $txt = "Dieses $What kann Meldungen an Teams senden.`n`nGeht an: $(if ($to.Count) { $to -join ', ' } else { 'im Code nicht sicher erkennbar' })`n`n"
+    }
     $txt += "Ja = ausfuehren UND an Teams senden`nNein = ausfuehren, aber nichts an Teams senden`nAbbrechen = nicht ausfuehren"
     switch (Confirm-HUYesNoCancel -Text $txt -Title 'Teams-Meldungen senden?') {
         'Yes' { return 'send' }
@@ -593,4 +567,3 @@ function Confirm-HUTeamsSend {
         default { return 'cancel' }
     }
 }
-

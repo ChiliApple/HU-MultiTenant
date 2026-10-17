@@ -4,19 +4,24 @@
 .SYNOPSIS
     HU.TeamsJobs - zeitgesteuerte Teams-Meldungen (Auftraege, Datenerhebung, Aufgabenplanung) fuer HU-MultiTenant.
 .DESCRIPTION
-    Ein Auftrag (Job) beschreibt, WAS wann an Teams gemeldet wird:
+    Eine Meldung (intern: Auftrag/Job) beschreibt, WAS wann an welche Ziele gemeldet wird.
+    Eingebaute Meldungen:
       Kind 'Daily'    Tages-Ampel: je Tenant Geraete, nicht konform, ohne Sync, Secret-Ablauf. Sendet immer.
       Kind 'Secrets'  Secret-Countdown: App-Secrets, die in <= warnDays ablaufen. Sendet nur bei Befund.
       Kind 'Licenses' Lizenzen knapp: SKUs mit weniger als minFree freien Lizenzen. Sendet nur bei Befund.
       Kind 'Defender' Defender-Alarm: Geraete mit gemeldeter Bedrohung oder Fehlkonfiguration. Sendet nur bei Befund.
-    Auftraege liegen in Config\teams-jobs.json (lokal, nicht im Repository). Sie enthalten keine Adressen -
-    gesendet wird ueber die Ziele aus HU.Notify (Kategorie des Auftrags).
+    Meldung aus Skript:
+      Kind 'Script'   fuehrt ein gespeichertes Quick-Script-Snippet (Options.snippet = Name) je Tenant aus, mit den
+                      Standardwerten seiner @param-Zeilen. Jedes Send-HUNotify im Snippet geht an die Ziele der Meldung.
+    Meldungen liegen in Config\teams-jobs.json (lokal, nicht im Repository). Sie enthalten keine Adressen -
+    gesendet wird ueber die Ziele aus HU.Notify (am Auftrag gespeicherte Ziel-Ids).
 
     Ausfuehrung:
       - aus der Oberflaeche (Reiter Teams > "Jetzt senden")
       - zeitgesteuert ueber die Windows-Aufgabenplanung, Aufgabe \HU-MultiTenant\Teams-<Id>, laeuft im Konto des
         Benutzers (DPAPI-Secrets, LogonType Interactive, ohne erhoehte Rechte) und ruft
-        Main.ps1 -Headless -Job <Id>  auf. Der Headless-Lauf kennt NUR gespeicherte Auftraege - keine freien Skripte.
+        Main.ps1 -Headless -Job <Id>  auf. Der Headless-Lauf kennt NUR gespeicherte Auftraege und die darin
+        genannten gespeicherten Snippets (Config\quick-snippets.json) - keinen freien Code von der Kommandozeile.
 
     Logik ohne Oberflaeche, PowerShell 5.1 und 7 (Windows).
 .NOTES
@@ -29,7 +34,8 @@
 $script:TeamsJobsFile = 'Config\teams-jobs.json'
 $script:TeamsTaskPath = '\HU-MultiTenant\'
 $script:TeamsTaskPrefix = 'Teams-'
-$script:TeamsJobKinds = @('Daily', 'Secrets', 'Licenses', 'Defender')
+$script:TeamsJobKinds = @('Daily', 'Secrets', 'Licenses', 'Defender', 'Script')
+$script:TeamsScriptTimeoutMin = 30   # Meldung aus Skript: laengste Laufzeit, danach Abbruch
 $script:TeamsJobIdPattern = '^[0-9a-f]{8}$'
 $script:TeamsDayNames = @('So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa')   # [DayOfWeek] 0 = Sonntag
 
@@ -78,7 +84,7 @@ function New-HUTeamsJob {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Name,
-        [ValidateSet('Daily', 'Secrets', 'Licenses', 'Defender')][string]$Kind = 'Daily',
+        [ValidateSet('Daily', 'Secrets', 'Licenses', 'Defender', 'Script')][string]$Kind = 'Daily',
         [string[]]$Tenants = @(),
         [string]$Time = '07:00',
         [int[]]$Days = @(),
@@ -324,6 +330,94 @@ function Get-HUTeamsKinds {
     [pscustomobject]@{ Key = 'Secrets';  Label = 'Secret-Countdown'; Category = 'Secrets';  OnlyFindings = $true }
     [pscustomobject]@{ Key = 'Licenses'; Label = 'Lizenzen knapp';   Category = 'Licenses'; OnlyFindings = $true }
     [pscustomobject]@{ Key = 'Defender'; Label = 'Defender-Alarm';   Category = 'Defender'; OnlyFindings = $true }
+    [pscustomobject]@{ Key = 'Script';   Label = 'Aus Skript';       Category = '';         OnlyFindings = $true }
+}
+
+function Get-HUTeamsSnippetCode {
+    <#
+    .SYNOPSIS
+        Code eines gespeicherten Quick-Script-Snippets (Config\quick-snippets.json). Wirft, wenn es fehlt.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$AppRoot, [Parameter(Mandatory)][string]$Name)
+    $p = Join-Path $AppRoot 'Config\quick-snippets.json'
+    if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw "Snippet '$Name' nicht gefunden (keine Snippet-Datei)" }
+    $json = Get-Content -LiteralPath $p -Raw -Encoding UTF8 | ConvertFrom-Json
+    $raw = if ($json.PSObject.Properties['snippets']) { @($json.snippets) } else { @($json) }
+    $s = @($raw | Where-Object { $_ -and "$($_.name)".Trim() -eq $Name.Trim() }) | Select-Object -First 1
+    if (-not $s -or -not "$($s.code)".Trim()) { throw "Snippet '$Name' nicht gefunden (Quick Script > Snippets - umbenannt oder geloescht?)" }
+    return "$($s.code)"
+}
+
+function Invoke-HUTeamsScript {
+    <#
+    .SYNOPSIS
+        Meldung aus Skript: Snippet je Tenant in einem eigenen Runspace ausfuehren, Send-HUNotify geht an die Ziele.
+    .OUTPUTS
+        @{ Calls; Ok; Failed; Errors }  (Calls = Anzahl Send-HUNotify-Aufrufe)
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Code,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string[]]$Tenants,
+        [Parameter(Mandatory)][PSCustomObject]$Settings,
+        [Parameter(Mandatory)][string]$AppRoot,
+        [string[]]$TargetIds = @()
+    )
+    $out = [pscustomobject]@{ Calls = 0; Ok = 0; Failed = 0; Errors = @() }
+    $rs = [runspacefactory]::CreateRunspace()
+    $ps = $null
+    try {
+        $rs.Open()
+        $rs.SessionStateProxy.SetVariable('Settings', $Settings)
+        $rs.SessionStateProxy.SetVariable('AppRoot', $AppRoot)
+        $rs.SessionStateProxy.SetVariable('__Code', $Code)
+        $rs.SessionStateProxy.SetVariable('__Name', $Name)
+        $rs.SessionStateProxy.SetVariable('__Tenants', [string[]]$Tenants)
+        $rs.SessionStateProxy.SetVariable('__Ids', [string[]]@($TargetIds))
+        $ps = [powershell]::Create()
+        $ps.Runspace = $rs
+        [void]$ps.AddScript({
+            $errs = @()
+            foreach ($m in 'HU.Auth', 'HU.Graph', 'HU.Notify') { Import-Module (Join-Path $AppRoot "Core\$m.psm1") -Force -DisableNameChecking -ErrorAction Stop }
+            . (Join-Path $AppRoot 'Core\HU.QSParams.ps1')
+            . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
+            Grant-HUSendApproval -Reason "Meldung $__Name"     # gespeicherte Meldung = freigegeben (Review 030 B4a)
+            Set-HUNotifyRoute -Name $__Name -TargetIds $__Ids
+            $sb = [scriptblock]::Create($__Code)
+            foreach ($tk in $__Tenants) {
+                $global:TenantKey = $tk; $global:Schule = $tk
+                try { $global:Token = Get-HUToken -Tenant $tk } catch { $errs += "[$tk] Kein Token: $($_.Exception.Message)"; continue }
+                # Standardwerte der @param-Zeilen (wie leere Felder im Quick Script)
+                foreach ($p in @(Get-HUQSParams $__Code)) {
+                    try { Set-Variable -Name $p.Name -Value (ConvertTo-HUQSParamValue $p $p.Default) -Scope Global } catch { $errs += "[$tk] Parameter $($p.Name): $($_.Exception.Message)" }
+                }
+                try { & $sb | Out-Null } catch { $errs += "[$tk] $($_.Exception.Message)" }
+            }
+            $r = Get-HUNotifyRoute
+            [pscustomobject]@{ __Done = $true; Calls = [int]$r.Calls; Ok = [int]$r.Ok; Failed = [int]$r.Failed; Errors = @($errs) }
+        }.ToString())
+        $h = $ps.BeginInvoke()
+        if (-not $h.AsyncWaitHandle.WaitOne([TimeSpan]::FromMinutes($script:TeamsScriptTimeoutMin))) {
+            try { $ps.Stop() } catch { }
+            $out.Errors = @("Abgebrochen nach $($script:TeamsScriptTimeoutMin) Minuten"); return $out
+        }
+        $res = @($ps.EndInvoke($h))
+        $d = @($res | Where-Object { $_ -and $_.PSObject.Properties['__Done'] }) | Select-Object -First 1
+        $streamErr = @($ps.Streams.Error | Select-Object -First 5 | ForEach-Object { "$($_.Exception.Message)" })
+        $log = Get-Command Write-HULog -ErrorAction SilentlyContinue
+        if ($log) { foreach ($i in @($ps.Streams.Information | Select-Object -First 50)) { $s = "$($i.MessageData)".Trim(); if ($s) { Write-HULog -Message "[Teams] $($Name): $s" -Level INFO } } }
+        if ($d) { $out.Calls = $d.Calls; $out.Ok = $d.Ok; $out.Failed = $d.Failed; $out.Errors = @(@($d.Errors) + $streamErr | Where-Object { $_ }) }
+        else { $out.Errors = @(@($streamErr) + 'Skript ohne Ergebnis beendet' | Where-Object { $_ }) }
+    }
+    catch { $out.Errors = @(@($out.Errors) + "$($_.Exception.Message)") }
+    finally {
+        if ($ps) { $ps.Dispose() }
+        $rs.Dispose()
+    }
+    return $out
 }
 
 function Get-HUSecretStatus {
@@ -535,6 +629,28 @@ function Invoke-HUTeamsJob {
         $spec = $null
         $detail = ''
         $readLog = { param($k) if ($log) { Write-HULog -Message "[Teams] $($Job.Name): $k lesen ..." -Level INFO } }
+        if ("$($Job.Kind)" -eq 'Script') {
+            # Meldung aus Skript: das Snippet sendet selbst (Send-HUNotify), an die Ziele dieser Meldung
+            $sn = "$($Job.Options.snippet)"
+            if (-not $sn) { $res.Message = 'Kein Skript gewaehlt'; $res.Code = 3; return $res }
+            try { $code = Get-HUTeamsSnippetCode -AppRoot $AppRoot -Name $sn } catch { $res.Message = "$($_.Exception.Message)"; $res.Code = 3; return $res }
+            if ($NoSend) { $res.Success = $true; $res.Code = 0; $res.Message = 'Vorschau (Skript wird nicht ausgefuehrt)'; return $res }
+            $ids = @($TargetIds | Where-Object { "$_" }); if (-not $ids.Count) { $ids = @($Job.Targets | Where-Object { "$_" }) }
+            if ($log) { Write-HULog -Message "[Teams] $($Job.Name): Skript '$sn' auf $($keys.Count) Tenant(s) ..." -Level INFO }
+            $sr = Invoke-HUTeamsScript -Code $code -Name "$($Job.Name)" -Tenants $keys -Settings $Settings -AppRoot $AppRoot -TargetIds $ids
+            $errTxt = $(if (@($sr.Errors).Count) { " - Fehler: $((@($sr.Errors) | Select-Object -First 2) -join '; ')$(if (@($sr.Errors).Count -gt 2) { " (+$(@($sr.Errors).Count - 2))" })" } else { '' })
+            $cards = Get-HUTeamsCountText $sr.Calls 'Meldung' 'Meldungen'
+            $res.Sent = "$($sr.Ok) gesendet, $($sr.Failed) fehlgeschlagen"
+            if ($sr.Calls -eq 0) {
+                if (@($sr.Errors).Count) { $res.Code = 1; $res.Message = "Nichts gesendet$errTxt" }
+                else { $res.Success = $true; $res.Code = 0; $res.Message = 'Nichts zu melden - das Skript hat nichts gesendet' }
+            }
+            elseif ($sr.Ok -gt 0 -and $sr.Failed -eq 0 -and -not @($sr.Errors).Count) { $res.Success = $true; $res.Code = 0; $res.Message = "$(Get-HUTeamsCountText $sr.Ok 'Karte' 'Karten') gesendet ($cards)" }
+            elseif ($sr.Ok -gt 0) { $res.Code = 2; $res.Message = "Teilweise gesendet: $($sr.Ok) ok, $($sr.Failed) fehlgeschlagen$errTxt" }
+            elseif ($sr.Failed -eq 0) { $res.Code = 3; $res.Message = "Kein aktives Ziel - NICHTS gesendet ($cards).$errTxt" }
+            else { $res.Code = 1; $res.Message = "Nicht gesendet: $($sr.Failed) fehlgeschlagen$errTxt" }
+            return $res
+        }
         switch ("$($Job.Kind)") {
             'Daily' {
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HUDailyTenantStatus -TenantKey $k -Settings $Settings -StaleDays (& $opt 'staleDays' 7) }
@@ -674,6 +790,8 @@ Export-ModuleMember -Function @(
     'Set-HUTeamsJobs',
     'Update-HUTeamsJobResult',
     'Get-HUTeamsKinds',
+    'Get-HUTeamsSnippetCode',
+    'Invoke-HUTeamsScript',
     'Get-HUTeamsDateLabel',
     'Get-HUDailyTenantStatus',
     'New-HUDailyCardSpec',

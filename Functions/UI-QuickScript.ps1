@@ -208,7 +208,9 @@ function Start-HUQSRun([switch]$Selection) {
     }
 
     # Teams: einmal je Lauf fragen, wenn das Snippet Meldungen senden kann (Review 030 B4)
-    $teams = 'send'; if (Get-Command Confirm-HUTeamsSend -ErrorAction SilentlyContinue) { $teams = Confirm-HUTeamsSend -Code $code -What 'Snippet' }
+    # Gehoert das Snippet zu einer Meldung "Aus Skript", gehen seine Karten an deren Ziele (Reiter Teams)
+    $route = $null; if ($script:QS_Current -and (Get-Command Get-HUTeamsSnippetRoute -ErrorAction SilentlyContinue)) { $route = Get-HUTeamsSnippetRoute $script:QS_Current }
+    $teams = 'none'; if (Get-Command Confirm-HUTeamsSend -ErrorAction SilentlyContinue) { $teams = Confirm-HUTeamsSend -Code $code -What 'Snippet' -Route $route }
     if ($teams -eq 'cancel') { return }
 
     $what = if ($isSel) { 'Markierung' } elseif ($script:QS_Current) { $script:QS_Current } else { 'Editor' }
@@ -242,6 +244,7 @@ function Start-HUQSRun([switch]$Selection) {
     $rs.SessionStateProxy.SetVariable('__Params', $pv)
     $rs.SessionStateProxy.SetVariable('__Multi', ($tenants.Count -gt 1))
     $rs.SessionStateProxy.SetVariable('__TeamsAllowed', ($teams -eq 'send'))
+    $rs.SessionStateProxy.SetVariable('__TeamsRoute', $route)
 
     $ps = [System.Management.Automation.PowerShell]::Create()
     $ps.Runspace = $rs
@@ -252,6 +255,7 @@ function Start-HUQSRun([switch]$Selection) {
         # Freigabe nur nach "Ja" in der Teams-Rueckfrage; sonst sperrt das Modul selbst (auch Alias, Hilfsdateien, eigener Import - Review 030 B4a).
         # Die Freigabe lebt nur in diesem Runspace und endet mit ihm.
         if ($__TeamsAllowed -and (Get-Command Grant-HUSendApproval -ErrorAction SilentlyContinue)) { Grant-HUSendApproval -Reason 'Snippet-Lauf' }
+        if ($__TeamsRoute -and (Get-Command Set-HUNotifyRoute -ErrorAction SilentlyContinue)) { Set-HUNotifyRoute -Name "$($__TeamsRoute.Name)" -TargetIds @($__TeamsRoute.Ids) }   # Ziele der Meldung
         if (-not (Get-Command Send-HUNotify -ErrorAction SilentlyContinue)) { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'Teams: HU.Notify nicht geladen - nichts gesendet' } } }   # wirft nie (Review 030 B4)
         . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
         $__sb = [scriptblock]::Create($__UserCode)

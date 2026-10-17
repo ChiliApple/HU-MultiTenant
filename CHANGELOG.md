@@ -2,29 +2,31 @@
 
 ## v2.1.10 (in Arbeit)
 
-### Neu: eigene Teams-Kategorien
-- Reiter Teams, Ziele: **Eigene Kategorien** mit Schluessel (fuer Skripte, z. B. `Drucker`) und Anzeigename anlegen.
-  Sie stehen in einem eigenen Block mit Haken je Ziel, Stift (umbenennen) und X (loeschen, auch die Haken an allen
-  Zielen). Eine neue Kategorie wird nur beim gerade gewaehlten Ziel angehakt und gleich gespeichert.
-- Ziel-Haken aufgeraeumt: Am Ziel steht nur noch, was wirkt ("Bekommt ausserdem": Fehler zeitgesteuerter Auftraege
-  und eigene Kategorien). Die Kategorien Tages-Ampel, Secrets, Lizenzen, Defender usw. waren dort wirkungslos, weil
-  Auftraege ihre Ziele selbst waehlen; sie bleiben intern gespeichert und kommen zurueck, sobald eine Funktion sie nutzt. Ablage im Benutzerprofil (`%APPDATA%\HU-MultiTenant\notify-categories.json`, Klartext,
-  keine Geheimnisse), hoechstens 30.
-- Quick-Script-Snippets und Erweiterungen (Standard-Laufzeit, nicht `.RUNTIME PS7`) haben jetzt `Send-HUNotify` zur Verfuegung und koennen an eigene (und
-  eingebaute) Kategorien melden: `Send-HUNotify -Category Backup -Title 'Backup HLW fertig' -Level OK`.
-  Anleitung mit Beispielen im Abschnitt Teams.
-- **Rueckfrage vor dem Senden:** Enthaelt ein Snippet oder eine Erweiterung `Send-HUNotify`, fragt HU-MultiTenant einmal
-  vor dem Start, an welche Kanaele es gehen kann (Ja = senden, Nein = ohne Teams ausfuehren, Abbrechen). Zeitgesteuerte
-  Auftraege fragen nicht. Erweiterungen im Probelauf senden nie. `Send-HUNotify`/`Send-HUTeamsCard` unterstuetzen `-WhatIf`.
-  Gesperrt wird im Modul selbst: ohne "Ja" sendet ein Lauf nichts - auch nicht ueber Alias, Hilfsdatei oder eigenen
-  Import. Keine Frage, wenn sicher niemand die Meldung bekommt; unbekannte Kategorie und "kein Ziel hat die Kategorie
-  angehakt" stehen im Ergebnis statt eines leeren Textes.
+### Neu: Teams-Meldungen - eingebaut oder aus eigenem Skript
+- Reiter Teams neu geordnet: links **Ziele** (Kanaele), rechts **Meldungen** in zwei Gruppen - *Eingebaute Meldungen*
+  (Tages-Ampel, Secret-Countdown, Lizenzen knapp, Defender-Alarm) und *Meldungen aus Skripten*. Jede Meldung hat
+  dieselben Einstellungen: Ziele ("Senden an"), Tenants, "Jetzt senden" und auf Wunsch einen Zeitplan (Aufgabenplanung).
+- **Meldung aus Skript:** "Was wird gemeldet" > *Aus Skript ...* > gespeichertes Quick-Script-Snippet waehlen. Das Snippet
+  laeuft je Tenant mit den Standardwerten seiner `@param`-Zeilen; jedes `Send-HUNotify -Title ...` darin geht an die Ziele
+  der Meldung - eine Kategorie braucht es nicht. Geplant ueber `Main.ps1 -Headless -Job <Id>` (nur gespeicherte
+  Meldungen und Snippets, kein freier Code), Laufzeit hoechstens 30 Minuten. Exit-Codes wie bei den eingebauten Meldungen.
+- Im Quick-Script-Editor gehen die Karten eines Snippets, das zu einer Meldung gehoert, an deren Ziele; ein Snippet ohne
+  Meldung sendet nichts (Hinweis im Protokoll).
+- Am Ziel steht nur noch ein Haken: Hinweis, wenn eine zeitgesteuerte Meldung nicht laufen kann. Die Begriffe "Art" und
+  "Kategorie" sind aus der Oberflaeche verschwunden. Eigene Kategorien aus den Testversionen bleiben gespeichert und
+  funktionieren fuer Erweiterungen weiter; Skripte ausserhalb von HU-MultiTenant senden mit `-TargetIds`.
+- **Rueckfrage vor dem Senden:** Snippets (im Editor) und Erweiterungen, die senden koennen, fragen einmal vor dem Start
+  (Ja = senden, Nein = ohne Teams ausfuehren, Abbrechen). "Jetzt senden" und geplante Meldungen fragen nicht - die
+  gespeicherte Meldung ist die Freigabe. Erweiterungen im Probelauf senden nie. `Send-HUNotify`/`Send-HUTeamsCard`
+  unterstuetzen `-WhatIf`. Gesperrt wird im Modul selbst: ohne Freigabe sendet ein Lauf nichts - auch nicht ueber Alias,
+  Hilfsdatei oder eigenen Import (Skripte ausserhalb: `Grant-HUSendApproval`). Keine Frage, wenn sicher niemand die
+  Meldung bekommt; bei Ok = 0 steht der Grund im Ergebnis statt eines leeren Textes.
 
 ### Teams: Push-Vorschau und Datenschutz
-- Jede Auftragsart liefert einen eigenen Vorschautext fuer die Handy-Benachrichtigung - ohne Geraetenamen:
+- Jede eingebaute Meldung liefert einen eigenen Vorschautext fuer die Handy-Benachrichtigung - ohne Geraetenamen:
   Tages-Ampel "4 gruen, 1 gelb, 0 rot (gelb: HLW) - 1234 Geraete, 7 nicht konform", Secret-Countdown mit dem
   dringendsten Tenant, Lizenzen mit der knappsten SKU, Defender mit Anzahl und betroffenen Tenants.
-- Neue Option am Auftrag **Geraetenamen ausblenden (Defender-Alarm)**: die Karte nennt dann nur die Anzahl je
+- Neue Option an der Meldung **Geraetenamen ausblenden (Defender-Alarm)**: die Karte nennt dann nur die Anzahl je
   Zustand - fuer Kanaele mit breiterem Publikum.
 
 ### Teams: Robustheit (Review 029, offene Punkte und Lueckentests)
