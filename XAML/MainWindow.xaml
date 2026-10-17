@@ -1287,7 +1287,10 @@
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Top" Text="Meldungen" Style="{StaticResource SectionTitle}" Margin="0,0,0,6"/>
                                     <StackPanel DockPanel.Dock="Bottom">
-                                        <TextBlock x:Name="lblTeamsJobTask" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                                        <DockPanel Margin="0,4,0,6">
+                                            <Ellipse x:Name="dotTeamsJobRun" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,3,6,0" VerticalAlignment="Top" Visibility="Collapsed" ToolTip="Meldung laeuft ..."/>
+                                            <TextBlock x:Name="lblTeamsJobTask" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
+                                        </DockPanel>
                                         <DockPanel>
                                             <Button x:Name="btnTeamsJobDel" ToolTip="Meldung und zugehoerige Aufgabe loeschen" DockPanel.Dock="Right" Content="Entfernen" Background="#C62828" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
                                             <Button x:Name="btnTeamsJobTask" ToolTip="Aufgabe in der Windows-Aufgabenplanung anlegen/entfernen (\HU-MultiTenant\Teams-&lt;Id&gt;, eigenes Konto, nur bei Anmeldung)" DockPanel.Dock="Right" Content="Aufgabe anlegen" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>

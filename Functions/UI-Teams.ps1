@@ -421,6 +421,23 @@ function Switch-HUTeamsJobTask {
     Update-HUTeamsJobTaskLabel $j
 }
 
+# Pulsierender gruener Punkt vor der Statuszeile, solange eine Meldung laeuft (wie HUMig)
+function Set-HUTeamsRunDot([bool]$On) {
+    $d = $script:Controls['dotTeamsJobRun']
+    if (-not $d) { return }
+    if ($On) {
+        $a = New-Object System.Windows.Media.Animation.DoubleAnimation
+        $a.From = 1.0; $a.To = 0.2; $a.Duration = [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(700))
+        $a.AutoReverse = $true; $a.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+        $d.Visibility = 'Visible'
+        $d.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $a)
+    }
+    else {
+        $d.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+        $d.Opacity = 1.0; $d.Visibility = 'Collapsed'
+    }
+}
+
 function Start-HUTeamsJobNow {
     param([string]$TargetId = '', [string]$TargetName = '')
     $c = $script:Controls
@@ -430,6 +447,7 @@ function Start-HUTeamsJobNow {
     $c['btnTeamsJobRun'].IsEnabled = $false; $c['btnTeamsJobSendTo'].IsEnabled = $false
     $c['lblTeamsJobTask'].Text = "'$($j.Name)' laeuft$(if ($TargetName) { " - einmalig an '$TargetName'" }) - $(if ("$($j.Kind)" -eq 'Script') { "Skript '$($j.Options.snippet)' laeuft je Tenant" } else { 'Tenants werden gelesen' }) (siehe Protokoll unten links) ..."
     $ids = @(); if ($TargetId) { $ids = @($TargetId) }
+    Set-HUTeamsRunDot $true
     $ok = Start-HUJob -Name 'TeamsJob' -Output $c['rtbLog'] -Vars @{ TJob = $j; TIds = $ids } -Code {
         foreach ($m in 'HU.Notify', 'HU.TeamsJobs') { Import-Module (Join-Path $AppRoot "Core\$m.psm1") -Force -DisableNameChecking -ErrorAction Stop }
         Grant-HUSendApproval -Reason 'Jetzt senden'   # Klick auf "Jetzt senden" ist die Freigabe (Review 030 B4a)
@@ -438,6 +456,7 @@ function Start-HUTeamsJobNow {
     } -OnDone {
         param($Result, $Errors)
         $c = $script:Controls
+        Set-HUTeamsRunDot $false
         $c['btnTeamsJobRun'].IsEnabled = $true; $c['btnTeamsJobSendTo'].IsEnabled = $true
         $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__TeamsDone'] }) | Select-Object -First 1
         $msg = if ($d) { $d.Message } elseif ($Errors.Count) { $Errors -join '; ' } else { 'kein Ergebnis' }
@@ -447,7 +466,7 @@ function Start-HUTeamsJobNow {
         $j2 = $null; if ($script:TeamsJobCurrent) { $j2 = Get-HUTeamsJob -AppRoot $script:AppRoot -Id $script:TeamsJobCurrent }
         Update-HUTeamsJobTaskLabel $j2
     }
-    if (-not $ok) { $c['btnTeamsJobRun'].IsEnabled = $true; $c['btnTeamsJobSendTo'].IsEnabled = $true }
+    if (-not $ok) { Set-HUTeamsRunDot $false; $c['btnTeamsJobRun'].IsEnabled = $true; $c['btnTeamsJobSendTo'].IsEnabled = $true }
 }
 
 # "An Kanal ...": Menue mit allen aktiven Zielen, Klick sendet die Meldung einmalig nur dorthin
