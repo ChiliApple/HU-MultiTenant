@@ -439,7 +439,7 @@ function Invoke-HUTeamsScript {
                         foreach ($o in @(& ([scriptblock]::Create($__Code)))) {
                             if ($null -eq $o -or $ol.Count -ge 60) { continue }
                             $txt = if ($o -is [string] -or $o -is [ValueType]) { "$o" } else { (@($o.PSObject.Properties | Where-Object { $_.MemberType -match 'Property' } | Select-Object -First 6 | ForEach-Object { "$($_.Name): $($_.Value)" }) -join ' | ') }
-                            if ("$txt".Trim()) { $ol += $(if ($__Multi) { "[$__Label] $txt" } else { "$txt" }) }
+                            if ("$txt".Trim()) { $ol += $(if ($__Multi) { "$($__Label): $txt" } else { "$txt" }) }
                         }
                     } catch { $e += "[$__Tk] $($_.Exception.Message)" }
                 }
@@ -460,7 +460,7 @@ function Invoke-HUTeamsScript {
             if ($d) {
                 $out.Calls += $d.Calls; $out.Ok += $d.Ok; $out.Failed += $d.Failed
                 foreach ($x in @($d.Errors)) { if ($x) { $errs.Add("$x") } }
-                $src = if (@($d.Lines).Count) { @($d.Lines) } elseif ($d.Calls -eq 0) { @($hostLines | ForEach-Object { if ($multi) { "[$($dn["$tk"])] $_" } else { "$_" } }) } else { @() }
+                $src = if (@($d.Lines).Count) { @($d.Lines) } elseif ($d.Calls -eq 0) { @($hostLines | ForEach-Object { if ($multi) { "$($dn["$tk"]): $_" } else { "$_" } }) } else { @() }
                 foreach ($x in $src) { if ($x -and $lines.Count -lt 60) { $lines.Add("$x") } }
             }
             else { $errs.Add("[$tk] Skript ohne Ergebnis beendet") }
@@ -477,7 +477,9 @@ function Invoke-HUTeamsScript {
             Set-HUNotifyRoute -Name $Name -TargetIds $TargetIds
             # ein Tenant: Name des Tenants in den Titel (bei mehreren steht er vor jeder Zeile)
             $ttl = if ($perTenant -and -not $multi -and $runTenants.Count -eq 1) { "$Name - $($dn["$($runTenants[0])"])" } else { $Name }
-            [void](Send-HUNotify -Title $ttl -Level Info -Lines @($lines) -Preview "$ttl - $($lines.Count) Eintraege")
+            # Vorschau ohne den Namen (den setzt der Workflow schon davor)
+            $pvw = if ($perTenant -and -not $multi -and $runTenants.Count -eq 1) { "$($dn["$($runTenants[0])"]) - $($lines.Count) Eintraege" } else { "$($lines.Count) Eintraege" }
+            [void](Send-HUNotify -Title $ttl -Level Info -Lines @($lines) -Preview $pvw)
             $rt = Get-HUNotifyRoute
             $out.Calls += $rt.Calls; $out.Ok += $rt.Ok; $out.Failed += $rt.Failed
         }
