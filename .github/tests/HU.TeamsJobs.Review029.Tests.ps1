@@ -15,6 +15,7 @@ BeforeAll {
     New-Item -Path (Join-Path $script:TestRoot 'Config') -ItemType Directory -Force | Out-Null
     if (-not $env:APPDATA) { $env:APPDATA = $script:TestRoot }
     Import-Module (Join-Path $script:Repo 'Core\HU.Notify.psm1') -Force -DisableNameChecking
+    Grant-HUSendApproval -Reason 'Test'
     Import-Module (Join-Path $script:Repo 'Core\HU.TeamsJobs.psm1') -Force -DisableNameChecking
     $script:JobsFile = Join-Path $script:TestRoot 'Config\teams-jobs.json'
     $script:Set1 = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; displayName = 'HLW' }); ui = [pscustomobject]@{ secretWarnDays = 30 } }

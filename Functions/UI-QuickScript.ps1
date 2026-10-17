@@ -248,8 +248,10 @@ function Start-HUQSRun([switch]$Selection) {
     [void]$ps.AddScript({
         Import-Module (Join-Path $AppRoot 'Core\HU.Auth.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
         Import-Module (Join-Path $AppRoot 'Core\HU.Graph.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
-        if ($__TeamsAllowed) { Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue }   # Send-HUNotify fuer Snippets (eigene Teams-Kategorien)
-        else { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 0; Text = 'Teams: fuer diesen Lauf abgelehnt - nichts gesendet' } }; function global:Send-HUTeamsCard { 'Teams: fuer diesen Lauf abgelehnt - nichts gesendet' } }
+        Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue   # Send-HUNotify fuer Snippets (eigene Teams-Kategorien)
+        # Freigabe nur nach "Ja" in der Teams-Rueckfrage; sonst sperrt das Modul selbst (auch Alias, Hilfsdateien, eigener Import - Review 030 B4a).
+        # Die Freigabe lebt nur in diesem Runspace und endet mit ihm.
+        if ($__TeamsAllowed -and (Get-Command Grant-HUSendApproval -ErrorAction SilentlyContinue)) { Grant-HUSendApproval -Reason 'Snippet-Lauf' }
         if (-not (Get-Command Send-HUNotify -ErrorAction SilentlyContinue)) { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'Teams: HU.Notify nicht geladen - nichts gesendet' } } }   # wirft nie (Review 030 B4)
         . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
         $__sb = [scriptblock]::Create($__UserCode)

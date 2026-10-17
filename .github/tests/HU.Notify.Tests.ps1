@@ -19,6 +19,7 @@ BeforeAll {
     $script:OldAppData = $env:APPDATA
     $env:APPDATA = $script:TestAppData
     Import-Module (Join-Path $root 'Core\HU.Notify.psm1') -Force -DisableNameChecking
+    Grant-HUSendApproval -Reason 'Test'
 }
 
 AfterAll {
@@ -152,7 +153,7 @@ Describe 'Teams: Senden (ohne Netz)' {
     }
     It 'Send-HUNotify ohne Ziele sendet nichts und wirft nicht' {
         $r = Send-HUNotify -Category 'Daily' -Title 'T'
-        $r.Ok | Should -Be 0; $r.Failed | Should -Be 0; $r.Text | Should -Be ''
+        $r.Ok | Should -Be 0; $r.Failed | Should -Be 0; $r.Text | Should -Match 'kein Ziel eingerichtet'
         (Send-HUNotify -Category 'Gibtsnicht' -Title 'T').Text | Should -Match 'Unbekannte Kategorie'
     }
     It 'Fehlermeldungen enthalten nie die Adresse' {
@@ -391,6 +392,45 @@ Describe 'Teams: -WhatIf (Review 030 B4)' {
         Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
         (Send-HUNotify -Category Daily -Title 'T').Ok | Should -Be 1
         Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 1 -Exactly
+    }
+}
+
+Describe 'Teams: Sendefreigabe (Review 030 B4a)' {
+    BeforeEach {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Mock -ModuleName HU.Notify Add-HUNotifyHistory { }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @([pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'A'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = $null }) } }
+    }
+    AfterEach { Grant-HUSendApproval -Reason 'Test' }
+    It 'ohne Freigabe sendet Send-HUTeamsCard nichts' {
+        Revoke-HUSendApproval
+        Send-HUTeamsCard -Card (New-HUTeamsCard -Title 'T') -Url 'https://prod-1.logic.azure.com/w' -Target 'A' | Should -Match 'nicht freigegeben'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'ohne Freigabe sendet Send-HUNotify nichts und nennt den Grund' {
+        Revoke-HUSendApproval
+        $r = Send-HUNotify -Category Daily -Title 'T'
+        $r.Ok | Should -Be 0; $r.Failed | Should -Be 0; $r.Text | Should -Match 'nicht freigegeben'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'mit Freigabe genau ein Request' {
+        Grant-HUSendApproval -Reason 'Test'
+        (Send-HUNotify -Category Daily -Title 'T').Ok | Should -Be 1
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 1 -Exactly
+    }
+    It 'nach Revoke wieder gesperrt' {
+        Grant-HUSendApproval -Reason 'Lauf'
+        try { Test-HUSendApproval | Should -BeTrue } finally { Revoke-HUSendApproval }
+        Test-HUSendApproval | Should -BeFalse
+    }
+    It 'neu geladenes Modul ist gesperrt' {
+        $p = (Get-Module HU.Notify).Path
+        Import-Module $p -Force -DisableNameChecking
+        Test-HUSendApproval | Should -BeFalse
+    }
+    It 'Kategorie bei keinem Ziel angehakt -> Grund statt leerem Text' {
+        $r = Send-HUNotify -Category Apps -Title 'T'
+        $r.Ok | Should -Be 0; $r.Text | Should -Match "kein aktives Ziel hat Kategorie 'Apps'"
     }
 }
 

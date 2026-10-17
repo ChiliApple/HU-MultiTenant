@@ -16,6 +16,9 @@
 - **Rueckfrage vor dem Senden:** Enthaelt ein Snippet oder eine Erweiterung `Send-HUNotify`, fragt HU-MultiTenant einmal
   vor dem Start, an welche Kanaele es gehen kann (Ja = senden, Nein = ohne Teams ausfuehren, Abbrechen). Zeitgesteuerte
   Auftraege fragen nicht. Erweiterungen im Probelauf senden nie. `Send-HUNotify`/`Send-HUTeamsCard` unterstuetzen `-WhatIf`.
+  Gesperrt wird im Modul selbst: ohne "Ja" sendet ein Lauf nichts - auch nicht ueber Alias, Hilfsdatei oder eigenen
+  Import. Keine Frage, wenn sicher niemand die Meldung bekommt; unbekannte Kategorie und "kein Ziel hat die Kategorie
+  angehakt" stehen im Ergebnis statt eines leeren Textes.
 
 ### Teams: Push-Vorschau und Datenschutz
 - Jede Auftragsart liefert einen eigenen Vorschautext fuer die Handy-Benachrichtigung - ohne Geraetenamen:

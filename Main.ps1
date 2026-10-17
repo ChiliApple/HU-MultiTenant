@@ -93,6 +93,7 @@ foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensi
     $modPath = Join-Path $script:AppRoot "Core\$mod.psm1"
     if (-not (Test-Path -LiteralPath $modPath)) { Show-HUFatal "Core-Modul fehlt: $modPath`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     Import-Module $modPath -Force -DisableNameChecking
+    if ($mod -eq 'HU.Notify') { Grant-HUSendApproval -Reason 'App' }   # App und geplante Auftraege senden ohne Rueckfrage (Review 030 B4a)
 }
 # optional (nur fuer Extensions mit Excel-Reports)
 $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'

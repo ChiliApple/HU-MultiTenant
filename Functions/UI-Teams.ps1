@@ -416,6 +416,7 @@ function Start-HUTeamsJobNow {
     $ids = @(); if ($TargetId) { $ids = @($TargetId) }
     $ok = Start-HUJob -Name 'TeamsJob' -Output $c['rtbLog'] -Vars @{ TJob = $j; TIds = $ids } -Code {
         foreach ($m in 'HU.Notify', 'HU.TeamsJobs') { Import-Module (Join-Path $AppRoot "Core\$m.psm1") -Force -DisableNameChecking -ErrorAction Stop }
+        Grant-HUSendApproval -Reason 'Jetzt senden'   # Klick auf "Jetzt senden" ist die Freigabe (Review 030 B4a)
         $r = Invoke-HUTeamsJob -Job $TJob -Settings $Settings -AppRoot $AppRoot -TargetIds $TIds
         [pscustomobject]@{ __TeamsDone = $true; Success = $r.Success; Message = "$($r.Message)" }
     } -OnDone {
@@ -564,15 +565,27 @@ function Update-HUTeamsJobTenantChecks {
 # Rueckgabe: 'send' (mit Teams), 'skip' (ausfuehren, aber nichts an Teams), 'cancel' (nicht ausfuehren)
 function Confirm-HUTeamsSend {
     param([string]$Code, [string]$What = 'Snippet')
-    if ("$Code" -notmatch '(?i)\bSend-HU(Notify|TeamsCard)\b') { return 'send' }
+    # Rueckgabe: send = Ja (Lauf bekommt die Sendefreigabe), skip = Nein, cancel = Abbrechen,
+    # none = keine Frage noetig (kein Send-Aufruf im Code oder sicher kein Empfaenger) - der Lauf bekommt KEINE Freigabe.
+    # Die Textsuche dient nur der Anzeige; gesperrt wird im Modul selbst (Review 030 B4a).
+    if ("$Code" -notmatch '(?i)\bSend-HU(Notify|TeamsCard)\b') { return 'none' }
     $cfg = Get-HUNotifyConfig
     $targets = @($cfg.Targets | Where-Object { $_ -and $_.Enabled })
-    if (-not $targets.Count) { return 'send' }   # kein Ziel - es kann nichts rausgehen
+    if (-not $targets.Count) { return 'none' }   # kein aktives Ziel - es kann nichts rausgehen
+    $known = @(Get-HUNotifyCategories | ForEach-Object { $_.Key })
     $cats = @([regex]::Matches("$Code", '(?i)-Category\s+[''"]?([A-Za-z][A-Za-z0-9]*)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    $unknown = @($cats | Where-Object { $known -notcontains $_ })
+    $cats = @($cats | Where-Object { $known -contains $_ })
+    $direct = "$Code" -match '(?i)-TargetIds\b|-IgnoreCategory\b|\bSend-HUTeamsCard\b|-Category\s+\$'   # Ziel/Kategorie nicht sicher erkennbar
     $to = if ($cats.Count) { @($targets | Where-Object { $t = $_; @($cats | Where-Object { Test-HUNotifyCat -Target $t -Category $_ }).Count } | ForEach-Object { $_.Name }) } else { @() }
+    if (-not $direct -and ($cats.Count -or $unknown.Count) -and -not $to.Count) {
+        if ($unknown.Count) { Write-HULogWarn "Teams: Kategorie '$($unknown -join "', '")' gibt es nicht - im Reiter Teams unter 'Eigene Kategorien' anlegen. Es wird nichts gesendet." }
+        return 'none'   # sicher kein Empfaenger - keine Frage (Send-HUNotify meldet den Grund im Ergebnis)
+    }
     $txt = "Dieses $What kann Meldungen an Teams senden (Send-HUNotify).`n`n"
-    $txt += "Kategorie(n): $(if ($cats.Count) { $cats -join ', ' } else { 'im Code nicht erkennbar' })`n"
-    $txt += "Geht an: $(if ($to.Count) { $to -join ', ' } elseif ($cats.Count) { 'kein Ziel hat diese Kategorie angehakt' } else { 'je nach Kategorie' })`n`n"
+    $txt += "Kategorie(n): $(if ($cats.Count) { $cats -join ', ' } elseif ($direct) { 'im Code nicht sicher erkennbar' } else { 'im Code nicht erkennbar' })`n"
+    if ($unknown.Count) { $txt += "Gibt es nicht (im Reiter Teams anlegen): $($unknown -join ', ')`n" }
+    $txt += "Geht an: $(if ($to.Count) { $to -join ', ' } elseif ($cats.Count) { 'kein Ziel hat diese Kategorie angehakt' } else { 'je nach Kategorie/Ziel' })`n`n"
     $txt += "Ja = ausfuehren UND an Teams senden`nNein = ausfuehren, aber nichts an Teams senden`nAbbrechen = nicht ausfuehren"
     switch (Confirm-HUYesNoCancel -Text $txt -Title 'Teams-Meldungen senden?') {
         'Yes' { return 'send' }

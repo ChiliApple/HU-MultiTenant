@@ -9,6 +9,7 @@ BeforeAll {
     $script:TestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("HU-TeamsJobs-Test-" + [guid]::NewGuid().ToString('N'))
     New-Item -Path (Join-Path $script:TestRoot 'Config') -ItemType Directory -Force | Out-Null
     Import-Module (Join-Path $root 'Core\HU.Notify.psm1') -Force -DisableNameChecking
+    Grant-HUSendApproval -Reason 'Test'
     Import-Module (Join-Path $root 'Core\HU.TeamsJobs.psm1') -Force -DisableNameChecking
 }
 

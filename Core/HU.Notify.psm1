@@ -68,6 +68,10 @@ $script:NotifyCats = [ordered]@{
 }
 
 # Hosts der Workflows-App / Power Automate (nur Hinweis, kein harter Filter)
+# Sendefreigabe (Review 030 B4a): ohne Freigabe sendet Send-HUTeamsCard nichts. Die App selbst (Main.ps1, Auftrags-Runspace)
+# gibt frei; Snippet- und Erweiterungs-Runspaces nur nach "Ja" in der Teams-Rueckfrage. Ein neu geladenes Modul ist gesperrt -
+# auch wenn ein Snippet HU.Notify selbst importiert oder ueber Alias/Hilfsdatei sendet.
+$script:NotifySendApproval = $null
 $script:NotifyKnownHosts = '(?i)(\.logic\.azure\.com|\.powerplatform\.com|\.powerautomate\.com|\.azure-apim\.net)$'
 
 # ============================================================================
@@ -658,6 +662,37 @@ function ConvertTo-HUTeamsCardJson {
 # SENDEN
 # ============================================================================
 
+function Grant-HUSendApproval {
+    <#
+    .SYNOPSIS
+        Gibt das Senden fuer diese Modulinstanz frei (App-Start, Auftraege, Snippet-Lauf nach "Ja"). Review 030 B4a.
+    #>
+    [CmdletBinding()]
+    param([string]$Reason = 'App')
+    $script:NotifySendApproval = [pscustomobject]@{ Reason = $Reason; Since = Get-Date }
+}
+
+function Revoke-HUSendApproval {
+    <#
+    .SYNOPSIS
+        Nimmt die Sendefreigabe zurueck.
+    #>
+    [CmdletBinding()]
+    param()
+    $script:NotifySendApproval = $null
+}
+
+function Test-HUSendApproval {
+    <#
+    .SYNOPSIS
+        Ist Senden in dieser Modulinstanz freigegeben?
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+    return ($null -ne $script:NotifySendApproval)
+}
+
 function Send-HUTeamsCard {
     <#
     .SYNOPSIS
@@ -684,6 +719,10 @@ function Send-HUTeamsCard {
         [int]$Retries = 2,
         [string]$Target = '(Webhook)'
     )
+    if ($null -eq $script:NotifySendApproval) {
+        Write-HUNotifyModuleLog "Karte an '$Target' nicht freigegeben - nichts gesendet" 'WARN'
+        return 'Nicht freigegeben - nichts gesendet'
+    }
     $why = Test-HUWebhookUrl $Url
     if ($why) { return "Webhook-Adresse ungueltig: $why" }
     try {
@@ -798,7 +837,8 @@ function Send-HUNotify {
     .SYNOPSIS
         Meldung an alle eingeschalteten Ziele mit dieser Kategorie.
     .DESCRIPTION
-        Wirft nie. Rueckgabe-Objekt: Ok (gesendet), Failed (fehlgeschlagen), Text (Protokolltext, '' = kein Ziel angesprochen).
+        Wirft nie. Rueckgabe-Objekt: Ok (gesendet), Failed (fehlgeschlagen), Text (Protokolltext; bei Ok=0/Failed=0 der Grund,
+        warum kein Ziel angesprochen wurde). Ohne Sendefreigabe (Grant-HUSendApproval) wird nichts gesendet.
         -TargetIds: nur diese Ziele; mit -IgnoreCategory auch, wenn die Kategorie dort aus ist.
         -Preview: eigener Text fuer die Push-Vorschau (sonst Titel plus erste Zeilen).
         -Category: eingebaute Kategorie oder eigene (Reiter Teams > Kategorien > + Kategorie).
@@ -826,13 +866,14 @@ function Send-HUNotify {
     if (-not $map.Contains($Category)) { $res.Text = "Unbekannte Kategorie: $Category (eigene Kategorien im Reiter Teams anlegen)"; $res.Failed = 1; return $res }
     $c = Get-HUNotifyConfig
     if ($c.Error) { $res.Text = "Teams-Benachrichtigung: Ziele nicht lesbar: $($c.Error)"; $res.Failed = 1; return $res }
-    if (-not $c.Configured) { return $res }
+    if (-not $c.Configured) { $res.Text = 'Teams: kein Ziel eingerichtet - nichts gesendet'; return $res }
     try { $card = New-HUTeamsCard -Title $Title -Lines $Lines -Level $Level -Facts $Facts -Rows $Rows -Actions $Actions -Source $Source -Category $map[$Category][0] -Preview $Preview }
     catch { $res.Failed = 1; $res.Text = "Karte nicht gebaut: $(Hide-HUNotifyUrl "$($_.Exception.Message)")"; return $res }
-    $out = @(); $hist = @()
+    $out = @(); $hist = @(); $blocked = $false
     foreach ($t in @($c.Targets | Where-Object { $_ -and $_.Enabled })) {
         if ($TargetIds.Count -and ($TargetIds -notcontains $t.Id)) { continue }
         if (-not $IgnoreCategory -and -not (Test-HUNotifyCat -Target $t -Category $Category)) { continue }
+        if ($null -eq $script:NotifySendApproval) { $blocked = $true; break }   # Sendefreigabe fehlt (Review 030 B4a)
         # -WhatIf ausdruecklich weiterreichen (Script-Module erben es nicht zuverlaessig), nie nachfragen
         $r = Send-HUTeamsCard -Card $card -Url $t.Url -Target $t.Name -WhatIf:$WhatIfPreference -Confirm:$false
         if ($r) { $res.Failed++ } else { $res.Ok++ }
@@ -842,7 +883,13 @@ function Send-HUNotify {
         $out += "$($t.Name): $(if ($r) { $r } else { 'gesendet' })"
     }
     if ($hist.Count) { Add-HUNotifyHistory -Entries $hist }   # ein Schreibvorgang je Meldung (Review 030 B9)
-    if ($out.Count) { $res.Text = "Teams-Benachrichtigung: $($out -join '; ')" }
+    if ($blocked) {
+        Write-HUNotifyModuleLog "$Category - nicht freigegeben, nichts gesendet" 'WARN'
+        $res.Text = 'Teams: fuer diesen Lauf nicht freigegeben - nichts gesendet'
+    }
+    elseif ($out.Count) { $res.Text = "Teams-Benachrichtigung: $($out -join '; ')" }
+    elseif ($TargetIds.Count) { $res.Text = "Teams: keines der angegebenen Ziele ist aktiv$(if (-not $IgnoreCategory) { " bzw. hat Kategorie '$Category' angehakt" }) - nichts gesendet" }
+    else { $res.Text = "Teams: kein aktives Ziel hat Kategorie '$Category' angehakt - nichts gesendet" }
     return $res
 }
 
@@ -887,6 +934,9 @@ Export-ModuleMember -Function @(
     'ConvertTo-HUTeamsCardJson',
     'Send-HUTeamsCard',
     'Send-HUNotify',
+    'Grant-HUSendApproval',
+    'Revoke-HUSendApproval',
+    'Test-HUSendApproval',
     'Send-HUNotifyTest',
     'Add-HUNotifyHistory',
     'Invoke-HUNotifyLocked',

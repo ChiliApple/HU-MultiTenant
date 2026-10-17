@@ -460,9 +460,7 @@ function Register-HUExtensionHandlers {
             [void]$bgPowerShell.AddScript({
                 param()
 
-                $coreModules = @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Excel')
-                if ($BgTeamsAllowed) { $coreModules += 'HU.Notify' }   # Send-HUNotify fuer Erweiterungen - nur nach Ja in der Teams-Rueckfrage
-                else { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 0; Text = 'Teams: fuer diesen Lauf abgelehnt oder Probelauf - nichts gesendet' } }; function global:Send-HUTeamsCard { 'Teams: fuer diesen Lauf abgelehnt oder Probelauf - nichts gesendet' } }
+                $coreModules = @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Excel', 'HU.Notify')
                 foreach ($mod in $coreModules) {
                     $modPath = Join-Path $AppRoot "Core\$mod.psm1"
                     if (Test-Path $modPath) {
@@ -470,6 +468,8 @@ function Register-HUExtensionHandlers {
                     }
                 }
 
+                # Sendefreigabe nur nach "Ja" in der Teams-Rueckfrage und nie im Probelauf; sonst sperrt das Modul selbst (Review 030 B4a)
+                if ($BgTeamsAllowed -and (Get-Command Grant-HUSendApproval -ErrorAction SilentlyContinue)) { Grant-HUSendApproval -Reason 'Erweiterung' }
                 if (-not (Get-Command Send-HUNotify -ErrorAction SilentlyContinue)) { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'Teams: HU.Notify nicht geladen - nichts gesendet' } } }   # wirft nie (Review 030 B4)
                 Initialize-Logging -LogFilePath $BgLogFile -MinLevel 'DEBUG'
 

@@ -14,6 +14,7 @@ BeforeAll {
     $script:OldAppData = $env:APPDATA
     $env:APPDATA = $script:TestAppData
     Import-Module (Join-Path $script:Repo 'Core\HU.Notify.psm1') -Force -DisableNameChecking
+    Grant-HUSendApproval -Reason 'Test'
     $script:HistFile = Join-Path $script:TestAppData 'HU-MultiTenant\notify-history.json'
 
     function New-TestTarget([string]$Id, [string]$Name, [string]$Url, [bool]$Enabled = $true, $Cats = $null) {
@@ -59,10 +60,10 @@ Describe 'Q: Send-HUNotify Rueckgabe {Ok; Failed; Text}' {
         $r.Text | Should -Not -Match 'geheim'
         @(Get-HUNotifyHistory).Count | Should -Be 2
     }
-    It 'kein passendes Ziel (Kategorie aus) -> Ok=0, Failed=0, Text leer, nichts gesendet' {
+    It 'kein passendes Ziel (Kategorie aus) -> Ok=0, Failed=0, Grund im Text, nichts gesendet' {
         Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
         $r = Send-HUNotify -Category Apps -Title 'T'    # Apps ist standardmaessig aus
-        $r.Ok | Should -Be 0; $r.Failed | Should -Be 0; $r.Text | Should -Be ''
+        $r.Ok | Should -Be 0; $r.Failed | Should -Be 0; $r.Text | Should -Match "kein aktives Ziel hat Kategorie 'Apps'"
         Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
     }
     It 'TargetIds, die es nicht gibt -> nichts gesendet; -IgnoreCategory sendet auch bei Kategorie aus' {
