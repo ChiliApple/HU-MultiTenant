@@ -1285,10 +1285,6 @@
                             <Border Grid.Column="2" Background="#252526" CornerRadius="4" Padding="10">
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Top" Text="Meldungen" Style="{StaticResource SectionTitle}" Margin="0,0,0,6"/>
-                                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                                        <Button x:Name="btnTeamsJobNew" ToolTip="Neue Meldung anlegen (Felder leeren)" DockPanel.Dock="Right" Content="+ Neu" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"/>
-                                        <ListBox x:Name="lstTeamsJobs" ToolTip="Eingebaute Meldungen und Meldungen aus Skripten. Anklicken zum Bearbeiten." Style="{StaticResource DarkListBox}" Height="90"/>
-                                    </DockPanel>
                                     <StackPanel DockPanel.Dock="Bottom">
                                         <TextBlock x:Name="lblTeamsJobTask" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,6"/>
                                         <DockPanel>
@@ -1299,41 +1295,53 @@
                                             <Button x:Name="btnTeamsJobSave" ToolTip="Meldung speichern (Config\teams-jobs.json). Eine bestehende Aufgabe wird an den neuen Zeitplan angepasst." Content="&#x1F4BE; Speichern" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" HorizontalAlignment="Left"/>
                                         </DockPanel>
                                     </StackPanel>
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <StackPanel>
-                                            <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
-                                            <TextBox x:Name="txtTeamsJobName" ToolTip="Name der Meldung - Titel der Karte (bei Skripten in Fusszeile und Sendeprotokoll)" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,6"/>
-                                            <DockPanel Margin="0,0,0,6" LastChildFill="False">
-                                                <StackPanel DockPanel.Dock="Left" Width="160" Margin="0,0,10,0">
-                                                    <TextBlock Text="Was wird gemeldet" Style="{StaticResource FieldLabel}"/>
-                                                    <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Eingebaute Meldung oder eigenes Skript. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp und Defender-Alarm nur, wenn es etwas zu melden gibt; ein Skript sendet, wenn es Send-HUNotify aufruft." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
-                                                        <ComboBoxItem Content="Tages-Ampel" Tag="Daily"/>
-                                                        <ComboBoxItem Content="Secret-Countdown" Tag="Secrets"/>
-                                                        <ComboBoxItem Content="Lizenzen knapp" Tag="Licenses"/>
-                                                        <ComboBoxItem Content="Defender-Alarm" Tag="Defender"/>
-                                                        <ComboBoxItem Content="Aus Skript ..." Tag="Script"/>
-                                                    </ComboBox>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition x:Name="rowTeamsJobList" Height="190" MinHeight="70"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*" MinHeight="120"/>
+                                        </Grid.RowDefinitions>
+                                        <DockPanel Grid.Row="0">
+                                            <Button x:Name="btnTeamsJobNew" ToolTip="Neue Meldung anlegen (Felder leeren)" DockPanel.Dock="Right" VerticalAlignment="Top" Content="+ Neu" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"/>
+                                            <ListBox x:Name="lstTeamsJobs" ToolTip="Eingebaute Meldungen und Meldungen aus Skripten. Anklicken zum Bearbeiten." Style="{StaticResource DarkListBox}" MinHeight="60"/>
+                                        </DockPanel>
+                                        <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="Transparent" ResizeBehavior="PreviousAndNext" ResizeDirection="Rows" Cursor="SizeNS" ToolTip="Hoehe der Meldungsliste anpassen (ziehen)"/>
+                                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                                            <StackPanel>
+                                                <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox x:Name="txtTeamsJobName" ToolTip="Name der Meldung - Titel der Karte (bei Skripten in Fusszeile und Sendeprotokoll)" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,6"/>
+                                                <DockPanel Margin="0,0,0,6" LastChildFill="False">
+                                                    <StackPanel DockPanel.Dock="Left" Width="160" Margin="0,0,10,0">
+                                                        <TextBlock Text="Was wird gemeldet" Style="{StaticResource FieldLabel}"/>
+                                                        <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Eingebaute Meldung oder eigenes Skript. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp und Defender-Alarm nur, wenn es etwas zu melden gibt; ein Skript sendet, wenn es Send-HUNotify aufruft." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
+                                                            <ComboBoxItem Content="Tages-Ampel" Tag="Daily"/>
+                                                            <ComboBoxItem Content="Secret-Countdown" Tag="Secrets"/>
+                                                            <ComboBoxItem Content="Lizenzen knapp" Tag="Licenses"/>
+                                                            <ComboBoxItem Content="Defender-Alarm" Tag="Defender"/>
+                                                            <ComboBoxItem Content="Aus Skript ..." Tag="Script"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+                                                    <StackPanel DockPanel.Dock="Left" Width="70" Margin="0,0,10,0">
+                                                        <TextBlock Text="Uhrzeit" Style="{StaticResource FieldLabel}"/>
+                                                        <TextBox x:Name="txtTeamsJobTime" ToolTip="Uhrzeit (HH:mm) fuer die Aufgabenplanung" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,0" Text="07:00"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                                <StackPanel x:Name="pnlTeamsJobScript" Visibility="Collapsed" Margin="0,0,0,6">
+                                                    <TextBlock Text="Skript (gespeichertes Snippet aus Quick Script)" Style="{StaticResource FieldLabel}"/>
+                                                    <ComboBox x:Name="cmbTeamsJobSnippet" AutomationProperties.Name="Skript der Meldung" ToolTip="Snippet aus Quick Script. Es laeuft je Tenant mit den Standardwerten seiner @param-Zeilen." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,2"/>
+                                                    <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" FontSize="10" Text="Im Skript genuegt: Send-HUNotify -Title '...' -Lines @('...'). Jede Karte geht an die Ziele unten. Laeuft das Snippet im Quick-Script-Editor, gehen seine Karten (nach Rueckfrage) ebenfalls an diese Ziele."/>
                                                 </StackPanel>
-                                                <StackPanel DockPanel.Dock="Left" Width="70" Margin="0,0,10,0">
-                                                    <TextBlock Text="Uhrzeit" Style="{StaticResource FieldLabel}"/>
-                                                    <TextBox x:Name="txtTeamsJobTime" ToolTip="Uhrzeit (HH:mm) fuer die Aufgabenplanung" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,0" Text="07:00"/>
-                                                </StackPanel>
-                                            </DockPanel>
-                                            <StackPanel x:Name="pnlTeamsJobScript" Visibility="Collapsed" Margin="0,0,0,6">
-                                                <TextBlock Text="Skript (gespeichertes Snippet aus Quick Script)" Style="{StaticResource FieldLabel}"/>
-                                                <ComboBox x:Name="cmbTeamsJobSnippet" AutomationProperties.Name="Skript der Meldung" ToolTip="Snippet aus Quick Script. Es laeuft je Tenant mit den Standardwerten seiner @param-Zeilen." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,2"/>
-                                                <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" FontSize="10" Text="Im Skript genuegt: Send-HUNotify -Title '...' -Lines @('...'). Jede Karte geht an die Ziele unten. Laeuft das Snippet im Quick-Script-Editor, gehen seine Karten (nach Rueckfrage) ebenfalls an diese Ziele."/>
+                                                <TextBlock Text="Senden an (alle angehakt = auch spaeter angelegte Ziele)" Style="{StaticResource FieldLabel}"/>
+                                                <WrapPanel x:Name="pnlTeamsJobTargets" Margin="0,2,0,6" ToolTip="Welche Kanaele diese Meldung bekommen"/>
+                                                <TextBlock Text="Wochentage (keiner = taeglich)" Style="{StaticResource FieldLabel}"/>
+                                                <WrapPanel x:Name="pnlTeamsJobDays" ToolTip="Keiner angehakt = jeden Tag" Margin="0,2,0,6"/>
+                                                <TextBlock Text="Tenants" Style="{StaticResource FieldLabel}"/>
+                                                <WrapPanel x:Name="pnlTeamsJobTenants" ToolTip="Alle angehakt = auch spaeter angelegte Tenants" Margin="0,2,0,6"/>
+                                                <CheckBox x:Name="chkTeamsJobMask" ToolTip="Statt Geraetenamen nur die Anzahl je Zustand senden - fuer Kanaele mit breiterem Publikum (z. B. Direktion). Nur beim Defender-Alarm verfuegbar." ToolTipService.ShowOnDisabled="True" Content="Geraetenamen ausblenden (nur Anzahlen senden)" Foreground="#CCCCCC" FontSize="11" Margin="0,0,0,4"/>
+                                                <CheckBox x:Name="chkTeamsJobEnabled" ToolTip="Aus = die geplante Aufgabe sendet nichts. 'Jetzt senden' und 'An Kanal ...' senden trotzdem." Content="Zeitplan aktiv" IsChecked="True" Foreground="#CCCCCC" FontSize="11"/>
                                             </StackPanel>
-                                            <TextBlock Text="Senden an (alle angehakt = auch spaeter angelegte Ziele)" Style="{StaticResource FieldLabel}"/>
-                                            <WrapPanel x:Name="pnlTeamsJobTargets" Margin="0,2,0,6" ToolTip="Welche Kanaele diese Meldung bekommen"/>
-                                            <TextBlock Text="Wochentage (keiner = taeglich)" Style="{StaticResource FieldLabel}"/>
-                                            <WrapPanel x:Name="pnlTeamsJobDays" ToolTip="Keiner angehakt = jeden Tag" Margin="0,2,0,6"/>
-                                            <TextBlock Text="Tenants" Style="{StaticResource FieldLabel}"/>
-                                            <WrapPanel x:Name="pnlTeamsJobTenants" ToolTip="Alle angehakt = auch spaeter angelegte Tenants" Margin="0,2,0,6"/>
-                                            <CheckBox x:Name="chkTeamsJobMask" ToolTip="Statt Geraetenamen nur die Anzahl je Zustand senden - fuer Kanaele mit breiterem Publikum (z. B. Direktion). Nur beim Defender-Alarm verfuegbar." ToolTipService.ShowOnDisabled="True" Content="Geraetenamen ausblenden (nur Anzahlen senden)" Foreground="#CCCCCC" FontSize="11" Margin="0,0,0,4"/>
-                                            <CheckBox x:Name="chkTeamsJobEnabled" ToolTip="Aus = die geplante Aufgabe sendet nichts. 'Jetzt senden' und 'An Kanal ...' senden trotzdem." Content="Zeitplan aktiv" IsChecked="True" Foreground="#CCCCCC" FontSize="11"/>
-                                        </StackPanel>
-                                    </ScrollViewer>
+                                        </ScrollViewer>
+                                    </Grid>
                                 </DockPanel>
                             </Border>
                         </Grid>
