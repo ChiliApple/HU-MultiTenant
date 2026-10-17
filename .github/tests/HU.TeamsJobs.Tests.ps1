@@ -9,6 +9,7 @@ BeforeAll {
     $script:TestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("HU-TeamsJobs-Test-" + [guid]::NewGuid().ToString('N'))
     New-Item -Path (Join-Path $script:TestRoot 'Config') -ItemType Directory -Force | Out-Null
     Import-Module (Join-Path $root 'Core\HU.Notify.psm1') -Force -DisableNameChecking
+    Grant-HUSendApproval -Reason 'Test'
     Import-Module (Join-Path $root 'Core\HU.TeamsJobs.psm1') -Force -DisableNameChecking
 }
 
@@ -132,7 +133,7 @@ Describe 'Teams-Auftraege: Ausfuehrung ohne Ziele' {
 Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
     It 'Kinds-Liste und Kategorien' {
         $k = @(Get-HUTeamsKinds)
-        $k.Key | Should -Be @('Daily', 'Secrets', 'Licenses', 'Defender')
+        $k.Key | Should -Be @('Daily', 'Secrets', 'Licenses', 'Defender', 'Script')
         ($k | Where-Object Key -eq 'Daily').OnlyFindings | Should -BeFalse
         ($k | Where-Object Key -eq 'Secrets').Category | Should -Be 'Secrets'
     }
@@ -208,5 +209,237 @@ Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
         $r = Invoke-HUTeamsJob -Job $j -Settings $settings -AppRoot $script:TestRoot
         $r.Success | Should -BeFalse
         $r.Message | Should -Match 'NICHTS gesendet'
+    }
+}
+
+Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
+    It 'Datumsbeschriftung ist deutsch und kulturunabhaengig' {
+        Get-HUTeamsDateLabel -Date ([datetime]'2026-10-16') | Should -Be 'Fr 16.10.'
+        Get-HUTeamsDateLabel -Date ([datetime]'2026-10-18') | Should -Be 'So 18.10.'
+    }
+    It 'Tages-Ampel: Vorschau mit Ampel-Zaehlung und Summen' {
+        $st = @(
+            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 100; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = 200; SecretStatus = 'OK' }
+            [pscustomobject]@{ Key = 'B'; Name = 'BORG'; Ok = $false; Error = 'Token'; Devices = 0; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = $null; SecretStatus = '' }
+        )
+        $s = New-HUDailyCardSpec -Statuses $st
+        $s.Preview | Should -Match '1 gruen, 0 gelb, 1 rot'
+        $s.Preview | Should -Match 'rot: BORG'
+        $s.Preview | Should -Match '100 Geraete'
+    }
+    It 'Tages-Ampel: OK ohne Ablaufdatum -> Hinweis, keine Warnung (B8c)' {
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 10; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = $null; SecretStatus = 'OK' })
+        $s = New-HUDailyCardSpec -Statuses $st
+        $s.Rows[0].Text | Should -Match 'kein Ablaufdatum'
+        $s.Level | Should -Be 'OK'
+    }
+    It 'Defender: Vorschau ohne Geraetenamen, Maskierung blendet Namen aus (B10/B16)' {
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 5; Findings = @(
+            [pscustomobject]@{ Device = 'PC-GEHEIM-1'; State = 'Bedrohung (hoch)' }
+            [pscustomobject]@{ Device = 'PC-GEHEIM-2'; State = 'Bedrohung (hoch)' }
+        ) })
+        $s = New-HUDefenderCardSpec -Statuses $st
+        $s.Preview | Should -Match '2 Geraet'
+        $s.Preview | Should -Not -Match 'GEHEIM'
+        $s.Rows[0].Text | Should -Match 'PC-GEHEIM-1'
+        $m = New-HUDefenderCardSpec -Statuses $st -MaskDevices
+        $m.Rows[0].Text | Should -Not -Match 'GEHEIM'
+        $m.Rows[0].Text | Should -Match '2x Bedrohung'
+        $m.Facts['Geraete mit Befund'] | Should -Be 2
+    }
+    It 'Secrets/Lizenzen: Vorschau nennt den dringendsten Fall' {
+        $s = New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 12; DisplayName = 'x'; Status = 'OK' }, [pscustomobject]@{ Key = 'B'; Name = 'Gym'; Ok = $true; Error = ''; Days = 5; DisplayName = 'y'; Status = 'OK' }) -WarnDays 30
+        $s.Preview | Should -Match 'zuerst Gym in 5 Tagen'
+        $l = New-HULicenseCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'EUGym'; Ok = $true; Error = ''; Skus = @([pscustomobject]@{ Sku = 'A3'; Total = 10; Used = 11; Free = -1 }) })
+        $l.Preview | Should -Match 'EUGym A3 ueberbucht'
+    }
+    It 'Invoke-HUTeamsJob: Code 0/2/3 und Vorschau wird uebergeben' {
+        Mock -ModuleName HU.TeamsJobs Update-HUTeamsJobResult { }
+        Mock -ModuleName HU.TeamsJobs Get-HUSecretStatus { [pscustomobject]@{ Key = $TenantKey; Name = $TenantKey; Ok = $true; Error = ''; Days = 3; DisplayName = 'x'; Status = 'OK' } }
+        $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }) }
+        Mock -ModuleName HU.TeamsJobs Send-HUNotify { [pscustomobject]@{ Ok = 1; Failed = 0; Text = 'A: gesendet' } }
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind Secrets) -Settings $set -AppRoot $script:TestRoot).Code | Should -Be 0
+        Should -Invoke -ModuleName HU.TeamsJobs Send-HUNotify -ParameterFilter { $Preview -match 'T1' }
+        Mock -ModuleName HU.TeamsJobs Send-HUNotify { [pscustomobject]@{ Ok = 1; Failed = 1; Text = 'A: gesendet; B: 404' } }
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind Secrets) -Settings $set -AppRoot $script:TestRoot).Code | Should -Be 2
+        Mock -ModuleName HU.TeamsJobs Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 0; Text = '' } }
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind Secrets) -Settings $set -AppRoot $script:TestRoot).Code | Should -Be 3
+        Mock -ModuleName HU.TeamsJobs Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'A: 401' } }
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind Secrets) -Settings $set -AppRoot $script:TestRoot).Code | Should -Be 1
+        (Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S') -Settings ([pscustomobject]@{ tenants = @() }) -AppRoot $script:TestRoot).Code | Should -Be 3
+    }
+    It 'ungueltige Auftrags-Id wird fuer Aufgabe und Speicher abgewiesen (B15)' {
+        $j = New-HUTeamsJob -Name 'x'; $j.Id = 'ab"; calc'
+        { Get-HUTeamsJobTaskName -Job $j } | Should -Throw '*ungueltig*'
+        Register-HUTeamsJobTask -Job $j -AppRoot $script:TestRoot | Should -Match 'ungueltig|nicht gefunden'
+        { Set-HUTeamsJobs -AppRoot $script:TestRoot -Jobs @($j) } | Should -Throw '*ungueltig*'
+    }
+    It 'Defender-Option maskDevices kommt im Auftrag an' {
+        Mock -ModuleName HU.TeamsJobs Update-HUTeamsJobResult { }
+        Mock -ModuleName HU.TeamsJobs Get-HUDefenderStatus { [pscustomobject]@{ Key = 'T1'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 1; Findings = @([pscustomobject]@{ Device = 'PC-X'; State = 'kompromittiert' }) } }
+        $j = New-HUTeamsJob -Name 'D' -Kind Defender -Options @{ maskDevices = 1 }
+        $r = Invoke-HUTeamsJob -Job $j -Settings ([pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }) }) -AppRoot $script:TestRoot -NoSend
+        $r.Spec.Rows[0].Text | Should -Not -Match 'PC-X'
+    }
+}
+
+Describe 'Meldung aus Skript (v2.1.10)' {
+    BeforeAll {
+        $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $script:App = Join-Path $script:TestRoot 'app'
+        New-Item -Path (Join-Path $script:App 'Core') -ItemType Directory -Force | Out-Null
+        New-Item -Path (Join-Path $script:App 'Config') -ItemType Directory -Force | Out-Null
+        foreach ($f in 'HU.Notify.psm1', 'HU.Graph.psm1', 'HU.QSParams.ps1', 'HU.QSRuntime.ps1') { Copy-Item (Join-Path $repo "Core\$f") (Join-Path $script:App 'Core') }
+        # Attrappe statt HU.Auth: Token ohne Netz, Tenant 'bad' hat kein Secret
+        Set-Content -LiteralPath (Join-Path $script:App 'Core\HU.Auth.psm1') -Encoding UTF8 -Value @'
+function Get-GraphToken { param($TenantKey, $Settings) if ($TenantKey -eq 'bad') { throw 'kein Secret' }; "tok-$TenantKey" }
+Export-ModuleMember -Function Get-GraphToken
+'@
+        $code = "# @param Anzahl|int|Anzahl|3`nSend-HUNotify -Title `"`$TenantKey`" -Lines @(`"`$Anzahl Drucker offline`")"
+        @{ snippets = @(@{ name = 'Drucker'; code = $code }, @{ name = 'Nur Ausgabe'; code = "[pscustomobject]@{ Tenant = `$TenantKey; Offen = 2 }" }) } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $script:App 'Config\quick-snippets.json') -Encoding UTF8
+        # eigenes, leeres Profil: auf einem echten Admin-PC duerfen keine Karten an echte Kanaele gehen
+        $script:OldAppData = $env:APPDATA
+        $env:APPDATA = Join-Path $script:TestRoot 'appdata'
+        $script:Set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'a' }, [pscustomobject]@{ key = 'bad' }) }
+    }
+    AfterAll { $env:APPDATA = $script:OldAppData }
+    It 'fehlendes Snippet -> Code 3' {
+        $j = New-HUTeamsJob -Name 'X' -Kind Script -Options @{ snippet = 'Weg' }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
+        $r.Code | Should -Be 3; $r.Message | Should -Match "Snippet 'Weg' nicht gefunden"
+    }
+    It 'ohne Skript -> Code 3' {
+        $j = New-HUTeamsJob -Name 'X' -Kind Script; $j.Id = ''
+        (Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App).Code | Should -Be 3
+    }
+    It 'laeuft je Tenant mit @param-Standardwerten, Send-HUNotify geht an die Meldung (hier: kein Ziel)' {
+        $j = New-HUTeamsJob -Name 'Drucker-Status' -Kind Script -Options @{ snippet = 'Drucker'; snippetHash = (Get-HUTeamsCodeHash (Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Drucker')) }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
+        $r.Code | Should -Be 3
+        $r.Message | Should -Match '1 Meldung'
+        $r.Message | Should -Match '\[bad\] Kein Token'
+    }
+    It 'B37: Ausgabe geht nur mit Schalter sendOutput als Karte (hier: kein Ziel), Standard aus' {
+        $h = Get-HUTeamsCodeHash (Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Nur Ausgabe')
+        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = $h; sendOutput = $true }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
+        $r.Message | Should -Match '1 Meldung'
+        $r.Code | Should -Be 3
+        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = $h }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings ([pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'a' }) }) -AppRoot $script:App
+        $r.Code | Should -Be 0
+        $r.Message | Should -Match 'nichts gesendet'
+    }
+    It 'Ausgabe-Karte mit genau einem Tenant: Anzeigename im Titel (nicht der erste Buchstabe)' {
+        $set1 = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'Gym-Leoben'; displayName = 'Gym Leoben' }) }
+        $global:__HUCard = $null
+        function global:Send-HUNotify { param($Title, $Level, $Lines, $Preview) $global:__HUCard = [pscustomobject]@{ Title = $Title; Preview = $Preview }; [pscustomobject]@{ Ok = 0; Failed = 0 } }
+        try {
+            [void](Invoke-HUTeamsScript -Code "Write-Host 'x'" -Name 'B' -Tenants @('Gym-Leoben') -Settings $set1 -AppRoot $script:App -SendOutput)
+            $global:__HUCard.Title | Should -Be 'B - Gym Leoben'
+            $global:__HUCard.Preview | Should -Match '^Gym Leoben - '
+        } finally {
+            Remove-Item function:global:Send-HUNotify -ErrorAction SilentlyContinue; Remove-Variable __HUCard -Scope Global -ErrorAction SilentlyContinue
+            # das Original wieder sichtbar machen (die Attrappe hat es im globalen Bereich ersetzt)
+            Import-Module (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Core\HU.Notify.psm1') -Force -DisableNameChecking; Grant-HUSendApproval -Reason 'Test'
+        }
+    }
+    It 'B69: sendOutput als Text "false"/"0"/"nein" gilt als aus' {
+        $h = Get-HUTeamsCodeHash (Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Nur Ausgabe')
+        $one = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'a' }) }
+        foreach ($v in 'false', '0', 'nein', ' FALSE ') {
+            $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = $h; sendOutput = $v }; $j.Id = ''
+            $r = Invoke-HUTeamsJob -Job $j -Settings $one -AppRoot $script:App
+            $r.Code | Should -Be 0
+            $r.Message | Should -Match 'Ausgabe als Karte: aus'
+        }
+        $j = New-HUTeamsJob -Name 'Ausgabe' -Kind Script -Options @{ snippet = 'Nur Ausgabe'; snippetHash = $h; sendOutput = 'true' }; $j.Id = ''
+        (Invoke-HUTeamsJob -Job $j -Settings $one -AppRoot $script:App).Message | Should -Match '1 Meldung'
+    }
+    It 'B38: runMode once - ein Lauf, $Tenants = Auswahl, kein $TenantKey/$Token' {
+        $code = "if (`$TenantKey -or `$Token) { throw 'TenantKey gesetzt' }; if (@(`$Tenants).Count -ne 2) { throw `"Tenants: `$(@(`$Tenants).Count)`" }; if (`$global:Merker) { throw 'zweiter Lauf' }; `$global:Merker = 1; 'x'"
+        $r = Invoke-HUTeamsScript -Code $code -Name 'O' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App -RunOnce -SendOutput
+        @($r.Errors).Count | Should -Be 0
+        $r.Calls | Should -Be 1
+        # je Tenant (Standard): zwei Laeufe mit $TenantKey
+        $r = Invoke-HUTeamsScript -Code "if (-not `$TenantKey -or -not `$Token) { throw 'kein TenantKey' }; Write-Host `$TenantKey" -Name 'E' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App
+        @($r.Errors).Count | Should -Be 0
+        $r.Calls | Should -Be 0
+    }
+    It 'B39: Zaehler gelten auch nach exit im Skript' {
+        $r = Invoke-HUTeamsScript -Code "Send-HUNotify -Title 'T' -Lines @('x'); exit" -Name 'X' -Tenants @('a') -Settings $script:Set -AppRoot $script:App
+        $r.Calls | Should -Be 1
+        $r = Invoke-HUTeamsScript -Code "Send-HUNotify -Title 'T' -Lines @('x'); break" -Name 'X' -Tenants @('a') -Settings $script:Set -AppRoot $script:App
+        $r.Calls | Should -Be 1
+    }
+    It 'B33: geaendertes oder unbestaetigtes Skript laeuft nicht (Code 3)' {
+        $j = New-HUTeamsJob -Name 'X' -Kind Script -Options @{ snippet = 'Drucker'; snippetHash = 'abc' }; $j.Id = ''
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App
+        $r.Code | Should -Be 3; $r.Message | Should -Match 'geaendert'
+        $j = New-HUTeamsJob -Name 'X' -Kind Script -Options @{ snippet = 'Drucker' }; $j.Id = ''
+        (Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App).Code | Should -Be 3
+    }
+    It 'B33: Fingerabdruck unabhaengig von CRLF/LF' {
+        Get-HUTeamsCodeHash "a`r`nb" | Should -Be (Get-HUTeamsCodeHash "a`nb")
+        Get-HUTeamsCodeHash 'a' | Should -Not -Be (Get-HUTeamsCodeHash 'b')
+    }
+    It 'B35: je Tenant ein frischer Runspace - Variablen bleiben nicht haengen' {
+        $code = "if (`$global:Merker) { throw 'Variable aus dem vorigen Tenant' }; `$global:Merker = 1; 'NEU'"
+        $r = Invoke-HUTeamsScript -Code $code -Name 'R' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App -SendOutput
+        # haette Tenant b die Variable von a gesehen, stuende ein Fehler in Errors
+        $r.Calls | Should -Be 1
+        @($r.Errors).Count | Should -Be 0
+    }
+    It 'Write-Host-Zeilen: nur mit -SendOutput als (eine) Karte, sonst nur ins Log' {
+        $r = Invoke-HUTeamsScript -Code "Write-Host 'Zeile A'" -Name 'W' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App -SendOutput
+        $r.Calls | Should -Be 1
+        @($r.Errors).Count | Should -Be 0
+        $r = Invoke-HUTeamsScript -Code "Write-Host 'Zeile A'" -Name 'W' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App
+        $r.Calls | Should -Be 0
+    }
+    It '@param-Werte der Meldung gehen vor dem Standard' {
+        $code = "# @param Anzahl|int|Anzahl|3`nif (`$Anzahl -ne 7) { throw `"Anzahl ist `$Anzahl`" }; 'ok'"
+        $r = Invoke-HUTeamsScript -Code $code -Name 'P' -Tenants @('a') -Settings $script:Set -AppRoot $script:App -Params @{ Anzahl = '7' }
+        @($r.Errors).Count | Should -Be 0
+        $r = Invoke-HUTeamsScript -Code $code -Name 'P' -Tenants @('a') -Settings $script:Set -AppRoot $script:App
+        @($r.Errors) -join ' ' | Should -Match 'Anzahl ist 3'
+    }
+    It 'Get-HUTeamsSnippetCode liefert den Code' {
+        Get-HUTeamsSnippetCode -AppRoot $script:App -Name 'Drucker' | Should -Match 'Send-HUNotify'
+    }
+}
+
+Describe 'Teams-Auftraege: Review 030' {
+    BeforeAll {
+        $script:DefSt = [pscustomobject]@{ Key = 'T1'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 3; Findings = @(
+            [pscustomobject]@{ Device = 'PC-A'; State = 'fehlkonfiguriert' }
+            [pscustomobject]@{ Device = 'PC-B'; State = 'kompromittiert' }
+        ) }
+    }
+    It 'B7: maskDevices fail-closed - unklarer Text blendet aus, false/0 zeigt Namen' {
+        Mock -ModuleName HU.TeamsJobs Update-HUTeamsJobResult { }
+        Mock -ModuleName HU.TeamsJobs Get-HUDefenderStatus { $script:DefSt }
+        $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }) }
+        foreach ($v in @('true', 'ja', '1 ', 'vielleicht', $true, 1)) {
+            $r = Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'D' -Kind Defender -Options @{ maskDevices = $v }) -Settings $set -AppRoot $script:TestRoot -NoSend
+            $r.Spec.Rows[0].Text | Should -Not -Match 'PC-' -Because "maskDevices = '$v'"
+        }
+        foreach ($v in @('false', '0', 'nein', $false, 0)) {
+            $r = Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'D' -Kind Defender -Options @{ maskDevices = $v }) -Settings $set -AppRoot $script:TestRoot -NoSend
+            $r.Spec.Rows[0].Text | Should -Match 'PC-A' -Because "maskDevices = '$v'"
+        }
+    }
+    It 'B22: Maskierung nach Dringlichkeit, Ein-/Mehrzahl in der Vorschau' {
+        $m = New-HUDefenderCardSpec -Statuses @($script:DefSt) -MaskDevices
+        $m.Rows[0].Text | Should -Match '^1x kompromittiert, 1x fehlkonfiguriert'
+        $m.Preview | Should -Match '^2 Geraete mit Befund'
+        $one = [pscustomobject]@{ Key = 'T1'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 1; Findings = @([pscustomobject]@{ Device = 'X'; State = 'kompromittiert' }) }
+        (New-HUDefenderCardSpec -Statuses @($one)).Preview | Should -Match '^1 Geraet mit Befund'
+        (New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 5; DisplayName = 'x'; Status = 'OK' })).Preview | Should -Match '^1 Tenant betroffen'
+    }
+    It 'B29: Secret-Countdown meldet bei genau N Tagen, Text "N Tage oder weniger"' {
+        $s = New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 30; DisplayName = 'x'; Status = 'OK' }) -WarnDays 30
+        $s | Should -Not -BeNullOrEmpty
+        $s.Facts['Warnschwelle'] | Should -Be '30 Tage oder weniger'
     }
 }

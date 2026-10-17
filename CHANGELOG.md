@@ -1,6 +1,81 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.1.9 (in Arbeit)
+## v2.1.10 (in Arbeit)
+
+### Startbildschirm wieder da
+- Logo, Name und Version erscheinen sofort beim Start, darunter was gerade geladen wird; schliesst sich, sobald das
+  Hauptfenster da ist (war im Vorab-Stand 2.1.9 gebaut, aber nicht in main). Nie bei geplanten Aufgaben (Headless).
+
+### Neu: Teams-Meldungen - eingebaut oder aus eigenem Skript
+- Reiter Teams neu geordnet: links **Ziele** (Kanaele), rechts **Meldungen** in zwei Gruppen - *Eingebaute Meldungen*
+  (Tages-Ampel, Secret-Countdown, Lizenzen knapp, Defender-Alarm) und *Meldungen aus Skripten*. Jede Meldung hat
+  dieselben Einstellungen: Ziele ("Senden an"), Tenants, "Jetzt senden" und auf Wunsch einen Zeitplan (Aufgabenplanung).
+- **Meldung aus Skript:** unter der eingebauten Meldung steht immer das Feld *oder Meldung aus Skript* mit allen gespeicherten Quick-Script-Snippets. Das Snippet
+  laeuft je Tenant mit den Werten seiner `@param`-Felder (an der Meldung, wie oben im Quick Script); jedes `Send-HUNotify -Title ...` darin geht an die Ziele
+  der Meldung - eine Kategorie braucht es nicht. Zwei Einstellungen an der Meldung: *Skript laeuft je Tenant* (Standard) oder
+  *einmal* (`$Tenants` = angehakte Tenants, eigene Schleife); *Ausgabe als Karte senden* (Standard aus) - dann geht die Ausgabe
+  (Objekte/Text, sonst die Write-Host-Zeilen) als eine Karte, wenn das Skript kein `Send-HUNotify` aufruft. Je Lauf ein eigener,
+  frischer Runspace; Zaehler gelten auch nach `exit`/`break` im Skript.
+  **Achtung beim Update (Skript-Meldungen aus den Testversionen):**
+  - Sie senden keine Ausgabe-Karte mehr, bis an der Meldung der Haken *Ausgabe als Karte senden* gesetzt und sie neu
+    gespeichert ist (Karten aus `Send-HUNotify` gehen weiter raus).
+  - Sie laufen je Tenant. Skripte mit eigener Schleife ueber alle Schulen mit *Skript laeuft: einmal* neu speichern -
+    sonst laufen sie N x N-mal (Graph-Drosselung 429).
+- Tagesprotokolle (`Logs\HU-MultiTenant_*.log`) aelter als `logging.retentionDays` (Standard 30 Tage) werden beim Start
+  geloescht - wie schon die Quick-Script-Protokolle.
+- Skript-Meldungen merken sich beim Speichern einen Fingerabdruck (SHA-256) des Snippets; wurde es danach geaendert,
+  laeuft die Meldung erst nach erneutem Speichern wieder ("! Skript geaendert" in der Liste). Steht ein
+  Probelauf-Schalter (DryRun ...) im Standard auf aus, fragt "Speichern" und "Jetzt senden" vorher "ECHTER LAUF". Geplant ueber `Main.ps1 -Headless -Job <Id>` (nur gespeicherte
+  Meldungen und Snippets, kein freier Code), Laufzeit hoechstens 25 Minuten (Aufgabenplanung bricht nach 30 ab; "von der Aufgabenplanung abgebrochen" im Reiter). Exit-Codes
+  wie bei den eingebauten Meldungen; gesendet mit Skriptfehler bei einem Tenant = 2 ("gesendet, Skriptfehler bei ...").
+- Im Quick-Script-Editor gehen die Karten eines Snippets, das zu einer Meldung gehoert, an deren Ziele; ein Snippet ohne
+  Meldung sendet nur, wenn es Ziele selbst nennt (`-TargetIds`, alte Kategorie) und die Rueckfrage mit Ja beantwortet wird.
+- Am Ziel steht nur noch ein Haken: Hinweis, wenn eine zeitgesteuerte Meldung nicht laufen kann. Die Begriffe "Art" und
+  "Kategorie" sind aus der Oberflaeche verschwunden. Eigene Kategorien aus den Testversionen bleiben gespeichert und
+  funktionieren fuer Erweiterungen weiter; Skripte ausserhalb von HU-MultiTenant senden mit `-TargetIds`.
+- **Rueckfrage vor dem Senden:** Snippets (im Editor) und Erweiterungen, die senden koennen, fragen einmal vor dem Start
+  (Ja = senden, Nein = ohne Teams ausfuehren, Abbrechen). "Jetzt senden" und geplante Meldungen fragen nicht - die
+  gespeicherte Meldung ist die Freigabe. Erweiterungen im Probelauf senden nie. `Send-HUNotify`/`Send-HUTeamsCard`
+  unterstuetzen `-WhatIf`. Gesperrt wird im Modul selbst: ohne Freigabe sendet ein Lauf nichts - auch nicht ueber Alias,
+  Hilfsdatei oder eigenen Import (Skripte ausserhalb: `Grant-HUSendApproval`). Keine Frage, wenn sicher niemand die
+  Meldung bekommt; bei Ok = 0 steht der Grund im Ergebnis statt eines leeren Textes.
+
+### Teams: Push-Vorschau und Datenschutz
+- Jede eingebaute Meldung liefert einen eigenen Vorschautext fuer die Handy-Benachrichtigung - ohne Geraetenamen:
+  Tages-Ampel "4 gruen, 1 gelb, 0 rot (gelb: HLW) - 1234 Geraete, 7 nicht konform", Secret-Countdown mit dem
+  dringendsten Tenant, Lizenzen mit der knappsten SKU, Defender mit Anzahl und betroffenen Tenants.
+- Neue Option an der Meldung **Geraetenamen ausblenden (Defender-Alarm)**: die Karte nennt dann nur die Anzahl je
+  Zustand - fuer Kanaele mit breiterem Publikum.
+
+### Teams: Robustheit (Review 029, offene Punkte und Lueckentests)
+- Karten zu gross: statt die Meldung zu verwerfen, kuerzt HU-MultiTenant stufenweise (weniger/kuerzere Zeilen,
+  Fakten, Ampel-Zeilen, zuletzt ohne Knoepfe) auf hoechstens ca. 21 KB und vermerkt "Gekuerzt". Grundgrenzen 20 Zeilen,
+  15 Fakten, 25 Ampel-Zeilen, 5 Knoepfe.
+- Webhook-Adresse mit Weiterleitung (z. B. Kurzlink): unter Windows PowerShell 5.1 jetzt sofort "Senden abgelehnt
+  (Umleitung)" statt drei Versuchen mit unklarer Meldung; Zeitueberschreitungen werden nur noch einmal wiederholt.
+- Sperren: ist die Datei laenger als 5 s gesperrt, wird der Vorgang abgebrochen und gemeldet statt ungesperrt
+  zu schreiben (Auftraege, Ziele, Kategorien). Das Sendeprotokoll fasst nach 1,5 s einmal nach und schreibt
+  sonst eine Warnung ins Log; je Meldung wird es nur einmal geschrieben. Ziele speichern liest und schreibt unter der Sperre.
+- Schluessel wie `Keys` oder `Count` sind fuer eigene Kategorien gesperrt (sie haetten alle Meldungen lahmgelegt);
+  Fakten mit Zahlen-Schluessel (`2024 = ...`) bleiben erhalten.
+- Senden je Ziel hoechstens ca. 45 s inkl. Wiederholungen.
+- Headless-Fehlerkarte kuerzt Pfade (`<Programmordner>`, `<Profil>`), damit kein Benutzername im Kanal steht.
+- Auftrag: "Geraetenamen ausblenden" nur beim Defender-Alarm waehlbar; ein unklarer Wert in der Datei blendet aus.
+- Ziel-Id wird im Reiter angezeigt (fuer `Send-HUNotify -TargetIds`).
+- `teams-jobs.json` nicht lesbar: die letzte gueltige Sicherung (`.bak`) wird verwendet (Warnung im Log).
+- `"Enabled": "false"` als Text (von Hand bearbeitet) gilt als aus.
+- Kartentitel mit deutschem Wochentag unabhaengig von der Sprache des Kontos ("Fr 16.10.").
+- Auftrags-Id wird beim Speichern und beim Anlegen der Aufgabe geprueft (nur 8 Hex-Zeichen), Kommandozeile mit
+  Anfuehrungszeichen.
+- Tages-Ampel: "Secret-Ablauf unbekannt (kein Ablaufdatum)" als Hinweis, wenn das Secret kein Enddatum liefert.
+- **Exit-Codes** des Headless-Laufs (Aufgabenplanung "Letztes Ergebnis"): 0 OK/nichts zu melden, 1 Fehler,
+  2 teilweise gesendet, 3 Konfiguration (Auftrag/Ziele/Tenants/settings.json). Der Reiter zeigt den Code als Text.
+- Groks Lueckentests aus Review 029 sind als `.github\tests\*.Review029.Tests.ps1` Teil der CI.
+
+### Quick Script
+- **Protokolldateien maskieren Secrets und Token** (z. B. ein neu angelegtes Client Secret, das ein Snippet ausgibt) - vorher standen sie im Klartext in `Logs\QuickScript\*.log` (aus PR #12 vorgezogen)
+
+## v2.1.9 (Vorab-Release, nicht freigegeben - aufgegangen in v2.1.10)
 
 ### Neu: Reiter Teams - Meldungen in Teams-Kanaele
 - **Ziele:** Teams-Workflows-Webhooks ("When a Teams webhook request is received") mit Name und Kategorien. Adressen
@@ -13,7 +88,7 @@
   (App-Secrets unter der Warnschwelle), **Lizenzen knapp** (SKUs mit weniger als 5 freien Lizenzen) und
   **Defender-Alarm** (Geraete mit gemeldeter Bedrohung oder Fehlkonfiguration). "Jetzt senden" aus der Oberflaeche oder als Aufgabe in der Windows-
   Aufgabenplanung (`\HU-MultiTenant\Teams-<Id>`, eigenes Konto, ohne erhoehte Rechte, nur bei Anmeldung).
-- **Ohne Oberflaeche:** `Main.ps1 -Headless -Job <Id>` fuehrt genau einen gespeicherten Auftrag aus (Exit 0/1);
+- **Ohne Oberflaeche:** `Main.ps1 -Headless -Job <Id>` fuehrt genau einen gespeicherten Auftrag aus (heute Exit 0/1/2/3, siehe v2.1.10);
   freie Skripte sind in diesem Modus nicht moeglich. Fehlschlaege werden als Karte (Kategorie "Zeitgesteuerte
   Laeufe") gemeldet.
 - Auftraege senden an die dort angehakten Ziele (keines angehakt = alle aktiven Ziele); "An Kanal ..." sendet einmalig an ein bestimmtes Ziel, z. B. an die Direktion. Die Kategorien am Ziel gelten fuer Meldungen ohne Auftrag (Test, Fehler zeitgesteuerter Laeufe, kuenftige Alarme).
@@ -31,7 +106,8 @@
   abzubrechen; ein fehlgeschlagener Kartenbau wird als Fehler gemeldet statt zu werfen.
 - Feinschliff nach den ersten Live-Tests: Auftragsliste zeigt die Art mit an; bei Standardnamen folgt der Name der
   gewaehlten Art; "Nichts zu melden" nennt den Grund (z. B. fruehester Secret-Ablauf, knappste SKU); die
-  Benachrichtigungs-Vorschau am Handy zeigt Titel plus die ersten Ampel-Zeilen, getrennt mit Aufzaehlungspunkten.
+  Benachrichtigungs-Vorschau am Handy zeigt - nach dem Workflow-Umbau (Anleitung > Teams) - Titel plus die ersten
+  Ampel-Zeilen, getrennt mit Aufzaehlungspunkten (ab v2.1.10 eigener Vorschautext je Art).
 - Neue Core-Module `HU.Notify.psm1` (Karten, Ziele, Senden) und `HU.TeamsJobs.psm1` (Auftraege, Kennzahlen,
   Aufgabenplanung) - ohne Oberflaeche, fuer Extensions und Snippets nutzbar: `Send-HUNotify -Category ... -Title ...`.
 - Reiter Teams als Start-Reiter waehlbar; Tests fuer Karten, Adressen, Textbereinigung, Ziele (Windows) und Auftraege.

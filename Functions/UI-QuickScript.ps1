@@ -143,6 +143,14 @@ function Save-HUQSSnippet([switch]$As) {
     Update-HUSnippetCombo -Select $name
     Update-HUQSSnippetInfo
     Write-QSOutput "[OK] Snippet '$name' gespeichert." '#4CAF50'
+    # Review 030 B33: gehoert das Snippet zu einer Teams-Meldung, muss sie neu bestaetigt werden
+    if (Get-Command Get-HUTeamsSnippetRoute -ErrorAction SilentlyContinue) {
+        $rt = Get-HUTeamsSnippetRoute $name
+        if ($rt) {
+            Write-QSOutput "[INFO] Teams-Meldung '$($rt.Jobs -join "', '")' nutzt dieses Snippet - dort einmal neu speichern, sonst laeuft sie nicht (Skript geaendert)." '#FFC107'
+            if (Get-Command Update-HUTeamsJobs -ErrorAction SilentlyContinue) { try { Update-HUTeamsJobs } catch { } }
+        }
+    }
     return $true
 }
 
@@ -207,6 +215,12 @@ function Start-HUQSRun([switch]$Selection) {
         if (-not (Confirm-HU "ECHTER LAUF - Aenderungen werden ausgefuehrt!`n`nSnippet: $(if ($script:QS_Current) { $script:QS_Current } else { '(Editor)' })`nTenants: $($names -join ', ')`n`nFortfahren?" 'Quick Script - Live' -Warning)) { return }
     }
 
+    # Teams: einmal je Lauf fragen, wenn das Snippet Meldungen senden kann (Review 030 B4)
+    # Gehoert das Snippet zu einer Meldung "Aus Skript", gehen seine Karten an deren Ziele (Reiter Teams)
+    $route = $null; if ($script:QS_Current -and (Get-Command Get-HUTeamsSnippetRoute -ErrorAction SilentlyContinue)) { $route = Get-HUTeamsSnippetRoute $script:QS_Current }
+    $teams = 'none'; if (Get-Command Confirm-HUTeamsSend -ErrorAction SilentlyContinue) { $teams = Confirm-HUTeamsSend -Code $code -What 'Snippet' -Route $route }
+    if ($teams -eq 'cancel') { return }
+
     $what = if ($isSel) { 'Markierung' } elseif ($script:QS_Current) { $script:QS_Current } else { 'Editor' }
     $script:QS_RunLines = [System.Collections.Generic.List[string]]::new()
     $script:QS_Objects.Clear()
@@ -237,12 +251,20 @@ function Start-HUQSRun([switch]$Selection) {
     $rs.SessionStateProxy.SetVariable('__Tenants', [string[]]$tenants)
     $rs.SessionStateProxy.SetVariable('__Params', $pv)
     $rs.SessionStateProxy.SetVariable('__Multi', ($tenants.Count -gt 1))
+    $rs.SessionStateProxy.SetVariable('__TeamsAllowed', ($teams -eq 'send'))
+    $rs.SessionStateProxy.SetVariable('__TeamsRoute', $route)
 
     $ps = [System.Management.Automation.PowerShell]::Create()
     $ps.Runspace = $rs
     [void]$ps.AddScript({
         Import-Module (Join-Path $AppRoot 'Core\HU.Auth.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
         Import-Module (Join-Path $AppRoot 'Core\HU.Graph.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue
+        Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction SilentlyContinue   # Send-HUNotify fuer Snippets (eigene Teams-Kategorien)
+        # Freigabe nur nach "Ja" in der Teams-Rueckfrage; sonst sperrt das Modul selbst (auch Alias, Hilfsdateien, eigener Import - Review 030 B4a).
+        # Die Freigabe lebt nur in diesem Runspace und endet mit ihm.
+        if ($__TeamsAllowed -and (Get-Command Grant-HUSendApproval -ErrorAction SilentlyContinue)) { Grant-HUSendApproval -Reason 'Snippet-Lauf' }
+        if ($__TeamsRoute -and (Get-Command Set-HUNotifyRoute -ErrorAction SilentlyContinue)) { Set-HUNotifyRoute -Name "$($__TeamsRoute.Name)" -TargetIds @($__TeamsRoute.Ids) }   # Ziele der Meldung
+        if (-not (Get-Command Send-HUNotify -ErrorAction SilentlyContinue)) { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'Teams: HU.Notify nicht geladen - nichts gesendet' } } }   # wirft nie (Review 030 B4)
         . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
         $__sb = [scriptblock]::Create($__UserCode)
         $__i = 0

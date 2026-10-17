@@ -9,7 +9,8 @@
       XAML\        Fenster und gemeinsames Theme
     Start: HU-MultiTenant.exe (Einstellungen > Verknuepfung) oder Start-HUMultiTenant.cmd.
     Ohne Oberflaeche (Aufgabenplanung, Reiter Teams): Main.ps1 -Headless -Job <Id>
-      fuehrt NUR einen gespeicherten Teams-Auftrag (Config\teams-jobs.json) aus und beendet sich (Exit 0/1).
+    Exit-Codes Headless: 0 OK / nichts zu melden, 1 Fehler, 2 teilweise gesendet, 3 Konfiguration (Auftrag/Ziele/Tenants/settings)
+      fuehrt NUR einen gespeicherten Teams-Auftrag (Config\teams-jobs.json) aus und beendet sich (Exit-Codes siehe oben).
 .NOTES
     Zielmaschine: der PC, auf dem HU-MultiTenant laeuft (Windows 10/11, Windows PowerShell 5.1).
 #>
@@ -45,15 +46,18 @@ $script:SmokeTestFile = $SmokeTest; $script:SmokeTimer = $null; $script:SmokeClo
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
-function Show-HUFatal([string]$Text) {
+function Show-HUFatal([string]$Text, [int]$Code = 1) {
     if ($SmokeTest) { "FEHLER $Text" | Set-Content -LiteralPath $SmokeTest -Encoding UTF8; exit 1 }
     if ($Headless) {
         [Console]::Error.WriteLine("FEHLER $Text")
         try { Write-HULog -Message "Headless: $Text" -Level ERROR } catch { }
         # Befund B3 (Review 029): auch fruehe Abbrueche nach Teams melden, sofern HU.Notify schon geladen ist
-        try { if (Get-Command Send-HUNotify -ErrorAction SilentlyContinue) { [void](Send-HUNotify -Category 'Jobs' -Title 'Zeitgesteuerter Lauf fehlgeschlagen' -Level Error -Lines @("$Text") -Source ([Environment]::MachineName)) } } catch { }
-        exit 1
+        # Review 030 B32: Pfade (Profil/Benutzername) nicht in den Kanal - Programmordner kuerzen
+        $short = "$Text"; try { if ($script:AppRoot) { $short = $short.Replace("$($script:AppRoot)", '<Programmordner>') }; $short = $short -replace '(?i)[A-Z]:\\Users\\[^\\]+', '<Profil>' } catch { }
+        try { if (Get-Command Send-HUNotify -ErrorAction SilentlyContinue) { [void](Send-HUNotify -Category 'Jobs' -Title 'Zeitgesteuerter Lauf fehlgeschlagen' -Level Error -Lines @($short) -Source ([Environment]::MachineName)) } } catch { }
+        exit $Code
     }
+    if (Get-Command Close-HUSplash -ErrorAction SilentlyContinue) { Close-HUSplash }
     [void][System.Windows.MessageBox]::Show($Text, 'HU-MultiTenant - Fehler', 'OK', 'Error')
     exit 1
 }
@@ -81,15 +85,75 @@ if (Test-Path -LiteralPath (Join-Path $script:AppRoot 'Config\pull-journal.json'
 }
 
 # ============================================================================
+# STARTBILDSCHIRM - erscheint sofort, waehrend Module und Oberflaeche laden
+# ============================================================================
+$script:Splash = $null; $script:SplashShown = Get-Date; $script:SplashStatus = $null
+function Update-HUSplash {
+    # Oberflaeche kurz zeichnen lassen (der UI-Thread ist waehrend des Ladens sonst blockiert)
+    $frame = New-Object System.Windows.Threading.DispatcherFrame
+    [void][System.Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [System.Windows.Threading.DispatcherOperationCallback] { param($f) $f.Continue = $false; $null }, $frame)
+    [System.Windows.Threading.Dispatcher]::PushFrame($frame)
+}
+function Set-HUSplashStatus([string]$Text) {
+    if (-not $script:Splash -or -not $script:SplashStatus) { return }
+    try { $script:SplashStatus.Text = $Text; Update-HUSplash } catch { }
+}
+function Close-HUSplash([int]$MinMs = 0) {
+    if (-not $script:Splash) { return }
+    $rest = $MinMs - ((Get-Date) - $script:SplashShown).TotalMilliseconds
+    if ($rest -gt 0) { Start-Sleep -Milliseconds ([int]$rest) }
+    try { $script:Splash.Close() } catch { }
+    $script:Splash = $null; $script:SplashStatus = $null
+}
+if (-not $SmokeTest -and -not $Headless) {   # nie bei der geplanten Aufgabe (Headless)
+    try {
+        $ver = '?'
+        try { $ver = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
+        $sx = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" Width="440" Height="310"
+        WindowStartupLocation="CenterScreen" Topmost="True" ShowInTaskbar="False" Title="HU-MultiTenant">
+  <Border Background="#FF1E1E1E" CornerRadius="12" BorderBrush="#FFB9A88A" BorderThickness="2">
+    <Grid>
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+        <Image x:Name="img" Width="112" Height="112" RenderOptions.BitmapScalingMode="HighQuality"/>
+        <TextBlock Text="HU-MultiTenant" FontSize="32" FontWeight="Bold" Foreground="#FFEDEDED" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+        <TextBlock Text="Intune und Microsoft 365 f&#xFC;r mehrere Tenants" FontSize="14" Foreground="#FFB9A88A" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+        <TextBlock x:Name="status" Text="wird geladen ..." FontSize="11" Foreground="#FF8A8A8A" HorizontalAlignment="Center" Margin="0,14,0,0"/>
+      </StackPanel>
+      <TextBlock Text="v$ver" FontSize="11" Foreground="#FF6A6A6A" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,12,8"/>
+    </Grid>
+  </Border>
+</Window>
+"@
+        $script:Splash = [System.Windows.Markup.XamlReader]::Parse($sx)
+        $script:SplashStatus = $script:Splash.FindName('status')
+        # Logo: groesstes Bild aus Assets\icon.ico (ueber Bytes geladen - Datei bleibt fuer Updates frei)
+        $ip = Join-Path $script:AppRoot 'Assets\icon.ico'
+        if (Test-Path -LiteralPath $ip) {
+            $ms = New-Object System.IO.MemoryStream (, [System.IO.File]::ReadAllBytes($ip))
+            $dec = [System.Windows.Media.Imaging.BitmapDecoder]::Create($ms, [System.Windows.Media.Imaging.BitmapCreateOptions]::None, [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
+            $big = @($dec.Frames | Sort-Object PixelWidth -Descending)[0]
+            if ($big) { $script:Splash.FindName('img').Source = $big; $script:Splash.Icon = $big }
+        }
+        $script:Splash.Show()
+        Update-HUSplash
+    } catch { $script:Splash = $null; $script:SplashStatus = $null }
+    $script:SplashShown = Get-Date
+}
+
+# ============================================================================
 # 1. VERSION, CORE-MODULE, FUNKTIONEN
 # ============================================================================
 $script:Version = '0.0.0'
 try { $script:Version = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
 
+Set-HUSplashStatus 'Module werden geladen ...'
 foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs')) {
     $modPath = Join-Path $script:AppRoot "Core\$mod.psm1"
     if (-not (Test-Path -LiteralPath $modPath)) { Show-HUFatal "Core-Modul fehlt: $modPath`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     Import-Module $modPath -Force -DisableNameChecking
+    if ($mod -eq 'HU.Notify') { Grant-HUSendApproval -Reason 'App' }   # App und geplante Auftraege senden ohne Rueckfrage (Review 030 B4a)
 }
 # optional (nur fuer Extensions mit Excel-Reports)
 $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
@@ -108,14 +172,15 @@ foreach ($f in $uiFiles) {
 # ============================================================================
 # 2. EINSTELLUNGEN (Erststart: leere settings.json anlegen)
 # ============================================================================
+Set-HUSplashStatus 'Einstellungen ...'
 $settingsPath = Join-Path $script:AppRoot 'Config\settings.json'
 $script:FirstRun = $false
 if (-not (Test-Path -LiteralPath $settingsPath)) {
-    if ($Headless) { Show-HUFatal "settings.json fehlt ($settingsPath) - Headless legt keine neue an." }
+    if ($Headless) { Show-HUFatal "settings.json fehlt ($settingsPath) - Headless legt keine neue an." 3 }
     try { New-HUSettingsFile -Path $settingsPath; $script:FirstRun = $true } catch { Show-HUFatal "settings.json konnte nicht angelegt werden:`n$($_.Exception.Message)" }
 }
 $script:Settings = Import-TenantSettings -SettingsPath $settingsPath
-if (-not $script:Settings) { Show-HUFatal "settings.json nicht lesbar:`n$settingsPath`n`nSicherung: settings.json.bak" }
+if (-not $script:Settings) { Show-HUFatal "settings.json nicht lesbar:`n$settingsPath`n`nSicherung: settings.json.bak" 3 }
 $script:Settings = Initialize-HUSettingsDefaults $script:Settings
 if (-not @($script:Settings.tenants).Count) { $script:FirstRun = $true }
 
@@ -127,17 +192,20 @@ if ($Headless) {
     if (-not $logFile) { $logFile = './Logs/HU-MultiTenant_{date}.log' }
     if (-not [System.IO.Path]::IsPathRooted($logFile)) { $logFile = Join-Path $script:AppRoot ($logFile -replace '^\.[\\/]', '') }
     Initialize-Logging -LogFilePath $logFile -MinLevel 'INFO'
-    if (-not $Job -or $Job -notmatch '^[0-9a-f]{8}$') { Show-HUFatal "Headless: -Job <Id> fehlt oder ungueltig (8 Zeichen aus Config\teams-jobs.json)." }
+    if (-not $Job -or $Job -notmatch '^[0-9a-f]{8}$') { Show-HUFatal "Headless: -Job <Id> fehlt oder ungueltig (8 Zeichen aus Config\teams-jobs.json)." 3 }
     $j = $null
-    try { $j = Get-HUTeamsJob -AppRoot $script:AppRoot -Id $Job } catch { Show-HUFatal "Headless: $($_.Exception.Message)" }
-    if (-not $j) { Show-HUFatal "Headless: Auftrag '$Job' nicht gefunden." }
-    if (-not [bool]$j.Enabled) { Write-HULogInfo "Headless: Auftrag '$($j.Name)' ist ausgeschaltet - nichts zu tun."; exit 0 }
+    try { $j = Get-HUTeamsJob -AppRoot $script:AppRoot -Id $Job } catch { Show-HUFatal "Headless: $($_.Exception.Message)" 3 }
+    if (-not $j) { Show-HUFatal "Headless: Auftrag '$Job' nicht gefunden." 3 }
+    if ($j.Enabled -ne $true) { Write-HULogInfo "Headless: Auftrag '$($j.Name)' ist ausgeschaltet - nichts zu tun."; exit 0 }   # B21: Enabled ist normalisiert (bool)
     Write-HULogInfo "Headless v$($script:Version): Auftrag '$($j.Name)' ($($j.Kind)) startet ..."
     $r = Invoke-HUTeamsJob -Job $j -Settings $script:Settings -AppRoot $script:AppRoot
     if ($r.Success) { Write-HULogOK "Headless: $($r.Message)"; exit 0 }
-    Write-HULogError "Headless: $($r.Message)"
-    [void](Send-HUNotify -Category 'Jobs' -Title "Auftrag '$($j.Name)' fehlgeschlagen" -Level Error -Lines @("$($r.Message)") -Source ([Environment]::MachineName))
-    exit 1
+    $code = 1; try { $code = [int]$r.Code } catch { }
+    if ($code -lt 1 -or $code -gt 3) { $code = 1 }
+    Write-HULogError "Headless (Exit $code): $($r.Message)"
+    $ttl = if ($code -eq 2) { "Auftrag '$($j.Name)' nur teilweise gesendet" } else { "Auftrag '$($j.Name)' fehlgeschlagen" }
+    try { [void](Send-HUNotify -Category 'Jobs' -Title $ttl -Level Error -Lines @("$($r.Message)") -Source ([Environment]::MachineName)) } catch { }
+    exit $code
 }
 
 $script:AppIcon = $null
@@ -152,6 +220,7 @@ if (-not $script:FirstRun -and -not $SmokeTest) { [void](Show-SecretSetupDialog)
 # ============================================================================
 # 3. HAUPTFENSTER
 # ============================================================================
+Set-HUSplashStatus "Oberfl$([char]0xE4)che wird aufgebaut ..."
 try {
     $d = New-HUWindow 'MainWindow'
 } catch { Show-HUFatal "Oberflaeche konnte nicht geladen werden (XAML\MainWindow.xaml):`n$($_.Exception.Message)" }
@@ -166,6 +235,16 @@ if (-not [System.IO.Path]::IsPathRooted($logFile)) { $logFile = Join-Path $scrip
 $minLevel = "$($script:Settings.logging.logLevel)".ToUpper()
 if ($minLevel -notin 'DEBUG', 'INFO', 'OK', 'WARN', 'ERROR') { $minLevel = 'INFO' }
 Initialize-Logging -LogFilePath $logFile -RichTextBox $script:Controls['rtbLog'] -MinLevel $minLevel -MaxGuiLines ([int]$script:Settings.ui.maxLogLines)
+# Tagesprotokolle aelter als logging.retentionDays (Standard 30) beim Start loeschen (Review 030 B72/D7)
+try {
+    $keep = 30; try { if ([int]$script:Settings.logging.retentionDays -gt 0) { $keep = [int]$script:Settings.logging.retentionDays } } catch { }
+    $leaf = Split-Path $logFile -Leaf
+    if ($leaf -match '\{date\}') {
+        $limit = (Get-Date).AddDays(-$keep)
+        Get-ChildItem -LiteralPath (Split-Path $logFile -Parent) -Filter ($leaf -replace '\{date\}', '*') -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -lt $limit } | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+} catch { }
 
 Initialize-AsyncPool -PoolSize 4
 
@@ -224,6 +303,8 @@ $script:Window.Add_PreviewMouseWheel({
 $script:Window.Add_ContentRendered({
     if ($script:StartupDone) { return }
     $script:StartupDone = $true
+    Close-HUSplash 1200
+    try { [void]$script:Window.Activate() } catch { }
     if (-not $script:SmokeTestFile) {
         Start-HULockTimer
         if ((Get-HULockConfig).Enabled -and (Get-HULockConfig).OnStart) { Lock-HUApp -AtStart }

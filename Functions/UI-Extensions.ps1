@@ -343,6 +343,20 @@ function Register-HUExtensionHandlers {
         $bgToken     = $script:CurrentToken
         $bgDryRun    = $isDryRun
 
+        # Teams: einmal je Lauf fragen, wenn die Erweiterung Meldungen senden kann (Review 030 B4)
+        $bgTeams = 'none'   # ohne Ja keine Sendefreigabe (Review 030 B4a)
+        if (-not $isDryRun -and (Get-Command Confirm-HUTeamsSend -ErrorAction SilentlyContinue)) {
+            $extCode = ''; try { $extCode = Get-Content -LiteralPath $bgExtension.Path -Raw -Encoding UTF8 } catch { }
+            $bgTeams = Confirm-HUTeamsSend -Code $extCode -What 'Erweiterung'
+        }
+        if ($bgTeams -eq 'cancel') {
+            $script:IsRunning = $false
+            $script:Controls['btnStart'].IsEnabled = $true
+            $script:Controls['btnCancel'].IsEnabled = $false
+            Write-HULogInfo 'Abgebrochen (Teams-Rueckfrage).' -Tenant $tenantKey
+            return
+        }
+
         # Resolve log file path for the background runspace (same file as main GUI)
         $bgLogFile = Get-CurrentLogFile
 
@@ -438,6 +452,7 @@ function Register-HUExtensionHandlers {
             $bgRunspace.SessionStateProxy.SetVariable('AppRoot', $script:AppRoot)
             $bgRunspace.SessionStateProxy.SetVariable('BgLogFile', $bgLogFile)
             $bgRunspace.SessionStateProxy.SetVariable('BgCustomParams', $customParamValues)
+            $bgRunspace.SessionStateProxy.SetVariable('BgTeamsAllowed', ($bgTeams -eq 'send' -and -not $bgDryRun))
 
             $bgPowerShell = [powershell]::Create()
             $bgPowerShell.Runspace = $bgRunspace
@@ -445,7 +460,7 @@ function Register-HUExtensionHandlers {
             [void]$bgPowerShell.AddScript({
                 param()
 
-                $coreModules = @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Excel')
+                $coreModules = @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Excel', 'HU.Notify')
                 foreach ($mod in $coreModules) {
                     $modPath = Join-Path $AppRoot "Core\$mod.psm1"
                     if (Test-Path $modPath) {
@@ -453,6 +468,9 @@ function Register-HUExtensionHandlers {
                     }
                 }
 
+                # Sendefreigabe nur nach "Ja" in der Teams-Rueckfrage und nie im Probelauf; sonst sperrt das Modul selbst (Review 030 B4a)
+                if ($BgTeamsAllowed -and (Get-Command Grant-HUSendApproval -ErrorAction SilentlyContinue)) { Grant-HUSendApproval -Reason 'Erweiterung' }
+                if (-not (Get-Command Send-HUNotify -ErrorAction SilentlyContinue)) { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'Teams: HU.Notify nicht geladen - nichts gesendet' } } }   # wirft nie (Review 030 B4)
                 Initialize-Logging -LogFilePath $BgLogFile -MinLevel 'DEBUG'
 
                 $execParams = @{

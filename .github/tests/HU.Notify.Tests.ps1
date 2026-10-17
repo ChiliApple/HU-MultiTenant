@@ -19,6 +19,7 @@ BeforeAll {
     $script:OldAppData = $env:APPDATA
     $env:APPDATA = $script:TestAppData
     Import-Module (Join-Path $root 'Core\HU.Notify.psm1') -Force -DisableNameChecking
+    Grant-HUSendApproval -Reason 'Test'
 }
 
 AfterAll {
@@ -106,7 +107,7 @@ Describe 'Teams: Karte (New-HUTeamsCard)' {
     It 'begrenzt die Zeilenzahl' {
         $c = New-HUTeamsCard -Title 'T' -Lines @(1..60 | ForEach-Object { "z$_" })
         $tb = @($c.attachments[0].content.body | Where-Object { $_.type -eq 'TextBlock' })
-        $tb[-2].text | Should -Match 'und 20 weitere Zeilen'
+        $tb[-2].text | Should -Match 'und 40 weitere Zeilen'   # 60 Zeilen, Grenze 20 (v2.1.10)
     }
     It 'begrenzt die Ampel-Zeilen mit Hinweis' {
         $c = New-HUTeamsCard -Title 'T' -Rows @(1..30 | ForEach-Object { @{ Name = "S$_"; Status = 'OK'; Text = 'x' } })
@@ -152,7 +153,7 @@ Describe 'Teams: Senden (ohne Netz)' {
     }
     It 'Send-HUNotify ohne Ziele sendet nichts und wirft nicht' {
         $r = Send-HUNotify -Category 'Daily' -Title 'T'
-        $r.Ok | Should -Be 0; $r.Failed | Should -Be 0; $r.Text | Should -Be ''
+        $r.Ok | Should -Be 0; $r.Failed | Should -Be 0; $r.Text | Should -Match 'kein Ziel eingerichtet'
         (Send-HUNotify -Category 'Gibtsnicht' -Title 'T').Text | Should -Match 'Unbekannte Kategorie'
     }
     It 'Fehlermeldungen enthalten nie die Adresse' {
@@ -223,3 +224,262 @@ Describe 'Teams: Ziele speichern (DPAPI, nur Windows)' -Skip:(-not $script:IsWin
         Set-HUNotifyTargets -Targets $l | Should -Match '10'
     }
 }
+
+Describe 'Teams: Kartengroesse und Push-Vorschau (v2.1.10)' {
+    It 'riesige Karte wird stufenweise gekuerzt statt verworfen' {
+        $long = '"x' * 200   # Anfuehrungszeichen werden in JSON immer maskiert (2 Byte) - auch unter PS 7
+        $facts = [ordered]@{}; 1..30 | ForEach-Object { $facts["Fakt $_"] = $long }
+        $c = New-HUTeamsCard -Title 'Gross' -Lines @(1..40 | ForEach-Object { "$_ $long" }) -Facts $facts -Rows @(1..25 | ForEach-Object { @{ Name = "T$_"; Status = 'Error'; Text = $long } })
+        $j = ConvertTo-Json -InputObject $c -Depth 20 -Compress
+        [System.Text.Encoding]::UTF8.GetByteCount($j) | Should -BeLessOrEqual 21000
+        $j | Should -Match 'Gekuerzt'
+        { ConvertTo-HUTeamsCardJson -Card $c } | Should -Not -Throw
+    }
+    It 'normale Karte bleibt ungekuerzt' {
+        (ConvertTo-Json -InputObject (New-HUTeamsCard -Title 'T' -Lines @('a', 'b')) -Depth 20 -Compress) | Should -Not -Match 'gekuerzt'
+    }
+    It '-Preview ersetzt die Vorschau aus den Zeilen' {
+        $c = New-HUTeamsCard -Title 'Ampel' -Rows @(@{ Name = 'HLW'; Status = 'Error'; Text = 'NB-GEHEIM-01 Bedrohung' }) -Preview '1 Geraet mit Befund (HLW)'
+        $c.summary | Should -Match '1 Geraet mit Befund'
+        $c.summary | Should -Not -Match 'NB-GEHEIM'
+        $c.attachments[0].content.fallbackText | Should -Be $c.summary
+    }
+}
+
+Describe 'Teams: eigene Kategorien (v2.1.10)' {
+    BeforeEach { Remove-Item -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json') -Force -ErrorAction SilentlyContinue }
+    It 'anlegen: erscheint nach den eingebauten mit Custom-Kennung' {
+        Add-HUNotifyCategory -Key 'Backup' -Label 'Backup: Ergebnisse' -Default $true | Should -Be ''
+        $k = @(Get-HUNotifyCategories)
+        $b = $k | Where-Object Key -eq 'Backup'
+        $b.Custom | Should -BeTrue
+        $b.Label | Should -Be 'Backup: Ergebnisse'
+        $k[-1].Key | Should -Be 'Backup'
+        ($k | Where-Object Key -eq 'Daily').Custom | Should -BeFalse
+    }
+    It 'Schluessel wird geprueft, eingebaute sind gesperrt' {
+        Add-HUNotifyCategory -Key '1abc' -Label 'x' | Should -Match 'Schluessel'
+        Add-HUNotifyCategory -Key 'a b' -Label 'x' | Should -Match 'Schluessel'
+        Add-HUNotifyCategory -Key 'daily' -Label 'x' | Should -Match 'eingebaute'
+        Add-HUNotifyCategory -Key 'Ok1' -Label '   ' | Should -Match 'Bezeichnung'
+        Remove-HUNotifyCategory -Key 'Secrets' | Should -Match 'eingebaute'
+    }
+    It 'gleicher Schluessel aendert nur Bezeichnung/Standard' {
+        Add-HUNotifyCategory -Key 'Drucker' -Label 'Drucker' -Default $true | Out-Null
+        Add-HUNotifyCategory -Key 'Drucker' -Label 'Druckerfehler' -Default $false | Should -Be ''
+        $d = @(Get-HUNotifyCategories | Where-Object Key -eq 'Drucker')
+        $d.Count | Should -Be 1
+        $d[0].Label | Should -Be 'Druckerfehler'
+        Test-HUNotifyCat -Target $null -Category 'Drucker' | Should -BeFalse
+    }
+    It 'eine eigene Kategorie bleibt Array (PS 5.1) und Datei ist lesbar' {
+        Add-HUNotifyCategory -Key 'Wsus' -Label 'WSUS' | Out-Null
+        $raw = Get-Content -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json') -Raw | ConvertFrom-Json
+        @($raw.items).Count | Should -Be 1
+        $raw.items[0].Key | Should -Be 'Wsus'
+    }
+    It 'Send-HUNotify sendet mit eigener Kategorie, Fusszeile zeigt die Bezeichnung' {
+        Add-HUNotifyCategory -Key 'Backup' -Label 'Backup: Ergebnisse' | Out-Null
+        Mock -ModuleName HU.Notify Start-Sleep { }
+        Mock -ModuleName HU.Notify Add-HUNotifyHistory { }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @(
+            [pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'Admin'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = @{ Backup = $true } }
+            [pscustomobject]@{ Id = 'bbbbbbbb'; Name = 'Direktion'; Url = 'https://prod-2.logic.azure.com/w'; Enabled = $true; Cats = @{ Backup = $false } }
+        ) } }
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $script:SentBody = [System.Text.Encoding]::UTF8.GetString($Body); $null }
+        $r = Send-HUNotify -Category 'Backup' -Title 'Backup HLW fertig' -Level OK
+        $r.Ok | Should -Be 1; $r.Failed | Should -Be 0
+        $r.Text | Should -Match 'Admin: gesendet'
+        $r.Text | Should -Not -Match 'Direktion'
+        $script:SentBody | Should -Match 'Backup: Ergebnisse'
+    }
+    It 'nach dem Entfernen: Unbekannte Kategorie' {
+        Add-HUNotifyCategory -Key 'Weg' -Label 'Weg' | Out-Null
+        Remove-HUNotifyCategory -Key 'Weg' | Should -Be ''
+        (Send-HUNotify -Category 'Weg' -Title 'T').Text | Should -Match 'Unbekannte Kategorie'
+        Remove-HUNotifyCategory -Key 'Weg' | Should -Match 'nicht gefunden'
+    }
+    It 'Haken unbekannter, gueltiger Schluessel bleiben am Ziel erhalten' {
+        $c = InModuleScope HU.Notify { ConvertTo-HUNotifyCats @{ Kommt = $true; Daily = $false; 'bad key' = $true } }
+        $c['Kommt'] | Should -BeTrue
+        $c['Daily'] | Should -BeFalse
+        $c.ContainsKey('bad key') | Should -BeFalse
+    }
+    It 'kaputte Kategorien-Datei: eingebaute funktionieren weiter' {
+        New-Item -Path (Join-Path $env:APPDATA 'HU-MultiTenant') -ItemType Directory -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json') -Value '{ kaputt' -Encoding UTF8
+        @(Get-HUNotifyCategories).Count | Should -Be 11
+        Test-HUNotifyCat -Target $null -Category 'Daily' | Should -BeTrue
+    }
+}
+
+Describe 'Teams: Review 030' {
+    BeforeEach { Remove-Item -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json'), (Join-Path $env:APPDATA 'HU-MultiTenant\notify-history.json') -Force -ErrorAction SilentlyContinue }
+    It 'B3: reservierte Schluessel werden abgewiesen, eingebaute Kategorien bleiben intakt' {
+        foreach ($k in 'Keys', 'count', 'Values', 'Item', 'PSBase', 'Contains') { Add-HUNotifyCategory -Key $k -Label 'x' | Should -Match 'reserviert|eingebaute|Schluessel' }
+        @(Get-HUNotifyCategories).Count | Should -Be 11
+    }
+    It 'B3: reservierter Schluessel von Hand in der Datei legt nichts lahm' {
+        New-Item -Path (Join-Path $env:APPDATA 'HU-MultiTenant') -ItemType Directory -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $env:APPDATA 'HU-MultiTenant\notify-categories.json') -Encoding UTF8 -Value '{"v":1,"items":[{"Key":"Keys","Label":"x","Default":true},{"Key":"Backup","Label":"B","Default":false}]}'
+        $k = @(Get-HUNotifyCategories)
+        $k.Count | Should -Be 12
+        ($k | Where-Object Key -eq 'Keys') | Should -BeNullOrEmpty
+        $c = InModuleScope HU.Notify { ConvertTo-HUNotifyCats @{ Keys = $true; Daily = $false; Backup = $true } }
+        $c['Daily'] | Should -BeFalse
+        $c['Backup'] | Should -BeTrue
+        $c.ContainsKey('Keys') | Should -BeFalse
+    }
+    It 'B3b: Fakten mit Zahlen-Schluessel und Schluessel Keys bleiben erhalten' {
+        $c = New-HUTeamsCard -Title 'T' -Facts ([ordered]@{ 2024 = 'Jahr'; 5 = 'fuenf'; Keys = 'k'; A = '1' })
+        $fs = @($c.attachments[0].content.body | Where-Object { $_.type -eq 'FactSet' })[0].facts
+        @($fs | ForEach-Object { $_.value }) | Should -Be @('Jahr', 'fuenf', 'k', '1')
+    }
+    It 'B1: neue Kategorie ist standardmaessig AUS (Add-HUNotifyCategory -Default $false)' {
+        Add-HUNotifyCategory -Key 'Backup' -Label 'B' -Default $false | Should -Be ''
+        Test-HUNotifyCat -Target ([pscustomobject]@{ Cats = @{ Daily = $true } }) -Category 'Backup' | Should -BeFalse
+    }
+    It 'B5: hoechstens 5 Knoepfe, ueberlange Adressen fallen weg, auch mit 40 Aktionen unter der Grenze' {
+        $acts = 1..40 | ForEach-Object { @{ Title = "Link $_"; Url = 'https://example.com/' + ('x' * 1000) } }
+        $c = New-HUTeamsCard -Title 'T' -Actions $acts
+        @($c.attachments[0].content.actions).Count | Should -Be 5
+        [System.Text.Encoding]::UTF8.GetByteCount((ConvertTo-Json -InputObject $c -Depth 20 -Compress)) | Should -BeLessOrEqual 21000
+        (New-HUTeamsCard -Title 'T' -Actions @(@{ Title = 'lang'; Url = 'https://example.com/' + ('y' * 3000) })).attachments[0].content.Contains('actions') | Should -BeFalse
+    }
+    It 'B5: Send-HUTeamsCard prueft auch fertige JSON-Texte gegen die Grenze' {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Send-HUTeamsCard -Card ('{"x":"' + ('a' * 30000) + '"}') -Url 'https://prod-1.logic.azure.com/w' | Should -Match 'zu gross'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'B9: Send-HUNotify schreibt das Protokoll einmal fuer alle Ziele' {
+        Mock -ModuleName HU.Notify Start-Sleep { }
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @(
+            [pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'A'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = $null }
+            [pscustomobject]@{ Id = 'bbbbbbbb'; Name = 'B'; Url = 'https://prod-2.logic.azure.com/w'; Enabled = $true; Cats = $null }
+        ) } }
+        Mock -ModuleName HU.Notify Invoke-HUNotifyLocked { & $Do }
+        (Send-HUNotify -Category Daily -Title 'Zwei').Ok | Should -Be 2
+        Should -Invoke -ModuleName HU.Notify Invoke-HUNotifyLocked -Times 1 -Exactly
+        @(Get-HUNotifyHistory | Where-Object Title -eq 'Zwei').Count | Should -Be 2
+    }
+    It 'B9: Sperre dauerhaft belegt -> zweiter Versuch, dann WARN im Log, wirft nicht' {
+        Mock -ModuleName HU.Notify Start-Sleep { }
+        Mock -ModuleName HU.Notify Invoke-HUNotifyLocked { throw 'Datei gerade gesperrt' }
+        Mock -ModuleName HU.Notify Write-HUNotifyModuleLog { }
+        { Add-HUNotifyHistory -TargetName 'A' -Tag 'x' -Category 'Daily' -Title 'T' -Result 'ok' } | Should -Not -Throw
+        Should -Invoke -ModuleName HU.Notify Invoke-HUNotifyLocked -Times 2 -Exactly
+        Should -Invoke -ModuleName HU.Notify Write-HUNotifyModuleLog -Times 1 -ParameterFilter { $Level -eq 'WARN' -and $Message -match 'Sendeprotokoll' }
+    }
+    It 'B6: Grundgrenze 21000 Byte - grosse Karten werden darunter gekuerzt' {
+        $long = '"x' * 150
+        $c = New-HUTeamsCard -Title 'T' -Lines @(1..20 | ForEach-Object { $long }) -Rows @(1..25 | ForEach-Object { @{ Name = "T$_"; Status = 'OK'; Text = $long } })
+        [System.Text.Encoding]::UTF8.GetByteCount((ConvertTo-Json -InputObject $c -Depth 20 -Compress)) | Should -BeLessOrEqual 21000
+    }
+}
+
+Describe 'Teams: -WhatIf (Review 030 B4)' {
+    It 'Send-HUTeamsCard -WhatIf sendet nichts' {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Send-HUTeamsCard -Card (New-HUTeamsCard -Title 'T') -Url 'https://prod-1.logic.azure.com/w' -Target 'A' -WhatIf | Should -Match 'Nicht gesendet'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'Send-HUNotify -WhatIf reicht weiter, ohne Rueckfrage bei normalem Aufruf' {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Mock -ModuleName HU.Notify Add-HUNotifyHistory { }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @([pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'A'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = $null }) } }
+        (Send-HUNotify -Category Daily -Title 'T' -WhatIf).Ok | Should -Be 0
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+        (Send-HUNotify -Category Daily -Title 'T').Ok | Should -Be 1
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 1 -Exactly
+    }
+}
+
+Describe 'Teams: Meldungs-Route (v2.1.10)' {
+    BeforeEach {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Mock -ModuleName HU.Notify Add-HUNotifyHistory { }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @(
+            [pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'A'; Url = 'https://prod-1.logic.azure.com/a'; Enabled = $true; Cats = $null }
+            [pscustomobject]@{ Id = 'bbbbbbbb'; Name = 'B'; Url = 'https://prod-1.logic.azure.com/b'; Enabled = $true; Cats = $null }) } }
+    }
+    AfterEach { Clear-HUNotifyRoute }
+    It 'ohne Meldung und ohne Kategorie: nichts gesendet, Hinweis' {
+        $r = Send-HUNotify -Title 'T'
+        $r.Ok | Should -Be 0; $r.Text | Should -Match 'keiner Meldung zugeordnet'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'mit Meldung: nur deren Ziele, Kategorie egal, Zaehler' {
+        Set-HUNotifyRoute -Name 'Drucker-Status' -TargetIds @('bbbbbbbb')
+        $r = Send-HUNotify -Title 'T' -Category 'Apps'
+        $r.Ok | Should -Be 1; $r.Text | Should -Match 'B: gesendet'; $r.Text | Should -Not -Match 'A: '
+        (Get-HUNotifyRoute).Calls | Should -Be 1
+        (Get-HUNotifyRoute).Ok | Should -Be 1
+        Should -Invoke -ModuleName HU.Notify Add-HUNotifyHistory -ParameterFilter { $Entries[0].Category -eq 'Drucker-Status' }
+    }
+    It 'Skript ausserhalb: -TargetIds ohne Kategorie sendet nur dorthin' {
+        $r = Send-HUNotify -Title 'T' -TargetIds @('aaaaaaaa') -Source 'Backup'
+        $r.Ok | Should -Be 1; $r.Text | Should -Match 'A: gesendet'; $r.Text | Should -Not -Match 'B: '
+    }
+    It 'mit Meldung ohne Ziel-Ids: alle aktiven Ziele' {
+        Set-HUNotifyRoute -Name 'M'
+        (Send-HUNotify -Title 'T').Ok | Should -Be 2
+    }
+}
+
+Describe 'Teams: Sendefreigabe (Review 030 B4a)' {
+    BeforeEach {
+        Mock -ModuleName HU.Notify Invoke-WebRequest { $null }
+        Mock -ModuleName HU.Notify Add-HUNotifyHistory { }
+        Mock -ModuleName HU.Notify Get-HUNotifyConfig { [pscustomobject]@{ Configured = $true; Error = ''; Targets = @([pscustomobject]@{ Id = 'aaaaaaaa'; Name = 'A'; Url = 'https://prod-1.logic.azure.com/w'; Enabled = $true; Cats = $null }) } }
+    }
+    AfterEach { Grant-HUSendApproval -Reason 'Test' }
+    It 'ohne Freigabe sendet Send-HUTeamsCard nichts' {
+        Revoke-HUSendApproval
+        Send-HUTeamsCard -Card (New-HUTeamsCard -Title 'T') -Url 'https://prod-1.logic.azure.com/w' -Target 'A' | Should -Match 'nicht freigegeben'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'ohne Freigabe sendet Send-HUNotify nichts und nennt den Grund' {
+        Revoke-HUSendApproval
+        $r = Send-HUNotify -Category Daily -Title 'T'
+        $r.Ok | Should -Be 0; $r.Failed | Should -Be 0; $r.Text | Should -Match 'nicht freigegeben'
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 0 -Exactly
+    }
+    It 'mit Freigabe genau ein Request' {
+        Grant-HUSendApproval -Reason 'Test'
+        (Send-HUNotify -Category Daily -Title 'T').Ok | Should -Be 1
+        Should -Invoke -ModuleName HU.Notify Invoke-WebRequest -Times 1 -Exactly
+    }
+    It 'nach Revoke wieder gesperrt' {
+        Grant-HUSendApproval -Reason 'Lauf'
+        try { Test-HUSendApproval | Should -BeTrue } finally { Revoke-HUSendApproval }
+        Test-HUSendApproval | Should -BeFalse
+    }
+    It 'neu geladenes Modul ist gesperrt' {
+        $p = (Get-Module HU.Notify).Path
+        Import-Module $p -Force -DisableNameChecking
+        Test-HUSendApproval | Should -BeFalse
+    }
+    It 'B36: frischer Runspace ohne Freigabe - auch ueber Alias und & $cmd wird nichts gesendet' {
+        $p = (Get-Module HU.Notify).Path
+        $ps = [powershell]::Create()
+        try {
+            [void]$ps.AddScript({
+                param($Mod)
+                Import-Module $Mod -Force -DisableNameChecking
+                Set-Alias x Send-HUTeamsCard
+                x -Card '{"type":"message"}' -Url 'https://prod-1.logic.azure.com/w' -Target 'T'
+                $cmd = 'Send-' + 'HUTeamsCard'
+                & $cmd -Card '{"type":"message"}' -Url 'https://prod-1.logic.azure.com/w' -Target 'T'
+            }).AddArgument($p)
+            $r = @($ps.Invoke())
+            $r.Count | Should -Be 2
+            $r | ForEach-Object { $_ | Should -Match 'nicht freigegeben' }
+        } finally { $ps.Dispose() }
+    }
+    It 'Kategorie bei keinem Ziel angehakt -> Grund statt leerem Text' {
+        $r = Send-HUNotify -Category Apps -Title 'T'
+        $r.Ok | Should -Be 0; $r.Text | Should -Match "kein aktives Ziel hat Kategorie 'Apps'"
+    }
+}
+
