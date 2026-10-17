@@ -1058,8 +1058,10 @@ function Get-HURemoteResponse($S, $Req) {
             $full = $false
             [System.Threading.Monitor]::Enter($S.Nonces.SyncRoot)
             try {
-                foreach ($k in @($S.Nonces.Keys)) { if ($S.Nonces[$k].Exp -lt $now) { $S.Nonces.Remove($k) } }
-                if ($S.Nonces.Count -ge 30 -or @($S.Nonces.Values | Where-Object { $_.Dev -eq $dh }).Count -ge 3) { $full = $true }
+                # abgelaufene weg; je Handy gilt nur die neueste Bestaetigung (Zurueck + neu pruefen, Aufheben mehrerer
+                # Zuweisungen nacheinander) - aeltere desselben Handys werden damit ungueltig
+                foreach ($k in @($S.Nonces.Keys)) { if ($S.Nonces[$k].Exp -lt $now -or $S.Nonces[$k].Dev -eq $dh) { $S.Nonces.Remove($k) } }
+                if ($S.Nonces.Count -ge 30) { $full = $true }
                 else {
                     # an Geraet, Eintrag (inkl. Code-Stand), Tenants, Parameter und Ziel gebunden (Review 031 B15)
                     $S.Nonces[$nonce] = @{ Dev = $dh; Id = $iid; Hash = "$($it.Hash)"; Tenants = $tk; Values = $pv.Values; Target = $tgt; Live = $live; Short = $short; Exp = $now.AddSeconds($script:HURemoteConfirmSec); Intune = $(if ($iv) { $iv.Req } else { $null }) }

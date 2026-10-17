@@ -223,6 +223,15 @@ Describe 'Fernbedienung: Apps und Wartung (Intune)' {
         $u.Ok | Should -BeTrue
         @($u.Req.Remove) | Should -Be @('group|schueler')
     }
+    It 'viele Pruefungen hintereinander: nie "zu viele offene Anfragen", nur die neueste Bestaetigung gilt' {
+        $S = New-IState; $t = Pair $S
+        $q = @{ op = 'unassign'; id = $G1; name = 'X'; keys = @('allDevices|') }
+        $last = $null; $first = $null
+        foreach ($i in 1..6) { $p = Req $S POST '/api/prepare' @{ id = '00000000000000c3'; tenants = @('a'); intune = $q } $t; $p.Code | Should -Be 200; if (-not $first) { $first = $p }; $last = $p }
+        @($S.Nonces.Keys).Count | Should -Be 1
+        (Req $S POST '/api/run' @{ nonce = $first.J.nonce; code = $first.J.code; pin = '4711' } $t).Code | Should -Be 403
+        (Req $S POST '/api/run' @{ nonce = $last.J.nonce; code = $last.J.code; pin = '4711' } $t).Code | Should -Be 202
+    }
     It 'Daten fuers Handy: Liste bleibt eine Liste (auch bei einem Eintrag), Zuweisungen lesbar' {
         function global:Get-HUTenantAppList { param($TenantKey, $Settings) [pscustomobject]@{ Id = $G1; Name = 'Firefox'; Typ = 'Win32'; Version = '1'; Assignments = @(1, 2) } }
         function global:Get-HUAppAssignmentRows { param($TenantKey, $Settings, $AppId) [pscustomobject]@{ Key = 'group|schueler'; Ziel = 'Schueler'; Kind = 'group'; Intent = 'required' } }
