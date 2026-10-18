@@ -37,6 +37,8 @@
 ### Doku
 - Neu: Seiten **Einstieg** (Situationen aus dem Alltag) und **Funktionen** (Top 10, alle Bereiche) im Stil von HUMig,
   Reiter oben auf allen drei Seiten.
+- README gekuerzt: nur noch Kopf, Bilder, Schnellstart und Lizenz - Funktionen, Extensions und Sicherheit stehen auf den
+  Seiten Einstieg, Funktionen und Anleitung.
 - Anleitung, INSTALL und README: Einrichtung per Admin-Anmeldung, Zertifikat, Rechte erteilen; Rechtetabelle ergaenzt
   (`DeviceManagementServiceConfig.Read.All`, `SecurityAlert.Read.All`, `Directory.Read.All` optional).
 - INSTALL: Erstinstallation per ZIP ist nur dieses eine Mal ungeprueft - Updates pruefen Pruefsummen und Signatur.
