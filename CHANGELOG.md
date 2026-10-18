@@ -1,6 +1,6 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.1.12 (in Arbeit)
+## v2.1.12
 
 Uebernahme des Vorab-Stands 2.1.9 (PR #12) auf 2.1.11. Startbildschirm und Maskierung der Quick-Script-Protokolle waren
 schon in 2.1.10 enthalten.
