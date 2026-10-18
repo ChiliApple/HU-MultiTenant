@@ -1,0 +1,89 @@
+<!--
+    HU-MultiTenant - Tenant einrichten (Admin-Anmeldung im Browser) bzw. fehlende Rechte erteilen.
+    Ein Fenster fuer beide Faelle; Texte und sichtbare Felder setzt Functions\UI-TenantSetup.ps1.
+-->
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Tenant einrichten"
+    Width="860" Height="720" MinWidth="680" MinHeight="520"
+    WindowStartupLocation="CenterOwner"
+    Background="#1E1E1E"
+    UseLayoutRounding="True"
+    ShowInTaskbar="False"
+    ResizeMode="CanResizeWithGrip">
+
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+
+    <DockPanel Margin="12">
+        <!-- Kopf -->
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <TextBlock x:Name="txtTitle" Style="{StaticResource SectionTitle}" Text="Tenant einrichten"/>
+            <TextBlock x:Name="txtIntro" Foreground="#CCCCCC" TextWrapping="Wrap" Margin="0,4,0,0"/>
+            <Border Background="#3A2F12" BorderBrush="#FFB300" BorderThickness="1" CornerRadius="3" Padding="8,5" Margin="0,8,0,0">
+                <TextBlock x:Name="txtConsentHint" Foreground="#FFE082" TextWrapping="Wrap" FontSize="12"
+                           Text="Im Zustimmungsdialog von Microsoft das H&#xE4;kchen &#x201E;Zustimmung im Namen Ihrer Organisation&#x201C; NICHT setzen - nur &#x201E;Akzeptieren&#x201C;. Sonst d&#xFC;rften alle Benutzer die Microsoft-App &#x201E;Graph Command Line Tools&#x201C; mit diesen Rechten nutzen. Kommt gar kein Dialog, besteht schon eine Zustimmung - das Protokoll unten zeigt nach der Anmeldung, ob sie f&#xFC;r alle Benutzer gilt."/>
+            </Border>
+        </StackPanel>
+
+        <!-- Fuss -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                <Button x:Name="btnStart" Content="Im Browser anmelden und einrichten" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+                <Button x:Name="btnClose" Content="Schlie&#xDF;en" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+            </StackPanel>
+            <TextBlock x:Name="txtState" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0"/>
+        </DockPanel>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="2*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Schluessel / Anzeigename (nur Einrichten) -->
+            <Grid x:Name="pnlNames" Grid.Row="0" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="180"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Schl&#xFC;ssel:" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBox x:Name="txtKey" Grid.Column="1" Style="{StaticResource DarkTextBox}"
+                         ToolTip="Kurzname ohne Leerzeichen, z. B. HLW-Leoben (wird in Skripten als $TenantKey verwendet)"/>
+                <TextBlock Grid.Column="3" Text="Anzeigename:" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBox x:Name="txtName" Grid.Column="4" Style="{StaticResource DarkTextBox}"
+                         ToolTip="leer = Name der Organisation aus Microsoft 365"/>
+            </Grid>
+
+            <DockPanel Grid.Row="1" Margin="0,0,0,4">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                    <Button x:Name="btnSelDefault" Content="Standard" Style="{StaticResource ToolButton}" Margin="0,0,4,0" ToolTip="Auswahl auf die Standard-Rechte zur&#xFC;cksetzen"/>
+                    <Button x:Name="btnSelNone" Content="Keine" Style="{StaticResource ToolButton}"/>
+                </StackPanel>
+                <TextBlock x:Name="lblPerms" Style="{StaticResource SectionTitle}" Text="Rechte (Microsoft Graph, Anwendungsberechtigungen)"/>
+            </DockPanel>
+            <ListBox x:Name="lstPerms" Grid.Row="2" Style="{StaticResource DarkListBox}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+
+            <DockPanel Grid.Row="3" Margin="0,6,0,0">
+                <TextBlock Text="Weiteres Recht:" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <Button x:Name="btnAddPerm" Content="+ Hinzuf&#xFC;gen" Style="{StaticResource ToolButton}" DockPanel.Dock="Right" Margin="6,0,0,0"/>
+                <TextBox x:Name="txtExtraPerm" Style="{StaticResource DarkTextBox}"
+                         ToolTip="Name einer Microsoft-Graph-Anwendungsberechtigung, z. B. Mail.Send (f&#xFC;r eigene Skripte)"/>
+            </DockPanel>
+            <TextBlock x:Name="txtRiskHint" Grid.Row="4" Style="{StaticResource HintText}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8"
+                       Text="Rot = weitreichendes Recht (schreibt Benutzer, Apps, Rollen, Mails oder Dateien). Wird nicht gesperrt, aber vor dem Erteilen eigens best&#xE4;tigt."/>
+
+            <!-- Fortschritt -->
+            <ListBox x:Name="lstLog" Grid.Row="5" Style="{StaticResource DarkListBox}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+        </Grid>
+    </DockPanel>
+</Window>

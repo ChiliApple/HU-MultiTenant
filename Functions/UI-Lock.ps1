@@ -425,7 +425,7 @@ function Get-HUPanicUrls {
 }
 
 function Invoke-HUPanic {
-    $msg = "NOT-AUS`n`nAlle auf diesem PC gespeicherten Client-Secrets (und das GitHub-Signier-Token) werden sofort geloescht, alle Verbindungen getrennt, gekoppelte Handys entfernt und HU-MultiTenant beendet.`n`nDanach oeffnen sich die App-Registrierungen der Tenants im Browser - dort die Secrets widerrufen, falls sie schon kopiert wurden.`n`nFortfahren?"
+    $msg = "NOT-AUS`n`nAlle auf diesem PC gespeicherten Client-Secrets und Zertifikate von HU-MultiTenant (und das GitHub-Signier-Token) werden sofort geloescht, alle Verbindungen getrennt, gekoppelte Handys entfernt und HU-MultiTenant beendet.`n`nDanach oeffnen sich die App-Registrierungen der Tenants im Browser - dort die Secrets widerrufen bzw. die App-Registrierungen loeschen.`n`nFortfahren?"
     if (-not (Confirm-HU $msg -Title 'Not-Aus' -Warning)) { return }
     $base = Join-Path $env:APPDATA 'HU-MultiTenant'
     $n = 0
@@ -448,8 +448,17 @@ function Invoke-HUPanic {
             $n++
         } catch { try { Write-HULog -Message "Not-Aus: $($f.Name) nicht geloescht: $($_.Exception.Message)" -Level 'ERROR' } catch { } }
     }
+    # Zertifikate (nicht exportierbar, Benutzerspeicher): eingetragene und alle mit Namen "HU-MultiTenant ..."
+    $nc = 0
+    try {
+        $tps = @($script:Settings.tenants | Where-Object { "$(Get-HUProp $_ 'auth' '')" -eq 'certificate' } | ForEach-Object { "$($_.certThumbprint)" })
+        $tps += @(Get-ChildItem -LiteralPath 'Cert:\CurrentUser\My' -ErrorAction SilentlyContinue | Where-Object { $_.Subject -like 'CN=HU-MultiTenant *' } | ForEach-Object { $_.Thumbprint })
+        foreach ($tp in @($tps | Where-Object { $_ } | Select-Object -Unique)) {
+            try { if (Remove-HUCertLocal $tp) { $nc++ } } catch { try { Write-HULog -Message "Not-Aus: Zertifikat $tp nicht geloescht: $($_.Exception.Message)" -Level 'ERROR' } catch { } }
+        }
+    } catch { }
     $left = @(Get-ChildItem -LiteralPath $base -Filter '*.cred' -File -ErrorAction SilentlyContinue).Count
-    try { Write-HULog -Message "=== NOT-AUS: $n Secret-Datei(en) geloescht, $left uebrig ===" -Level 'WARN' } catch { }
+    try { Write-HULog -Message "=== NOT-AUS: $n Secret-Datei(en) und $nc Zertifikat(e) geloescht, $left Secret-Datei(en) uebrig ===" -Level 'WARN' } catch { }
     foreach ($u in @(Get-HUPanicUrls)) { Open-HUUrl $u }
     if ($left -gt 0) { Show-HUMessage "Achtung: $left Secret-Datei(en) konnten nicht geloescht werden.`nOrdner: $base" -Title 'Not-Aus' -Icon Error }
     $script:SkipCloseChecks = $true

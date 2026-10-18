@@ -68,7 +68,7 @@ function Start-HUPermFetch([string[]]$Keys, [switch]$Force) {
             foreach ($k in $keys) {
                 $r = [pscustomobject]@{ Key = $k; Roles = @(); Error = '' }
                 try {
-                    if (-not (Get-StoredCredential -TenantKey $k -Settings $settings)) { $r.Error = 'kein Secret gespeichert'; $out += $r; continue }
+                    if (-not (Test-HUTenantCredential -TenantKey $k -Settings $settings)) { $r.Error = 'kein Zugang auf diesem PC (Zertifikat/Secret)'; $out += $r; continue }
                     $p = @{ TenantKey = $k; Settings = $settings; ErrorAction = 'SilentlyContinue' }
                     if ($force) { $p.ForceRefresh = $true }
                     $tok = Get-GraphToken @p
@@ -190,6 +190,18 @@ function Show-HUPermissions([string]$TenantKey = '') {
             $t = @($script:Settings.tenants) | Where-Object { "$($_.key)" -eq $script:PermUi.Key } | Select-Object -First 1
             $appId = "$($t.appId)"
             Open-HUUrl $(if ($appId -match '^[0-9a-fA-F-]{36}$') { "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/$appId" } else { 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade' })
+        })
+    $c.btnGrant.Add_Click({
+            $ui = $script:PermUi
+            $k = $ui.Key
+            $pre = @(); if ($script:SelectedExtension) { $pre = @($script:SelectedExtension.RequiredPermissions | Where-Object { $_ }) }
+            $added = @(Show-HUTenantSetupDialog -TenantKey $k -Preselect $pre -Owner $ui.Window)
+            if ($script:PermUi) {
+                $script:PermCache.Remove($k)
+                Update-HUPermView
+                if ($added.Count) { $script:PermUi.C.txtStatus.Text = "Erteilt: $($added -join ', ') - erscheint nach etwa 1 Minute im Token (dann Neu lesen)." }
+                else { Start-HUPermFetch -Keys @($k) -Force }
+            }
         })
     $c.btnClose.Add_Click({ $script:PermUi.Window.Close() })
     $w.Add_Loaded({ Update-HUPermView })

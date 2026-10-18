@@ -63,7 +63,7 @@ function Show-HUSettingsDialog {
     $w = $d.Window; $c = $d.C
     Restore-HUDialogState $w 'SettingsWindow'
     $S = $script:Settings
-    $st = @{ Saved = $false; Tenants = [System.Collections.Generic.List[object]]::new(); Cur = -1; Busy = $false }
+    $st = @{ Saved = $false; SetupDone = $false; Tenants = [System.Collections.Generic.List[object]]::new(); Cur = -1; Busy = $false }
     foreach ($t in @($S.tenants)) { $st.Tenants.Add(($t | ConvertTo-Json -Depth 6 | ConvertFrom-Json)) }
 
     # ---------------- Allgemein ----------------
@@ -175,8 +175,10 @@ function Show-HUSettingsDialog {
         param($t)
         $i = Get-HUSecretInfo "$($t.key)"
         $has = $false
-        try { $has = [bool](Get-StoredCredential -TenantKey "$($t.key)" -Settings ([pscustomobject]@{ tenants = @($t); credentials = $S.credentials })) } catch { }
-        if (-not $has) { return @('Kein Secret auf diesem PC gespeichert', '#FF9800') }
+        $cert = Test-HUTenantCertAuth $t
+        try { $has = [bool](Test-HUTenantCredential -TenantKey "$($t.key)" -Settings ([pscustomobject]@{ tenants = @($t); credentials = $S.credentials })) } catch { }
+        if (-not $has) { return @($(if ($cert) { 'Zertifikat fehlt auf diesem PC - Tenant neu einrichten' } else { 'Kein Secret auf diesem PC gespeichert' }), '#FF9800') }
+        if ($cert -and $i.EndDate) { return @("Zertifikat gueltig bis $($i.EndDate.ToString('dd.MM.yyyy'))", $i.Color) }
         if ($i.EndDate) { return @(($i.Text -replace '^\S+\s', ''), $i.Color) }
         return @('Secret gespeichert, Ablauf unbekannt', '#858585')
     }
@@ -239,6 +241,14 @@ function Show-HUSettingsDialog {
             $c.tProtected.Text = (@(Get-HUProp $t 'protectedAppIds' @()) -join ', ')
             $c.tTestResult.Text = ''
             if ($on) { $sl = & $secretLine $t; $c.tSecretState.Text = $sl[0]; $c.tSecretState.Foreground = Get-HUBrush $sl[1] } else { $c.tSecretState.Text = '' }
+            # Zertifikat statt Secret: passende Knoepfe zeigen
+            $isCert = ($on -and (Test-HUTenantCertAuth $t))
+            foreach ($b in @($c.btnSecretSet, $c.btnSecretDelete)) { $b.Visibility = $(if ($isCert) { 'Collapsed' } else { 'Visible' }) }
+            foreach ($b in @($c.btnCertRenew, $c.btnCertDelete)) { $b.Visibility = $(if ($isCert) { 'Visible' } else { 'Collapsed' }) }
+            $c.btnTenantTest.Content = $(if ($isCert) { 'Verbindung pruefen' } else { 'Verbindung + Secret pruefen' })
+            # nur fuer Secrets: Credential-Name, manuelles Ablaufdatum, dauerhaft speichern
+            foreach ($x in @($c.lblCredName, $c.tCredName, $c.tExpires, $c.tPersist)) { $x.Visibility = $(if ($isCert) { 'Collapsed' } else { 'Visible' }) }
+            $c.lblExpires.Text = $(if ($isCert) { 'Anmeldung' } else { "Secret g$([char]0xFC)ltig bis (manuell)" })
         } finally { $st.Busy = $false }
     }
     $c.lstTenants.Add_SelectionChanged({
@@ -258,6 +268,24 @@ function Show-HUSettingsDialog {
         })
     }
 
+    $c.btnTenantSetup.Add_Click({
+        & $formToTenant
+        $done = @(Show-HUTenantSetupDialog -Owner $w)
+        if (-not $done.Count) { return }
+        # gespeicherte Eintraege in die Liste dieses Fensters uebernehmen (gleiche tenantId ersetzen)
+        foreach ($k in $done) {
+            $src = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $k })[0]
+            if (-not $src) { continue }
+            $copy = $src | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+            $j = -1
+            for ($i = 0; $i -lt $st.Tenants.Count; $i++) { if ("$($st.Tenants[$i].tenantId)" -eq "$($copy.tenantId)") { $j = $i } }
+            if ($j -ge 0) { $st.Tenants[$j] = $copy } else { $st.Tenants.Add($copy); $j = $st.Tenants.Count - 1 }
+            $st.Cur = $j
+        }
+        $st.SetupDone = $true
+        & $refreshList $st.Cur
+        & $tenantToForm
+    })
     $c.btnTenantAdd.Add_Click({
         & $formToTenant
         $n = $st.Tenants.Count + 1
@@ -316,6 +344,37 @@ function Show-HUSettingsDialog {
         Clear-HUSecretState "$($t.key)"
         & $refreshList $st.Cur; & $tenantToForm
     })
+    $c.btnCertRenew.Add_Click({
+        if ($st.Cur -lt 0) { return }
+        & $formToTenant
+        $t = $st.Tenants[$st.Cur]
+        $saved = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq "$($t.key)" -and "$($_.tenantId)" -eq "$($t.tenantId)" })[0]
+        if (-not $saved -or -not (Test-HUTenantCertAuth $saved)) { Show-HUMessage 'Zuerst speichern (der Tenant ist noch nicht in settings.json).' -Icon Warning -Owner $w; return }
+        if (-not (Confirm-HU "Zertifikat fuer '$($t.displayName)' jetzt erneuern?`n`nNeues Zertifikat (12 Monate) an der App eintragen, testen, altes entfernen. Dauert bis zu 2 Minuten." -Owner $w)) { return }
+        $c.btnCertRenew.IsEnabled = $false
+        $c.tTestResult.Text = 'Erneuere Zertifikat ... (Ergebnis auch im Protokoll)'; $c.tTestResult.Foreground = Get-HUBrush '#90CAF9'
+        $started = Start-HUCertRenew "$($t.key)" -Done {
+            param($k, $ok, $txt)
+            try {
+                $c.btnCertRenew.IsEnabled = $true
+                $src = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $k })[0]
+                foreach ($x in $st.Tenants) { if ("$($x.key)" -eq $k -and $src) { Set-HUProp $x 'certThumbprint' "$($src.certThumbprint)" } }
+                $c.tTestResult.Text = $txt; $c.tTestResult.Foreground = Get-HUBrush $(if ($ok) { '#8BC34A' } else { '#F44336' })
+                & $refreshList $st.Cur
+            } catch { }
+        }
+        if (-not $started) { $c.btnCertRenew.IsEnabled = $true; $c.tTestResult.Text = 'Erneuerung laeuft bereits oder Zertifikat fehlt.' }
+    })
+    $c.btnCertDelete.Add_Click({
+        if ($st.Cur -lt 0) { return }
+        $t = $st.Tenants[$st.Cur]
+        if (-not (Confirm-HU "Zertifikat fuer '$($t.displayName)' auf diesem PC loeschen?`n`nDieser PC hat danach KEINEN Zugang mehr zum Tenant (Not-Aus, z. B. bei Verlust oder Weitergabe des PCs). Wieder herstellen: Tenant neu einrichten.`n`nDie App-Registrierung im Tenant bleibt - bei Bedarf im Entra Admin Center loeschen." -Warning -Owner $w)) { return }
+        try {
+            if (Remove-HUTenantCertLocal $t) { $c.tTestResult.Text = 'Zertifikat geloescht.'; Write-HULogWarn 'Zertifikat auf diesem PC geloescht (Not-Aus).' -Tenant "$($t.key)" }
+            else { $c.tTestResult.Text = 'Kein Zertifikat auf diesem PC gefunden.' }
+        } catch { $c.tTestResult.Text = "Nicht geloescht: $($_.Exception.Message)" }
+        & $refreshList $st.Cur; & $tenantToForm
+    })
     $c.btnOpenApp.Add_Click({
         & $formToTenant
         $t = if ($st.Cur -ge 0) { $st.Tenants[$st.Cur] } else { $null }
@@ -337,7 +396,7 @@ function Show-HUSettingsDialog {
             $x = Get-AppSecretExpiry -TenantKey "$($t.key)" -Settings $tmp -Token $tok
             Set-HUSecretCacheEntry "$($t.key)" $x
             $txt = "Anmeldung OK - $($perms.Count) Anwendungsberechtigungen."
-            if ($x.Status -eq 'OK' -and $x.EndDate) { $txt += " Secret gueltig bis $(([datetime]$x.EndDate).ToString('dd.MM.yyyy'))$(if (-not $x.Matched) { ' (naechstes ablaufendes Secret der App)' })." }
+            if ($x.Status -eq 'OK' -and $x.EndDate) { $txt += " $(if (Test-HUTenantCertAuth $t) { 'Zertifikat' } else { 'Secret' }) gueltig bis $(([datetime]$x.EndDate).ToString('dd.MM.yyyy'))$(if (-not $x.Matched) { ' (naechstes ablaufendes Secret der App)' })." }
             elseif ($x.Status -eq 'NoPermission') { $txt += " Ablaufdatum nicht lesbar: Application.Read.All fehlt - Datum manuell eintragen oder Berechtigung erteilen." }
             else { $txt += " Ablaufdatum: $($x.Error)" }
             $c.tTestResult.Text = $txt
@@ -395,6 +454,12 @@ function Show-HUSettingsDialog {
         $wd = 0
         if (-not [int]::TryParse($c.txtWarnDays.Text.Trim(), [ref]$wd) -or $wd -lt 1 -or $wd -gt 365) { $c.tabSettings.SelectedItem = $c.tabGeneral; Show-HUMessage 'Warnschwelle: Zahl zwischen 1 und 365.' -Icon Warning -Owner $w; return }
 
+        # im Hintergrund erneuerte Zertifikate nicht mit dem alten Stand ueberschreiben
+        foreach ($t in $st.Tenants) {
+            if (-not (Test-HUTenantCertAuth $t)) { continue }
+            $cur = @($script:Settings.tenants | Where-Object { "$($_.tenantId)" -eq "$($t.tenantId)" -and "$($_.appId)" -eq "$($t.appId)" })[0]
+            if ($cur -and "$($cur.certThumbprint)" -and "$($cur.certThumbprint)" -ne "$($t.certThumbprint)") { Set-HUProp $t 'certThumbprint' "$($cur.certThumbprint)" }
+        }
         Set-HUProp $S 'tenants' @($st.Tenants.ToArray())
         Set-HUProp $S.ui 'startTab' "$($c.cmbStartTab.SelectedItem.Tag)"
         Set-HUProp $S.ui 'secretWarnDays' $wd
@@ -441,5 +506,5 @@ function Show-HUSettingsDialog {
     switch ($Tab) { 'Tenants' { $c.tabSettings.SelectedItem = $c.tabTenants } 'Update' { $c.tabSettings.SelectedItem = $c.tabUpdate } default { } }
     $c.txtSettingsInfo.Text = "Programmordner: $($script:AppRoot)"
     [void]$w.ShowDialog()
-    return $st.Saved
+    return ($st.Saved -or $st.SetupDone)
 }
