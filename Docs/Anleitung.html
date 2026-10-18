@@ -176,6 +176,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   </ol>
   <h3 id="qs-vars">Eigene Snippets schreiben</h3>
   <p>Im Skript stehen <code>$Token</code>, <code>$TenantKey</code> und die Graph-Funktionen schon bereit. Alles zum Schreiben – Funktionen, Regeln, Parameter, Vorlagen – steht in <code>SNIPPET-DEVELOPMENT.md</code> im Programmordner (online: <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/SNIPPET-DEVELOPMENT.md">GitHub</a>).</p>
+  <p>Lässt du das Snippet von einem KI-Assistenten schreiben, gib ihm den Skill <code>skills/hu-snippet</code> mit (<a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/skills/README.md">Anleitung</a>): Vorlagen und ein Prüfprogramm sorgen dafür, dass der Code beim ersten Lauf funktioniert.</p>
   <h3 id="qs-multi">Mehrere Tenants</h3>
   <p><span class="ui">Mehrere ▾</span> öffnet eine Liste mit Haken. Ab zwei Haken läuft das Skript nacheinander je Tenant – <code>$Token</code> und <code>$TenantKey</code> gelten jeweils für den laufenden Tenant. Ausgegebene Objekte bekommen die Spalte <i>Tenant</i>, ein Fehler bricht nur diesen Tenant ab. <span class="ui">Keine</span> schaltet zurück auf die Einzelauswahl.</p>
   <h3 id="qs-param">Parameter</h3>
@@ -225,7 +226,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <p><span class="ui">🛠 Berechtigungen</span> zeigt je Tenant, welche Graph-Anwendungsberechtigungen erteilt sind – mit Risiko, Beschreibung und welche Extension sie nutzt. Ist eine Extension gewählt, steht oben, ob ihre Berechtigungen vorhanden sind. <span class="ui">Alle Tenants vergleichen</span> zeigt alles in einer Tabelle. Verbinden ist dafür nicht nötig. Nach einer Änderung in Entra (Administratorzustimmung) <span class="ui">↻ Neu lesen</span>.</p>
   <p><span class="ui b">Fehlende Rechte erteilen …</span> zeigt alle Rechte mit ✔ erteilt / ✖ fehlt – vorausgewählt sind die fehlenden Standard-Rechte und die der gewählten Extension; eigene (z. B. für Snippets) unter <i>Weiteres Recht</i>. Ein Global Administrator meldet sich im Browser an, die gewählten Rechte werden der App zusätzlich erteilt – entfernt wird nichts. Weitreichende Rechte sind rot und werden eigens bestätigt. Neue Rechte stehen nach etwa einer Minute im Token, dann <span class="ui">↻ Neu lesen</span>. Funktioniert für eingerichtete und manuell angelegte Tenants.</p>
   <h3 id="ext-own">Eigene Extensions</h3>
-  <p>Vorlage <code>Extensions\Template.ps1</code> kopieren, Kopf ausfüllen (<code>.REQUIRED_PERMISSIONS</code>, <code>.PARAM</code>, <code>.DRY_RUN_CAPABLE</code>, <code>.MODE</code>, <code>.RUNTIME</code>) und ↻ drücken. Details: <code>EXTENSION-DEVELOPMENT.md</code>. Eigene Extensions bleiben bei Updates erhalten.</p>
+  <p>Vorlage <code>Extensions\Template.ps1</code> kopieren, Kopf ausfüllen (<code>.REQUIRED_PERMISSIONS</code>, <code>.PARAM</code>, <code>.DRY_RUN_CAPABLE</code>, <code>.MODE</code>, <code>.RUNTIME</code>) und ↻ drücken. Details: <code>EXTENSION-DEVELOPMENT.md</code>. Eigene Extensions bleiben bei Updates erhalten. Für KI-Assistenten gibt es den Skill <code>skills/hu-extension</code> mit Prüfprogramm (<a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/skills/README.md">Anleitung</a>).</p>
 </section>
 
 <section id="apps">

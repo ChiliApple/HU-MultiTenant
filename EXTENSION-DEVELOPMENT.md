@@ -4,6 +4,8 @@
 
 **Stand:** v2.0 | **Zielgruppe:** Administratoren, die eigene Reports oder Aktionen bauen | **Runtime:** PowerShell 5.1 (Standard), PowerShell 7 (optional via `.RUNTIME`)
 
+**Geprüfte Vorlagen und Prüfprogramm:** [skills/hu-extension](skills/hu-extension/SKILL.md) (Abschnitt 18). Wer eine Extension mit einem Assistenzprogramm schreiben lässt, gibt ihm diese Anleitung mit.
+
 ---
 
 ## 1. Was ist eine Extension?
@@ -127,9 +129,11 @@ function Invoke-<Name> {
 **Regeln:**
 - `[CmdletBinding()]` ist PFLICHT
 - `$TenantKey` und `$Token` sind PFLICHT-Parameter
-- `[switch]$WhatIf` NUR wenn `.DRY_RUN_CAPABLE = $true`
+- `[switch]$WhatIf` NUR wenn `.DRY_RUN_CAPABLE = $true` – und dann **ohne** `SupportsShouldProcess` im `[CmdletBinding()]` (sonst sind `WhatIf`/`Confirm` doppelt definiert und die Extension startet nicht)
+- Nur **eine** Funktion mit `Invoke-` pro Datei; Hilfsfunktionen heißen `Get-…`, `Test-…`, `Format-…` (gestartet wird die erste `Invoke-*`-Funktion der Datei)
 - **NIEMALS `[switch]$Verbose` deklarieren** — `[CmdletBinding()]` stellt `-Verbose` automatisch bereit. Manuelle Deklaration verursacht: `"Parameter mit dem Namen verbose wurde mehrfach definiert."`
-- Rückgabewert: `[PSCustomObject]` mit mindestens `Success = $true/$false`
+- **Fehler = `throw`.** Die Oberfläche wertet nur aus, ob eine Ausnahme kam. Ein Rückgabeobjekt mit `Success = $false` wird **nicht** gelesen – die Oberfläche meldet trotzdem „Fertig“. Der äußere `catch` protokolliert und endet mit `throw`.
+- Rückgabewert bei Erfolg: `[PSCustomObject]` (z. B. `Success = $true` plus Kennzahlen)
 
 ## 5. Verfügbare Core-Funktionen
 
@@ -140,6 +144,9 @@ Die Extension wird per dot-source in den Kontext geladen. Folgende Module sind a
 ```powershell
 # IMMER Write-HULog verwenden, NIEMALS Write-Host oder Write-Output
 Write-HULog -Message 'Text' -Level 'INFO' -Tenant $TenantKey
+
+# Kurzformen (Message an erster Stelle, dazu nur -Tenant):
+Write-HULogInfo 'Text' -Tenant $TenantKey    # auch Write-HULogOK, Write-HULogWarn, Write-HULogError, Write-HULogDebug
 
 # Verfügbare Level: OK, WARN, ERROR, INFO, DEBUG
 # Tenant-Parameter ist optional aber EMPFOHLEN (erscheint als [TenantKey] im Log)
@@ -154,10 +161,10 @@ Write-HULog -Message 'Text' -Level 'INFO' -Tenant $TenantKey
 $result = Invoke-GraphRequest -Token $Token -Endpoint '/deviceManagement/managedDevices' -Method GET
 
 # Mit Retry (429/5xx, Exponential Backoff) — EMPFOHLEN
-$result = Invoke-GraphRequestWithRetry -Token $Token -Endpoint '/deviceManagement/managedDevices' -TenantKey $TenantKey -Settings (Get-Settings)
+$result = Invoke-GraphRequestWithRetry -Token $Token -Endpoint '/deviceManagement/managedDevices' -TenantKey $TenantKey
 
 # Automatische Pagination (alle Seiten sammeln) — FÜR GROSSE DATENMENGEN
-$allItems = Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices' -TenantKey $TenantKey -Settings (Get-Settings)
+$allItems = Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices' -TenantKey $TenantKey
 
 # Convenience-Funktionen:
 $devices = Get-ManagedDevices -Token $Token -TenantKey $TenantKey -Settings (Get-Settings)
@@ -172,12 +179,22 @@ $ok = Test-GraphPermission -Token $Token -Permission 'DeviceManagementManagedDev
 $perms = Get-TokenPermissions -Token $Token  # Gibt ArrayList aller Permissions zurück
 ```
 
+**Wichtig bei den drei Aufruf-Funktionen:**
+
+- `Invoke-GraphRequest` und `Invoke-GraphRequestWithRetry` werfen bei HTTP-Fehlern **keine Ausnahme**, sondern liefern ein Objekt mit `IsError`, `StatusCode`, `ErrorMessage`. Das Ergebnis jedes ändernden Aufrufs prüfen (`if ($r.IsError) { … }`) und Fehler am Ende mit `throw` melden.
+- `Invoke-GraphRequestAll` ist nur für **Listen** (`value`-Array). Für ein Einzelobjekt (`/users/<id>`) liefert es nichts – dort `Invoke-GraphRequest`. Fällt eine Folgeseite aus, kommen die bisherigen Einträge plus eine **Warnung**, keine Ausnahme: mit `-WarningVariable wv -WarningAction SilentlyContinue` abfangen und bei `$wv` mit `throw` abbrechen (vor ändernden Aufrufen Pflicht). `-ApiVersion` gibt es dort nicht; `beta` über die absolute Adresse `https://graph.microsoft.com/beta/…`.
+- Methoden: `GET`, `POST`, `PATCH`, `DELETE` (kein `PUT`); `-Body` nur bei `POST`/`PATCH`, als Hashtable (kein JSON-Text). Eigene Header (`ConsistencyLevel`, `$count`, `$search`) gibt es nicht – clientseitig filtern.
+- Eine absolute `https://`-Adresse wird unverändert aufgerufen, das Token geht mit: nur `https://graph.microsoft.com/…`.
+- `-TenantKey` immer mitgeben (Token-Erneuerung bei langen Läufen, Zuordnung im Protokoll).
+
 ### HU.Tenant
 
+Im Extension-Lauf (eigener Runspace) werden die Einstellungen **nicht geladen**: `Get-Settings` liefert `$null`, `Get-AllTenants` eine leere Liste (mit Warnung), `Get-TenantByKey` `$null`. Alles, was die Extension über den Tenant wissen muss, kommt über `-TenantKey`, `-Token` und die `.PARAM`-Felder.
+
 ```powershell
-$settings = Get-Settings                        # Globales Settings-Objekt
-$tenant = Get-TenantByKey -TenantKey $TenantKey # Einzelner Tenant (.Key, .TenantId, .AppId, .Domain)
-$allTenants = Get-AllTenants                     # Alle Tenants
+$settings = Get-Settings                        # im Extension-Lauf $null
+$tenant = Get-TenantByKey -TenantKey $TenantKey # im Extension-Lauf $null
+$allTenants = Get-AllTenants                     # im Extension-Lauf leer
 ```
 
 ### HU.Excel (Report-Generierung)
@@ -185,8 +202,8 @@ $allTenants = Get-AllTenants                     # Alle Tenants
 ```powershell
 # ImportExcel-Modul prüfen/installieren (am Anfang der Extension aufrufen)
 if (-not (Initialize-HUExcel)) {
-    Write-HULog -Message 'ImportExcel nicht verfuegbar' -Level 'ERROR' -Tenant $TenantKey
-    return [PSCustomObject]@{ Success = $false; Error = 'ImportExcel not available' }
+    Write-HULogError 'ImportExcel nicht verfuegbar' -Tenant $TenantKey
+    throw 'ImportExcel nicht verfuegbar'
 }
 
 # Daten als Sheet exportieren (Export-Excel aus ImportExcel-Modul)
@@ -242,43 +259,64 @@ if ($r.Failed) { Write-HULog -Message "Teams: $($r.Text)" -Level 'WARN' -Tenant 
 
 **WICHTIG:** Alle Excel-Reports verwenden ImportExcel (EPPlus-basiert). Excel-COM-Interop (`New-Object -ComObject Excel.Application`) ist **NICHT** mehr zulässig. Kein `Set-ExcelCellValue`, kein `ReleaseComObject`, kein COM-Cleanup nötig.
 
-## 6. Extension-Struktur (Vollständiges Template)
+## 6. Extension-Struktur (geprüfte Vorlagen)
+
+Beide Vorlagen liegen als Dateien in `skills/hu-extension/templates/`, sind vom Prüfprogramm ohne Befund akzeptiert und laufen in einem automatischen Test über den echten Lader gegen eine Graph-Attrappe. Datei kopieren, nach Schema umbenennen (Abschnitt 2), Kopf und Funktion anpassen.
+
+**Vorlage 1 – Bericht (nur lesen, optional Excel):**
 
 ```powershell
 <#
 .SYNOPSIS
-    Kurze Beschreibung
-
+    Geraete ohne Synchronisierung seit X Tagen (Beispiel-Extension, nur lesen)
 .DESCRIPTION
-    Detaillierte Beschreibung.
-
+    Listet Intune-Geraete, deren letzte Synchronisierung laenger her ist als der Schwellwert.
+    Ausgabe im Protokoll und, wenn ImportExcel verfuegbar ist, als Excel-Bericht mit Dashboard.
 .REQUIRED_PERMISSIONS
     DeviceManagementManagedDevices.Read.All
-
 .REQUIRED_ROLES
     Global Administrator
-
 .CATEGORY
     Device
-
 .TARGETS
-    ["Schule-A", "Schule-B", "Schule-C"]
-
+    []
 .BATCH_CAPABLE
-    $true
-
+    true
 .DRY_RUN_CAPABLE
-    $true
-
+    false
 .RUNTIME
     PS5
-
+.MODE
+    ReadOnly
+.PARAM
+    Tage|int|Ohne Sync seit Tagen|30
+    Excel|bool|Excel-Bericht erstellen|true
 .EXAMPLE
-    . .\MeineExtension.ps1
-    Invoke-MeineExtension -TenantKey "Meine-Schule" -Token $token
+    . .\Device-BeispielSyncBericht.ps1
+    Invoke-BeispielSyncBericht -TenantKey 'Schule-1' -Token $token -Tage 30
 #>
 
-function Invoke-MeineExtension {
+# Hilfsfunktionen duerfen NICHT mit Invoke- beginnen (die Oberflaeche sucht die Einstiegsfunktion ueber dieses Praefix)
+function Get-BeispielSyncBerichtPfad {
+    param([Parameter(Mandatory)][string]$TenantKey)
+    $wurzel = if ($AppRoot) { $AppRoot } else { (Get-Item $PSScriptRoot).Parent.Parent.FullName }
+    $ziel = Join-Path $wurzel 'Reports'
+    $cfg = Join-Path $wurzel 'Config\settings.json'
+    if (Test-Path -LiteralPath $cfg) {
+        try {
+            $rep = (Get-Content -LiteralPath $cfg -Raw -Encoding UTF8 | ConvertFrom-Json).reporting
+            if ($rep -and $rep.outputPath) {
+                $ziel = if ("$($rep.outputPath)".StartsWith('.')) { Join-Path $wurzel $rep.outputPath } else { "$($rep.outputPath)" }
+            }
+        }
+        catch { Write-HULogDebug "settings.json nicht lesbar: $($_.Exception.Message)" -Tenant $TenantKey }
+    }
+    $ordner = Join-Path $ziel ('HU-Reports_' + (Get-Date -Format 'yyyy-MM-dd'))
+    if (-not (Test-Path -LiteralPath $ordner)) { New-Item -Path $ordner -ItemType Directory -Force | Out-Null }
+    return (Join-Path $ordner ("SyncBericht_${TenantKey}_" + (Get-Date -Format 'HHmmss') + '.xlsx'))
+}
+
+function Invoke-BeispielSyncBericht {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -287,75 +325,153 @@ function Invoke-MeineExtension {
         [Parameter(Mandatory)]
         [string]$Token,
 
-        [switch]$WhatIf
+        [int]$Tage = 30,
+
+        [bool]$Excel = $true
     )
 
-    # ================================================================
-    # 1. PERMISSION VALIDATION
-    # ================================================================
-    Write-HULog -Message 'Validating permissions...' -Level 'INFO' -Tenant $TenantKey
+    try {
+        Write-HULogInfo "Lade Intune-Geraete ..." -Tenant $TenantKey
+        $wv = $null
+        $dev = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices?$select=deviceName,userPrincipalName,operatingSystem,lastSyncDateTime' -TenantKey $TenantKey -WarningVariable wv -WarningAction SilentlyContinue)
+        if ($wv) { throw "Abfrage unvollstaendig: $($wv -join ' | ')" }
+        Write-HULogOK "$($dev.Count) Geraete geladen." -Tenant $TenantKey
 
-    $requiredPerm = 'DeviceManagementManagedDevices.Read.All'
-    if (-not (Test-GraphPermission -Token $Token -Permission $requiredPerm)) {
-        Write-HULog -Message "Missing permission: $requiredPerm" -Level 'ERROR' -Tenant $TenantKey
-        return [PSCustomObject]@{ Success = $false; Error = "Missing permission: $requiredPerm" }
-    }
-    Write-HULog -Message 'Permissions OK' -Level 'OK' -Tenant $TenantKey
-
-    # ================================================================
-    # 2. DRY-RUN CHECK
-    # ================================================================
-    if ($WhatIf) {
-        Write-HULog -Message 'DRY-RUN: Simuliere Ausführung...' -Level 'WARN' -Tenant $TenantKey
-        # ... Simulation ...
-        return [PSCustomObject]@{ Success = $true; DryRun = $true; Message = 'Simulation abgeschlossen' }
-    }
-
-    # ================================================================
-    # 3. DATEN ABRUFEN
-    # ================================================================
-    Write-HULog -Message 'Fetching data...' -Level 'INFO' -Tenant $TenantKey
-
-    $result = Get-ManagedDevices -Token $Token -TenantKey $TenantKey -Settings (Get-Settings)
-    if (-not $result -or $result.Count -eq 0) {
-        Write-HULog -Message 'No data found.' -Level 'WARN' -Tenant $TenantKey
-        return [PSCustomObject]@{ Success = $false; Error = 'No data' }
-    }
-
-    $devices = $result.Devices
-    Write-HULog -Message "$($result.Count) device(s) retrieved." -Level 'OK' -Tenant $TenantKey
-
-    # ================================================================
-    # 4. DATEN VERARBEITEN
-    # ================================================================
-    $counter = 0
-    foreach ($item in $devices) {
-        $counter++
-        # Fortschritt loggen (alle 25 Items)
-        if ($counter % 25 -eq 0) {
-            Write-HULog -Message "[$counter/$($result.Count)] Processing..." -Level 'INFO' -Tenant $TenantKey
+        $grenze = (Get-Date).AddDays(-$Tage)
+        $zeilen = [System.Collections.ArrayList]::new()
+        foreach ($d in $dev) {
+            $sync = $null
+            if ($d.lastSyncDateTime) { $sync = [datetime]$d.lastSyncDateTime }
+            if ($sync -and $sync -ge $grenze) { continue }
+            [void]$zeilen.Add([pscustomobject]@{
+                    Geraet      = $d.deviceName
+                    Benutzer    = $d.userPrincipalName
+                    System      = $d.operatingSystem
+                    LetzterSync = $(if ($sync) { $sync.ToString('yyyy-MM-dd') } else { 'nie' })
+                    TageAlt     = $(if ($sync) { [int][Math]::Floor(((Get-Date) - $sync).TotalDays) } else { 9999 })
+                })
         }
-        # ... pro Item ...
+
+        $liste = @($zeilen | Sort-Object -Property TageAlt -Descending)
+        if ($liste.Count) { Write-HULogWarn "$($liste.Count) von $($dev.Count) Geraeten ohne Sync seit $Tage Tagen." -Tenant $TenantKey }
+        else { Write-HULogOK "Alle Geraete synchronisieren innerhalb von $Tage Tagen." -Tenant $TenantKey }
+        $n = 0
+        foreach ($z in $liste) {
+            $n++
+            Write-HULogInfo ("{0,-25} | {1,-30} | letzter Sync: {2}" -f $z.Geraet, $z.Benutzer, $z.LetzterSync) -Tenant $TenantKey
+            if ($n % 25 -eq 0) { Write-HULogInfo "[$n/$($liste.Count)] ..." -Tenant $TenantKey }
+        }
+
+        $pfad = ''
+        if ($Excel -and $liste.Count) {
+            if (Initialize-HUExcel) {
+                $pfad = Get-BeispielSyncBerichtPfad -TenantKey $TenantKey
+                New-HUExcelReport -Data $liste -SheetName 'OhneSync' -ReportPath $pfad -PrimaryKeyColumn 'Geraet' -ConditionalColumns @('System')
+                Add-HUExcelDashboard -WorkbookPath $pfad -TenantKey $TenantKey -ReportTitle 'Geraete ohne Sync' `
+                    -Metrics ([ordered]@{ 'Geraete gesamt' = $dev.Count; 'Ohne Sync' = $liste.Count }) `
+                    -SheetDataSources @(@{ SheetName = 'OhneSync'; RowCount = $liste.Count; Description = "Geraete ohne Sync seit $Tage Tagen" })
+                Write-HULogOK "Excel-Bericht: $pfad" -Tenant $TenantKey
+            }
+            else { Write-HULogWarn 'ImportExcel nicht verfuegbar - kein Excel-Bericht.' -Tenant $TenantKey }
+        }
+
+        return [pscustomobject]@{ Success = $true; TenantKey = $TenantKey; Geraete = $dev.Count; OhneSync = $liste.Count; Bericht = $pfad }
     }
-
-    # ================================================================
-    # 5. REPORT GENERIEREN (optional, siehe HU.Excel Abschnitt oben)
-    # ================================================================
-    # Initialize-HUExcel → Export-Excel → Format-HUExcelWorkbook → Add-HUExcelDashboard
-
-    # ================================================================
-    # 6. ERGEBNIS
-    # ================================================================
-    Write-HULog -Message 'Extension completed successfully.' -Level 'OK' -Tenant $TenantKey
-
-    return [PSCustomObject]@{
-        Success      = $true
-        TenantKey    = $TenantKey
-        ItemCount    = $result.Count
-        GeneratedAt  = Get-Date
+    catch {
+        $zeile = if ($_.InvocationInfo.ScriptLineNumber) { " (Zeile $($_.InvocationInfo.ScriptLineNumber))" } else { '' }
+        Write-HULogError "Fehlgeschlagen: $($_.Exception.Message)$zeile" -Tenant $TenantKey
+        throw   # ohne throw meldet die Oberflaeche trotzdem "Fertig"
     }
 }
 ```
+
+**Vorlage 2 – Aktion (ändern, mit Probelauf):**
+
+```powershell
+<#
+.SYNOPSIS
+    Intune-Geraet per Name synchronisieren (Beispiel-Extension, schreibend, mit Probelauf)
+.DESCRIPTION
+    Sucht Geraete mit genau diesem Namen und stoesst die Synchronisierung an.
+    Im Probelauf (-WhatIf) wird nur angezeigt, was passieren wuerde.
+.REQUIRED_PERMISSIONS
+    DeviceManagementManagedDevices.Read.All
+    DeviceManagementManagedDevices.PrivilegedOperations.All
+.REQUIRED_ROLES
+    Global Administrator
+.CATEGORY
+    Device
+.TARGETS
+    []
+.BATCH_CAPABLE
+    false
+.DRY_RUN_CAPABLE
+    true
+.RUNTIME
+    PS5
+.MODE
+    ReadWrite
+.PARAM
+    Geraetename|string|Geraetename (genau)|
+.EXAMPLE
+    . .\Device-BeispielGeraeteSync.ps1
+    Invoke-BeispielGeraeteSync -TenantKey 'Schule-1' -Token $token -Geraetename 'NB-123' -WhatIf
+#>
+
+function Invoke-BeispielGeraeteSync {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$TenantKey,
+
+        [Parameter(Mandatory)]
+        [string]$Token,
+
+        [string]$Geraetename,
+
+        [switch]$WhatIf
+    )
+
+    try {
+        $name = "$Geraetename".Trim()
+        if (-not $name) { throw 'Bitte einen Geraetenamen eintragen.' }
+
+        $filter = "deviceName eq '" + ($name -replace "'", "''") + "'"
+        $wv = $null
+        $dev = @(Invoke-GraphRequestAll -Token $Token -Endpoint ('/deviceManagement/managedDevices?$select=id,deviceName&$filter=' + [uri]::EscapeDataString($filter)) -TenantKey $TenantKey -WarningVariable wv -WarningAction SilentlyContinue)
+        if ($wv) { throw "Abfrage unvollstaendig, nichts geaendert: $($wv -join ' | ')" }
+        if (-not $dev.Count) { Write-HULogWarn "'$name' nicht gefunden." -Tenant $TenantKey; return [pscustomobject]@{ Success = $true; Geaendert = 0 } }
+
+        $ok = 0
+        $fehler = 0
+        foreach ($d in $dev) {
+            if ($WhatIf) {
+                Write-HULogWarn "PROBELAUF: wuerde $($d.deviceName) synchronisieren." -Tenant $TenantKey
+                continue
+            }
+            Write-HULogWarn "Fuehre aus: POST syncDevice fuer $($d.deviceName)" -Tenant $TenantKey
+            $r = Invoke-GraphRequestWithRetry -Token $Token -Method POST -Endpoint "/deviceManagement/managedDevices/$($d.id)/syncDevice" -TenantKey $TenantKey
+            if ($null -ne $r -and $null -ne $r.PSObject.Properties['IsError'] -and $r.IsError -eq $true) {
+                $fehler++
+                Write-HULogError "$($d.deviceName): Fehler $($r.StatusCode) $($r.ErrorMessage)" -Tenant $TenantKey
+            }
+            else {
+                $ok++
+                Write-HULogOK "$($d.deviceName): Sync gesendet." -Tenant $TenantKey
+            }
+        }
+        if ($fehler) { throw "$fehler von $($dev.Count) Geraeten mit Fehler (siehe Protokoll)." }
+        return [pscustomobject]@{ Success = $true; Geaendert = $ok; Probelauf = [bool]$WhatIf }
+    }
+    catch {
+        $zeile = if ($_.InvocationInfo.ScriptLineNumber) { " (Zeile $($_.InvocationInfo.ScriptLineNumber))" } else { '' }
+        Write-HULogError "Fehlgeschlagen: $($_.Exception.Message)$zeile" -Tenant $TenantKey
+        throw
+    }
+}
+```
+
+Die leere Vorlage `Extensions/Template.ps1` (wird vom Lader ignoriert) enthält das Grundgerüst mit Hinweisen.
 
 ## 7. Excel-Report-Generierung (ImportExcel + HU.Excel.psm1)
 
@@ -380,8 +496,8 @@ Die ursprüngliche Excel-COM-Interop-Lösung wurde durch ImportExcel (EPPlus-bas
 # ================================================================
 
 if (-not (Initialize-HUExcel)) {
-    Write-HULog -Message 'ImportExcel nicht verfuegbar.' -Level 'ERROR' -Tenant $TenantKey
-    return [PSCustomObject]@{ Success = $false; Error = 'ImportExcel not available' }
+    Write-HULogError 'ImportExcel nicht verfuegbar.' -Tenant $TenantKey
+    throw 'ImportExcel nicht verfuegbar'
 }
 
 # ================================================================
@@ -438,7 +554,7 @@ catch {
     $errLine = if ($_.InvocationInfo.ScriptLineNumber) { " (line $($_.InvocationInfo.ScriptLineNumber))" } else { '' }
     $errCmd = if ($_.InvocationInfo.Line) { " | Code: $($_.InvocationInfo.Line.Trim())" } else { '' }
     Write-HULog -Message "Excel generation failed: $($_.Exception.Message)${errLine}${errCmd}" -Level 'ERROR' -Tenant $TenantKey
-    return [PSCustomObject]@{ Success = $false; Error = $_.Exception.Message }
+    throw
 }
 
 # Report automatisch öffnen
@@ -519,7 +635,7 @@ catch {
     $errLine = if ($_.InvocationInfo.ScriptLineNumber) { " (line $($_.InvocationInfo.ScriptLineNumber))" } else { '' }
     $errCmd = if ($_.InvocationInfo.Line) { " | Code: $($_.InvocationInfo.Line.Trim())" } else { '' }
     Write-HULog -Message "Failed: $($_.Exception.Message)${errLine}${errCmd}" -Level 'ERROR' -Tenant $TenantKey
-    return [PSCustomObject]@{ Success = $false; Error = $_.Exception.Message }
+    throw   # ohne throw meldet die Oberfläche „Fertig“, obwohl es fehlschlug
 }
 ```
 
@@ -587,7 +703,9 @@ Vor Auslieferung prüfen:
 - [ ] NUR `Write-HULog` für Output (kein Write-Host, kein Write-Output)
 - [ ] Fortschritt-Logging alle 25 Items
 - [ ] Error-Handler mit Zeilennummer + Code-Zeile
-- [ ] Rückgabe als `[PSCustomObject]` mit `Success`-Property
+- [ ] Fehler enden mit `throw` (der äußere `catch` protokolliert und wirft weiter); ein Rückgabeobjekt `Success = $false` wird von der Oberfläche nicht gelesen
+- [ ] Ergebnis jedes ändernden Graph-Aufrufs auf `IsError` geprüft; `Invoke-GraphRequestAll` mit `-WarningVariable`
+- [ ] Prüfprogramm `skills\hu-extension\tools\Test-HUExtension.ps1` ohne FEHLER
 - [ ] DryRun-Logik wenn `.DRY_RUN_CAPABLE = $true`
 
 ### Zusätzlich bei Excel-Extensions (ImportExcel):
@@ -606,6 +724,12 @@ Vor Auslieferung prüfen:
 | Fehler | Ursache | Lösung |
 |---|---|---|
 | `Parameter verbose mehrfach definiert` | `[switch]$Verbose` + `[CmdletBinding()]` | `$Verbose` entfernen |
+| `Parameter WhatIf mehrfach definiert` | `SupportsShouldProcess` + eigenes `[switch]$WhatIf` | `[CmdletBinding()]` ohne `SupportsShouldProcess`, `$WhatIf` selbst abfragen |
+| Oberfläche meldet „Fertig“, obwohl es fehlschlug | `catch` ohne `throw` (`Success = $false` wird nicht gelesen) | im `catch` mit `throw` enden |
+| Extension fehlt in der Liste | erster Blockkommentar ohne `.SYNOPSIS`, oder Schlüssel und Wert in einer Zeile | `.SYNOPSIS` ergänzen, Schlüssel allein in der Zeile |
+| Falsche Funktion gestartet | zweite Funktion mit `Invoke-` in der Datei | Hilfsfunktionen anders benennen |
+| Liste unvollständig, Änderung trotzdem ausgeführt | `Invoke-GraphRequestAll` liefert bei Seitenfehler Teilergebnis + Warnung | `-WarningVariable wv -WarningAction SilentlyContinue`, bei `$wv` `throw` |
+| Änderung ohne Fehlermeldung fehlgeschlagen | `Invoke-GraphRequest` wirft nicht, liefert `IsError` | Ergebnis prüfen |
 | `Missing permission: X.Read` | Permission ohne `.All` Suffix | `.Read.All` verwenden |
 | Target-Warnung `System.Object[]` | Verschachtelte Arrays (ConvertFrom-Json) | `@($parsed \| ForEach-Object { $_ })` |
 | GUI friert ein | Synchrone Ausführung | Main.ps1 Background-Thread verwenden |
@@ -959,3 +1083,20 @@ Erweiterungen erscheinen in der Handy-Fernbedienung erst nach Freigabe am PC (Kn
 - Ausgabe: alles, was über `Write-HULog` (ab INFO) ins Protokoll geht, erscheint live am Handy; Reports bleiben am PC (der Dateiname wird gemeldet)
 - keine Dialoge oder Eingaben – vom Handy sieht sie niemand
 - nach jeder Änderung an der Datei ist die Freigabe ungültig, bis sie am PC neu gespeichert ist (Fingerabdruck)
+
+## 18. Skill und Prüfprogramm (`skills/hu-extension`)
+
+Der Ordner `skills/hu-extension` enthält alles, damit eine Extension beim ersten Versuch lädt und läuft – für Menschen ebenso wie für Assistenzprogramme, die den Code schreiben:
+
+| Datei | Inhalt |
+|---|---|
+| `SKILL.md` | Anleitung in Kurzform: Kopf, Funktion, Graph-Aufrufe, Probelauf, Fallen, Checkliste, beide Vorlagen |
+| `templates/` | die zwei geprüften Vorlagen (Bericht, Aktion) |
+| `tools/Test-HUExtension.ps1` | statisches Prüfprogramm (Regeln E01–E16): Kopfblock, Funktionsname, `$WhatIf`/`SupportsShouldProcess`, `.PARAM`↔Parameter, Graph-Aufrufe, `throw`, Probelauf, Rechte |
+
+```powershell
+# Zielmaschine: beliebiger PC mit Windows PowerShell 5.1 oder PowerShell 7 (es wird nichts ausgeführt oder verbunden)
+powershell -NoProfile -File skills\hu-extension\tools\Test-HUExtension.ps1 -Path .\Device-MeineExtension.ps1
+```
+
+`FEHLER` heißt: lädt nicht, läuft nicht oder ist unsicher. `WARNUNG`: prüfen. Weitergabe an ein Assistenzprogramm: den Ordner als Skill hinzufügen oder `SKILL.md` mitgeben – Einzelheiten in [skills/README.md](skills/README.md).

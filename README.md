@@ -20,6 +20,7 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
   <a href="INSTALL.md">Installation</a> ·
   <a href="SNIPPET-DEVELOPMENT.md">Snippets schreiben</a> ·
   <a href="EXTENSION-DEVELOPMENT.md">Extensions entwickeln</a> ·
+  <a href="skills/README.md">KI-Skills</a> ·
   <a href="CHANGELOG.md">Änderungen</a> ·
   <a href="LICENSE">Lizenz</a>
 </p>
