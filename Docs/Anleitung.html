@@ -211,6 +211,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
     <li><span class="ui">Verlauf</span> zeigt die Läufe des markierten Snippets; darunter steht <i>Zuletzt ausgeführt</i>.</li>
     <li>Doppelklick oder <span class="ui g">▶ Im Editor öffnen</span> lädt das Snippet</li>
   </ul>
+  <div class="note tip"><b class="h">Snippet von einer KI schreiben lassen</b>Mit dem Skill <code>skills\hu-snippet</code> schreibt ein KI-Assistent Snippets, die beim ersten Lauf funktionieren – siehe <a href="#ki">KI-Skills</a>.</div>
 </section>
 
 <section id="ext">
@@ -227,10 +228,33 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   <p><span class="ui b">Fehlende Rechte erteilen …</span> zeigt alle Rechte mit ✔ erteilt / ✖ fehlt – vorausgewählt sind die fehlenden Standard-Rechte und die der gewählten Extension; eigene (z. B. für Snippets) unter <i>Weiteres Recht</i>. Ein Global Administrator meldet sich im Browser an, die gewählten Rechte werden der App zusätzlich erteilt – entfernt wird nichts. Weitreichende Rechte sind rot und werden eigens bestätigt. Neue Rechte stehen nach etwa einer Minute im Token, dann <span class="ui">↻ Neu lesen</span>. Funktioniert für eingerichtete und manuell angelegte Tenants.</p>
   <h3 id="ext-own">Eigene Extensions</h3>
   <p>Vorlage <code>Extensions\Template.ps1</code> kopieren, Kopf ausfüllen (<code>.REQUIRED_PERMISSIONS</code>, <code>.PARAM</code>, <code>.DRY_RUN_CAPABLE</code>, <code>.MODE</code>, <code>.RUNTIME</code>) und ↻ drücken. Details: <code>EXTENSION-DEVELOPMENT.md</code>. Eigene Extensions bleiben bei Updates erhalten. Für KI-Assistenten gibt es den Skill <code>skills/hu-extension</code> mit Prüfprogramm (<a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/skills/README.md">Anleitung</a>).</p>
+  <div class="note tip"><b class="h">Extension von einer KI schreiben lassen</b>Mit dem Skill <code>skills\hu-extension</code> entstehen Extensions samt Rechten, Probelauf und Fehlerbehandlung – siehe <a href="#ki">KI-Skills</a>.</div>
+</section>
+
+<section id="ki">
+  <h2><span class="n">6</span>KI-Skills</h2>
+  <p>Snippets und Extensions muss man nicht von Hand schreiben: Ein KI-Assistent kann das übernehmen. Damit der Code beim ersten Lauf funktioniert, liegen im Programmordner unter <code>skills\</code> zwei fertige Anleitungen mit geprüften Vorlagen und einem Prüfprogramm.</p>
+  <div class="cards">
+    <div class="card g"><b>hu-snippet</b>Quick-Script-Snippets: Laufzeit, Kopfzeilen, <code># @param</code>-Felder, Graph-Aufrufe, Probelauf. Vorlagen: lesen, ändern, Teams-Meldung.</div>
+    <div class="card b"><b>hu-extension</b>Extensions: Kopfblock, <code>Invoke-*</code>-Funktion, Rechte, Fehlerbehandlung. Vorlagen: Bericht und ändernde Extension mit Probelauf.</div>
+  </div>
+  <h3 id="ki-use">So nutzt du sie</h3>
+  <ol class="steps">
+    <li>Ordner <code>skills\hu-snippet</code> bzw. <code>skills\hu-extension</code> im KI-Assistenten als Skill hinzufügen. Geht das nicht: <code>SKILL.md</code> in den Chat kopieren oder hochladen und dazusagen, dass sich der Assistent genau daran halten soll.</li>
+    <li>Beschreiben, was das Snippet oder die Extension tun soll (z. B. „Geräte zeigen, die seit 30 Tagen nicht synchronisiert haben“).</li>
+    <li>Der Assistent führt das Prüfprogramm aus und behebt alle <b>FEHLER</b>, bevor er den Code übergibt.</li>
+    <li>Snippet im Reiter <span class="ui">Quick Script</span> einfügen bzw. Extension in <code>Extensions\</code> legen und <span class="ui">↻</span> drücken.</li>
+  </ol>
+  <h3 id="ki-check">Code selbst prüfen</h3>
+  <p>Das Prüfprogramm liest nur den Code, es verbindet sich mit nichts und führt nichts aus:</p>
+<pre><code>powershell -NoProfile -File skills\hu-snippet\tools\Test-HUSnippet.ps1 -Path .\mein-snippet.ps1
+powershell -NoProfile -File skills\hu-extension\tools\Test-HUExtension.ps1 -Path .\Device-MeinReport.ps1</code></pre>
+  <p><b>FEHLER</b> = läuft so nicht oder ist unsicher, <b>WARNUNG</b> = prüfen, ob es Absicht ist.</p>
+  <div class="note warn"><b class="h">Vor dem Einsatz testen</b>Neuen Code zuerst mit <b>Probelauf</b> (<code>DryRun</code> bzw. DRY-RUN) in <b>einem</b> Test-Tenant ausprobieren. Das Prüfprogramm findet typische Fehler, ersetzt aber keinen Test. Einzelheiten: <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/skills/README.md">skills/README.md</a>.</div>
 </section>
 
 <section id="apps">
-  <h2><span class="n">6</span>Apps verteilen</h2>
+  <h2><span class="n">7</span>Apps verteilen</h2>
   <p>Programme (MSI, EXE) und Microsoft-Store-Apps an einen oder mehrere Tenants verteilen. Oben links umschalten: <span class="ui">Bibliothek</span> (eigene Apps, die HU-MultiTenant paketiert und hochlädt) oder <span class="ui">In Intune</span> (alle vorhandenen Apps verwalten).</p>
   <ol class="steps">
     <li><span class="ui">+ Setup …</span> oder die Setup-Datei auf die Liste ziehen. Name, Version, Hersteller, Befehle und Erkennung werden ausgelesen – bei MSI vollständig, bei EXE mit stillem Schalter (Inno, NSIS, InstallShield, WiX, Advanced Installer, Squirrel). Auch ein <b>Skript</b> (<code>.ps1</code>, <code>.cmd</code>, <code>.bat</code>) geht, z. B. ein Plugin-Installer ohne eigenes Setup: Name und Version kommen aus dem Ordnernamen (<code>HUScroll-0.5.2</code>), der ganze Ordner wird mitgepackt; hat das Skript die Schalter <code>-AllUsers</code>/<code>-Uninstall</code>, stehen sie schon in den Befehlen. Die Erkennung (meist <i>Datei</i>) legst du selbst fest. Intune startet Skripte in einer 32-Bit-PowerShell.</li>
@@ -280,7 +304,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="wartung">
-  <h2><span class="n">7</span>Wartung (Remediations)</h2>
+  <h2><span class="n">8</span>Wartung (Remediations)</h2>
   <p>Wartungspakete prüfen regelmäßig etwas auf den Geräten und reparieren es bei Bedarf – z. B. volle Festplatte, abgeschalteter Dienst. Ein Paket besteht aus <b>Prüfskript</b> (<code>exit 1</code> = Problem) und optional <b>Reparaturskript</b>; ohne Reparatur wird nur berichtet. Oben links: <span class="ui">Bibliothek</span> oder <span class="ui">In Intune</span>.</p>
   <ol class="steps">
     <li><span class="ui">+ Neu</span> oder <span class="ui">Beispiele …</span> (fünf fertige Pakete).</li>
@@ -305,7 +329,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="analyse">
-  <h2><span class="n">8</span>Analyse</h2>
+  <h2><span class="n">9</span>Analyse</h2>
   <p>Drei Ansichten oben links. Die Tenants darunter anhaken (Standard: alle). <i>Was bekommt …?</i> ist nur lesend; im Tenant-Vergleich und im Backup wird nur nach Rückfrage etwas angelegt – immer neu und ohne Zuweisungen, Bestehendes wird nie überschrieben.</p>
   <h3 id="ana-asg">Was bekommt …?</h3>
   <p>Zeigt alles, was eine <b>Gruppe</b>, ein <b>Gerät</b> oder ein <b>Benutzer</b> in den angehakten Tenants bekommt: Apps (mit Absicht erforderlich / verfügbar / deinstallieren), Konfigurationsprofile, Einstellungskatalog, Administrative Vorlagen, Compliance-Richtlinien, Wartungsskripte, Plattformskripte, Feature-Updates und Autopilot-Profile.</p>
@@ -338,7 +362,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
 </section>
 
 <section id="teams">
-  <h2><span class="n">9</span>Teams</h2>
+  <h2><span class="n">10</span>Teams</h2>
   <p>Meldungen als Karte in Teams-Kanäle. Es gibt <b>Ziele</b> (Kanäle) und <b>Meldungen</b>: <i>eingebaute Meldungen</i> (Tages-Ampel, Secret-Countdown, Lizenzen, Defender) und <i>Meldungen aus Skripten</i> (Deine Quick-Script-Snippets). Jede Meldung hat ihre Ziele, sendet auf Knopfdruck und auf Wunsch nach Zeitplan. Gesendet wird über Teams-<b>Workflows</b> (Webhook) – keine App-Registrierung, keine zusätzlichen Graph-Rechte für das Senden.</p>
   <h3 id="teams-ziel">Ziel einrichten</h3>
   <ol class="steps">
@@ -433,7 +457,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
 </section>
 
 <section id="handy">
-  <h2><span class="n">10</span>Handy-Fernbedienung</h2>
+  <h2><span class="n">11</span>Handy-Fernbedienung</h2>
   <div class="note warn"><b class="h">Nur für sichere Homeoffice-Umgebungen</b>Remote FB wird nur für den eigenen PC in einem vertrauenswürdigen Heimnetz empfohlen (eigener Router, kein Gäste- oder Fremd-WLAN, unterwegs nur über das eigene VPN). Nicht auf gemeinsam genutzten PCs, in Schul- oder Firmennetzen oder in öffentlichen Netzen einschalten.</div>
   <p>Vom Handy aus Snippets, Erweiterungen und Teams-Meldungen am PC starten – mit Tenant-Auswahl, Parametern, Rückfrage und Live-Ausgabe. Gedacht für den eigenen PC (z. B. im Homeoffice): Das Handy erreicht ihn im Heimnetz oder unterwegs über das VPN des Routers. Gestartet wird immer <b>am PC</b>; Client Secrets und Webhook-Adressen verlassen ihn nie – was ein Skript selbst ausgibt, erscheint aber am Handy. Knopf <span class="ui">📱 Remote FB</span> oben rechts (links neben Berechtigungen).</p>
   <ol class="steps">
@@ -449,7 +473,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
 </section>
 
 <section id="secrets">
-  <h2><span class="n">11</span>Secrets und Ablaufdatum</h2>
+  <h2><span class="n">12</span>Secrets und Ablaufdatum</h2>
   <div class="note tip"><b class="h">Eingerichtete Tenants</b>Tenants mit Zertifikat (<a href="#tenant-auto">Tenant einrichten</a>) brauchen kein Secret: das Ablaufdatum kommt aus dem Zertifikat, erneuert wird 30 Tage vorher automatisch beim Start. Ist das Zertifikat abgelaufen oder fehlt es auf diesem PC, den Tenant neu einrichten. Dieser Abschnitt gilt nur für manuell angelegte Tenants.</div>
   <p>Bis wann das Client Secret gültig ist, steht in der Tenant-Leiste (Reiter Extensions) und unter Einstellungen › Tenants. Gewarnt wird ab 30 Tagen (einstellbar) in der Titelleiste – orange, ab 7 Tagen rot.</p>
   <table>
@@ -467,7 +491,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
 </section>
 
 <section id="update">
-  <h2><span class="n">12</span>Update</h2>
+  <h2><span class="n">13</span>Update</h2>
   <p>Beim Start wird im Hintergrund nach Updates gesucht; bei einer neuen Version wird <span class="ui">Update</span> gold. Klick: HU-MultiTenant schließt sich, <code>Pull.ps1</code> lädt alle Dateien, prüft jede gegen die SHA-256-Liste und die Signatur des Herausgebers und ersetzt erst dann – mit Sicherung: ist eine Datei gesperrt, wird alles zurückgestellt (nie halb aktualisiert). Dateien, die es in der neuen Version nicht mehr gibt, werden entfernt (nie aus <code>Config</code>, <code>Logs</code>, <code>Reports</code>, <code>Backups</code>). Danach startet das Tool neu. Meldet das Programm beim Start „Ein Update läuft gerade oder wurde abgebrochen“: <code>Pull.ps1</code> im Programmordner erneut ausführen.</p>
   <table>
     <tr><th>Rechtsklick auf Update</th><th>Wirkung</th></tr>
@@ -479,7 +503,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
 </section>
 
 <section id="dateien">
-  <h2><span class="n">13</span>Dateien</h2>
+  <h2><span class="n">14</span>Dateien</h2>
   <table>
     <tr><th>Pfad</th><th>Inhalt</th></tr>
     <tr><td><code>Config\settings.json</code></td><td>Tenants und Einstellungen (Sicherung <code>.bak</code>)</td></tr>
@@ -507,7 +531,7 @@ if ($r.Failed) { Write-Warning $r.Text }</code></pre>
 </section>
 
 <section id="tasten">
-  <h2><span class="n">14</span>Tastenkürzel</h2>
+  <h2><span class="n">15</span>Tastenkürzel</h2>
   <table>
     <tr><th>Taste</th><th>Wirkung</th></tr>
     <tr><td><kbd>F1</kbd></td><td>diese Anleitung</td></tr>
