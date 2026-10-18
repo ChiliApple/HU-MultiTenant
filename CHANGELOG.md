@@ -24,6 +24,8 @@ schon in 2.1.10 enthalten.
 - **Absturz bei "+ Setup ..."** (vorher "+ MSI / EXE ..."): das Programm beendete sich nach der Dateiauswahl.
 - Fehler in einer Schaltflaeche beenden nicht mehr das ganze Programm - sie werden protokolliert, das Programm laeuft weiter.
 - Sperre: Meldung "Verzoegerte Aktion: Die Variable $state ..." 30 s nach dem Entsperren entfernt.
+- Sandbox-Fenster startete winzig: das kleine Fenster beim Herunterfahren der Sandbox wurde als Lage gemerkt; jetzt nur
+  Groessen ab 800x500. Testinstallation: klarer Hinweis, wenn keine Erkennungsregel festgelegt ist.
 
 ## v2.1.11
 
