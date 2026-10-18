@@ -30,7 +30,7 @@ function Get-HURemoteConfig {
     $port = $script:HURemoteDefaultPort; try { if ($j -and [int]$j.Port -ge 1025 -and [int]$j.Port -le 65535) { $port = [int]$j.Port } } catch { }
     return [pscustomobject]@{
         AutoStart  = [bool]($j -and $j.AutoStart -eq $true)
-        WhenLocked = [bool](-not $j -or $j.WhenLocked -ne $false)   # Entscheidung Udo: Handy startet auch bei gesperrter App (abschaltbar)
+        WhenLocked = [bool](-not $j -or $j.WhenLocked -ne $false)   # Handy startet auch bei gesperrter App (abschaltbar)
         KeepAwake  = [bool]($j -and $j.KeepAwake -eq $true)
         Intune     = [bool](-not $j -or $j.Intune -ne $false)      # Apps/Wartung am Handy (Standard an, abschaltbar)
         Port       = $port

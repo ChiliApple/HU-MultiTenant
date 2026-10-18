@@ -18,7 +18,7 @@
 # GRUNDWERTE
 # ============================================================================
 $script:HURemoteAppId     = '{7d3f2b8e-5c41-4a6e-9f0d-2b8a61c4e937}'   # Kennung der HTTPS-Bindung (netsh http ... appid)
-$script:HURemoteCaName    = 'HUMig Fernbedienung CA'                   # gemeinsam mit HUMig (Entscheidung Udo)
+$script:HURemoteCaName    = 'HUMig Fernbedienung CA'                   # gemeinsam mit HUMig
 $script:HURemoteCertName  = 'HU-MultiTenant Fernbedienung'
 $script:HURemoteRuleSetup = 'HU-MultiTenant-Remote'                    # Firewall-Regel (einmalige Einrichtung)
 $script:HURemoteDefaultPort = 8444   # HUMig nutzt 8443 - beide koennen gleichzeitig laufen

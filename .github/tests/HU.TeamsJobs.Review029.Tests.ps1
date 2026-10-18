@@ -18,7 +18,7 @@ BeforeAll {
     Grant-HUSendApproval -Reason 'Test'
     Import-Module (Join-Path $script:Repo 'Core\HU.TeamsJobs.psm1') -Force -DisableNameChecking
     $script:JobsFile = Join-Path $script:TestRoot 'Config\teams-jobs.json'
-    $script:Set1 = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; displayName = 'HLW' }); ui = [pscustomobject]@{ secretWarnDays = 30 } }
+    $script:Set1 = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; displayName = 'Schule A' }); ui = [pscustomobject]@{ secretWarnDays = 30 } }
 }
 
 AfterAll {

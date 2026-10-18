@@ -713,7 +713,7 @@ function Get-HUTeamsSnippetRoute([string]$Snippet) {
     return [pscustomobject]@{ Name = "$($jobs[0].Name)"; Ids = [string[]]$ids; Jobs = @($jobs | ForEach-Object { "$($_.Name)" }) }
 }
 
-# Review 030 B4 (Entscheidung Udo): Snippets/Erweiterungen, die Teams-Meldungen senden, fragen EINMAL je Lauf vorher.
+# Review 030 B4: Snippets/Erweiterungen, die Teams-Meldungen senden, fragen EINMAL je Lauf vorher.
 function Confirm-HUTeamsSend {
     param([string]$Code, [string]$What = 'Snippet', $Route = $null)
     # Rueckgabe: send = Ja (Lauf bekommt die Sendefreigabe), skip = Nein, cancel = Abbrechen,

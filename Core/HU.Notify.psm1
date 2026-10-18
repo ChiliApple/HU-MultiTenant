@@ -876,9 +876,9 @@ function Send-HUNotify {
         -Preview: eigener Text fuer die Push-Vorschau (sonst Titel plus erste Zeilen).
         -Category: eingebaute Kategorie oder eigene (Reiter Teams > Kategorien > + Kategorie).
     .EXAMPLE
-        Send-HUNotify -Category Devices -Title 'HLW: 7 Geraete nicht konform' -Level Warning -Lines @('NB-123 (Maier T.)')
+        Send-HUNotify -Category Devices -Title 'Schule A: 7 Geraete nicht konform' -Level Warning -Lines @('NB-123 (Maier T.)')
     .EXAMPLE
-        Send-HUNotify -Category Backup -Title 'Backup HLW fertig' -Level OK -Facts ([ordered]@{ Dauer = '12 min'; Dateien = 4211 })
+        Send-HUNotify -Category Backup -Title 'Backup Schule A fertig' -Level OK -Facts ([ordered]@{ Dauer = '12 min'; Dateien = 4211 })
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(

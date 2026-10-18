@@ -49,7 +49,7 @@ Describe 'Teams-Auftraege: Speicher' {
 Describe 'Teams-Auftraege: Tages-Ampel (New-HUDailyCardSpec)' {
     It 'alles gruen' {
         $st = @(
-            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 100; NonCompliant = 0; Stale = 1; StaleDays = 7; NoPolicy = 0; SecretDays = 200; SecretStatus = 'OK' }
+            [pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 100; NonCompliant = 0; Stale = 1; StaleDays = 7; NoPolicy = 0; SecretDays = 200; SecretStatus = 'OK' }
         )
         $s = New-HUDailyCardSpec -Statuses $st
         $s.Level | Should -Be 'OK'
@@ -61,7 +61,7 @@ Describe 'Teams-Auftraege: Tages-Ampel (New-HUDailyCardSpec)' {
     }
     It 'gelb bei nicht konform / ohne Sync / Secret bald' {
         $st = @(
-            [pscustomobject]@{ Key = 'A'; Name = 'Gym'; Ok = $true; Error = ''; Devices = 300; NonCompliant = 3; Stale = 2; StaleDays = 7; NoPolicy = 0; SecretDays = 12; SecretStatus = 'OK' }
+            [pscustomobject]@{ Key = 'A'; Name = 'Schule B'; Ok = $true; Error = ''; Devices = 300; NonCompliant = 3; Stale = 2; StaleDays = 7; NoPolicy = 0; SecretDays = 12; SecretStatus = 'OK' }
         )
         $s = New-HUDailyCardSpec -Statuses $st -SecretWarnDays 30
         $s.Level | Should -Be 'Warning'
@@ -89,7 +89,7 @@ Describe 'Teams-Auftraege: Tages-Ampel (New-HUDailyCardSpec)' {
         $s.Facts['Geraete gesamt'] | Should -Be 60
     }
     It 'ergibt eine gueltige Karte' {
-        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 1; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = 99; SecretStatus = 'OK' })
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 1; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = 99; SecretStatus = 'OK' })
         $s = New-HUDailyCardSpec -Statuses $st
         $card = New-HUTeamsCard -Title $s.Title -Level $s.Level -Rows $s.Rows -Facts $s.Facts -Lines $s.Lines
         { ConvertTo-HUTeamsCardJson $card } | Should -Not -Throw
@@ -138,13 +138,13 @@ Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
         ($k | Where-Object Key -eq 'Secrets').Category | Should -Be 'Secrets'
     }
     It 'Secret-Countdown: nichts zu melden -> $null' {
-        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 200; DisplayName = 'x'; Status = 'OK' })
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Days = 200; DisplayName = 'x'; Status = 'OK' })
         New-HUSecretsCardSpec -Statuses $st -WarnDays 30 | Should -BeNullOrEmpty
     }
     It 'Secret-Countdown: Warnung und Abgelaufen' {
         $st = @(
-            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 12; DisplayName = 'neu'; Status = 'OK' }
-            [pscustomobject]@{ Key = 'B'; Name = 'Gym'; Ok = $true; Error = ''; Days = -1; DisplayName = 'alt'; Status = 'OK' }
+            [pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Days = 12; DisplayName = 'neu'; Status = 'OK' }
+            [pscustomobject]@{ Key = 'B'; Name = 'Schule B'; Ok = $true; Error = ''; Days = -1; DisplayName = 'alt'; Status = 'OK' }
             [pscustomobject]@{ Key = 'C'; Name = 'BORG'; Ok = $false; Error = 'Kein Token (Secret fehlt oder abgelaufen)'; Days = $null; DisplayName = ''; Status = '' }
         )
         $s = New-HUSecretsCardSpec -Statuses $st -WarnDays 30
@@ -155,11 +155,11 @@ Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
     }
     It 'Lizenzen: nur knappe SKUs, Ueberbuchung rot' {
         $st = @(
-            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Skus = @(
+            [pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Skus = @(
                 [pscustomobject]@{ Sku = 'A3-FACULTY'; Total = 100; Used = 98; Free = 2 }
                 [pscustomobject]@{ Sku = 'A1-STUDENT'; Total = 500; Used = 100; Free = 400 }
             ) }
-            [pscustomobject]@{ Key = 'B'; Name = 'Gym'; Ok = $true; Error = ''; Skus = @(
+            [pscustomobject]@{ Key = 'B'; Name = 'Schule B'; Ok = $true; Error = ''; Skus = @(
                 [pscustomobject]@{ Sku = 'A3'; Total = 10; Used = 12; Free = -2 }
             ) }
             [pscustomobject]@{ Key = 'C'; Name = 'BORG'; Ok = $true; Error = ''; Skus = @(
@@ -175,14 +175,14 @@ Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
         $s.Level | Should -Be 'Error'
     }
     It 'Lizenzen: alles ausreichend -> $null' {
-        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Skus = @([pscustomobject]@{ Sku = 'A3'; Total = 100; Used = 50; Free = 50 }) })
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Skus = @([pscustomobject]@{ Sku = 'A3'; Total = 100; Used = 50; Free = 50 }) })
         New-HULicenseCardSpec -Statuses $st | Should -BeNullOrEmpty
     }
     It 'Defender: Befunde mit Geraeteliste, Deckel bei 10' {
         $f = @(1..12 | ForEach-Object { [pscustomobject]@{ Device = "NB-$_"; State = 'Bedrohung (hoch)' } })
         $st = @(
-            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 100; Findings = $f }
-            [pscustomobject]@{ Key = 'B'; Name = 'Gym'; Ok = $true; Error = ''; Devices = 50; Findings = @() }
+            [pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 100; Findings = $f }
+            [pscustomobject]@{ Key = 'B'; Name = 'Schule B'; Ok = $true; Error = ''; Devices = 50; Findings = @() }
         )
         $s = New-HUDefenderCardSpec -Statuses $st
         @($s.Rows).Count | Should -Be 1
@@ -191,7 +191,7 @@ Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
         $s.Level | Should -Be 'Error'
     }
     It 'Defender: alles sauber -> $null' {
-        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 100; Findings = @() })
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 100; Findings = @() })
         New-HUDefenderCardSpec -Statuses $st | Should -BeNullOrEmpty
     }
     It 'Invoke: Befund-Art ohne Befund sendet nichts und ist OK' {
@@ -219,7 +219,7 @@ Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
     }
     It 'Tages-Ampel: Vorschau mit Ampel-Zaehlung und Summen' {
         $st = @(
-            [pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 100; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = 200; SecretStatus = 'OK' }
+            [pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 100; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = 200; SecretStatus = 'OK' }
             [pscustomobject]@{ Key = 'B'; Name = 'BORG'; Ok = $false; Error = 'Token'; Devices = 0; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = $null; SecretStatus = '' }
         )
         $s = New-HUDailyCardSpec -Statuses $st
@@ -228,13 +228,13 @@ Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
         $s.Preview | Should -Match '100 Geraete'
     }
     It 'Tages-Ampel: OK ohne Ablaufdatum -> Hinweis, keine Warnung (B8c)' {
-        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 10; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = $null; SecretStatus = 'OK' })
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 10; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = $null; SecretStatus = 'OK' })
         $s = New-HUDailyCardSpec -Statuses $st
         $s.Rows[0].Text | Should -Match 'kein Ablaufdatum'
         $s.Level | Should -Be 'OK'
     }
     It 'Defender: Vorschau ohne Geraetenamen, Maskierung blendet Namen aus (B10/B16)' {
-        $st = @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 5; Findings = @(
+        $st = @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 5; Findings = @(
             [pscustomobject]@{ Device = 'PC-GEHEIM-1'; State = 'Bedrohung (hoch)' }
             [pscustomobject]@{ Device = 'PC-GEHEIM-2'; State = 'Bedrohung (hoch)' }
         ) })
@@ -248,10 +248,10 @@ Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
         $m.Facts['Geraete mit Befund'] | Should -Be 2
     }
     It 'Secrets/Lizenzen: Vorschau nennt den dringendsten Fall' {
-        $s = New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 12; DisplayName = 'x'; Status = 'OK' }, [pscustomobject]@{ Key = 'B'; Name = 'Gym'; Ok = $true; Error = ''; Days = 5; DisplayName = 'y'; Status = 'OK' }) -WarnDays 30
-        $s.Preview | Should -Match 'zuerst Gym in 5 Tagen'
-        $l = New-HULicenseCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'EUGym'; Ok = $true; Error = ''; Skus = @([pscustomobject]@{ Sku = 'A3'; Total = 10; Used = 11; Free = -1 }) })
-        $l.Preview | Should -Match 'EUGym A3 ueberbucht'
+        $s = New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Days = 12; DisplayName = 'x'; Status = 'OK' }, [pscustomobject]@{ Key = 'B'; Name = 'Schule B'; Ok = $true; Error = ''; Days = 5; DisplayName = 'y'; Status = 'OK' }) -WarnDays 30
+        $s.Preview | Should -Match 'zuerst Schule B in 5 Tagen'
+        $l = New-HULicenseCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'Schule B'; Ok = $true; Error = ''; Skus = @([pscustomobject]@{ Sku = 'A3'; Total = 10; Used = 11; Free = -1 }) })
+        $l.Preview | Should -Match 'Schule B A3 ueberbucht'
     }
     It 'Invoke-HUTeamsJob: Code 0/2/3 und Vorschau wird uebergeben' {
         Mock -ModuleName HU.TeamsJobs Update-HUTeamsJobResult { }
@@ -276,7 +276,7 @@ Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
     }
     It 'Defender-Option maskDevices kommt im Auftrag an' {
         Mock -ModuleName HU.TeamsJobs Update-HUTeamsJobResult { }
-        Mock -ModuleName HU.TeamsJobs Get-HUDefenderStatus { [pscustomobject]@{ Key = 'T1'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 1; Findings = @([pscustomobject]@{ Device = 'PC-X'; State = 'kompromittiert' }) } }
+        Mock -ModuleName HU.TeamsJobs Get-HUDefenderStatus { [pscustomobject]@{ Key = 'T1'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 1; Findings = @([pscustomobject]@{ Device = 'PC-X'; State = 'kompromittiert' }) } }
         $j = New-HUTeamsJob -Name 'D' -Kind Defender -Options @{ maskDevices = 1 }
         $r = Invoke-HUTeamsJob -Job $j -Settings ([pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1' }) }) -AppRoot $script:TestRoot -NoSend
         $r.Spec.Rows[0].Text | Should -Not -Match 'PC-X'
@@ -331,13 +331,13 @@ Export-ModuleMember -Function Get-GraphToken
         $r.Message | Should -Match 'nichts gesendet'
     }
     It 'Ausgabe-Karte mit genau einem Tenant: Anzeigename im Titel (nicht der erste Buchstabe)' {
-        $set1 = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'Gym-Leoben'; displayName = 'Gym Leoben' }) }
+        $set1 = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'Schule-B'; displayName = 'Schule B' }) }
         $global:__HUCard = $null
         function global:Send-HUNotify { param($Title, $Level, $Lines, $Preview) $global:__HUCard = [pscustomobject]@{ Title = $Title; Preview = $Preview }; [pscustomobject]@{ Ok = 0; Failed = 0 } }
         try {
-            [void](Invoke-HUTeamsScript -Code "Write-Host 'x'" -Name 'B' -Tenants @('Gym-Leoben') -Settings $set1 -AppRoot $script:App -SendOutput)
-            $global:__HUCard.Title | Should -Be 'B - Gym Leoben'
-            $global:__HUCard.Preview | Should -Match '^Gym Leoben - '
+            [void](Invoke-HUTeamsScript -Code "Write-Host 'x'" -Name 'B' -Tenants @('Schule-B') -Settings $set1 -AppRoot $script:App -SendOutput)
+            $global:__HUCard.Title | Should -Be 'B - Schule B'
+            $global:__HUCard.Preview | Should -Match '^Schule B - '
         } finally {
             Remove-Item function:global:Send-HUNotify -ErrorAction SilentlyContinue; Remove-Variable __HUCard -Scope Global -ErrorAction SilentlyContinue
             # das Original wieder sichtbar machen (die Attrappe hat es im globalen Bereich ersetzt)
@@ -411,7 +411,7 @@ Export-ModuleMember -Function Get-GraphToken
 
 Describe 'Teams-Auftraege: Review 030' {
     BeforeAll {
-        $script:DefSt = [pscustomobject]@{ Key = 'T1'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 3; Findings = @(
+        $script:DefSt = [pscustomobject]@{ Key = 'T1'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 3; Findings = @(
             [pscustomobject]@{ Device = 'PC-A'; State = 'fehlkonfiguriert' }
             [pscustomobject]@{ Device = 'PC-B'; State = 'kompromittiert' }
         ) }
@@ -433,12 +433,12 @@ Describe 'Teams-Auftraege: Review 030' {
         $m = New-HUDefenderCardSpec -Statuses @($script:DefSt) -MaskDevices
         $m.Rows[0].Text | Should -Match '^1x kompromittiert, 1x fehlkonfiguriert'
         $m.Preview | Should -Match '^2 Geraete mit Befund'
-        $one = [pscustomobject]@{ Key = 'T1'; Name = 'HLW'; Ok = $true; Error = ''; Devices = 1; Findings = @([pscustomobject]@{ Device = 'X'; State = 'kompromittiert' }) }
+        $one = [pscustomobject]@{ Key = 'T1'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 1; Findings = @([pscustomobject]@{ Device = 'X'; State = 'kompromittiert' }) }
         (New-HUDefenderCardSpec -Statuses @($one)).Preview | Should -Match '^1 Geraet mit Befund'
-        (New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 5; DisplayName = 'x'; Status = 'OK' })).Preview | Should -Match '^1 Tenant betroffen'
+        (New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Days = 5; DisplayName = 'x'; Status = 'OK' })).Preview | Should -Match '^1 Tenant betroffen'
     }
     It 'B29: Secret-Countdown meldet bei genau N Tagen, Text "N Tage oder weniger"' {
-        $s = New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'HLW'; Ok = $true; Error = ''; Days = 30; DisplayName = 'x'; Status = 'OK' }) -WarnDays 30
+        $s = New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Days = 30; DisplayName = 'x'; Status = 'OK' }) -WarnDays 30
         $s | Should -Not -BeNullOrEmpty
         $s.Facts['Warnschwelle'] | Should -Be '30 Tage oder weniger'
     }
