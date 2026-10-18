@@ -93,6 +93,46 @@ function Invoke-InactiveUsersReport {
     Write-HULog -Message 'Berechtigungen OK' -Level 'OK' -Tenant $TenantKey
 
     # ================================================================
+    # 1b. SCHULTYP-ERKENNUNG (adSchema aus settings.json)
+    # ================================================================
+
+    # adSchema "iPack": Rolle in faxNumber, Klasse in officeLocation oder DisplayName
+    # adSchema "VirtualSchool" (Default): Rolle in jobTitle, Klasse in department
+    # Konfigurierbar pro Tenant in settings.json: "adSchema": "iPack" | "VirtualSchool" | "Eigene"
+    # adSchema "Eigene": adRoleAttr / adClassAttr nennen die Benutzer-Attribute (z. B. employeeType, department,
+    #                    onPremisesExtensionAttributes.extensionAttribute1)
+    $tenantConfig = $null
+    try { $tenantConfig = @((Get-Settings).tenants) | Where-Object { $_.key -eq $TenantKey } | Select-Object -First 1 } catch { }
+    $schemaName = if ($tenantConfig -and $tenantConfig.adSchema) { "$($tenantConfig.adSchema)" } else { 'VirtualSchool' }
+    $isIPack = ($schemaName -eq 'iPack')
+    $roleAttr = ''
+    $classAttr = ''
+    if ($schemaName -eq 'Eigene') {
+        # nur einfache Attributnamen, ggf. mit Punkt fuer verschachtelte (kein Zeichen, das in der Abfrage stoeren koennte)
+        $okName = '^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)?$'
+        if ($tenantConfig.adRoleAttr -and "$($tenantConfig.adRoleAttr)".Trim() -match $okName) { $roleAttr = "$($tenantConfig.adRoleAttr)".Trim() }
+        if ($tenantConfig.adClassAttr -and "$($tenantConfig.adClassAttr)".Trim() -match $okName) { $classAttr = "$($tenantConfig.adClassAttr)".Trim() }
+        if (-not $roleAttr -and -not $classAttr) {
+            Write-HULogWarn 'AD-Schema "Eigene": weder Rolle noch Klasse haben ein gueltiges Attribut (Einstellungen > Tenants) - Spalten bleiben leer.' -Tenant $TenantKey
+        }
+    }
+    Write-HULog -Message "AD-Schema: $schemaName$(if ($schemaName -eq 'Eigene') { " (Rolle=$roleAttr, Klasse=$classAttr)" })" -Level 'INFO' -Tenant $TenantKey
+    # Liest ein Attribut (auch verschachtelt, z. B. onPremisesExtensionAttributes.extensionAttribute1); leer, wenn nicht vorhanden
+    $getAttr = {
+        param($obj, [string]$path)
+        if (-not $path) { return '' }
+        $cur = $obj
+        foreach ($part in ($path -split '\.')) {
+            if ($null -eq $cur) { return '' }
+            $p = $cur.PSObject.Properties[$part]
+            if ($null -eq $p) { return '' }
+            $cur = $p.Value
+        }
+        if ($null -eq $cur) { return '' }
+        return "$cur"
+    }
+
+    # ================================================================
     # 2. FETCH ALL USERS WITH SIGN-IN ACTIVITY
     # ================================================================
 
@@ -101,6 +141,12 @@ function Invoke-InactiveUsersReport {
     # signInActivity erfordert AuditLog.Read.All
     # Kein Domain-Filter: Tenant = Schule, alle User gehoeren zum Tenant
     $selectFields = 'id,displayName,userPrincipalName,mail,accountEnabled,createdDateTime,userType,assignedLicenses,signInActivity,department,jobTitle,companyName,faxNumber,officeLocation'
+    foreach ($attr in @($roleAttr, $classAttr)) {
+        if ($attr) {
+            $top = ($attr -split '\.')[0]
+            if (",$selectFields," -notlike "*,$top,*") { $selectFields += ",$top" }
+        }
+    }
     $allUsers = Invoke-GraphRequestAll -Token $Token `
         -Endpoint "/users?`$select=$selectFields" `
         -TenantKey $TenantKey -Settings (Get-Settings)
@@ -145,17 +191,6 @@ function Invoke-InactiveUsersReport {
     catch {
         Write-HULog -Message "SKU-Zuordnung fehlgeschlagen: $($_.Exception.Message)" -Level 'WARN' -Tenant $TenantKey
     }
-
-    # ================================================================
-    # 4. SCHULTYP-ERKENNUNG (adSchema aus settings.json)
-    # ================================================================
-
-    # adSchema "iPack": Rolle in faxNumber, Klasse in officeLocation oder DisplayName
-    # adSchema "VirtualSchool" (Default): Rolle in jobTitle, Klasse in department
-    # Konfigurierbar pro Tenant in settings.json: "adSchema": "iPack" | "VirtualSchool"
-    $tenantConfig = (Get-Settings).tenants | Where-Object { $_.key -eq $TenantKey }
-    $isIPack = ($tenantConfig -and $tenantConfig.adSchema -eq 'iPack')
-    Write-HULog -Message "AD-Schema: $(if ($isIPack) { 'iPack' } else { 'VirtualSchool' })" -Level 'INFO' -Tenant $TenantKey
 
     # ================================================================
     # 5. ENRICH USER DATA
@@ -279,7 +314,11 @@ function Invoke-InactiveUsersReport {
         $rolle  = ''
         $klasse = ''
 
-        if ($isIPack) {
+        if ($schemaName -eq 'Eigene') {
+            $rolle  = & $getAttr $user $roleAttr
+            $klasse = & $getAttr $user $classAttr
+        }
+        elseif ($isIPack) {
             # iPack-Schema:
             #   Rolle  = faxNumber (Schueler/Lehrer)
             #   Klasse = officeLocation ODER aus DisplayName nach Komma ("Nachname Vorname, 3D")

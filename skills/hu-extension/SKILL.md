@@ -75,7 +75,7 @@ function Invoke-Beispiel {
 
 - Windows PowerShell 5.1, eigener Runspace im Hintergrund. Geladen: `HU.Logging`, `HU.Auth`, `HU.Tenant`, `HU.Graph`, `HU.Extensions`, `HU.Excel`, `HU.Notify`. Nichts davon importieren.
 - **Protokoll:** `Write-HULogInfo`, `Write-HULogOK`, `Write-HULogWarn`, `Write-HULogError`, `Write-HULogDebug` (`-Message` als erster Wert, `-Tenant $TenantKey`). `Write-Host` und `Write-Output` erscheinen im Protokoll **nicht**. Auch `Write-HULog -Message ... -Level 'ERROR'` geht.
-- `Get-Settings` und `Get-TenantByKey` liefern in der Extension `$null`, `Get-AllTenants` eine leere Liste: nicht darauf bauen. Was die Extension braucht, kommt über `-TenantKey`, `-Token` und die `.PARAM`-Felder.
+- `Get-Settings`, `Get-TenantByKey` und `Get-AllTenants` liefern nur in der App-Oberfläche Daten (sonst `$null` bzw. leer): nicht darauf bauen. Was die Extension braucht, kommt über `-TenantKey`, `-Token` und die `.PARAM`-Felder.
 - Keine Eingaben (`Read-Host`, `Out-GridView`, Dialoge), kein `Connect-*`, kein `Invoke-Expression`.
 - Nie `$Token` ausgeben, loggen oder in Dateien schreiben.
 

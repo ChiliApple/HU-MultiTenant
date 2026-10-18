@@ -78,6 +78,9 @@ catch {
     Write-Warning "Logging init failed: $($_.Exception.Message)"
 }
 
+# Einstellungen laden, damit Get-Settings in der Extension Daten liefert (z. B. AD-Schema je Tenant)
+try { [void](Import-TenantSettings -SettingsPath (Join-Path $AppRoot 'Config\settings.json') -ErrorAction Stop) } catch { Write-Warning "Settings nicht geladen: $($_.Exception.Message)" }
+
 # ============================================================================
 # 3. EXTENSION LADEN + AUSFUEHREN
 # ============================================================================
