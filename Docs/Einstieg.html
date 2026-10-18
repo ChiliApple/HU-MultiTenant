@@ -338,6 +338,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
         <ul class="gets">
           <li>Eine Tabelle über alle Standorte statt fünf einzelner Exporte</li>
           <li>Eigene Skripte als Snippets – mit Eingabefeldern, Beschreibung und Verlauf</li>
+          <li>Snippets und Extensions von einer KI schreiben lassen – mit fertigem <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/skills/README.md">KI-Skill</a> und Prüfprogramm</li>
           <li>Excel-Reports zum Weitergeben</li>
         </ul>
         <figure class="shot wide"><img src="screenshot.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot.png'" alt="Quick Script" loading="lazy"><figcaption>Quick Script mit Snippet und Ausgabe</figcaption></figure>
@@ -440,6 +441,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div>
     <details><summary>Brauche ich einen Server oder eine Datenbank?</summary><p>Nein. HU-MultiTenant läuft auf deinem PC und spricht direkt mit Microsoft Graph. Einstellungen, Snippets und Protokolle liegen im Programmordner bzw. in deinem Benutzerprofil.</p></details>
     <details><summary>Muss ich PowerShell können?</summary><p>Für Apps, Wartung, Analyse, Teams und die Extensions nicht – das läuft über Knöpfe und Listen. Für eigene Abfragen im Quick Script hilft es; die 12 Beispiel-Snippets sind ein guter Start, und Wartungsskripte schreibt auf Wunsch eine KI.</p></details>
+    <details><summary>Kann mir eine KI Snippets und Extensions schreiben?</summary><p>Ja. Im Ordner <code>skills</code> liegen zwei fertige Anleitungen (<code>hu-snippet</code>, <code>hu-extension</code>) mit geprüften Vorlagen und einem Prüfprogramm. Ordner als Skill hinzufügen oder die <code>SKILL.md</code> in den Chat geben – dann schreibt die KI Code, der beim ersten Lauf funktioniert. Vor dem Einsatz in einer Schule trotzdem mit Probelauf in einem Test-Tenant ausprobieren. <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/skills/README.md">Anleitung</a></p></details>
     <details><summary>Was kostet das?</summary><p>Nichts. Die Nutzung ist frei, Details stehen in der Lizenz im Repository. Für Intune und Remediations brauchst du natürlich die passenden Microsoft-Lizenzen.</p></details>
     <details><summary>Ersetzt das das Intune- oder Entra-Portal?</summary><p>Nein, es ergänzt sie. Alles, was HU-MultiTenant anlegt, siehst und änderst du weiter im Portal. Das Tool nimmt dir die Wiederholung über mehrere Tenants ab und zeigt Zusammenhänge, die im Portal verstreut sind.</p></details>
     <details><summary>Welche Rechte bekommt das Tool in meinem Tenant?</summary><p>Die Rechte, die du bei der Einrichtung anhakst – vorausgewählt sind vor allem Leserechte und die Schreibrechte für Apps und Wartung. Weitreichende Rechte (Mail, Dateien, Benutzer schreiben …) sind rot markiert und brauchen eine eigene Bestätigung. Alle Rechte siehst du im Fenster <b>Berechtigungen</b>.</p></details>
