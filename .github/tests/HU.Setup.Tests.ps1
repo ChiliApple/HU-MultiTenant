@@ -203,15 +203,34 @@ Describe 'Zertifikat erneuern: Update-HUTenantCertificate (Review 033 B1/B3)' {
         $script:T = [pscustomobject]@{ key = 'T'; tenantId = '33333333-3333-3333-3333-333333333333'; appId = '44444444-4444-4444-4444-444444444444'
             appObjectId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; certThumbprint = $c.Thumbprint; certKeyId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' }
     }
-    It 'addKey, removeKey mit gespeicherter keyId, altes Zertifikat bleibt lokal' {
+    It 'nur addKey + Test - kein removeKey, altes Zertifikat bleibt lokal (B1/B14)' {
         $r = Update-HUTenantCertificate -Tenant $script:T
         $r.Thumbprint | Should -Be $script:New.Thumbprint
         $r.OldThumbprint | Should -Be $script:Cert.Thumbprint
         $r.KeyId | Should -Be '11111111-2222-3333-4444-555555555555'
-        $script:Calls[0] | Should -BeLike 'POST */addKey'
-        $script:Calls | Should -Contain 'POST /applications/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/removeKey'
-        @($script:Calls | Where-Object { $_ -like 'GET*' }).Count | Should -Be 0
+        $r.OldKeyId | Should -Be 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+        @($script:Calls) | Should -Be @('POST /applications/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/addKey')
         Should -Invoke -ModuleName HU.Setup Remove-HUCertLocal -Times 0 -Exactly
+    }
+    It 'Remove-HUTenantOldKey: removeKey mit gespeicherter keyId, ohne GET' {
+        $n = $script:New
+        Mock -ModuleName HU.Setup Get-Item { $n }
+        $t2 = $script:T.PSObject.Copy(); $t2.certThumbprint = $n.Thumbprint
+        Remove-HUTenantOldKey -Tenant $t2 -OldThumbprint $script:Cert.Thumbprint -OldKeyId 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' | Should -BeNullOrEmpty
+        @($script:Calls) | Should -Be @('POST /applications/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/removeKey')
+    }
+    It 'Remove-HUTenantOldKey: keyId ueber den Fingerabdruck nachschlagen' {
+        $n = $script:New; $old = $script:Cert
+        Mock -ModuleName HU.Setup Get-Item { $n }
+        Mock -ModuleName HU.Setup Invoke-HUSetupGraph {
+            $script:Calls.Add("$Method $Path")
+            if ($Path -like '*select=keyCredentials') { return [pscustomobject]@{ keyCredentials = @([pscustomobject]@{ keyId = 'cccccccc-cccc-cccc-cccc-cccccccccccc'; customKeyIdentifier = [Convert]::ToBase64String($old.GetCertHash()) }) } }
+            if ($Path -like '*/removeKey') { $Body.keyId | Should -Be 'cccccccc-cccc-cccc-cccc-cccccccccccc' }
+            return $null
+        }
+        $t2 = $script:T.PSObject.Copy(); $t2.certThumbprint = $n.Thumbprint
+        Remove-HUTenantOldKey -Tenant $t2 -OldThumbprint $old.Thumbprint | Should -BeNullOrEmpty
+        $script:Calls | Should -Contain 'POST /applications/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/removeKey'
     }
     It 'Fehler bei addKey: neues Zertifikat weg, altes unberuehrt' {
         Mock -ModuleName HU.Setup Invoke-HUSetupGraph { throw 'Forbidden' }

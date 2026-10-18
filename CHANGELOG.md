@@ -29,7 +29,8 @@
   weitreichend (rot, eigene Bestaetigung); Liste weitreichender Rechte ergaenzt.
 - Einrichtung verlangt Global Administrator oder Privileged Role Administrator zusammen mit (Cloud) Application
   Administrator; Rechte erteilen weiterhin auch mit Privileged Role Administrator.
-- Zertifikat erneuern: das alte Zertifikat wird erst geloescht, wenn das neue gespeichert ist; fehlt das eingetragene
+- Zertifikat erneuern: der alte Schluessel an der App und das alte Zertifikat werden erst entfernt, wenn das neue
+  gespeichert ist; fehlt das eingetragene
   Zertifikat, wird ein passendes vorhandenes angeboten. Schluessel-ID wird gemerkt (removeKey ohne Nachschlagen).
 - Anmeldung im Browser: Antworten mit fremdem state werden ignoriert statt die Anmeldung abzubrechen; ist der Port auf
   ::1 belegt, wird ein anderer genommen.

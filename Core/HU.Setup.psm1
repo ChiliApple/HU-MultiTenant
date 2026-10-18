@@ -403,7 +403,8 @@ function Update-HUTenantCertificate {
     <#
     .SYNOPSIS
         Erneuert das Zertifikat eines Tenants ohne Admin: neues Zertifikat, addKey mit Nachweis (signiert vom alten),
-        Test mit dem neuen, removeKey des alten. Rueckgabe: @{ Thumbprint; KeyId; OldThumbprint; Warning }.
+        Test mit dem neuen. Rueckgabe: @{ Thumbprint; KeyId; OldThumbprint; OldKeyId }.
+        Den alten Schluessel entfernt danach Remove-HUTenantOldKey (erst nach dem Speichern).
     .DESCRIPTION
         Das alte Zertifikat bleibt lokal liegen - geloescht wird es erst, wenn der neue Thumbprint gespeichert ist
         (Aufrufer, Remove-HUCertLocal). Geht nur, solange das alte Zertifikat gueltig ist.
@@ -431,22 +432,37 @@ function Update-HUTenantCertificate {
         try { [void](Remove-HUCertLocal $new.Thumbprint) } catch { }
         throw "Erneuern fehlgeschlagen: $($_.Exception.Message)"
     }
-    # alten Schluessel an der App entfernen (Nachweis jetzt mit dem neuen); keyId aus settings.json, sonst nachschlagen
-    $warn = ''
+    # Der alte Schluessel bleibt vorerst an der App - entfernt wird er erst, wenn der neue Thumbprint gespeichert ist
+    # (Remove-HUTenantOldKey, Review 033 B14). So gibt es nie einen Zustand ohne gueltigen, eingetragenen Schluessel.
+    return [pscustomobject]@{ Thumbprint = $new.Thumbprint; KeyId = $newKeyId; OldThumbprint = $old.Thumbprint; OldKeyId = "$($Tenant.certKeyId)" }
+}
+
+function Remove-HUTenantOldKey {
+    <#
+    .SYNOPSIS
+        Entfernt nach dem Erneuern den alten Zertifikatsschluessel an der App (removeKey, Nachweis mit dem neuen Zertifikat).
+        Aufruf erst, wenn der neue Thumbprint in settings.json steht. Rueckgabe: '' (ok) oder Hinweistext.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Tenant, [Parameter(Mandatory)][string]$OldThumbprint, [string]$OldKeyId = '')
+    $new = Get-Item -LiteralPath "Cert:\CurrentUser\My\$($Tenant.certThumbprint)" -ErrorAction SilentlyContinue
+    if (-not $new -or -not $new.HasPrivateKey) { return 'Neues Zertifikat nicht gefunden - alter Schluessel bleibt an der App' }
+    $tid = "$($Tenant.tenantId)"; $appId = "$($Tenant.appId)"; $oid = "$($Tenant.appObjectId)"
     try {
-        $oldKeyId = "$($Tenant.certKeyId)"
-        if ($oldKeyId -notmatch '^[0-9a-fA-F-]{36}$') {
+        $tk = Get-HUAppTokenByCert -Cert $new -AppId $appId -TenantId $tid
+        if ($OldKeyId -notmatch '^[0-9a-fA-F-]{36}$') {
+            # customKeyIdentifier = SHA-1-Fingerabdruck des Zertifikats (Base64)
+            $hex = $OldThumbprint -replace '[^0-9A-Fa-f]', ''
+            $bytes = [byte[]](0..($hex.Length / 2 - 1) | ForEach-Object { [Convert]::ToByte($hex.Substring($_ * 2, 2), 16) })
+            $cki = [Convert]::ToBase64String($bytes)
             $app = Invoke-HUSetupGraph -Token $tk.Token -Path "/applications/$oid`?`$select=keyCredentials"
-            $oldThumb = [Convert]::ToBase64String($old.GetCertHash())
-            $oldKeyId = "$(@($app.keyCredentials | Where-Object { "$($_.customKeyIdentifier)" -eq $oldThumb })[0].keyId)"
+            $OldKeyId = "$(@($app.keyCredentials | Where-Object { "$($_.customKeyIdentifier)" -eq $cki })[0].keyId)"
         }
-        if ($oldKeyId) {
-            $proof2 = New-HUClientAssertion -Certificate $new -Issuer $oid -Audience $aud -Alg RS256
-            $tk2 = Get-HUAppTokenByCert -Cert $new -AppId $appId -TenantId $tid
-            [void](Invoke-HUSetupGraph -Token $tk2.Token -Method POST -Path "/applications/$oid/removeKey" -Body @{ keyId = $oldKeyId; proof = $proof2 })
-        } else { $warn = 'Alter Schluessel an der App nicht gefunden - bei Bedarf im Entra Admin Center entfernen' }
-    } catch { $warn = "Alter Schluessel an der App nicht entfernt: $($_.Exception.Message)" }
-    return [pscustomobject]@{ Thumbprint = $new.Thumbprint; KeyId = $newKeyId; OldThumbprint = $old.Thumbprint; Warning = $warn }
+        if (-not $OldKeyId) { return 'Alter Schluessel an der App nicht gefunden - bei Bedarf im Entra Admin Center entfernen' }
+        $proof = New-HUClientAssertion -Certificate $new -Issuer $oid -Audience '00000002-0000-0000-c000-000000000000' -Alg RS256
+        [void](Invoke-HUSetupGraph -Token $tk.Token -Method POST -Path "/applications/$oid/removeKey" -Body @{ keyId = $OldKeyId; proof = $proof })
+        return ''
+    } catch { return "Alter Schluessel an der App nicht entfernt: $($_.Exception.Message)" }
 }
 
 # Fehlt das eingetragene Zertifikat: gueltiges eigenes Zertifikat fuer diesen Tenant und PC suchen (nur Vorschlag)
@@ -459,7 +475,7 @@ function Find-HUTenantCertCandidate([Parameter(Mandatory)]$Tenant) {
 }
 
 Export-ModuleMember -Function @(
-    'Remove-HUCertLocal', 'Get-HUExtraScopes', 'Get-HUGraphCliConsent', 'Find-HUTenantCertCandidate',
+    'Remove-HUCertLocal', 'Remove-HUTenantOldKey', 'Get-HUExtraScopes', 'Get-HUGraphCliConsent', 'Find-HUTenantCertCandidate',
     'ConvertFrom-HUJwtPayload', 'Get-HUSetupErrorText', 'Invoke-HUSetupGraph', 'Get-HUPermissionCatalog', 'Test-HUPermissionRisky',
     'Start-HUAdminLogin', 'Receive-HUAdminLogin', 'Stop-HUAdminLogin', 'Test-HUAdminCanGrant',
     'Get-HUSetupOrganization', 'Get-HUGraphRoleMap', 'New-HUTenantCertificate', 'Get-HUAppTokenByCert', 'New-HUTenantSetup',

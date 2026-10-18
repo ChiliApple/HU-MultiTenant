@@ -436,11 +436,12 @@ function Start-HUCertRenew([string]$TenantKey, [scriptblock]$Done = $null) {
                 if ("$($r.KeyId)") { Set-HUProp $t 'certKeyId' "$($r.KeyId)" }
                 $saved = [bool](Save-HUSettings)
             }
-            # altes Zertifikat erst loeschen, wenn der neue Thumbprint sicher gespeichert ist (Review 033 B1)
-            if ($saved) { try { [void](Remove-HUCertLocal "$($r.OldThumbprint)") } catch { } }
+            # alten Schluessel an der App und das alte Zertifikat erst entfernen, wenn der neue Thumbprint sicher
+            # gespeichert ist (Review 033 B1/B14)
+            if ($saved) { Start-HUCertOldKeyCleanup -TenantKey $key -OldThumbprint "$($r.OldThumbprint)" -OldKeyId "$($r.OldKeyId)" }
             try { Clear-HUSecretState $key } catch { }
             $ok = $saved
-            $txt = if ($saved) { "Zertifikat erneuert ($("$($r.Thumbprint)".Substring(0, 8))...).$(if ($r.Warning) { " Hinweis: $($r.Warning)" })" }
+            $txt = if ($saved) { "Zertifikat erneuert ($("$($r.Thumbprint)".Substring(0, 8))...). Alter Schluessel wird entfernt." }
                    else { "Zertifikat erneuert, aber settings.json nicht gespeichert - das alte Zertifikat bleibt vorerst; beim naechsten Start wird das neue erkannt." }
             if ($saved) { Write-HULogOK $txt -Tenant $key } else { Write-HULogWarn $txt -Tenant $key }
         } else {
@@ -451,6 +452,27 @@ function Start-HUCertRenew([string]$TenantKey, [scriptblock]$Done = $null) {
         try { Update-HUSecretDisplay } catch { }
     }
     return $true
+}
+
+# Nach dem Speichern: alten Schluessel an der App entfernen (Hintergrund), danach altes Zertifikat lokal loeschen
+function Start-HUCertOldKeyCleanup([string]$TenantKey, [string]$OldThumbprint, [string]$OldKeyId) {
+    $t = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $TenantKey })[0]
+    if (-not $t) { return }
+    Invoke-AsyncCommand -ScriptBlock {
+        param($appRoot, $tenantJson, $oldTp, $oldKid)
+        try {
+            Import-Module (Join-Path $appRoot 'Core\HU.Auth.psm1') -Force -DisableNameChecking
+            Import-Module (Join-Path $appRoot 'Core\HU.Setup.psm1') -Force -DisableNameChecking
+            $w = Remove-HUTenantOldKey -Tenant ($tenantJson | ConvertFrom-Json) -OldThumbprint $oldTp -OldKeyId $oldKid
+            return "DONE:$w"
+        } catch { return "DONE:$($_.Exception.Message)" }
+    } -ArgumentList @($script:AppRoot, ($t | ConvertTo-Json -Depth 6 -Compress), $OldThumbprint, $OldKeyId) -TimeoutSec 300 -State @{ Key = $TenantKey; Old = $OldThumbprint } -BusyTag 'cert' -BusyText 'Alten Schluessel entfernen' -OnComplete {
+        param($result, $st)
+        $w = ("$result".Trim() -replace '^DONE:', '').Trim()
+        if ($w) { Write-HULogWarn $w -Tenant $st.Key } else { Write-HULogOK 'Alter Zertifikatsschluessel an der App entfernt.' -Tenant $st.Key }
+        # das alte Zertifikat ist ab jetzt nicht mehr eingetragen - lokal loeschen
+        try { [void](Remove-HUCertLocal "$($st.Old)") } catch { }
+    }
 }
 
 # Beim Start: Zertifikate, die in <= 30 Tagen ablaufen, erneuern
