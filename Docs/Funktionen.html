@@ -198,6 +198,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     <a href="#analyse" style="--c: var(--mauve)">Analyse</a>
     <a href="#teams" style="--c: var(--red)">Teams</a>
     <a href="#handy" style="--c: var(--teal)">Handy</a>
+    <a href="#ki" style="--c: var(--mauve)">KI-Skills</a>
     <a href="#sicherheit" style="--c: var(--peach)">Einrichtung und Sicherheit</a>
     <a href="#betrieb" style="--c: var(--teal)">Betrieb und Update</a>
   </div>
@@ -227,7 +228,6 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
             <li>Snippets mit Beschreibung, Kategorien, Favoriten und Suche im Code</li>
             <li>Import und Export, 12 Beispiele dabei</li>
             <li>Anleitung für eigene Snippets (<code>SNIPPET-DEVELOPMENT.md</code>)</li>
-            <li>Fertiger Skill samt Prüfprogramm, damit ein KI-Assistent Snippets fehlerfrei schreibt (<code>skills/hu-snippet</code>)</li>
           </ul>
         </div>
       </div>
@@ -244,7 +244,18 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
           <li>MFA-Registrierung aller Benutzer</li>
           <li>Inaktive Benutzer mit Lizenzen, Lizenz-Auslastung</li>
           <li>Parameter, Dry-Run, Excel-Report; eigene Extensions nach Vorlage</li>
-          <li>Skill samt Prüfprogramm für KI-Assistenten (<code>skills/hu-extension</code>)</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="cat" id="ki" style="--c: var(--mauve)">
+      <div class="cat-head"><span class="chip">🤖 KI-Skills</span><h3>KI-Skills</h3><span class="count">2 Skills</span></div>
+      <div class="cat-body">
+        <ul>
+          <li>Snippets von einem KI-Assistenten schreiben lassen (<code>skills/hu-snippet</code>)</li>
+          <li>Extensions von einem KI-Assistenten schreiben lassen (<code>skills/hu-extension</code>)</li>
+          <li>Geprüfte Vorlagen und Prüfprogramm: Code läuft beim ersten Versuch</li>
+          <li>Als Skill hinzufügen oder <code>SKILL.md</code> in den Chat geben</li>
         </ul>
       </div>
     </article>
@@ -266,7 +277,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 
     <div class="col">
     <article class="cat" id="apps" style="--c: var(--blue)">
-      <div class="cat-head"><span class="chip">📦 Apps</span><h3>Apps verteilen</h3><span class="count">14 Punkte</span></div>
+      <div class="cat-head"><span class="chip">📦 Apps</span><h3>Apps verteilen</h3><span class="count">12 Punkte</span></div>
       <div class="cat-body">
         <div class="group"><h4>Bibliothek</h4>
           <ul>
@@ -311,6 +322,19 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
           <li>Jetzt senden, einmalig an einen Kanal</li>
           <li>Push-Vorschau am Handy, Rückfrage vor jedem Senden</li>
           <li>Sendeprotokoll ohne Adressen; Adressen verschlüsselt</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="cat" id="betrieb" style="--c: var(--teal)">
+      <div class="cat-head"><span class="chip">⚙ Einstellungen</span><h3>Betrieb und Update</h3><span class="count">5 Punkte</span></div>
+      <div class="cat-body">
+        <ul>
+          <li>Update-Knopf: Kanal Stabil oder Test, jede Datei per SHA-256, nur signierte Releases</li>
+          <li>Beliebige ältere Version auswählbar</li>
+          <li>Desktop-Verknüpfung und Startmenü mit eigenem Symbol</li>
+          <li>Protokolle, Support-Paket anonymisiert</li>
+          <li>Anleitung im Programm mit <kbd>F1</kbd>, Oberfläche skalierbar</li>
         </ul>
       </div>
     </article>
@@ -378,18 +402,6 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
       </div>
     </article>
 
-    <article class="cat" id="betrieb" style="--c: var(--teal)">
-      <div class="cat-head"><span class="chip">⚙ Einstellungen</span><h3>Betrieb und Update</h3><span class="count">5 Punkte</span></div>
-      <div class="cat-body">
-        <ul>
-          <li>Update-Knopf: Kanal Stabil oder Test, jede Datei per SHA-256, nur signierte Releases</li>
-          <li>Beliebige ältere Version auswählbar</li>
-          <li>Desktop-Verknüpfung und Startmenü mit eigenem Symbol</li>
-          <li>Protokolle, Support-Paket anonymisiert</li>
-          <li>Anleitung im Programm mit <kbd>F1</kbd>, Oberfläche skalierbar</li>
-        </ul>
-      </div>
-    </article>
     </div>
   </div>
 </section>
