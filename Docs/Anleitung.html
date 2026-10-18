@@ -117,7 +117,7 @@ footer{color:var(--sub);font-size:12px;text-align:center;padding:10px}
   </ol>
   <div class="note warn"><b class="h">Häkchen nicht setzen</b>Im Zustimmungsdialog von Microsoft das Häkchen <i>„Zustimmung im Namen Ihrer Organisation“</i> <b>nicht</b> setzen. Sonst dürften alle Benutzer die Microsoft-App mit diesen Rechten nutzen. Ohne Häkchen gilt die Zustimmung nur für das Admin-Konto.</div>
   <p><b>Zertifikat statt Secret:</b> Der private Schlüssel liegt nicht exportierbar im Zertifikatspeicher deines Windows-Benutzers (<code>certmgr.msc</code> › Eigene Zertifikate, Name <i>HU-MultiTenant …</i>). Er kann nicht kopiert und nicht abgetippt werden. Gültigkeit 12 Monate; 30 Tage vor Ablauf erneuert HU-MultiTenant es beim Start automatisch (ohne Admin), von Hand mit <span class="ui">Zertifikat erneuern</span>. Ein zweiter PC braucht ein eigenes Zertifikat: dort den Tenant ebenfalls einrichten.</p>
-  <p><b>Umsteigen von Secret auf Zertifikat:</b> den bestehenden Tenant einfach einrichten – HU-MultiTenant erkennt ihn an der Tenant-ID und behält Schlüssel und Einstellungen. Danach die alte App-Registrierung (mit Secret) im Entra Admin Center löschen.</p>
+  <p><b>Umsteigen von Secret auf Zertifikat:</b> den bestehenden Tenant einfach einrichten – HU-MultiTenant erkennt ihn an der Tenant-ID und behält Schlüssel und Einstellungen. Danach die alte App-Registrierung (mit Secret) im Entra Admin Center löschen. Das alte Secret auf diesem PC löscht HU-MultiTenant selbst.</p>
   <h3 id="tenant">Tenant manuell anlegen (App-ID und Secret)</h3>
   <p>Für eine selbst angelegte App-Registrierung mit Client Secret – Schritt für Schritt in <code>INSTALL.md</code> im Programmordner.</p>
   <ol class="steps">

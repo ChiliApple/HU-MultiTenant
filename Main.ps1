@@ -471,6 +471,7 @@ $script:Window.Add_ContentRendered({
     }
     if ($script:Settings.ui.checkUpdatesOnStart -ne $false) { Invoke-UpdateCheck -Quiet }
     Start-HUCertRenewAll
+    Remove-HUObsoleteSecretsAll
     if ($script:Settings.ui.checkSecretsOnStart -ne $false) { Start-HUSecretCheckAll }
     else { Update-HUSecretDisplay -LogWarnings }
 })

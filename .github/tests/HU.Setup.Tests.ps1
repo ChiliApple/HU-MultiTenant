@@ -211,3 +211,31 @@ Describe 'Rechte erweitern: Add-HUAppPermissions' {
         @($script:Posted) | Should -Be @('r2')
     }
 }
+
+Describe 'Alte Secrets nach Umstellung loeschen (Remove-HUObsoleteSecret)' {
+    BeforeAll {
+        function Write-HULogInfo { param($Message, $Tenant) }
+        function Write-HULogWarn { param($Message, $Tenant) }
+        . (Join-Path $script:AppRoot 'Functions\UI-TenantSetup.ps1')
+        $script:Settings = [pscustomobject]@{ credentials = [pscustomobject]@{ credentialNamePrefix = 'HU-' }; tenants = @() }
+    }
+    It 'loescht nur bei Zertifikat-Tenant mit vorhandenem Zertifikat und gespeichertem Secret' {
+        $c = $script:Cert
+        Mock Get-HUTenantCertificate { $c }
+        Mock Get-StoredCredential { $s = New-Object System.Security.SecureString; $s.AppendChar('x'); $s }
+        Mock Remove-StoredCredential { }
+        Remove-HUObsoleteSecret ([pscustomobject]@{ key = 'T1'; auth = 'certificate'; certThumbprint = $c.Thumbprint }) | Should -BeTrue
+        Should -Invoke Remove-StoredCredential -Times 1 -Exactly
+    }
+    It 'Secret-Tenant: nie loeschen' {
+        Mock Remove-StoredCredential { }
+        Remove-HUObsoleteSecret ([pscustomobject]@{ key = 'T2' }) | Should -BeFalse
+        Should -Invoke Remove-StoredCredential -Times 0 -Exactly
+    }
+    It 'Zertifikat fehlt auf diesem PC: Secret bleibt' {
+        Mock Get-HUTenantCertificate { $null }
+        Mock Remove-StoredCredential { }
+        Remove-HUObsoleteSecret ([pscustomobject]@{ key = 'T3'; auth = 'certificate'; certThumbprint = ('A' * 40) }) | Should -BeFalse
+        Should -Invoke Remove-StoredCredential -Times 0 -Exactly
+    }
+}

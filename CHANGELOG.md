@@ -19,6 +19,8 @@
 - **Weitreichende Rechte** (Mail, Dateien, Benutzer/Gruppen/Apps/Rollen schreiben, Policy.ReadWrite ...) sind rot und
   werden eigens bestaetigt - nicht gesperrt. Liste und Standard-Rechte: `Config\graph-permissions.json`.
 - **Not-Aus** loescht auch die Zertifikate von HU-MultiTenant auf diesem PC.
+- Alte Secrets werden nach der Einrichtung (und beim Start fuer bereits umgestellte Tenants) auf diesem PC geloescht -
+  nur wenn das Zertifikat vorhanden ist.
 - Manuell mit App-ID und Secret geht weiterhin ("+ Manuell").
 
 ### Doku

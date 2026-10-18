@@ -114,6 +114,7 @@ function Save-HUTenantFromSetup($Entry, [string]$WantedName = '') {
     }
     Set-HUProp $script:Settings 'tenants' @($list.ToArray())
     if (-not (Save-HUSettings)) { throw 'settings.json konnte nicht gespeichert werden (Protokoll)' }
+    try { if (Remove-HUObsoleteSecret $t) { Write-HULogInfo 'Altes Secret auf diesem PC geloescht (Anmeldung jetzt per Zertifikat).' -Tenant $key } } catch { }
     try { Clear-HUSecretState $key } catch { }
     return $key
 }
@@ -424,4 +425,23 @@ function Remove-HUTenantCertLocal($Tenant) {
     if (-not (Remove-HUCertLocal "$($Tenant.certThumbprint)")) { return $false }
     try { Clear-HUSecretState "$($Tenant.key)" } catch { }
     return $true
+}
+
+# Altes Secret eines Tenants mit Zertifikat loeschen - nur wenn das Zertifikat auf diesem PC vorhanden ist
+function Remove-HUObsoleteSecret($Tenant) {
+    if (-not (Test-HUTenantCertAuth $Tenant)) { return $false }
+    $tmp = [pscustomobject]@{ tenants = @($Tenant); credentials = $script:Settings.credentials }
+    if (-not (Get-HUTenantCertificate -TenantKey "$($Tenant.key)" -Settings $tmp)) { return $false }
+    if (-not (Get-StoredCredential -TenantKey "$($Tenant.key)" -Settings $tmp -ErrorAction SilentlyContinue)) { return $false }
+    Remove-StoredCredential -TenantKey "$($Tenant.key)" -Settings $tmp -Confirm:$false
+    return $true
+}
+
+# Beim Start: uebrig gebliebene Secrets von Tenants, die schon per Zertifikat angemeldet werden
+function Remove-HUObsoleteSecretsAll {
+    foreach ($t in @($script:Settings.tenants)) {
+        if (-not $t) { continue }
+        try { if (Remove-HUObsoleteSecret $t) { Write-HULogInfo 'Altes Secret auf diesem PC geloescht (Anmeldung per Zertifikat).' -Tenant "$($t.key)" } }
+        catch { Write-HULogWarn "Altes Secret nicht geloescht: $($_.Exception.Message)" -Tenant "$($t.key)" }
+    }
 }
