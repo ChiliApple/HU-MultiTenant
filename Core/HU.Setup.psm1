@@ -128,6 +128,9 @@ function Receive-HUAdminLogin {
         $stream = $client.GetStream()
         $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::ASCII)
         try { $first = $reader.ReadLine() } catch { $first = '' }
+        # restliche Kopfzeilen lesen - ungelesene Daten liessen Windows beim Schliessen ein RST senden,
+        # der Browser verwirft dann die Antwortseite und zeigt "Verbindung abgelehnt"
+        try { for ($i = 0; $i -lt 100; $i++) { $hl = $reader.ReadLine(); if ($null -eq $hl -or $hl -eq '') { break } } } catch { }
         $m = [regex]::Match("$first", '^GET (/\?\S*) HTTP')
         $isAnswer = $m.Success -and $m.Groups[1].Value -match '[?&](code|error)='
         if (-not $isAnswer) {
@@ -139,6 +142,9 @@ function Receive-HUAdminLogin {
         $b = [System.Text.Encoding]::UTF8.GetBytes($html)
         $hdr = [System.Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Type: text/html; charset=utf-8`r`nContent-Length: $($b.Length)`r`nConnection: close`r`n`r`n")
         $stream.Write($hdr, 0, $hdr.Length); $stream.Write($b, 0, $b.Length); $stream.Flush()
+        # sauber beenden: Senden abschliessen, kurz auf das Schliessen durch den Browser warten
+        try { $client.Client.Shutdown([System.Net.Sockets.SocketShutdown]::Send) } catch { }
+        try { $client.ReceiveTimeout = 500; $buf = New-Object byte[] 512; while ($stream.Read($buf, 0, $buf.Length) -gt 0) { } } catch { }
     } catch { } finally { try { $client.Close() } catch { } }
     Stop-HUAdminLogin $Context
     $res = [pscustomobject]@{ Ok = $false; Error = ''; Token = ''; Tid = ''; Upn = ''; Name = ''; Roles = @() }
