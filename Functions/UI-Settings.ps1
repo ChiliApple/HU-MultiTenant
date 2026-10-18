@@ -246,6 +246,9 @@ function Show-HUSettingsDialog {
             foreach ($b in @($c.btnSecretSet, $c.btnSecretDelete)) { $b.Visibility = $(if ($isCert) { 'Collapsed' } else { 'Visible' }) }
             foreach ($b in @($c.btnCertRenew, $c.btnCertDelete)) { $b.Visibility = $(if ($isCert) { 'Visible' } else { 'Collapsed' }) }
             $c.btnTenantTest.Content = $(if ($isCert) { 'Verbindung pruefen' } else { 'Verbindung + Secret pruefen' })
+            # nur fuer Secrets: Credential-Name, manuelles Ablaufdatum, dauerhaft speichern
+            foreach ($x in @($c.lblCredName, $c.tCredName, $c.tExpires, $c.tPersist)) { $x.Visibility = $(if ($isCert) { 'Collapsed' } else { 'Visible' }) }
+            $c.lblExpires.Text = $(if ($isCert) { 'Anmeldung' } else { "Secret g$([char]0xFC)ltig bis (manuell)" })
         } finally { $st.Busy = $false }
     }
     $c.lstTenants.Add_SelectionChanged({

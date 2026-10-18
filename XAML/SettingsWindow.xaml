@@ -207,7 +207,7 @@
                                     <TextBox Grid.Row="3" Grid.Column="1" x:Name="tAppId" Style="{StaticResource DarkTextBox}" FontFamily="Consolas" Margin="0,3"/>
                                     <TextBlock Grid.Row="4" Text="Dom&#xE4;ne" Style="{StaticResource FieldLabel}"/>
                                     <TextBox Grid.Row="4" Grid.Column="1" x:Name="tDomain" Style="{StaticResource DarkTextBox}" Margin="0,3"/>
-                                    <TextBlock Grid.Row="5" Text="Credential-Name" Style="{StaticResource FieldLabel}"/>
+                                    <TextBlock Grid.Row="5" x:Name="lblCredName" Text="Credential-Name" Style="{StaticResource FieldLabel}"/>
                                     <TextBox Grid.Row="5" Grid.Column="1" x:Name="tCredName" Style="{StaticResource DarkTextBox}" Margin="0,3"
                                              ToolTip="Dateiname des gespeicherten Secrets in %APPDATA%\HU-MultiTenant (leer = HU-&lt;Schluessel&gt;)"/>
                                     <TextBlock Grid.Row="6" Text="AD-Schema" Style="{StaticResource FieldLabel}"/>
@@ -216,7 +216,7 @@
                                         <ComboBoxItem Content="VirtualSchool"/>
                                         <ComboBoxItem Content="iPack"/>
                                     </ComboBox>
-                                    <TextBlock Grid.Row="7" Text="Secret g&#xFC;ltig bis (manuell)" Style="{StaticResource FieldLabel}"/>
+                                    <TextBlock Grid.Row="7" x:Name="lblExpires" Text="Secret g&#xFC;ltig bis (manuell)" Style="{StaticResource FieldLabel}"/>
                                     <StackPanel Grid.Row="7" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
                                         <TextBox x:Name="tExpires" Style="{StaticResource DarkTextBox}" Width="120" ToolTip="TT.MM.JJJJ - nur noetig ohne Application.Read.All"/>
                                         <TextBlock x:Name="tSecretState" Foreground="#858585" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap"/>
