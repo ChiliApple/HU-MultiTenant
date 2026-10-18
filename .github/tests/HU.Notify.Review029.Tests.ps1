@@ -161,7 +161,7 @@ Describe 'Q: Kartengroesse (27 KB)' {
         { ConvertTo-HUTeamsCardJson -Card $c } | Should -Not -Throw
     }
     It 'tief verschachtelte Karte (ColumnSet > Column > TextBlock) wird nicht abgeschnitten (-Depth)' {
-        $c = New-HUTeamsCard -Title 'T' -Rows @(@{ Name = 'HLW'; Status = 'OK'; Text = 'alles gut' })
+        $c = New-HUTeamsCard -Title 'T' -Rows @(@{ Name = 'Schule A'; Status = 'OK'; Text = 'alles gut' })
         $j = ConvertTo-HUTeamsCardJson -Card $c
         $j | Should -Match '"text":"alles gut"'
         $j | Should -Not -Match 'System\.Collections'

@@ -182,7 +182,7 @@ schon in 2.1.10 enthalten.
 
 ### Teams: Push-Vorschau und Datenschutz
 - Jede eingebaute Meldung liefert einen eigenen Vorschautext fuer die Handy-Benachrichtigung - ohne Geraetenamen:
-  Tages-Ampel "4 gruen, 1 gelb, 0 rot (gelb: HLW) - 1234 Geraete, 7 nicht konform", Secret-Countdown mit dem
+  Tages-Ampel "4 gruen, 1 gelb, 0 rot (gelb: Schule A) - 1234 Geraete, 7 nicht konform", Secret-Countdown mit dem
   dringendsten Tenant, Lizenzen mit der knappsten SKU, Defender mit Anzahl und betroffenen Tenants.
 - Neue Option an der Meldung **Geraetenamen ausblenden (Defender-Alarm)**: die Karte nennt dann nur die Anzahl je
   Zustand - fuer Kanaele mit breiterem Publikum.

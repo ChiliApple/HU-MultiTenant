@@ -39,7 +39,7 @@ Describe 'Teams: Webhook-Adresse (Test-HUWebhookUrl)' {
         Test-HUWebhookUrl 'http://prod-12.westeurope.logic.azure.com/x' | Should -Match 'https'
     }
     It 'private und lokale Hosts werden abgewiesen' {
-        Test-HUWebhookUrl 'https://10.1.1.2/x' | Should -Not -Be ''
+        Test-HUWebhookUrl 'https://10.0.0.2/x' | Should -Not -Be ''
         Test-HUWebhookUrl 'https://192.168.1.5/x' | Should -Not -Be ''
         Test-HUWebhookUrl 'https://localhost/x' | Should -Not -Be ''
         Test-HUWebhookUrl 'https://schulserver/x' | Should -Not -Be ''
@@ -87,7 +87,7 @@ Describe 'Teams: Karte (New-HUTeamsCard)' {
         $card.body[-1].text | Should -Match '^PC1  \|  .*HU-MultiTenant  \|  Kat$'
     }
     It 'Zeilen fuer die Tenant-Ampel mit Farbe' {
-        $c = New-HUTeamsCard -Title 'T' -Rows @(@{ Name = 'HLW'; Status = 'OK'; Text = 'gut' }, @{ Name = 'Gym'; Status = 'Error'; Text = 'schlecht' })
+        $c = New-HUTeamsCard -Title 'T' -Rows @(@{ Name = 'Schule A'; Status = 'OK'; Text = 'gut' }, @{ Name = 'Schule B'; Status = 'Error'; Text = 'schlecht' })
         $cs = @($c.attachments[0].content.body | Where-Object { $_.type -eq 'ColumnSet' })
         $cs.Count | Should -Be 2
         $cs[1].columns[1].items[0].color | Should -Be 'Attention'
@@ -239,7 +239,7 @@ Describe 'Teams: Kartengroesse und Push-Vorschau (v2.1.10)' {
         (ConvertTo-Json -InputObject (New-HUTeamsCard -Title 'T' -Lines @('a', 'b')) -Depth 20 -Compress) | Should -Not -Match 'gekuerzt'
     }
     It '-Preview ersetzt die Vorschau aus den Zeilen' {
-        $c = New-HUTeamsCard -Title 'Ampel' -Rows @(@{ Name = 'HLW'; Status = 'Error'; Text = 'NB-GEHEIM-01 Bedrohung' }) -Preview '1 Geraet mit Befund (HLW)'
+        $c = New-HUTeamsCard -Title 'Ampel' -Rows @(@{ Name = 'Schule A'; Status = 'Error'; Text = 'NB-GEHEIM-01 Bedrohung' }) -Preview '1 Geraet mit Befund (Schule A)'
         $c.summary | Should -Match '1 Geraet mit Befund'
         $c.summary | Should -Not -Match 'NB-GEHEIM'
         $c.attachments[0].content.fallbackText | Should -Be $c.summary
@@ -287,7 +287,7 @@ Describe 'Teams: eigene Kategorien (v2.1.10)' {
             [pscustomobject]@{ Id = 'bbbbbbbb'; Name = 'Direktion'; Url = 'https://prod-2.logic.azure.com/w'; Enabled = $true; Cats = @{ Backup = $false } }
         ) } }
         Mock -ModuleName HU.Notify Invoke-WebRequest { $script:SentBody = [System.Text.Encoding]::UTF8.GetString($Body); $null }
-        $r = Send-HUNotify -Category 'Backup' -Title 'Backup HLW fertig' -Level OK
+        $r = Send-HUNotify -Category 'Backup' -Title 'Backup Schule A fertig' -Level OK
         $r.Ok | Should -Be 1; $r.Failed | Should -Be 0
         $r.Text | Should -Match 'Admin: gesendet'
         $r.Text | Should -Not -Match 'Direktion'

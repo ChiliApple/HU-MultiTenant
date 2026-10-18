@@ -376,7 +376,7 @@ function Invoke-HUTeamsScript {
         $TenantKey/$Token. Ausdrueckliche Einstellung an der Meldung statt Textsuche (Review 030 B38).
     .PARAMETER SendOutput
         Ruft das Skript kein Send-HUNotify auf, geht seine Ausgabe als EINE Karte an die Ziele - Objekte/Text, sonst die
-        Write-Host-Zeilen. Standard aus: dann gehen nur Karten aus Send-HUNotify raus (Review 030 B37, Entscheidung Udo).
+        Write-Host-Zeilen. Standard aus: dann gehen nur Karten aus Send-HUNotify raus (Review 030 B37).
     .OUTPUTS
         @{ Calls; Ok; Failed; Errors }  (Calls = Anzahl Send-HUNotify-Aufrufe, inkl. Ausgabe-Karte)
     #>
@@ -481,7 +481,7 @@ function Invoke-HUTeamsScript {
                     $out.Calls += $d.Calls; $out.Ok += $d.Ok; $out.Failed += $d.Failed
                     foreach ($x in @($d.Errors)) { if ($x) { $errs.Add("$x") } }
                     if ($SendOutput -and $d.Calls -eq 0) {
-                        # Udo entscheidet je Meldung: Ausgabe (Objekte/Text, sonst Write-Host) als Karte
+                        # Je Meldung wird entschieden: Ausgabe (Objekte/Text, sonst Write-Host) als Karte
                         $src = if (@($d.Lines).Count) { @($d.Lines) } else { @($hostLines | ForEach-Object { if ($multi) { "$($dn["$tk"]): $_" } else { "$_" } }) }
                         foreach ($x in $src) { if ($x -and $lines.Count -lt 60) { $lines.Add("$x") } }
                     }

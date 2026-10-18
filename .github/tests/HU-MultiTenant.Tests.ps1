@@ -340,11 +340,11 @@ Describe 'Wartung: @param-Felder' {
         @(Test-HURemParams "# @param X|string|X|`n`$X = 'a'  # @value`nWrite-Output `$X").Count | Should -Be 0
     }
     It 'Zuweisungen am Anfang werden zu Feldern' {
-        $code = "`$Name = 'GymAdmin'`n`$N = 5`n`$B = `$true`n`$D = Get-Date`n`$Spaet = 'x'"
+        $code = "`$Name = 'AdminKonto'`n`$N = 5`n`$B = `$true`n`$D = Get-Date`n`$Spaet = 'x'"
         @(Get-HURemParamCandidates $code | ForEach-Object Name) | Should -Be @('Name', 'N', 'B')
         $c = Convert-HURemAssignToParam $code @('Name', 'N', 'B')
         $v = Get-HURemParamValues $c
-        $v.Name | Should -Be 'GymAdmin'; $v.N | Should -Be 5; $v.B | Should -BeTrue
+        $v.Name | Should -Be 'AdminKonto'; $v.N | Should -Be 5; $v.B | Should -BeTrue
         @(Get-HUQSParams $c).Count | Should -Be 3
         @(Test-HURemParams $c).Count | Should -Be 0
     }
