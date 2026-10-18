@@ -242,13 +242,15 @@ function Get-HUSetupInfo {
                 $ast = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$null)
                 if ($ast.ParamBlock) { $params = @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath }) }
             } catch { }
-            $base = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$name`""
+            # Intune startet Befehle aus einem 32-Bit-Prozess (IME) - Sysnative startet die 64-Bit-PowerShell, damit
+            # Program Files und HKLM\SOFTWARE wie am eigenen PC gelten (sonst Program Files (x86) / WOW6432Node)
+            $base = "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$name`""
             if ($params -contains 'AllUsers') { $base += ' -AllUsers' }
             $un = if ($params -contains 'Uninstall') { "$base -Uninstall" } else { '' }
             $hint = 'PowerShell-Skript: der ganze Ordner wird mitgepackt. Erkennung (z. B. Datei) selbst festlegen.'
             if ($params -contains 'AllUsers') { $hint += ' Schalter -AllUsers uebernommen.' }
             if (-not $un) { $hint += ' Deinstallationsbefehl fehlt - selbst eintragen.' }
-            $hint += ' Intune startet das Skript in einer 32-Bit-PowerShell - Pfade unter Program Files beachten.'
+            $hint += ' Startet als 64-Bit-PowerShell (Sysnative) - Program Files und Registry wie am eigenen PC.'
             return [pscustomobject]@{
                 Kind = 'script'; FileName = $name; Name = $nm; Publisher = ''; Version = $ver; ProductCode = ''; UpgradeCode = ''; InstallerType = 'PowerShell'
                 InstallCmd = $base; UninstallCmd = $un; Detection = $null; Hint = $hint
@@ -256,8 +258,8 @@ function Get-HUSetupInfo {
         }
         return [pscustomobject]@{
             Kind = 'script'; FileName = $name; Name = $nm; Publisher = ''; Version = $ver; ProductCode = ''; UpgradeCode = ''; InstallerType = 'Batch'
-            InstallCmd = "cmd.exe /c `"$name`""; UninstallCmd = ''; Detection = $null
-            Hint = 'Batch-Datei: der ganze Ordner wird mitgepackt. Deinstallationsbefehl und Erkennung selbst festlegen.'
+            InstallCmd = "%SystemRoot%\Sysnative\cmd.exe /c `"$name`""; UninstallCmd = ''; Detection = $null
+            Hint = 'Batch-Datei: der ganze Ordner wird mitgepackt, startet als 64-Bit (Sysnative). Deinstallationsbefehl und Erkennung selbst festlegen.'
         }
     }
     if ($file.Extension -ieq '.msi') {
@@ -1706,6 +1708,8 @@ function Enable-HUSandbox {
 $script:SandboxScript = @'
 $ErrorActionPreference = 'Continue'
 $cfg = Get-Content -LiteralPath 'C:\HUTest\config.json' -Raw | ConvertFrom-Json
+# Wie Intune: Befehle aus einem 32-Bit-Prozess starten (die IME ist 32-Bit) - sonst 64-Bit wie am eigenen PC
+$script:Arch32 = -not ($cfg.PSObject.Properties['Arch32'] -and $cfg.Arch32 -eq $false)
 $result = [ordered]@{ Deps = @(); DetectInstall = $null; DetectUninstall = $null; NewFiles = @(); FilesLeft = $null; ExitCode = $null; Seconds = 0; NewEntries = @(); NewFolders = @(); UninstallTested = $false; UninstallExitCode = $null; UninstallRemoved = $null; Error = ''; InstallWindows = @(); UninstallWindows = @(); InstallLog = ''; UninstallLog = ''; DesktopLinks = @(); WrapperLog = @() }
 function Get-Snap {
     $l = @()
@@ -1778,11 +1782,14 @@ function Invoke-Cmd([string]$Line, [int]$Minutes, [string]$Tag = 'install', [str
     New-Item -ItemType Directory -Path 'C:\HUTest\logs' -Force | Out-Null
     $run = $Line
     if ($run -match '(?i)\bmsiexec(\.exe)?\b' -and $run -notmatch '(?i)\s/l[\*a-z+!]*\s') { $run += " /l*v `"C:\HUTest\logs\$Tag-msi.log`"" }
+    # 64-Bit-Modus: Sysnative gibt es nur fuer 32-Bit-Prozesse -> auf System32 umschreiben (wie ein Aufruf am eigenen PC)
+    if (-not $script:Arch32) { $run = $run -replace '(?i)%(SystemRoot|windir)%\\Sysnative\\', '%$1%\System32\' }
     $runCmd = Join-Path $Dir '__run.cmd'
     Set-Content -LiteralPath $runCmd -Value "@echo off`r`n$run > `"C:\HUTest\logs\$Tag-ausgabe.txt`" 2>&1`r`nexit /b %errorlevel%" -Encoding Default
     $base = @(Get-Process | ForEach-Object { $_.Id })
     $seen = @{}
-    $p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $runCmd -WorkingDirectory $Dir -PassThru -WindowStyle Hidden
+    $cmdExe = if ($script:Arch32) { Join-Path $env:windir 'SysWOW64\cmd.exe' } else { Join-Path $env:windir 'System32\cmd.exe' }
+    $p = Start-Process -FilePath $cmdExe -ArgumentList '/c', $runCmd -WorkingDirectory $Dir -PassThru -WindowStyle Hidden
     $end = (Get-Date).AddMinutes($Minutes)
     while (-not $p.HasExited) {
         foreach ($w in @(Get-Process | Where-Object { $base -notcontains $_.Id -and $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -and $_.ProcessName -notmatch '^(explorer|conhost|cmd|powershell|ShellExperienceHost|SearchHost|StartMenuExperienceHost)$' })) {
@@ -1939,7 +1946,9 @@ function Start-HUSandboxTest {
         # Abhaengigkeiten aus der Bibliothek, werden vorher installiert: je @{ Name; Folder (Host); Cmd }
         [object[]]$Dependencies = @(),
         # Erkennungsregel der App (Type file|registry|msi) - wird nach Installation/Deinstallation geprueft
-        $Detection = $null
+        $Detection = $null,
+        # Start wie am eigenen PC (64-Bit) statt wie Intune (aus einem 32-Bit-Prozess)
+        [switch]$Arch64
     )
     if (-not (Test-HUSandboxAvailable)) { throw 'Windows Sandbox ist nicht aktiviert' }
     if (Get-Process -Name 'WindowsSandbox', 'WindowsSandboxClient', 'WindowsSandboxRemoteSession' -ErrorAction SilentlyContinue) { throw 'Es laeuft bereits eine Windows Sandbox - bitte zuerst schliessen (nur eine gleichzeitig moeglich).' }
@@ -1954,7 +1963,7 @@ function Start-HUSandboxTest {
         $deps += [ordered]@{ Name = "$($d.Name)"; Cmd = "$($d.Cmd)"; Src = "C:\HUDepSrc\$i"; Dir = "C:\HUDep\$i" }
         $depMaps += "`n    <MappedFolder><HostFolder>$(& $esc "$($d.Folder)")</HostFolder><SandboxFolder>C:\HUDepSrc\$i</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>"
     }
-    $cfg = [ordered]@{ Install = $InstallCmd; Uninstall = $UninstallCmd; TestUninstall = [bool]$TestUninstall; KeepOpen = [bool]$KeepOpen; Deps = @($deps)
+    $cfg = [ordered]@{ Install = $InstallCmd; Uninstall = $UninstallCmd; TestUninstall = [bool]$TestUninstall; KeepOpen = [bool]$KeepOpen; Deps = @($deps); Arch32 = (-not $Arch64)
         Detect = $(if ($Detection -and "$($Detection.Type)" -in 'file', 'registry', 'msi') { [ordered]@{ Type = "$($Detection.Type)"; Path = "$($Detection.Path)"; FileName = "$($Detection.FileName)"; KeyPath = "$($Detection.KeyPath)"; ValueName = "$($Detection.ValueName)"; ProductCode = "$($Detection.ProductCode)"; Check32 = [bool]$Detection.Check32 } } else { $null }) }
     [IO.File]::WriteAllText((Join-Path $WorkFolder 'config.json'), (ConvertTo-Json -InputObject $cfg -Depth 4), (New-Object System.Text.UTF8Encoding $false))
     $wsb = @"

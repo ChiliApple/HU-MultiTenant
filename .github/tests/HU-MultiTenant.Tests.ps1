@@ -600,19 +600,27 @@ Describe 'Intune: Skript als Setup (Get-HUSetupInfo)' {
         $i.Kind | Should -Be 'script'
         $i.Name | Should -Be 'MeinPlugin'
         $i.Version | Should -Be '1.2.3'
-        $i.InstallCmd | Should -Be 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Install.ps1" -AllUsers'
-        $i.UninstallCmd | Should -Be 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Install.ps1" -AllUsers -Uninstall'
+        $i.InstallCmd | Should -Be '%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Install.ps1" -AllUsers'   # 64-Bit unter Intune (IME ist 32-Bit)
+        $i.UninstallCmd | Should -Be '%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Install.ps1" -AllUsers -Uninstall'
     }
     It 'Skript ohne Parameter: kein Deinstallationsbefehl' {
         $i = Get-HUSetupInfo -Path (Join-Path $script:SDir 'Simple.ps1')
-        $i.InstallCmd | Should -Be 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Simple.ps1"'
+        $i.InstallCmd | Should -Be '%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Simple.ps1"'
         $i.UninstallCmd | Should -Be ''
     }
     It 'Batch-Datei ueber cmd.exe' {
         $i = Get-HUSetupInfo -Path (Join-Path $script:SDir 'run.cmd')
         $i.Kind | Should -Be 'script'
         $i.InstallerType | Should -Be 'Batch'
-        $i.InstallCmd | Should -Be 'cmd.exe /c "run.cmd"'
+        $i.InstallCmd | Should -Be '%SystemRoot%\Sysnative\cmd.exe /c "run.cmd"'
+    }
+    It 'Sandbox: wie Intune aus 32-Bit-cmd, im 64-Bit-Modus Sysnative -> System32' {
+        $sb = (& (Get-Module HU.Intune) { $script:SandboxScript })
+        $sb | Should -Match "SysWOW64\\cmd\.exe"
+        $sb | Should -Match 'Arch32'
+        $line = '%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe -File "a.ps1"'
+        ($line -replace '(?i)%(SystemRoot|windir)%\\Sysnative\\', '%$1%\System32\') | Should -Be '%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -File "a.ps1"'
+        $sb | Should -Match ([regex]::Escape("-replace '(?i)%(SystemRoot|windir)%\\Sysnative\\', '%`$1%\System32\'"))
     }
 }
 

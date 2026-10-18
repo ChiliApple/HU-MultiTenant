@@ -17,6 +17,9 @@ schon in 2.1.10 enthalten.
   (z. B. Greenshot vor einem Greenshot-Plugin); Abhaengigkeiten nur aus Intune werden als Hinweis genannt.
 - **Testinstallation prueft die Erkennungsregel** nach der Installation und nach der Deinstallation (Datei/Ordner,
   Registry, MSI-Produktcode) - "NICHT gefunden" heisst, Intune wuerde die Installation als fehlgeschlagen melden.
+- **Testinstallation wie Intune:** Befehle starten in der Sandbox aus einem 32-Bit-Prozess wie bei der Intune Management
+  Extension (wahlweise "Start 64-Bit (eigener PC)"). Skript- und Batch-Setups werden mit `%SystemRoot%\Sysnative\...`
+  vorgeschlagen und laufen damit auch unter Intune als 64-Bit (Program Files statt Program Files (x86)).
 - **Ohne Eintrag in "Apps & Features"** (Skripte, Plugins): neue Programmdateien (EXE/DLL) werden erkannt und als
   Datei-Erkennung mit Version vorgeschlagen; der Deinstallationstest meldet "nicht pruefbar" statt eines falschen "OK".
 

@@ -1158,12 +1158,16 @@ function Start-HUAppSandbox {
     $depDefs = @(foreach ($d in @(Get-HUAppDepChain $a)) {
             if (-not $d.SetupPath -or -not (Test-Path -LiteralPath $d.SetupPath) -or -not $d.InstallCmd) { Add-HURtbLine $rtb "Abhaengigkeit '$($d.Name)': Setup-Datei oder Befehl fehlt - wird in der Sandbox nicht installiert." '#FFB74D'; continue }
             Add-HURtbLine $rtb "Abhaengigkeit wird vorher installiert: $($d.Name)$(if ($d.Version) { " v$($d.Version)" })" '#90CAF9'
-            @{ Id = $d.Id; Name = "$($d.Name)"; SetupPath = $d.SetupPath; WholeFolder = [bool]$d.WholeFolder; Plan = (Get-HUInstallPlan $d -Sandbox) }
+            @{ Id = $d.Id; Name = "$($d.Name)"; SetupPath = $d.SetupPath; WholeFolder = [bool]$d.WholeFolder; Plan = (Get-HUInstallPlan $d) }
         })
     if (@($a.IntuneDeps | Where-Object { $_ }).Count) { Add-HURtbLine $rtb "Hinweis: Abhaengigkeiten nur aus Intune ($(@($a.IntuneDeps) -join ', ')) gibt es in der Sandbox nicht." '#FFB74D' }
+    # Start wie Intune (32-Bit-Prozess, Standard) oder 64-Bit wie am eigenen PC - Befehl ist in beiden Faellen derselbe wie in Intune
+    $arch64 = (Get-HUComboTag $c['cmbAppSandboxArch']) -eq 'x64'
+    Set-HUStateValue 'sandboxArch' $(if ($arch64) { 'x64' } else { 'intune' })
+    Add-HURtbLine $rtb $(if ($arch64) { 'Start: 64-Bit wie am eigenen PC (nicht wie Intune)' } else { 'Start: wie Intune (aus einem 32-Bit-Prozess)' }) '#90CAF9'
     $c['txtAppSandbox'].Text = 'Sandbox wird vorbereitet ...'
     [void](Start-HUJob -Name 'AppSandbox' -Output $rtb -Vars @{
-            Id = $a.Id; SetupPath = $a.SetupPath; WholeFolder = [bool]$a.WholeFolder; Plan = (Get-HUInstallPlan $a -Sandbox); UninstallCmd = $a.UninstallCmd
+            Id = $a.Id; SetupPath = $a.SetupPath; WholeFolder = [bool]$a.WholeFolder; Plan = (Get-HUInstallPlan $a); UninstallCmd = $a.UninstallCmd; Arch64 = $arch64
             TestUn = $testUn; KeepOpen = [bool]$c['chkAppSandboxKeep'].IsChecked; DepDefs = $depDefs; Det = $a.Detection
         } -Code {
             $src = Sync-HUAppSource -SetupPath $SetupPath -WholeFolder $WholeFolder -Destination (Join-Path (Get-HUWorkPath "Packages\$Id") 'src') -Extra $Plan.Extra
@@ -1172,7 +1176,7 @@ function Start-HUAppSandbox {
                     $ds = Sync-HUAppSource -SetupPath $d.SetupPath -WholeFolder $d.WholeFolder -Destination (Join-Path (Get-HUWorkPath "Packages\$($d.Id)") 'src') -Extra $d.Plan.Extra
                     @{ Name = $d.Name; Folder = $ds.Folder; Cmd = $d.Plan.Cmd }
                 })
-            $res = Start-HUSandboxTest -SourceFolder $src.Folder -WorkFolder (Join-Path (Get-HUWorkPath 'Sandbox') $Id) -InstallCmd $Plan.Cmd -UninstallCmd $UninstallCmd -TestUninstall:$TestUn -KeepOpen:$KeepOpen -Dependencies $deps -Detection $Det
+            $res = Start-HUSandboxTest -SourceFolder $src.Folder -WorkFolder (Join-Path (Get-HUWorkPath 'Sandbox') $Id) -InstallCmd $Plan.Cmd -UninstallCmd $UninstallCmd -TestUninstall:$TestUn -KeepOpen:$KeepOpen -Dependencies $deps -Detection $Det -Arch64:$Arch64
             Write-HULog -Message 'Windows Sandbox gestartet - die Installation laeuft dort sichtbar im eigenen Fenster.' -Level 'OK'
             $res
         } -OnDone {
@@ -1473,6 +1477,7 @@ function Register-HUAppHandlers {
 }
 
 function Initialize-HUApps {
+    try { $want = "$(Get-HUStateValue 'sandboxArch' 'intune')"; foreach ($i in $script:Controls['cmbAppSandboxArch'].Items) { if ("$($i.Tag)" -eq $want) { $script:Controls['cmbAppSandboxArch'].SelectedItem = $i } } } catch { }
     Import-HUAppLib
     Update-HUAppTenantChecks
     Update-HUAppList
