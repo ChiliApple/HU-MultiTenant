@@ -1291,12 +1291,14 @@ function Show-HUSandboxResult($Res, [string]$AppId, [bool]$TestUn) {
         $winU = @($Res.UninstallWindows | Where-Object { $_ })
         # ohne Eintrag in Apps & Features (z. B. Skript/Plugin) zaehlt die Erkennungsregel
         $noEntry = -not $entries.Count -and $null -ne $Res.DetectUninstall
+        # Erkennung schon nach der Installation nicht gefunden -> "danach nicht mehr gefunden" sagt nichts aus
+        $detNever = $noEntry -and $Res.DetectInstall -eq $false
         $nf = @($Res.NewFiles | Where-Object { $_ })
         $byFiles = -not $entries.Count -and $null -eq $Res.DetectUninstall -and $nf.Count -and $null -ne $Res.FilesLeft
         $unknown = -not $entries.Count -and $null -eq $Res.DetectUninstall -and -not $byFiles
         $unOk = $(if ($noEntry) { -not $Res.DetectUninstall } elseif ($byFiles) { $Res.FilesLeft -eq 0 } else { $Res.UninstallRemoved -and -not $unknown }) -and -not $winU.Count
         if (-not $unOk) { $warn = $true }
-        $lines.Add("Deinstallation: $(if ($unOk -and $noEntry) { 'OK - Erkennung danach nicht mehr gefunden, ohne Fenster' } elseif ($noEntry -and -not $winU.Count) { 'Erkennung danach NOCH gefunden - Befehl pruefen' } elseif ($unOk -and $byFiles) { "OK - alle $($nf.Count) neuen Programmdateien entfernt, ohne Fenster" } elseif ($byFiles -and -not $winU.Count) { "$($Res.FilesLeft) von $($nf.Count) neuen Programmdateien noch vorhanden - Befehl pruefen" } elseif ($unknown -and -not $winU.Count) { 'nicht pruefbar (kein Eintrag in Apps & Features, keine Erkennung festgelegt)' } elseif ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
+        $lines.Add("Deinstallation: $(if ($detNever) { 'nicht pruefbar (Erkennung schon nach der Installation nicht gefunden)' } elseif ($unOk -and $noEntry) { 'OK - Erkennung danach nicht mehr gefunden, ohne Fenster' } elseif ($noEntry -and -not $winU.Count) { 'Erkennung danach NOCH gefunden - Befehl pruefen' } elseif ($unOk -and $byFiles) { "OK - alle $($nf.Count) neuen Programmdateien entfernt, ohne Fenster" } elseif ($byFiles -and -not $winU.Count) { "$($Res.FilesLeft) von $($nf.Count) neuen Programmdateien noch vorhanden - Befehl pruefen" } elseif ($unknown -and -not $winU.Count) { 'nicht pruefbar (kein Eintrag in Apps & Features, keine Erkennung festgelegt)' } elseif ($unOk) { 'OK - Eintrag entfernt, ohne Fenster' } elseif ($winU.Count) { "zeigte ein Fenster ($($winU -join '; ')) - nicht still, unter Intune wuerde sie haengen" } else { 'Eintrag noch vorhanden - Befehl pruefen' }) (Exitcode $($Res.UninstallExitCode))")
         if ($unknown -and -not $winU.Count) { $lines.Add('ACHTUNG: keine Erkennungsregel festgelegt - fuer Intune Pflicht. Unter Erkennung z. B. Art "Datei" mit Ordner und Dateiname eintragen, die das Setup anlegt, und erneut testen.') }
     } elseif (-not $TestUn) { $lines.Add('Deinstallation nicht getestet.') }
     # Gesamtergebnis: fehlgeschlagen / mit Hinweisen / OK
