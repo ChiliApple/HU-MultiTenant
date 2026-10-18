@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     HU.Setup - Ersteinrichtung eines Tenants mit Zertifikat, Rechte erweitern, Zertifikat erneuern.
@@ -121,19 +121,27 @@ function Receive-HUAdminLogin {
         if (((Get-Date) - $Context.Started).TotalMinutes -gt $TimeoutMinutes) { Stop-HUAdminLogin $Context; return [pscustomobject]@{ Ok = $false; Error = "Keine Anmeldung innerhalb von $TimeoutMinutes Minuten" } }
         return $null
     }
+    # Browser oeffnen manchmal Vorab-Verbindungen ohne Anfrage oder holen /favicon.ico: die ignorieren und weiter warten
     $first = ''
     try {
+        $client.ReceiveTimeout = 3000; $client.SendTimeout = 3000
         $stream = $client.GetStream()
         $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::ASCII)
-        $first = $reader.ReadLine()
+        try { $first = $reader.ReadLine() } catch { $first = '' }
+        $m = [regex]::Match("$first", '^GET (/\?\S*) HTTP')
+        $isAnswer = $m.Success -and $m.Groups[1].Value -match '[?&](code|error)='
+        if (-not $isAnswer) {
+            try { $nf = [System.Text.Encoding]::ASCII.GetBytes("HTTP/1.1 404 Not Found`r`nContent-Length: 0`r`nConnection: close`r`n`r`n"); $stream.Write($nf, 0, $nf.Length) } catch { }
+            try { $client.Close() } catch { }
+            return $null
+        }
         $html = '<!doctype html><meta charset="utf-8"><title>HU-MultiTenant</title><body style="font-family:Segoe UI,sans-serif;background:#1e1e1e;color:#ddd;padding:40px"><h2>Anmeldung abgeschlossen</h2><p>Dieses Fenster kann geschlossen werden - weiter in HU-MultiTenant.</p></body>'
         $b = [System.Text.Encoding]::UTF8.GetBytes($html)
         $hdr = [System.Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Type: text/html; charset=utf-8`r`nContent-Length: $($b.Length)`r`nConnection: close`r`n`r`n")
         $stream.Write($hdr, 0, $hdr.Length); $stream.Write($b, 0, $b.Length); $stream.Flush()
-    } catch { } finally { try { $client.Close() } catch { }; Stop-HUAdminLogin $Context }
+    } catch { } finally { try { $client.Close() } catch { } }
+    Stop-HUAdminLogin $Context
     $res = [pscustomobject]@{ Ok = $false; Error = ''; Token = ''; Tid = ''; Upn = ''; Name = ''; Roles = @() }
-    $m = [regex]::Match("$first", '^GET (\S+) HTTP')
-    if (-not $m.Success) { $res.Error = 'Unerwartete Antwort vom Browser'; return $res }
     Add-Type -AssemblyName System.Web
     $qs = [System.Web.HttpUtility]::ParseQueryString(([Uri]("http://localhost$($m.Groups[1].Value)")).Query)
     if ($qs['error']) { $res.Error = "Anmeldung abgelehnt: $($qs['error']) - $((("$($qs['error_description'])") -split "`r?`n")[0])"; return $res }
@@ -183,6 +191,15 @@ function New-HUTenantCertificate([string]$TenantId, [int]$Months = 12) {
     return (New-SelfSignedCertificate -CertStoreLocation 'Cert:\CurrentUser\My' -Subject "CN=HU-MultiTenant $short $env:COMPUTERNAME" `
             -KeyExportPolicy NonExportable -Provider 'Microsoft Software Key Storage Provider' -KeyAlgorithm RSA -KeyLength 3072 `
             -HashAlgorithm SHA256 -KeyUsage DigitalSignature -NotAfter (Get-Date).AddMonths($Months) -ErrorAction Stop)
+}
+
+# Zertifikat samt privatem Schluessel aus dem Benutzerspeicher loeschen
+function Remove-HUCertLocal([string]$Thumbprint) {
+    if ($Thumbprint -notmatch '^[0-9A-Fa-f]{40}$') { return $false }
+    $p = "Cert:\CurrentUser\My\$Thumbprint"
+    if (-not (Test-Path -LiteralPath $p)) { return $false }
+    Remove-Item -LiteralPath $p -DeleteKey -ErrorAction Stop
+    return $true
 }
 
 # Token der App per Zertifikat (mit Warten auf Replikation), Rueckgabe: Payload des Tokens
@@ -273,7 +290,7 @@ function New-HUTenantSetup {
             try { [void](Invoke-HUSetupGraph -Token $tok -Method DELETE -Path "/applications/$($made.AppObjectId)"); try { [void](Invoke-HUSetupGraph -Token $tok -Method DELETE -Path "/directory/deletedItems/$($made.AppObjectId)") } catch { } }
             catch { & $OnStep "App nicht entfernt (bitte im Portal loeschen): $($_.Exception.Message)" 'Warn' }
         }
-        if ($made.Cert) { try { Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($made.Cert.Thumbprint)" -DeleteKey -ErrorAction Stop } catch { } }
+        if ($made.Cert) { try { [void](Remove-HUCertLocal $made.Cert.Thumbprint) } catch { } }
         throw $err
     }
 }
@@ -355,7 +372,7 @@ function Update-HUTenantCertificate {
             passwordCredential = $null; proof = $proof }
         [void](Get-HUAppTokenByCert -Cert $new -AppId $appId -TenantId $tid)
     } catch {
-        try { Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($new.Thumbprint)" -DeleteKey -ErrorAction Stop } catch { }
+        try { [void](Remove-HUCertLocal $new.Thumbprint) } catch { }
         throw "Erneuern fehlgeschlagen: $($_.Exception.Message)"
     }
     # altes Zertifikat an der App entfernen (Nachweis jetzt mit dem neuen) und lokal loeschen
@@ -369,11 +386,12 @@ function Update-HUTenantCertificate {
             [void](Invoke-HUSetupGraph -Token $tk2.Token -Method POST -Path "/applications/$oid/removeKey" -Body @{ keyId = "$($k.keyId)"; proof = $proof2 })
         }
     } catch { Write-Warning "Altes Zertifikat an der App nicht entfernt: $($_.Exception.Message)" }
-    try { Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($old.Thumbprint)" -DeleteKey -ErrorAction Stop } catch { }
+    try { [void](Remove-HUCertLocal $old.Thumbprint) } catch { }
     return $new.Thumbprint
 }
 
 Export-ModuleMember -Function @(
+    'Remove-HUCertLocal',
     'ConvertFrom-HUJwtPayload', 'Get-HUSetupErrorText', 'Invoke-HUSetupGraph', 'Get-HUPermissionCatalog', 'Test-HUPermissionRisky',
     'Start-HUAdminLogin', 'Receive-HUAdminLogin', 'Stop-HUAdminLogin', 'Test-HUAdminCanGrant',
     'Get-HUSetupOrganization', 'Get-HUGraphRoleMap', 'New-HUTenantCertificate', 'Get-HUAppTokenByCert', 'New-HUTenantSetup',

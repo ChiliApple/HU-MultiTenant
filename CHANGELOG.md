@@ -1,5 +1,30 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.0
+
+### Tenant einrichten mit Zertifikat (neu)
+- **Einrichten (Admin-Anmeldung):** ein Global Administrator meldet sich einmal im Browser an (Microsoft-App "Microsoft
+  Graph Command Line Tools", Auth Code + PKCE). HU-MultiTenant legt die App-Registrierung "HU-MultiTenant" samt Service
+  Principal an, erzeugt auf diesem PC ein nicht exportierbares Zertifikat (RSA 3072, 12 Monate), erteilt die gewaehlten
+  Rechte (Administratorzustimmung), testet die Anmeldung und traegt den Tenant ein. Bei einem Fehler wird Angelegtes
+  wieder entfernt. Beim ersten Start wird die Einrichtung angeboten; sonst Einstellungen > Tenants > Einrichten.
+- **Anmeldung per Zertifikat** (signiertes JWT, PS256) statt Client Secret - nichts zum Kopieren oder Abtippen.
+  Bestehende Tenants werden beim Einrichten an der Tenant-ID erkannt (Schluessel und Einstellungen bleiben); danach die
+  alte App-Registrierung mit Secret im Entra Admin Center loeschen.
+- **Zertifikat erneuern:** 30 Tage vor Ablauf automatisch beim Start (ohne Admin, addKey/removeKey mit Nachweis), von
+  Hand mit Einstellungen > Tenants > Zertifikat erneuern. "Zertifikat auf diesem PC loeschen" sperrt einen Tenant.
+- **Fehlende Rechte erteilen:** Knopf im Fenster Berechtigungen - zeigt erteilt/fehlt, waehlt fehlende Standard-Rechte
+  und die der gewaehlten Extension vor, weitere frei waehlbar (z. B. fuer eigene Skripte). Nur hinzufuegen, nie
+  entfernen; auch fuer manuell angelegte Tenants.
+- **Weitreichende Rechte** (Mail, Dateien, Benutzer/Gruppen/Apps/Rollen schreiben, Policy.ReadWrite ...) sind rot und
+  werden eigens bestaetigt - nicht gesperrt. Liste und Standard-Rechte: `Config\graph-permissions.json`.
+- **Not-Aus** loescht auch die Zertifikate von HU-MultiTenant auf diesem PC.
+- Manuell mit App-ID und Secret geht weiterhin ("+ Manuell").
+
+### Doku
+- Anleitung, INSTALL und README: Einrichtung per Admin-Anmeldung, Zertifikat, Rechte erteilen; Rechtetabelle ergaenzt
+  (`DeviceManagementServiceConfig.Read.All`, `SecurityAlert.Read.All`, `Directory.Read.All` optional).
+
 ## v2.1.12
 
 Uebernahme des Vorab-Stands 2.1.9 (PR #12) auf 2.1.11. Startbildschirm und Maskierung der Quick-Script-Protokolle waren

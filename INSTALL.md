@@ -3,7 +3,7 @@
 ## Voraussetzungen
 - Windows 10/11, **Windows PowerShell 5.1** (vorinstalliert) – PowerShell 7 ist nicht nötig (nur für Extensions mit `.RUNTIME PS7`)
 - Internet: `login.microsoftonline.com`, `graph.microsoft.com`; für Updates `api.github.com`, `raw.githubusercontent.com`
-- je Tenant eine **App-Registrierung** (Client Credentials, siehe unten)
+- je Tenant einmalig ein Konto mit der Rolle **Global Administrator** (oder Privileged Role Administrator) – HU-MultiTenant legt die App-Registrierung selbst an (siehe unten); alternativ eine selbst angelegte App-Registrierung mit Secret
 - für Excel-Reports das Modul **ImportExcel** (wird beim ersten Report installiert; Excel selbst ist nicht nötig)
 - für **Apps › Updates** der Windows Paket-Manager **winget** (App-Installer aus dem Microsoft Store, ab Windows 10 1809 meist vorhanden); das Modul `Microsoft.WinGet.Client` wird genutzt, wenn installiert
 - für die Testinstallation die **Windows Sandbox** (Windows Pro/Enterprise/Education, wird auf Wunsch aktiviert)
@@ -17,7 +17,17 @@
 
 Alternativ: Repository als ZIP laden und entpacken (dann ohne Prüfsumme/Signatur).
 
-## App-Registrierung (je Tenant)
+## Tenant einrichten (empfohlen)
+Im Programm **Einstellungen › Tenants › Einrichten (Admin-Anmeldung) …** (beim ersten Start wird das angeboten):
+1. Schlüssel eingeben, Rechte prüfen (Standard ist vorausgewählt, siehe Tabelle; weitere frei wählbar, weitreichende rot mit eigener Bestätigung).
+2. **Im Browser anmelden und einrichten** – als Global Administrator anmelden, bei *Microsoft Graph Command Line Tools* **Akzeptieren**. Das Häkchen *„Zustimmung im Namen Ihrer Organisation“* **nicht** setzen.
+3. HU-MultiTenant legt die App-Registrierung **HU-MultiTenant** an (nur dieses Verzeichnis, Anmeldung nur per Zertifikat), erzeugt auf diesem PC ein **nicht exportierbares Zertifikat** (Benutzer-Zertifikatspeicher, RSA 3072, 12 Monate), erteilt die Rechte samt Administratorzustimmung, testet die Anmeldung und trägt den Tenant ein. Bei einem Fehler wird Angelegtes wieder entfernt.
+
+Das Admin-Token wird nur für diesen Vorgang im Speicher gehalten. Die Anmeldung nutzt die Microsoft-App *Microsoft Graph Command Line Tools* mit den delegierten Rechten `Application.ReadWrite.All`, `AppRoleAssignment.ReadWrite.All` und `User.Read` (Auth Code + PKCE, Antwort an `http://localhost:<Port>`).
+Fehlende Rechte später: **Berechtigungen › Fehlende Rechte erteilen …** (gleiche Anmeldung, nur hinzufügen). Das Zertifikat wird 30 Tage vor Ablauf beim Start automatisch erneuert (ohne Admin).
+Umsteigen von Secret: bestehenden Tenant einfach einrichten (wird an der Tenant-ID erkannt, Schlüssel bleibt), danach die alte App-Registrierung im Entra Admin Center löschen.
+
+## App-Registrierung manuell (mit Secret)
 1. **Entra Admin Center › Anwendungen › App-Registrierungen › Neue Registrierung** – Name z. B. `HU-MultiTenant`, nur dieses Verzeichnis, keine Umleitungs-URI.
 2. **Anwendungs-ID (Client-ID)** und **Verzeichnis-ID (Tenant-ID)** notieren.
 3. **API-Berechtigungen › Microsoft Graph › Anwendungsberechtigungen** – je nach genutzten Extensions, danach **Administratorzustimmung erteilen**:
@@ -27,10 +37,12 @@ Alternativ: Repository als ZIP laden und entpacken (dann ohne Prüfsumme/Signatu
 | `Application.Read.All` | **Secret-Ablaufdatum anzeigen** (empfohlen), Enterprise-App-Inventur |
 | `DeviceManagementManagedDevices.Read.All` | Geräte-Reports, Compliance, Defender |
 | `DeviceManagementConfiguration.Read.All` | Richtlinien |
+| `DeviceManagementServiceConfig.Read.All` | Autopilot-Profile, Defender-Report |
 | `User.Read.All` | Benutzer-Reports, Lizenzen, Sync-Monitor |
 | `AuditLog.Read.All` | MFA-Status, inaktive Benutzer (signInActivity) |
 | `Organization.Read.All` | Tenant-Übersicht, Lizenzen |
-| `Directory.Read.All` | Enterprise-App-Inventur |
+| `SecurityAlert.Read.All` | Teams: Defender-Alarm, Defender-Report |
+| `Directory.Read.All` | optional: ältere Extensions (Enterprise-App-Inventur: Berechtigungen) |
 | `DeviceManagementApps.ReadWrite.All` | Reiter **Apps** (hochladen, zuweisen, Status), Remote FB › Intune |
 | `DeviceManagementScripts.ReadWrite.All` | Reiter **Wartung** (Remediations), Remote FB › Intune |
 | `Group.Read.All` | Apps/Wartung: Zielgruppe per Name finden |
@@ -41,12 +53,13 @@ Alternativ: Repository als ZIP laden und entpacken (dann ohne Prüfsumme/Signatu
 | `RoleManagement.Read.Directory` | optional: Rollennamen statt IDs im Tenant-Vergleich |
 | `Policy.ReadWrite.ConditionalAccess` | optional: Conditional Access aus Backup wiederherstellen (wird deaktiviert angelegt) |
 
+   Bei der Einrichtung im Programm sind alle Zeilen außer den *optionalen* und `DeviceManagementConfiguration.ReadWrite.All` vorausgewählt (Liste: `Config\graph-permissions.json`).
    Jede Extension zeigt ihre Berechtigungen im Reiter *Extensions*; der Knopf **Berechtigungen** vergleicht sie mit dem Token.
    Schreibende Extensions (`READ/WRITE`) brauchen zusätzlich die passenden `ReadWrite`-Berechtigungen.
 4. **Zertifikate & Geheimnisse › Neuer geheimer Clientschlüssel** – den **Wert** sofort kopieren (wird nur einmal angezeigt).
 
 ## Danach
-Tenant anlegen, Secret eintragen, Verknüpfung: **[Anleitung](Docs/Anleitung.html) › Einrichten** (im Programm **F1**).
+Tenant einrichten bzw. anlegen, Verknüpfung: **[Anleitung](Docs/Anleitung.html) › Einrichten** (im Programm **F1**).
 
 ## Update
 Im Programm über den Knopf **Update** (Details in der Anleitung) oder von Hand:
@@ -61,7 +74,10 @@ Einstellungen, Snippets, Apps- und Wartungs-Bibliothek, Protokolle, Reports und 
 |---|---|
 | *Skript kann nicht geladen werden* | über `HU-MultiTenant.exe` / `Start-HUMultiTenant.cmd` starten (setzen `-ExecutionPolicy Bypass`) |
 | *Kein Token – Secret prüfen* | Secret abgelaufen oder falsch: Einstellungen › Tenants › Secret eingeben |
-| *Fehlende Berechtigungen* | Knopf **Berechtigungen** – zeigt, was fehlt; danach Administratorzustimmung erteilen und neu verbinden |
+| *Zertifikat fehlt auf diesem PC* | anderer PC/Benutzer oder gelöscht: Tenant auf diesem PC einrichten |
+| Einrichtung: *weder Global Administrator noch …* | Konto ohne passende Rolle oder Rolle per PIM nicht aktiviert |
+| Einrichtung: Browser zeigt *Anmeldung abgeschlossen*, Programm wartet | Firewall/Proxy blockiert `localhost` – nach 5 Minuten bricht die Anmeldung ab; manuell anlegen |
+| *Fehlende Berechtigungen* | Knopf **Berechtigungen** › **Fehlende Rechte erteilen …** – danach nach etwa 1 Minute neu lesen |
 | *Secret-Ablauf unbekannt* | `Application.Read.All` erteilen oder Datum manuell eintragen |
 | Excel-Report schlägt fehl | `Install-Module ImportExcel -Scope CurrentUser` |
 | Wartung: Fehler mit *license* | Intune Admin Center › Mandantenverwaltung › Connectors und Token › Windows-Datenverarbeitung › *Windows-Lizenzüberprüfung* einschalten (A3/E3 nötig) |

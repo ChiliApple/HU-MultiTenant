@@ -52,6 +52,7 @@ foreach ($pair in @(
         @{ X = 'SettingsWindow'; Code = @('Functions\UI-Settings.ps1'); Pattern = '\$c\.([A-Za-z][A-Za-z0-9_]*)' }
         @{ X = 'SnippetManager'; Code = @('Functions\UI-Snippets.ps1'); Pattern = '\$c\.([A-Za-z][A-Za-z0-9_]*)' }
         @{ X = 'PermissionsWindow'; Code = @('Functions\UI-Permissions.ps1'); Pattern = '\$c\.([A-Za-z][A-Za-z0-9_]*)' }
+        @{ X = 'TenantSetupWindow'; Code = @('Functions\UI-TenantSetup.ps1'); Pattern = '(?:\$c|\.C)\.([A-Za-z][A-Za-z0-9_]*)' }
     )) {
     Step "XAML $($pair.X) + verwendete Steuerelemente" {
         $d = New-HUWindow $pair.X

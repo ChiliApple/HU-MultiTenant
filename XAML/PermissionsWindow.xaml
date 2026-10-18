@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     HU-MultiTenant - Berechtigungen: erteilte Graph-Anwendungsberechtigungen je Tenant,
     benoetigte Berechtigungen der gewaehlten Extension, Vergleich aller Tenants.
 -->
@@ -33,8 +33,10 @@
         <!-- Fuss -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <TextBlock x:Name="txtHint" Style="{StaticResource HintText}" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="560"
-                       Text="Fehlt etwas: Entra Admin Center &#x203A; App-Registrierung &#x203A; API-Berechtigungen &#x203A; Microsoft Graph &#x203A; Anwendungsberechtigungen hinzuf&#xFC;gen &#x203A; Administratorzustimmung erteilen &#x203A; hier &#x21BB; Neu lesen."/>
+                       Text="Fehlt etwas: &#x201E;Fehlende Rechte erteilen &#x2026;&#x201C; (Admin-Anmeldung im Browser) - oder von Hand: Entra Admin Center &#x203A; App-Registrierung &#x203A; API-Berechtigungen &#x203A; Microsoft Graph &#x203A; Anwendungsberechtigungen hinzuf&#xFC;gen &#x203A; Administratorzustimmung erteilen &#x203A; hier &#x21BB; Neu lesen."/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btnGrant" Content="Fehlende Rechte erteilen ..." Background="#2E7D32" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
+                        ToolTip="Admin-Anmeldung im Browser: fehlende Rechte (Standard, Extensions, eigene) der App erteilen"/>
                 <Button x:Name="btnEntra" Content="App im Entra Admin Center" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
                 <Button x:Name="btnClose" Content="Schlie&#xDF;en" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
             </StackPanel>

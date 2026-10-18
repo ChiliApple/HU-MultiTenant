@@ -191,6 +191,18 @@ function Show-HUPermissions([string]$TenantKey = '') {
             $appId = "$($t.appId)"
             Open-HUUrl $(if ($appId -match '^[0-9a-fA-F-]{36}$') { "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/$appId" } else { 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade' })
         })
+    $c.btnGrant.Add_Click({
+            $ui = $script:PermUi
+            $k = $ui.Key
+            $pre = @(); if ($script:SelectedExtension) { $pre = @($script:SelectedExtension.RequiredPermissions | Where-Object { $_ }) }
+            $added = @(Show-HUTenantSetupDialog -TenantKey $k -Preselect $pre -Owner $ui.Window)
+            if ($script:PermUi) {
+                $script:PermCache.Remove($k)
+                Update-HUPermView
+                if ($added.Count) { $script:PermUi.C.txtStatus.Text = "Erteilt: $($added -join ', ') - erscheint nach etwa 1 Minute im Token (dann Neu lesen)." }
+                else { Start-HUPermFetch -Keys @($k) -Force }
+            }
+        })
     $c.btnClose.Add_Click({ $script:PermUi.Window.Close() })
     $w.Add_Loaded({ Update-HUPermView })
     $w.Add_Closed({ $script:PermUi = $null })
