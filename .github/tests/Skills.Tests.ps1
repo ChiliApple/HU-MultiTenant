@@ -134,7 +134,10 @@ Describe 'Pruefprogramm Snippets (Test-HUSnippet.ps1)' {
     It 'erkennt: <Name> (<Rule>)' -ForEach $BadSnippets {
         $all = @(Get-SnippetFindings $Code)
         foreach ($x in $all) { $x.Regel | Should -Match '^S\d\d$' }
-        @($all | Where-Object { $_.Stufe -eq 'FEHLER' -and $_.Regel -eq $Rule }).Count | Should -BeGreaterThan 0
+        # unter Windows PowerShell 5.1 meldet schon der Parser den Syntaxfehler (S01), S02 kann dort nicht greifen
+        $rules = @($Rule)
+        if ($Rule -eq 'S02' -and $PSVersionTable.PSVersion.Major -lt 7) { $rules += 'S01' }
+        @($all | Where-Object { $_.Stufe -eq 'FEHLER' -and $rules -contains $_.Regel }).Count | Should -BeGreaterThan 0
     }
     It 'meldet keinen Fehler bei zulaessiger Schreibweise: <Name>' -ForEach $GoodSnippets {
         $f = @(Get-SnippetFindings $Code | Where-Object { $_.Stufe -eq 'FEHLER' })

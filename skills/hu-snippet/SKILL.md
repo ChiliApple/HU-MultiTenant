@@ -250,7 +250,7 @@ Write-Host $r.Text
 - als Datei (mehrere auf einmal, weitergeben): **Verwalten ... › Importieren ...** mit einer JSON-Datei im Format von `Config\quick-snippets.example.json`; gleiche Namen werden auf Nachfrage ersetzt oder behalten. Erzeugen:
 
 ```powershell
-@{ snippets = @(@{ name = 'Name'; category = 'Eigene'; description = 'Kurzbeschreibung'; code = (Get-Content .\mein-snippet.ps1 -Raw -Encoding UTF8) }) } |
+@{ snippets = @(@{ name = 'Name'; category = 'Eigene'; description = 'Kurzbeschreibung'; code = [string](Get-Content .\mein-snippet.ps1 -Raw -Encoding UTF8) }) } |
     ConvertTo-Json -Depth 4 | Set-Content .\snippets.json -Encoding UTF8
 ```
 
