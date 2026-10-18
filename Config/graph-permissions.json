@@ -11,8 +11,8 @@
     { "name": "DeviceManagementConfiguration.Read.All", "default": true, "why": "Richtlinien, Analyse, Backup" },
     { "name": "DeviceManagementServiceConfig.Read.All", "default": true, "why": "Autopilot-Profile, Defender-Report" },
     { "name": "DeviceManagementApps.ReadWrite.All", "default": true, "why": "Reiter Apps (hochladen, zuweisen, Status), Remote FB > Intune" },
-    { "name": "DeviceManagementScripts.ReadWrite.All", "default": true, "why": "Reiter Wartung (Remediations), Remote FB > Intune" },
-    { "name": "DeviceManagementManagedDevices.PrivilegedOperations.All", "default": true, "why": "Wartung: Jetzt auf Geraet ausfuehren, Sync" },
+    { "name": "DeviceManagementScripts.ReadWrite.All", "default": true, "why": "Reiter Wartung (Remediations), Remote FB > Intune - erlaubt Skripte als SYSTEM auf allen verwalteten Geraeten" },
+    { "name": "DeviceManagementManagedDevices.PrivilegedOperations.All", "default": true, "why": "Wartung: Jetzt auf Geraet ausfuehren, Sync - erlaubt auch Loeschen, Zuruecksetzen und Ausserbetriebnahme von Geraeten" },
     { "name": "SecurityAlert.Read.All", "default": true, "why": "Defender-Alarm (Teams), Defender-Report" },
     { "name": "Policy.Read.All", "default": true, "why": "Analyse: Conditional Access, benannte Orte" },
     { "name": "Application.Read.All", "default": true, "why": "Enterprise-App-Inventur" },
@@ -26,6 +26,10 @@
     "RoleManagement.ReadWrite.Directory", "Directory.ReadWrite.All", "DelegatedPermissionGrant.ReadWrite.All",
     "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All",
     "Mail.*", "Files.*", "Sites.*", "Policy.ReadWrite.*", "RoleManagement.ReadWrite.*", "PrivilegedAccess.ReadWrite.*",
-    "UserAuthenticationMethod.ReadWrite.All", "Domain.ReadWrite.All"
+    "UserAuthenticationMethod.ReadWrite.All", "Domain.ReadWrite.All",
+    "DeviceManagementManagedDevices.PrivilegedOperations.All", "DeviceManagementScripts.ReadWrite.All",
+    "DeviceManagementRBAC.ReadWrite.All", "Organization.ReadWrite.All", "User-PasswordProfile.ReadWrite.All",
+    "IdentityRiskyUser.ReadWrite.All", "ServicePrincipalEndpoint.ReadWrite.All", "Application.ReadUpdate.All",
+    "Chat.*", "ChannelMessage.*", "Calendars.*", "MailboxSettings.*"
   ]
 }

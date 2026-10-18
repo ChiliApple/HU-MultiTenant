@@ -27,6 +27,40 @@ function Add-HUTsuLog([string]$Text, [string]$Level = 'Info') {
     $u.C.lstLog.ScrollIntoView($tb)
 }
 
+# Zeile mit Link ins Entra Admin Center
+function Add-HUTsuLink([string]$Text, [string]$Url) {
+    $u = $script:TSU
+    if (-not $u) { return }
+    $tb = New-Object System.Windows.Controls.TextBlock
+    $tb.TextWrapping = 'Wrap'
+    $h = New-Object System.Windows.Documents.Hyperlink
+    [void]$h.Inlines.Add($Text)
+    $h.Foreground = Get-HUBrush '#90CAF9'
+    $h.Tag = $Url
+    $h.Add_Click({ Open-HUUrl "$($this.Tag)" })
+    [void]$tb.Inlines.Add("$((Get-Date).ToString('HH:mm:ss'))  ")
+    [void]$tb.Inlines.Add($h)
+    [void]$u.C.lstLog.Items.Add($tb)
+    $u.C.lstLog.ScrollIntoView($tb)
+}
+
+# Nach der Anmeldung: bestehende Zustimmungen fuer "Microsoft Graph Command Line Tools" anzeigen (nur anzeigen, nichts aendern)
+function Show-HUTsuConsentInfo($Login) {
+    $u = $script:TSU
+    $extra = @(); try { $extra = @(Get-HUExtraScopes $Login) } catch { }
+    if ($extra.Count) {
+        $risky = @($extra | Where-Object { Test-HUPermissionRisky $_ $u.Catalog })
+        Add-HUTsuLog "Fuer 'Microsoft Graph Command Line Tools' bestehen schon weitere Zustimmungen: $($extra -join ', ')" $(if ($risky.Count) { 'Error' } else { 'Warn' })
+    }
+    $cons = Get-HUGraphCliConsent -Token "$($Login.Token)"
+    if (-not $cons.Checked) { Add-HUTsuLog "Zustimmungen der Microsoft-App nicht lesbar ($($cons.Error)) - weiter." 'Warn'; return }
+    if (-not $cons.AllPrincipals) { Add-HUTsuLog "Keine Zustimmung 'fuer alle Benutzer' fuer 'Microsoft Graph Command Line Tools' - gut." 'OK'; return }
+    $hot = @($cons.Scopes | Where-Object { $_ -match '^(Application\.ReadWrite|AppRoleAssignment\.ReadWrite|Directory\.)|\.ReadWrite' -or (Test-HUPermissionRisky $_ $u.Catalog) })
+    Add-HUTsuLog "ACHTUNG: Fuer 'Microsoft Graph Command Line Tools' besteht eine Zustimmung FUER ALLE BENUTZER$(if ($cons.Scopes.Count) { " ($($cons.Scopes -join ', '))" }). Jeder Benutzer (auch Lehrer und Schueler) bekommt damit ueber diese Microsoft-App ohne Rueckfrage diese Rechte - begrenzt nur durch seine eigene Rolle." $(if ($hot.Count) { 'Error' } else { 'Warn' })
+    Add-HUTsuLog "Empfehlung: Zustimmung im Entra Admin Center pruefen und bei der Unternehmensanwendung 'Zuweisung erforderlich' einschalten (nur zugewiesene Admins). HU-MultiTenant aendert daran nichts." 'Warn'
+    if ($cons.SpId) { Add-HUTsuLink 'Microsoft Graph Command Line Tools im Entra Admin Center oeffnen (Berechtigungen)' "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/Permissions/objectId/$($cons.SpId)/appId/14d82eec-204b-4c2f-b7e8-296a70dab67e" }
+}
+
 # Rechte-Liste aufbauen: Katalog + von Extensions benoetigte + bereits erteilte + selbst hinzugefuegte
 function Update-HUTsuPermList {
     $u = $script:TSU
@@ -98,7 +132,7 @@ function Save-HUTenantFromSetup($Entry, [string]$WantedName = '') {
     if ($idx -ge 0) {
         $t = $list[$idx]
         $oldKey = "$($t.key)"
-        foreach ($p in 'tenantId', 'appId', 'auth', 'certThumbprint', 'appObjectId', 'spId') { Set-HUProp $t $p $Entry.$p }
+        foreach ($p in 'tenantId', 'appId', 'auth', 'certThumbprint', 'certKeyId', 'appObjectId', 'spId') { Set-HUProp $t $p "$($Entry.$p)" }
         if (-not "$($t.domain)") { Set-HUProp $t 'domain' "$($Entry.domain)" }
         if ($WantedName) { Set-HUProp $t 'displayName' $WantedName }
         if ($t.PSObject.Properties['secretExpires']) { $t.PSObject.Properties.Remove('secretExpires') }
@@ -106,7 +140,7 @@ function Save-HUTenantFromSetup($Entry, [string]$WantedName = '') {
     } else {
         $t = [pscustomobject][ordered]@{
             key = "$($Entry.key)"; displayName = "$($Entry.displayName)"; tenantId = "$($Entry.tenantId)"; appId = "$($Entry.appId)"; domain = "$($Entry.domain)"
-            credentialName = ''; auth = 'certificate'; certThumbprint = "$($Entry.certThumbprint)"; appObjectId = "$($Entry.appObjectId)"; spId = "$($Entry.spId)"
+            credentialName = ''; auth = 'certificate'; certThumbprint = "$($Entry.certThumbprint)"; certKeyId = "$($Entry.certKeyId)"; appObjectId = "$($Entry.appObjectId)"; spId = "$($Entry.spId)"
             isPrimary = ($list.Count -eq 0); adSchema = 'VirtualSchool'; tags = @(); notes = ''; persistCredential = $true
         }
         $list.Add($t)
@@ -192,10 +226,12 @@ function Complete-HUTsuLogin($Login) {
     $u = $script:TSU
     $w = $u.Window
     Add-HUTsuLog "Angemeldet: $(if ($Login.Name) { $Login.Name } else { $Login.Upn }) (Tenant $($Login.Tid))" 'OK'
-    if (-not (Test-HUAdminCanGrant $Login)) {
-        Add-HUTsuLog 'Dieses Konto ist weder Global Administrator noch Privileged Role Administrator (bei PIM: Rolle zuerst aktivieren). Nichts geaendert.' 'Error'
+    if (-not (Test-HUAdminCanGrant $Login -ForSetup:($u.Mode -eq 'Setup'))) {
+        $need = if ($u.Mode -eq 'Setup') { 'Global Administrator (oder Privileged Role Administrator zusammen mit Application Administrator / Cloud Application Administrator)' } else { 'Global Administrator oder Privileged Role Administrator' }
+        Add-HUTsuLog "Diesem Konto fehlt die Rolle: $need. Bei PIM die Rolle zuerst aktivieren. Nichts geaendert." 'Error'
         Stop-HUTsu; return
     }
+    Show-HUTsuConsentInfo $Login
     $sel = @($u.Sel)
     if (-not $sel.Count) { Add-HUTsuLog 'Keine Rechte ausgewaehlt - nichts geaendert.' 'Error'; Stop-HUTsu; return }
     if ($u.Mode -eq 'Grant') {
@@ -381,8 +417,8 @@ function Start-HUCertRenew([string]$TenantKey, [scriptblock]$Done = $null) {
             Import-Module (Join-Path $appRoot 'Core\HU.Auth.psm1') -Force -DisableNameChecking
             Import-Module (Join-Path $appRoot 'Core\HU.Setup.psm1') -Force -DisableNameChecking
             $t = $tenantJson | ConvertFrom-Json
-            $th = Update-HUTenantCertificate -Tenant $t -WarningVariable wv -WarningAction SilentlyContinue
-            return "OK:$th$(if ($wv) { "|$(@($wv) -join '; ')" })"
+            $r = Update-HUTenantCertificate -Tenant $t
+            return ('OK:' + ($r | ConvertTo-Json -Compress))
         } catch { return "ERR:$($_.Exception.Message)" }
     } -ArgumentList @($script:AppRoot, ($t | ConvertTo-Json -Depth 6 -Compress)) -TimeoutSec 400 -State $state -BusyTag 'cert' -BusyText 'Zertifikat erneuern' -OnComplete {
         param($result, $st)
@@ -390,14 +426,23 @@ function Start-HUCertRenew([string]$TenantKey, [scriptblock]$Done = $null) {
         $script:CertRenewRunning.Remove($key)
         $s = "$result".Trim()
         $ok = $false; $txt = ''
-        if ($s -match '^OK:([0-9A-Fa-f]{40})(\|(.*))?') {
-            $th = $Matches[1]; $warn = $Matches[3]
+        $r = $null
+        if ($s -match '^OK:(\{.*\})\s*$') { try { $r = $Matches[1] | ConvertFrom-Json } catch { $r = $null } }
+        if ($r -and "$($r.Thumbprint)" -match '^[0-9A-Fa-f]{40}$') {
             $t = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $key })[0]
-            if ($t) { Set-HUProp $t 'certThumbprint' $th; [void](Save-HUSettings) }
+            $saved = $false
+            if ($t) {
+                Set-HUProp $t 'certThumbprint' "$($r.Thumbprint)"
+                if ("$($r.KeyId)") { Set-HUProp $t 'certKeyId' "$($r.KeyId)" }
+                $saved = [bool](Save-HUSettings)
+            }
+            # altes Zertifikat erst loeschen, wenn der neue Thumbprint sicher gespeichert ist (Review 033 B1)
+            if ($saved) { try { [void](Remove-HUCertLocal "$($r.OldThumbprint)") } catch { } }
             try { Clear-HUSecretState $key } catch { }
-            $ok = $true
-            $txt = "Zertifikat erneuert ($($th.Substring(0, 8))...).$(if ($warn) { " Hinweis: $warn" })"
-            Write-HULogOK $txt -Tenant $key
+            $ok = $saved
+            $txt = if ($saved) { "Zertifikat erneuert ($("$($r.Thumbprint)".Substring(0, 8))...).$(if ($r.Warning) { " Hinweis: $($r.Warning)" })" }
+                   else { "Zertifikat erneuert, aber settings.json nicht gespeichert - das alte Zertifikat bleibt vorerst; beim naechsten Start wird das neue erkannt." }
+            if ($saved) { Write-HULogOK $txt -Tenant $key } else { Write-HULogWarn $txt -Tenant $key }
         } else {
             $txt = "Zertifikat nicht erneuert: $($s -replace '^ERR:', '')"
             Write-HULogWarn $txt -Tenant $key
@@ -414,6 +459,18 @@ function Start-HUCertRenewAll {
         if (-not $t) { continue }
         $d = $null
         try { $d = Get-HUTenantCertDaysLeft $t } catch { }
+        if ($null -eq $d -and (Test-HUTenantCertAuth $t)) {
+            # eingetragenes Zertifikat fehlt: passendes eigenes Zertifikat dieses PCs anbieten (z. B. nach abgebrochener Erneuerung)
+            $cand = @(); try { $cand = @(Find-HUTenantCertCandidate $t) } catch { }
+            if ($cand.Count -and "$($cand[0].Thumbprint)" -ne "$($t.certThumbprint)" -and
+                (Confirm-HU "Fuer '$($t.displayName)' fehlt das eingetragene Zertifikat, auf diesem PC liegt aber ein passendes:`n`n$($cand[0].Subject)`ngueltig bis $($cand[0].NotAfter.ToString('dd.MM.yyyy'))`n`nDieses verwenden?" 'Zertifikat')) {
+                Set-HUProp $t 'certThumbprint' "$($cand[0].Thumbprint)"
+                if ($t.PSObject.Properties['certKeyId']) { $t.PSObject.Properties.Remove('certKeyId') }
+                [void](Save-HUSettings)
+                Write-HULogOK 'Vorhandenes Zertifikat uebernommen.' -Tenant "$($t.key)"
+                try { $d = Get-HUTenantCertDaysLeft $t } catch { }
+            }
+        }
         if ($null -eq $d) { continue }
         if ($d -lt 0) { Write-HULogWarn 'Zertifikat abgelaufen - Tenant neu einrichten (Einstellungen > Tenants > Tenant einrichten).' -Tenant "$($t.key)"; continue }
         if ($d -le $script:CertRenewDays) { [void](Start-HUCertRenew "$($t.key)") }

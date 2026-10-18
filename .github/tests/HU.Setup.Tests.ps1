@@ -38,7 +38,7 @@ Describe 'Zertifikat: New-HUClientAssertion' {
         $h.'x5t#S256' | Should -Be (ConvertTo-HUBase64Url ($sha.ComputeHash($script:Cert.RawData)))
         $c = [Text.Encoding]::UTF8.GetString((ConvertFrom-B64Url $p[1])) | ConvertFrom-Json
         $c.iss | Should -Be 'app-1'; $c.sub | Should -Be 'app-1'; $c.aud | Should -Be 'https://login/t/token'
-        ($c.exp - $c.nbf) | Should -Be 600
+        ($c.exp - $c.iat) | Should -Be 600; ($c.iat - $c.nbf) | Should -Be 60
         $pub = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($script:Cert)
         $pub.VerifyData([Text.Encoding]::ASCII.GetBytes("$($p[0]).$($p[1])"), (ConvertFrom-B64Url $p[2]), [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pss) | Should -BeTrue
     }
@@ -93,8 +93,12 @@ Describe 'Rechte-Katalog (Config\graph-permissions.json)' {
         @($script:Cat.permissions | Where-Object { $_.default -eq $true }).Count | Should -BeGreaterThan 5
         $n | Should -Contain 'Organization.Read.All'
     }
-    It 'kein Standard-Recht ist weitreichend' {
-        @($script:Cat.permissions | Where-Object { $_.default -eq $true -and (Test-HUPermissionRisky $_.name $script:Cat) }).Count | Should -Be 0
+    It 'weitreichend unter den Standard-Rechten nur Geraeteaktionen und Wartungsskripte (Review 033 Frage 3)' {
+        $r = @($script:Cat.permissions | Where-Object { $_.default -eq $true -and (Test-HUPermissionRisky $_.name $script:Cat) } | ForEach-Object { "$($_.name)" } | Sort-Object)
+        $r | Should -Be @('DeviceManagementManagedDevices.PrivilegedOperations.All', 'DeviceManagementScripts.ReadWrite.All')
+    }
+    It 'risky-Eintraege ohne Platzhalter sehen wie Rechtenamen aus' {
+        foreach ($x in @($script:Cat.risky | Where-Object { $_ -notmatch '\*' })) { $x | Should -Match '^[A-Za-z-]+(\.[A-Za-z]+)+$' }
     }
     It 'erkennt weitreichende Rechte (auch mit Platzhalter)' {
         Test-HUPermissionRisky 'Mail.Send' $script:Cat | Should -BeTrue
@@ -130,18 +134,89 @@ Describe 'Admin-Anmeldung: Antwort an localhost' {
         Test-HUAdminCanGrant ([pscustomobject]@{ Roles = @('e8611ab8-c189-46e8-94e1-60213ab1f814') }) | Should -BeTrue
         Test-HUAdminCanGrant ([pscustomobject]@{ Roles = @('9b895d92-2cd3-44c7-9d02-a6ac2d5ea5c3') }) | Should -BeFalse
     }
-    It 'falscher state wird abgewiesen' {
+    It 'falscher state wird ignoriert, danach zaehlt die echte Antwort (Review 033 B4)' {
         Mock -ModuleName HU.Setup Start-Process { }
         $ctx = Start-HUAdminLogin
         try {
-            $tc = New-Object System.Net.Sockets.TcpClient('127.0.0.1', $ctx.Port)
-            $ns = $tc.GetStream(); $b = [Text.Encoding]::ASCII.GetBytes("GET /?code=abc&state=falsch HTTP/1.1`r`n`r`n"); $ns.Write($b, 0, $b.Length); $ns.Flush()
-            Start-Sleep -Milliseconds 200
-            $r = Receive-HUAdminLogin -Context $ctx
-            $tc.Close()
+            $send = {
+                param($line)
+                $tc = New-Object System.Net.Sockets.TcpClient('127.0.0.1', $ctx.Port)
+                $ns = $tc.GetStream(); $b = [Text.Encoding]::ASCII.GetBytes("$line`r`n`r`n"); $ns.Write($b, 0, $b.Length); $ns.Flush()
+                Start-Sleep -Milliseconds 200
+                $r = Receive-HUAdminLogin -Context $ctx
+                try { $tc.Close() } catch { }
+                return $r
+            }
+            & $send 'GET /?error=access_denied&state=fremd HTTP/1.1' | Should -BeNullOrEmpty
+            & $send 'GET /?code=abc&state=fremd HTTP/1.1' | Should -BeNullOrEmpty
+            $r = & $send "GET /?error=access_denied&state=$($ctx.State) HTTP/1.1"
             $r.Ok | Should -BeFalse
-            $r.Error | Should -Match 'state'
+            $r.Error | Should -Match 'access_denied'
         } finally { Stop-HUAdminLogin $ctx }
+    }
+    It 'Rollen: Einrichtung braucht GA oder PRA + App-Admin, Rechte erteilen reicht PRA (Review 033 B8)' {
+        $ga = '62e90394-69f5-4237-9190-012177145e10'; $pra = 'e8611ab8-c189-46e8-94e1-60213ab1f814'; $caa = '158c047a-c907-4556-b7ef-446551a6b5f7'; $aa = '9b895d92-2cd3-44c7-9d02-a6ac2d5ea5c3'
+        Test-HUAdminCanGrant ([pscustomobject]@{ Roles = @($ga) }) -ForSetup | Should -BeTrue
+        Test-HUAdminCanGrant ([pscustomobject]@{ Roles = @($pra) }) -ForSetup | Should -BeFalse
+        Test-HUAdminCanGrant ([pscustomobject]@{ Roles = @($pra, $caa) }) -ForSetup | Should -BeTrue
+        Test-HUAdminCanGrant ([pscustomobject]@{ Roles = @($pra, $aa) }) -ForSetup | Should -BeTrue
+        Test-HUAdminCanGrant ([pscustomobject]@{ Roles = @($pra) }) | Should -BeTrue
+        Test-HUAdminCanGrant ([pscustomobject]@{ Roles = @($aa) }) | Should -BeFalse
+    }
+    It 'zusaetzliche Zustimmungen im Token werden erkannt (Review 033 B2)' {
+        $enc = { param($o) [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($o | ConvertTo-Json -Compress))).TrimEnd('=').Replace('+', '-').Replace('/', '_') }
+        $tok = "x.$(& $enc @{ scp = 'Application.ReadWrite.All AppRoleAssignment.ReadWrite.All Directory.Read.All User.Read openid profile' }).y"
+        @(Get-HUExtraScopes ([pscustomobject]@{ Token = $tok })).Count | Should -Be 0
+        $tok2 = "x.$(& $enc @{ scp = 'Application.ReadWrite.All User.Read Mail.Send Directory.ReadWrite.All' }).y"
+        Get-HUExtraScopes ([pscustomobject]@{ Token = $tok2 }) | Should -Be @('Directory.ReadWrite.All', 'Mail.Send')
+    }
+    It 'Zustimmung fuer alle Benutzer wird erkannt, ohne etwas zu aendern' {
+        $script:Methods = New-Object System.Collections.Generic.List[string]
+        Mock -ModuleName HU.Setup Invoke-HUSetupGraph {
+            $script:Methods.Add("$Method")
+            if ($Path -match 'filter=appId') { return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'sp-cli' }) } }
+            return [pscustomobject]@{ value = @([pscustomobject]@{ consentType = 'Principal'; scope = 'User.Read' }, [pscustomobject]@{ consentType = 'AllPrincipals'; scope = 'Application.ReadWrite.All User.Read' }) }
+        }
+        $r = Get-HUGraphCliConsent -Token 't'
+        $r.Checked | Should -BeTrue
+        $r.AllPrincipals | Should -BeTrue
+        $r.Scopes | Should -Contain 'Application.ReadWrite.All'
+        @($script:Methods | Where-Object { $_ -and $_ -ne 'GET' }).Count | Should -Be 0
+    }
+}
+
+Describe 'Zertifikat erneuern: Update-HUTenantCertificate (Review 033 B1/B3)' {
+    BeforeEach {
+        $c = $script:Cert
+        $script:New = New-TestCert
+        $n = $script:New
+        Mock -ModuleName HU.Setup Get-Item { $c }
+        Mock -ModuleName HU.Setup New-HUTenantCertificate { $n }
+        Mock -ModuleName HU.Setup Get-HUAppTokenByCert { [pscustomobject]@{ Token = 't'; Payload = $null } }
+        Mock -ModuleName HU.Setup Remove-HUCertLocal { $true }
+        $script:Calls = New-Object System.Collections.Generic.List[string]
+        Mock -ModuleName HU.Setup Invoke-HUSetupGraph {
+            $script:Calls.Add("$Method $Path")
+            if ($Path -like '*/addKey') { return [pscustomobject]@{ keyId = '11111111-2222-3333-4444-555555555555' } }
+            return $null
+        }
+        $script:T = [pscustomobject]@{ key = 'T'; tenantId = '33333333-3333-3333-3333-333333333333'; appId = '44444444-4444-4444-4444-444444444444'
+            appObjectId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; certThumbprint = $c.Thumbprint; certKeyId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' }
+    }
+    It 'addKey, removeKey mit gespeicherter keyId, altes Zertifikat bleibt lokal' {
+        $r = Update-HUTenantCertificate -Tenant $script:T
+        $r.Thumbprint | Should -Be $script:New.Thumbprint
+        $r.OldThumbprint | Should -Be $script:Cert.Thumbprint
+        $r.KeyId | Should -Be '11111111-2222-3333-4444-555555555555'
+        $script:Calls[0] | Should -BeLike 'POST */addKey'
+        $script:Calls | Should -Contain 'POST /applications/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/removeKey'
+        @($script:Calls | Where-Object { $_ -like 'GET*' }).Count | Should -Be 0
+        Should -Invoke -ModuleName HU.Setup Remove-HUCertLocal -Times 0 -Exactly
+    }
+    It 'Fehler bei addKey: neues Zertifikat weg, altes unberuehrt' {
+        Mock -ModuleName HU.Setup Invoke-HUSetupGraph { throw 'Forbidden' }
+        { Update-HUTenantCertificate -Tenant $script:T } | Should -Throw '*Erneuern fehlgeschlagen*'
+        Should -Invoke -ModuleName HU.Setup Remove-HUCertLocal -Times 1 -Exactly -ParameterFilter { $Thumbprint -eq $script:New.Thumbprint }
     }
 }
 

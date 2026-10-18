@@ -24,7 +24,7 @@
             <TextBlock x:Name="txtIntro" Foreground="#CCCCCC" TextWrapping="Wrap" Margin="0,4,0,0"/>
             <Border Background="#3A2F12" BorderBrush="#FFB300" BorderThickness="1" CornerRadius="3" Padding="8,5" Margin="0,8,0,0">
                 <TextBlock x:Name="txtConsentHint" Foreground="#FFE082" TextWrapping="Wrap" FontSize="12"
-                           Text="Im Zustimmungsdialog von Microsoft das H&#xE4;kchen &#x201E;Zustimmung im Namen Ihrer Organisation&#x201C; NICHT setzen - nur &#x201E;Akzeptieren&#x201C;. Sonst d&#xFC;rften alle Benutzer die Microsoft-App &#x201E;Graph Command Line Tools&#x201C; mit diesen Rechten nutzen."/>
+                           Text="Im Zustimmungsdialog von Microsoft das H&#xE4;kchen &#x201E;Zustimmung im Namen Ihrer Organisation&#x201C; NICHT setzen - nur &#x201E;Akzeptieren&#x201C;. Sonst d&#xFC;rften alle Benutzer die Microsoft-App &#x201E;Graph Command Line Tools&#x201C; mit diesen Rechten nutzen. Kommt gar kein Dialog, besteht schon eine Zustimmung - das Protokoll unten zeigt nach der Anmeldung, ob sie f&#xFC;r alle Benutzer gilt."/>
             </Border>
         </StackPanel>
 

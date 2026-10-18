@@ -5,7 +5,8 @@
 .DESCRIPTION
     Admin-Anmeldung im Systembrowser (Auth Code + PKCE, Antwort an http://localhost:<Port>) mit der Microsoft-App
     "Microsoft Graph Command Line Tools" - keine eigene Setup-App noetig. Delegierte Rechte nur fuer diese Sitzung:
-    Application.ReadWrite.All, AppRoleAssignment.ReadWrite.All, User.Read. Das Admin-Token bleibt im Speicher.
+    Application.ReadWrite.All, AppRoleAssignment.ReadWrite.All, Directory.Read.All (nur lesen: bestehende Zustimmungen
+    fuer die Microsoft-App erkennen), User.Read. Das Admin-Token bleibt im Speicher.
     Danach meldet sich HU-MultiTenant nur noch mit einem nicht exportierbaren Zertifikat an (HU.Auth).
     Quellen: learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow
              learn.microsoft.com/entra/identity-platform/certificate-credentials
@@ -19,7 +20,9 @@
 
 $script:SetupClientId = '14d82eec-204b-4c2f-b7e8-296a70dab67e'   # Microsoft Graph Command Line Tools
 $script:GraphAppId = '00000003-0000-0000-c000-000000000000'
-$script:SetupScopes = 'https://graph.microsoft.com/Application.ReadWrite.All https://graph.microsoft.com/AppRoleAssignment.ReadWrite.All https://graph.microsoft.com/User.Read'
+$script:SetupScopes = 'https://graph.microsoft.com/Application.ReadWrite.All https://graph.microsoft.com/AppRoleAssignment.ReadWrite.All https://graph.microsoft.com/Directory.Read.All https://graph.microsoft.com/User.Read'
+$script:CloudAppAdminRole = '158c047a-c907-4556-b7ef-446551a6b5f7'
+$script:AppAdminRole = '9b895d92-2cd3-44c7-9d02-a6ac2d5ea5c3'
 $script:GlobalAdminRole = '62e90394-69f5-4237-9190-012177145e10'
 $script:PrivRoleAdminRole = 'e8611ab8-c189-46e8-94e1-60213ab1f814'
 $script:AppTag = 'HU-MultiTenant'
@@ -94,9 +97,16 @@ function Start-HUAdminLogin {
     try { $challenge = ConvertTo-HUBase64Url ($sha.ComputeHash([System.Text.Encoding]::ASCII.GetBytes($verifier))) } finally { $sha.Dispose() }
     $state = [guid]::NewGuid().ToString('N')
     # freier Port auf 127.0.0.1, zusaetzlich ::1 ("localhost" kann im Browser IPv6 sein) - TcpListener braucht keine Adminrechte
-    $l4 = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0); $l4.Start()
-    $port = ([System.Net.IPEndPoint]$l4.LocalEndpoint).Port
-    $l6 = $null; try { $l6 = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::IPv6Loopback, $port); $l6.Start() } catch { $l6 = $null }
+    # ist der Port auf ::1 schon belegt, einen anderen nehmen (sonst landet ein Browser, der localhost als ::1 aufloest, bei einem fremden Dienst)
+    $l4 = $null; $l6 = $null; $port = 0
+    for ($try = 0; $try -lt 10; $try++) {
+        $l4 = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0); $l4.Start()
+        $port = ([System.Net.IPEndPoint]$l4.LocalEndpoint).Port
+        if (-not [System.Net.Sockets.Socket]::OSSupportsIPv6) { break }
+        try { $l6 = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::IPv6Loopback, $port); $l6.Start(); break }
+        catch { $l6 = $null; try { $l4.Stop() } catch { }; $l4 = $null }
+    }
+    if (-not $l4) { throw 'Kein freier Port fuer die Anmeldung auf localhost gefunden' }
     $authority = if ($TenantId -match '^[0-9a-fA-F-]{36}$') { $TenantId } else { 'organizations' }
     $redirect = "http://localhost:$port/"
     $q = [ordered]@{ client_id = $script:SetupClientId; response_type = 'code'; redirect_uri = $redirect; response_mode = 'query'; scope = $script:SetupScopes
@@ -133,6 +143,12 @@ function Receive-HUAdminLogin {
         try { for ($i = 0; $i -lt 100; $i++) { $hl = $reader.ReadLine(); if ($null -eq $hl -or $hl -eq '') { break } } } catch { }
         $m = [regex]::Match("$first", '^GET (/\?\S*) HTTP')
         $isAnswer = $m.Success -and $m.Groups[1].Value -match '[?&](code|error)='
+        # Antwort ohne passenden state (z. B. von einem anderen lokalen Prozess) wie eine Vorab-Verbindung behandeln
+        if ($isAnswer) {
+            Add-Type -AssemblyName System.Web
+            $qs0 = [System.Web.HttpUtility]::ParseQueryString(([Uri]("http://localhost$($m.Groups[1].Value)")).Query)
+            if ($qs0['state'] -ne $Context.State) { $isAnswer = $false }
+        }
         if (-not $isAnswer) {
             try { $nf = [System.Text.Encoding]::ASCII.GetBytes("HTTP/1.1 404 Not Found`r`nContent-Length: 0`r`nConnection: close`r`n`r`n"); $stream.Write($nf, 0, $nf.Length) } catch { }
             try { $client.Close() } catch { }
@@ -151,7 +167,6 @@ function Receive-HUAdminLogin {
     Add-Type -AssemblyName System.Web
     $qs = [System.Web.HttpUtility]::ParseQueryString(([Uri]("http://localhost$($m.Groups[1].Value)")).Query)
     if ($qs['error']) { $res.Error = "Anmeldung abgelehnt: $($qs['error']) - $((("$($qs['error_description'])") -split "`r?`n")[0])"; return $res }
-    if ($qs['state'] -ne $Context.State) { $res.Error = 'Antwort passt nicht zur Anmeldung (state) - abgebrochen'; return $res }
     if (-not $qs['code']) { $res.Error = 'Kein Code in der Antwort'; return $res }
     $body = @{ client_id = $script:SetupClientId; grant_type = 'authorization_code'; code = $qs['code']; redirect_uri = $Context.Redirect; code_verifier = $Context.Verifier; scope = $script:SetupScopes }
     try { $t = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$($Context.Authority)/oauth2/v2.0/token" -Body $body -ContentType 'application/x-www-form-urlencoded' -ErrorAction Stop }
@@ -167,9 +182,39 @@ function Stop-HUAdminLogin($Context) {
     try { if ($Context.L6) { $Context.L6.Stop() } } catch { }
 }
 
-# Darf das angemeldete Konto Rechte erteilen? (Global Administrator oder Privileged Role Administrator)
-function Test-HUAdminCanGrant($Login) {
-    return (@($Login.Roles) -contains $script:GlobalAdminRole -or @($Login.Roles) -contains $script:PrivRoleAdminRole)
+# Darf das angemeldete Konto Rechte erteilen? Global Administrator oder Privileged Role Administrator.
+# Mit -ForSetup (App anlegen): Global Administrator, oder Privileged Role Administrator zusammen mit
+# (Cloud) Application Administrator.
+function Test-HUAdminCanGrant($Login, [switch]$ForSetup) {
+    $r = @($Login.Roles)
+    if ($r -contains $script:GlobalAdminRole) { return $true }
+    if (-not ($r -contains $script:PrivRoleAdminRole)) { return $false }
+    if (-not $ForSetup) { return $true }
+    return ($r -contains $script:CloudAppAdminRole -or $r -contains $script:AppAdminRole)
+}
+
+# Delegierte Rechte im Admin-Token, die ueber die angeforderten hinausgehen (bestehende Zustimmung fuer die Microsoft-App)
+function Get-HUExtraScopes($Login) {
+    $p = ConvertFrom-HUJwtPayload "$($Login.Token)"
+    $want = @($script:SetupScopes -split ' ' | ForEach-Object { ($_ -split '/')[-1] }) + @('openid', 'profile', 'email', 'offline_access')
+    return @("$($p.scp)" -split ' ' | Where-Object { $_ -and $want -notcontains $_ } | Sort-Object -Unique)
+}
+
+# Zustimmung "fuer alle Benutzer" (AllPrincipals) fuer Microsoft Graph Command Line Tools? Braucht Directory.Read.All.
+# Rueckgabe: @{ Checked; AllPrincipals; Scopes; SpId; Error } - es werden keine Daten geaendert.
+function Get-HUGraphCliConsent([Parameter(Mandatory)][string]$Token) {
+    $r = [pscustomobject]@{ Checked = $false; AllPrincipals = $false; Scopes = @(); SpId = ''; Error = '' }
+    try {
+        $sp = @((Invoke-HUSetupGraph -Token $Token -Path "/servicePrincipals?`$filter=appId eq '$($script:SetupClientId)'&`$select=id").value)[0]
+        if (-not $sp) { $r.Checked = $true; return $r }
+        $r.SpId = "$($sp.id)"
+        $g = @((Invoke-HUSetupGraph -Token $Token -Path "/servicePrincipals/$($sp.id)/oauth2PermissionGrants").value)
+        $all = @($g | Where-Object { "$($_.consentType)" -eq 'AllPrincipals' })
+        $r.AllPrincipals = [bool]$all.Count
+        $r.Scopes = @($all | ForEach-Object { "$($_.scope)" -split ' ' } | Where-Object { $_ } | Sort-Object -Unique)
+        $r.Checked = $true
+    } catch { $r.Error = "$($_.Exception.Message)" }
+    return $r
 }
 
 # ============================================================================
@@ -271,6 +316,7 @@ function New-HUTenantSetup {
         }
         $made.AppObjectId = "$($app.id)"
         & $OnStep "App angelegt: $($app.appId)" 'OK'
+        $keyId = "$(@($app.keyCredentials)[0].keyId)"
         $sp = Invoke-HUSetupGraph -Token $tok -Method POST -Path '/servicePrincipals' -Body @{ appId = "$($app.appId)"; tags = @($script:AppTag, 'WindowsAzureActiveDirectoryIntegratedApp') } -Tries 8
         $made.SpId = "$($sp.id)"
         & $OnStep 'Service Principal angelegt' 'OK'
@@ -285,7 +331,7 @@ function New-HUTenantSetup {
         & $OnStep "Anmeldung mit Zertifikat OK$(if (@($at.Payload.roles).Count) { " ($(@($at.Payload.roles).Count) Rechte im Token)" } else { ' (Rechte erscheinen erst nach einigen Minuten im Token)' })" 'OK'
         return [pscustomobject][ordered]@{
             key = $Key; displayName = $(if ($DisplayName) { $DisplayName } else { $org.Name }); tenantId = $tid; appId = "$($app.appId)"; domain = $org.Domain
-            auth = 'certificate'; certThumbprint = $cert.Thumbprint; appObjectId = "$($app.id)"; spId = "$($sp.id)"; credentialName = ''
+            auth = 'certificate'; certThumbprint = $cert.Thumbprint; certKeyId = $keyId; appObjectId = "$($app.id)"; spId = "$($sp.id)"; credentialName = ''
         }
     } catch {
         $err = "$($_.Exception.Message)"
@@ -357,10 +403,11 @@ function Update-HUTenantCertificate {
     <#
     .SYNOPSIS
         Erneuert das Zertifikat eines Tenants ohne Admin: neues Zertifikat, addKey mit Nachweis (signiert vom alten),
-        Test mit dem neuen, removeKey des alten, altes lokal loeschen. Rueckgabe: neuer Thumbprint.
+        Test mit dem neuen, removeKey des alten. Rueckgabe: @{ Thumbprint; KeyId; OldThumbprint; Warning }.
     .DESCRIPTION
-        Geht nur, solange das alte Zertifikat noch gueltig ist (sonst: Tenant neu einrichten / Zertifikat mit
-        Admin-Anmeldung hinzufuegen). Quelle: learn.microsoft.com/graph/application-rollkey-prooftoken
+        Das alte Zertifikat bleibt lokal liegen - geloescht wird es erst, wenn der neue Thumbprint gespeichert ist
+        (Aufrufer, Remove-HUCertLocal). Geht nur, solange das alte Zertifikat gueltig ist.
+        Quelle: learn.microsoft.com/graph/application-rollkey-prooftoken
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Tenant, [int]$Months = 12)
@@ -369,35 +416,50 @@ function Update-HUTenantCertificate {
     if ($old.NotAfter -lt (Get-Date)) { throw 'Altes Zertifikat ist abgelaufen - bitte Tenant neu einrichten (Admin-Anmeldung)' }
     if ("$($Tenant.appObjectId)" -notmatch '^[0-9a-fA-F-]{36}$') { throw 'Objekt-ID der App fehlt (appObjectId) - bitte Tenant neu einrichten' }
     $tid = "$($Tenant.tenantId)"; $appId = "$($Tenant.appId)"; $oid = "$($Tenant.appObjectId)"
+    $aud = '00000002-0000-0000-c000-000000000000'
     $tk = Get-HUAppTokenByCert -Cert $old -AppId $appId -TenantId $tid -MaxSeconds 10
     $new = New-HUTenantCertificate -TenantId $tid -Months $Months
+    $newKeyId = ''
     try {
-        $proof = New-HUClientAssertion -Certificate $old -Issuer $oid -Audience '00000002-0000-0000-c000-000000000000' -Alg RS256
+        $proof = New-HUClientAssertion -Certificate $old -Issuer $oid -Audience $aud -Alg RS256
         $kc = Invoke-HUSetupGraph -Token $tk.Token -Method POST -Path "/applications/$oid/addKey" -Body @{
             keyCredential = @{ type = 'AsymmetricX509Cert'; usage = 'Verify'; key = [Convert]::ToBase64String($new.RawData); displayName = "HU-MultiTenant $env:COMPUTERNAME" }
             passwordCredential = $null; proof = $proof }
+        $newKeyId = "$($kc.keyId)"
         [void](Get-HUAppTokenByCert -Cert $new -AppId $appId -TenantId $tid)
     } catch {
         try { [void](Remove-HUCertLocal $new.Thumbprint) } catch { }
         throw "Erneuern fehlgeschlagen: $($_.Exception.Message)"
     }
-    # altes Zertifikat an der App entfernen (Nachweis jetzt mit dem neuen) und lokal loeschen
+    # alten Schluessel an der App entfernen (Nachweis jetzt mit dem neuen); keyId aus settings.json, sonst nachschlagen
+    $warn = ''
     try {
-        $app = Invoke-HUSetupGraph -Token $tk.Token -Path "/applications/$oid`?`$select=keyCredentials"
-        $oldThumb = [Convert]::ToBase64String($old.GetCertHash())
-        $k = @($app.keyCredentials | Where-Object { "$($_.customKeyIdentifier)" -eq $oldThumb })[0]
-        if ($k) {
-            $proof2 = New-HUClientAssertion -Certificate $new -Issuer $oid -Audience '00000002-0000-0000-c000-000000000000' -Alg RS256
-            $tk2 = Get-HUAppTokenByCert -Cert $new -AppId $appId -TenantId $tid
-            [void](Invoke-HUSetupGraph -Token $tk2.Token -Method POST -Path "/applications/$oid/removeKey" -Body @{ keyId = "$($k.keyId)"; proof = $proof2 })
+        $oldKeyId = "$($Tenant.certKeyId)"
+        if ($oldKeyId -notmatch '^[0-9a-fA-F-]{36}$') {
+            $app = Invoke-HUSetupGraph -Token $tk.Token -Path "/applications/$oid`?`$select=keyCredentials"
+            $oldThumb = [Convert]::ToBase64String($old.GetCertHash())
+            $oldKeyId = "$(@($app.keyCredentials | Where-Object { "$($_.customKeyIdentifier)" -eq $oldThumb })[0].keyId)"
         }
-    } catch { Write-Warning "Altes Zertifikat an der App nicht entfernt: $($_.Exception.Message)" }
-    try { [void](Remove-HUCertLocal $old.Thumbprint) } catch { }
-    return $new.Thumbprint
+        if ($oldKeyId) {
+            $proof2 = New-HUClientAssertion -Certificate $new -Issuer $oid -Audience $aud -Alg RS256
+            $tk2 = Get-HUAppTokenByCert -Cert $new -AppId $appId -TenantId $tid
+            [void](Invoke-HUSetupGraph -Token $tk2.Token -Method POST -Path "/applications/$oid/removeKey" -Body @{ keyId = $oldKeyId; proof = $proof2 })
+        } else { $warn = 'Alter Schluessel an der App nicht gefunden - bei Bedarf im Entra Admin Center entfernen' }
+    } catch { $warn = "Alter Schluessel an der App nicht entfernt: $($_.Exception.Message)" }
+    return [pscustomobject]@{ Thumbprint = $new.Thumbprint; KeyId = $newKeyId; OldThumbprint = $old.Thumbprint; Warning = $warn }
+}
+
+# Fehlt das eingetragene Zertifikat: gueltiges eigenes Zertifikat fuer diesen Tenant und PC suchen (nur Vorschlag)
+function Find-HUTenantCertCandidate([Parameter(Mandatory)]$Tenant) {
+    $tid = "$($Tenant.tenantId)"
+    $short = if ($tid.Length -ge 8) { $tid.Substring(0, 8) } else { $tid }
+    return @(Get-ChildItem -LiteralPath 'Cert:\CurrentUser\My' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Subject -eq "CN=HU-MultiTenant $short $env:COMPUTERNAME" -and $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) } |
+            Sort-Object NotAfter -Descending | Select-Object -First 1)
 }
 
 Export-ModuleMember -Function @(
-    'Remove-HUCertLocal',
+    'Remove-HUCertLocal', 'Get-HUExtraScopes', 'Get-HUGraphCliConsent', 'Find-HUTenantCertCandidate',
     'ConvertFrom-HUJwtPayload', 'Get-HUSetupErrorText', 'Invoke-HUSetupGraph', 'Get-HUPermissionCatalog', 'Test-HUPermissionRisky',
     'Start-HUAdminLogin', 'Receive-HUAdminLogin', 'Stop-HUAdminLogin', 'Test-HUAdminCanGrant',
     'Get-HUSetupOrganization', 'Get-HUGraphRoleMap', 'New-HUTenantCertificate', 'Get-HUAppTokenByCert', 'New-HUTenantSetup',

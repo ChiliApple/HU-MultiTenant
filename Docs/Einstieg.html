@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HU-MultiTenant Einstieg</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+:root {
+  --bg: #eff1f5; --surface: #ffffff; --surface-2: #e6e9ef; --line: #ccd0da;
+  --fg: #3b3e52; --fg-strong: #1e1e2e; --muted: #6c6f85;
+  --green: #40a02b; --mauve: #8839ef; --yellow: #c78b0a; --teal: #13867f; --blue: #1e66f5; --red: #d20f39; --peach: #e2620e;
+  --tint: 12%;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1e1e2e; --surface: #262637; --surface-2: #313244; --line: #3d3e55;
+  --fg: #cdd6f4; --fg-strong: #ffffff; --muted: #a6adc8;
+  --green: #a6e3a1; --mauve: #cba6f7; --yellow: #f9e2af; --teal: #94e2d5; --blue: #89b4fa; --red: #f38ba8; --peach: #fab387;
+  --tint: 16%; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #1e1e2e; --surface: #262637; --surface-2: #313244; --line: #3d3e55;
+  --fg: #cdd6f4; --fg-strong: #ffffff; --muted: #a6adc8;
+  --green: #a6e3a1; --mauve: #cba6f7; --yellow: #f9e2af; --teal: #94e2d5; --blue: #89b4fa; --red: #f38ba8; --peach: #fab387;
+  --tint: 16%; color-scheme: dark }
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 16px/1.6 var(--f-body); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 40px 16px 72px; display: grid; gap: 64px; }
+h1, h2, h3 { font-family: var(--f-display); color: var(--fg-strong); margin: 0; text-wrap: balance; }
+p { margin: 0; }
+code, .mono { font-family: var(--f-mono); font-size: .88em; }
+a { color: var(--blue); }
+
+/* Kopf */
+header { display: grid; gap: 20px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.pnav { display: flex; gap: 6px; flex-wrap: wrap; }
+.pnav a { text-decoration: none; color: var(--fg); font-size: 14px; font-weight: 600; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.pnav a:hover { border-color: var(--blue); color: var(--blue); }
+.pnav a[aria-current] { background: var(--fg-strong); color: var(--bg); border-color: var(--fg-strong); }
+.brand { display: flex; align-items: center; gap: 12px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+.logo { width: 44px; height: 44px; border-radius: 11px; background: var(--surface); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; }
+.logo img { width: 30px; height: 30px; }
+h1 { font-size: clamp(32px, 6vw, 54px); font-weight: 800; line-height: 1.05; letter-spacing: -.02em; }
+h1 em { font-style: normal; color: var(--mauve); }
+.lead { font-size: 19px; max-width: 64ch; color: var(--fg); }
+.promise { display: flex; flex-wrap: wrap; gap: 10px; }
+.promise span { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; }
+
+/* Abschnittskopf */
+.sec { display: grid; gap: 22px; }
+.sec > h2 { font-size: clamp(24px, 4vw, 32px); font-weight: 700; }
+.sec > p.sub { color: var(--muted); max-width: 70ch; margin-top: -10px; }
+
+/* Wegweiser */
+.finder { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.finder a { --c: var(--blue); display: grid; gap: 4px; text-decoration: none; color: inherit; background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--c); border-radius: 12px; padding: 14px 16px; transition: transform .12s, border-color .12s; }
+.finder a:hover { transform: translateY(-2px); border-color: var(--c); }
+.finder b { color: var(--fg-strong); font-weight: 600; }
+.finder small { color: var(--muted); font-size: 13.5px; }
+
+/* Warum zusaetzlich zur Cloud */
+.why { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.why > div { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--green); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+.why b { color: var(--fg-strong); font-family: var(--f-display); font-size: 16.5px; }
+.why span { font-size: 14.5px; }
+
+/* Szenario */
+.scn { --c: var(--blue); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; scroll-margin-top: 16px; }
+.scn-head { padding: 22px 24px 18px; background: color-mix(in srgb, var(--c) var(--tint), var(--surface)); border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.tag { justify-self: start; font: 600 12px/1 var(--f-body); text-transform: uppercase; letter-spacing: .08em; color: var(--c); }
+.scn h3 { font-size: 23px; font-weight: 700; }
+.quote { font-style: italic; color: var(--fg); }
+.scn-body { padding: 20px 24px 24px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 28px; }
+.scn-body h4 { margin: 0 0 8px; font: 600 13px/1 var(--f-body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: s; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; }
+.steps li::before { content: counter(s); width: 28px; height: 28px; border-radius: 50%; background: var(--c); color: var(--surface); font: 700 14px/28px var(--f-display); text-align: center; }
+.ui { display: inline-block; padding: 0 7px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); font-weight: 600; font-size: .92em; white-space: nowrap; }
+.gets { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.gets li { padding-left: 24px; position: relative; }
+.gets li::before { content: "✓"; position: absolute; left: 2px; color: var(--green); font-weight: 700; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.meta span { font-size: 13px; color: var(--muted); background: var(--surface-2); border-radius: 6px; padding: 3px 9px; }
+.tip { margin-top: 14px; font-size: 14.5px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--yellow) var(--tint), var(--surface)); border: 1px solid color-mix(in srgb, var(--yellow) 35%, var(--line)); }
+.tip b { color: var(--fg-strong); }
+.shot { margin: 16px 0 0; max-width: 300px; display: grid; gap: 6px; }
+.shot.wide { max-width: 100%; }
+.shot img { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); }
+.shot figcaption { font-size: 13px; color: var(--muted); text-align: center; }
+.shots2 { display: grid; gap: 4px; margin-top: 4px; align-items: start; }
+
+/* Start */
+.start { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; display: grid; gap: 8px; align-content: start; }
+.card .n { font: 800 30px/1 var(--f-display); color: var(--mauve); }
+.card h3 { font-size: 18px; }
+pre { margin: 6px 0 0; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font: 500 12.5px/1.5 var(--f-mono); color: var(--fg-strong); white-space: pre; }
+
+/* Erster Versuch */
+.first { background: var(--surface); border: 2px dashed color-mix(in srgb, var(--green) 55%, var(--line)); border-radius: 16px; padding: 22px 24px; display: grid; gap: 12px; }
+.first h2 { font-size: 24px; }
+
+/* FAQ */
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+details + details { margin-top: 10px; }
+summary { cursor: pointer; font-weight: 600; color: var(--fg-strong); }
+details p { margin-top: 8px; }
+
+footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 20px; display: grid; gap: 6px; }
+
+@media (max-width: 760px) {
+  .scn-body { grid-template-columns: 1fr; gap: 20px; }
+  .scn-head, .scn-body { padding-inline: 18px; }
+  .lead { font-size: 17px; }
+}
+kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line); border-bottom-width: 2px; background: var(--surface-2); color: var(--fg-strong); }
+</style>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
+      HU-MultiTenant · Einstieg für die IT-Betreuung mehrerer Standorte
+    </div>
+    <nav class="pnav" aria-label="Seiten">
+      <a href="Einstieg.html" aria-current="page">Einstieg</a>
+      <a href="Funktionen.html">Funktionen</a>
+      <a href="Anleitung.html">Anleitung</a>
+      <a href="https://github.com/ChiliApple/HU-MultiTenant/releases">Download</a>
+    </nav>
+  </div>
+  <h1>Mehrere Tenants – <em>eine</em> Oberfläche.</h1>
+  <p class="lead">Wer mehrere Schulen oder Standorte mit eigenem Microsoft 365 betreut, klickt sonst dieselben Dinge in fünf Portalen. HU-MultiTenant erledigt sie einmal – für alle angehakten Tenants. Diese Seite zeigt <b>typische Situationen aus dem Alltag</b>: was du tust und was am Ende herauskommt.</p>
+  <div class="promise">
+    <span>Microsoft 365 und Intune</span><span>Kein Server nötig</span><span>Keine Lizenz</span><span>Windows 10 / 11, PowerShell 5.1</span><span>Anmeldung per Zertifikat</span><span>Anleitung im Tool mit F1</span>
+  </div>
+</header>
+
+<section class="sec">
+  <h2>Warum nicht einfach die Portale?</h2>
+  <p class="sub">Intune und Entra können alles – aber jeweils nur in einem Tenant und mit vielen Klicks. HU-MultiTenant legt sich darüber, ändert nichts an deinen Tenants, was du nicht ausdrücklich bestätigst, und hält die Standorte gleich.</p>
+  <div class="why">
+    <div><b>Einmal statt fünfmal</b><span>App hochladen, Wartungsskript verteilen, Report ziehen: einmal einstellen, alle angehakten Tenants bekommen es.</span></div>
+    <div><b>Erst testen, dann verteilen</b><span>Setups und Wartungsskripte laufen vorher in der Windows Sandbox – so wie Intune sie ausführen würde.</span></div>
+    <div><b>Durchblick</b><span>„Was bekommt dieses Gerät?“ und „Was ist in Schule B anders als in Schule A?“ – über alle Tenants in einer Tabelle.</span></div>
+    <div><b>Nachvollziehbar</b><span>Tägliches Backup der Intune-Konfiguration mit Verlauf: was hat sich geändert, wer war es – und auf Wunsch wiederherstellen.</span></div>
+    <div><b>Sicher angemeldet</b><span>Pro Tenant ein nicht exportierbares Zertifikat statt Kennwort, Sperre nach Leerlauf, Not-Aus mit einem Klick.</span></div>
+  </div>
+</section>
+
+<section class="sec">
+  <h2>Was steht bei dir gerade an?</h2>
+  <p class="sub">Tippe auf die Situation, die zu dir passt.</p>
+  <nav class="finder">
+    <a href="#programm" style="--c: var(--blue)"><b>Ein Programm soll an alle Standorte</b><small>testen, hochladen, zuweisen</small></a>
+    <a href="#updates" style="--c: var(--peach)"><b>Programme aktuell halten</b><small>neue Versionen erkennen und nachziehen</small></a>
+    <a href="#wartung" style="--c: var(--green)"><b>Auf den Notebooks klemmt etwas</b><small>Wartungsskript mit KI, prüfen und reparieren</small></a>
+    <a href="#bekommt" style="--c: var(--mauve)"><b>„Warum hat das Gerät das nicht?“</b><small>Zuweisungen über alle Tenants</small></a>
+    <a href="#vergleich" style="--c: var(--teal)"><b>Sind alle Standorte gleich eingestellt?</b><small>vergleichen, kopieren, sichern</small></a>
+    <a href="#liste" style="--c: var(--yellow)"><b>Schnell eine Liste für die Direktion</b><small>Lizenzen, inaktive Konten, Geräte</small></a>
+    <a href="#morgens" style="--c: var(--red)"><b>Morgens wissen, ob alles läuft</b><small>Meldungen in Teams</small></a>
+    <a href="#unterwegs" style="--c: var(--teal)"><b>Ich bin nicht am PC</b><small>vom Handy aus starten</small></a>
+  </nav>
+</section>
+
+<section class="sec">
+  <h2>Situationen aus dem Alltag</h2>
+
+  <article class="scn" id="programm" style="--c: var(--blue)">
+    <div class="scn-head">
+      <span class="tag">Apps verteilen</span>
+      <h3>Ein Programm soll an alle Standorte</h3>
+      <p class="quote">„Die Lehrer-Notebooks in allen fünf Schulen brauchen bis Montag das neue Programm – und es darf nichts kaputtmachen.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Apps</span>: die Setup-Datei (MSI, EXE, Skript) auf die Liste ziehen. Name, Version, Befehle und Erkennung werden ausgelesen.</span></li>
+          <li><span><span class="ui">Testinstallation</span>: das Setup läuft in der Windows Sandbox – dein PC bleibt sauber. Erkennung, Deinstallation und Symbol werden vorgeschlagen und gleich geprüft.</span></li>
+          <li><span>Tenants anhaken, Zielgruppe wählen (wird in jedem Tenant per Name gesucht), <span class="ui">Hochladen &amp; zuweisen</span>.</span></li>
+          <li><span>Später mit <span class="ui">Status</span> nachsehen: je Gerät installiert, fehlgeschlagen oder ausstehend.</span></li>
+        </ol>
+        <div class="meta"><span>⏱ meist 10–20 Minuten statt eine Stunde je Portal</span><span>auch Store-Apps</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Dieselbe Win32-App in allen angehakten Tenants, gleich benannt und gleich eingestellt</li>
+          <li>Eine geprüfte Erkennungsregel – kein „fehlgeschlagen“, obwohl installiert</li>
+          <li>Auf Wunsch zuerst nur an eine Pilotgruppe, später mit einem Klick an alle</li>
+          <li>Das Setup sauber abgelegt je App und Version</li>
+        </ul>
+        <figure class="shot wide"><img src="screenshot-apps.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot-apps.png'" alt="Reiter Apps" loading="lazy"><figcaption>Reiter Apps: Bibliothek, Tenants und Zuweisung</figcaption></figure>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="updates" style="--c: var(--peach)">
+    <div class="scn-head">
+      <span class="tag">App-Updates</span>
+      <h3>Programme aktuell halten</h3>
+      <p class="quote">„Von 7-Zip, dem PDF-Reader und dem Browser gibt es schon wieder neue Versionen. Welche meiner Intune-Apps sind eigentlich veraltet?“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Apps</span> › Ansicht <span class="ui">Updates</span> › <span class="ui">Nach Updates suchen</span> – vergleicht deine Bibliothek mit winget.</span></li>
+          <li><span>Bei „Update verfügbar“: <span class="ui">Neue Version holen</span> lädt den Installer und übernimmt ihn als neue Version der App.</span></li>
+          <li><span>Kurz in der Sandbox testen, dann hochladen – dieselbe Intune-App wird aktualisiert, die Zuweisungen bleiben.</span></li>
+        </ol>
+        <div class="meta"><span>⏱ wenige Minuten je App</span><span>über winget</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Eine Liste: Version in der Bibliothek, neueste bei winget, Stand je Tenant</li>
+          <li>Neue Versionen ohne Suchen auf Hersteller-Seiten</li>
+          <li>Keine doppelten Apps in Intune – die vorhandene wird aktualisiert</li>
+        </ul>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="wartung" style="--c: var(--green)">
+    <div class="scn-head">
+      <span class="tag">Wartung (Remediations)</span>
+      <h3>Auf den Notebooks klemmt etwas</h3>
+      <p class="quote">„Auf manchen Geräten ist die Platte voll, auf anderen läuft ein Dienst nicht. Ich will das nicht an jedem Gerät einzeln reparieren.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Wartung</span> › <span class="ui">Mit KI erstellen</span>: Aufgabe in einem Satz beschreiben, Prompt kopieren, in ChatGPT, Claude oder Copilot einfügen, Antwort zurück einfügen.</span></li>
+          <li><span><span class="ui">Prüfen</span> findet typische Fehler, <span class="ui">In Sandbox testen</span> lässt das Paket ablaufen wie Intune – als SYSTEM, ohne Netzwerk.</span></li>
+          <li><span>Tenants, Zielgruppe und Zeitplan wählen, <span class="ui">Hochladen &amp; zuweisen</span>.</span></li>
+          <li><span><span class="ui">Ergebnisse</span>: je Gerät kein Problem, Problem, behoben oder Fehler – mit Ausgabe des Skripts.</span></li>
+        </ol>
+        <div class="meta"><span>⏱ 15 Minuten vom Satz bis zur Verteilung</span><span>fünf fertige Beispiele dabei</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Ein Wartungspaket, das regelmäßig prüft und selbst repariert</li>
+          <li>Änderbare Werte als Eingabefelder statt im Code versteckt</li>
+          <li>Vorhandene Skripte aus einem Tenant mit einem Klick in die anderen kopieren</li>
+        </ul>
+        <p class="tip"><b>Voraussetzung:</b> Remediations brauchen Windows Enterprise / Education (E3 / A3) und einmal je Tenant die Windows-Lizenzüberprüfung in Intune.</p>
+        <figure class="shot wide"><img src="screenshot-wartung.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot-wartung.png'" alt="Reiter Wartung" loading="lazy"><figcaption>Reiter Wartung: Prüf- und Reparaturskript</figcaption></figure>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="bekommt" style="--c: var(--mauve)">
+    <div class="scn-head">
+      <span class="tag">Analyse</span>
+      <h3>„Warum hat das Gerät das nicht?“</h3>
+      <p class="quote">„Auf diesem Notebook fehlt das WLAN-Profil – oder kommt es gar nicht an? Über welche Gruppe sollte es eigentlich kommen?“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Analyse</span> › <span class="ui">Was bekommt …?</span></span></li>
+          <li><span>Gruppe, Gerät oder Benutzer wählen und Namen eingeben – Benutzernamen passen ohne @domain in jedem Tenant.</span></li>
+          <li><span>Die Tabelle füllt sich je Tenant: Apps, Profile, Richtlinien, Skripte – mit Spalte <i>Über</i> (welche Gruppe, auch verschachtelt) und Ausschlüssen.</span></li>
+        </ol>
+        <div class="meta"><span>⏱ unter einer Minute</span><span>nur lesend</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Alles, was ein Gerät oder Benutzer bekommt – in einer Liste statt in zehn Portal-Seiten</li>
+          <li>Sofort sichtbar, wenn eine Ausschlussgruppe greift</li>
+          <li>Filter und Export nach CSV oder Excel</li>
+        </ul>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="vergleich" style="--c: var(--teal)">
+    <div class="scn-head">
+      <span class="tag">Tenant-Vergleich · Backup</span>
+      <h3>Sind alle Standorte gleich eingestellt?</h3>
+      <p class="quote">„In Schule A gibt es eine Richtlinie, die in Schule B fehlt. Und letzte Woche hat jemand an einem Profil gedreht – nur was?“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Analyse</span> › <span class="ui">Tenant-Vergleich</span> › <span class="ui">Vergleichen</span>: je Tenant ✔ vorhanden oder — fehlt, auf Wunsch nur Unterschiede.</span></li>
+          <li><span>Doppelklick zeigt abweichende Einstellungen. Markieren und <span class="ui">Fehlendes kopieren …</span> legt es in den anderen Tenants an – ohne Zuweisung, also noch ohne Wirkung.</span></li>
+          <li><span><span class="ui">Backup &amp; Verlauf</span>: zwei Stände wählen, sehen was neu, gelöscht oder geändert ist – und von wem.</span></li>
+        </ol>
+        <div class="meta"><span>Backup täglich automatisch beim Start</span><span>30 Stände je Tenant</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Gleiche Standards in allen Standorten, Lücken auf einen Blick</li>
+          <li>Ein Verlauf der Intune-Konfiguration mit „Geändert von“</li>
+          <li>Wiederherstellen eines alten Stands als neuer Eintrag – Bestehendes bleibt unberührt</li>
+        </ul>
+        <p class="tip"><b>Gut zu wissen:</b> Gesichert wird die Intune-Konfiguration und Conditional Access – kein Ersatz für ein Backup von Benutzern, Postfächern oder OneDrive.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="liste" style="--c: var(--yellow)">
+    <div class="scn-head">
+      <span class="tag">Quick Script · Extensions</span>
+      <h3>Schnell eine Liste für die Direktion</h3>
+      <p class="quote">„Wie viele Lizenzen haben wir noch frei? Welche Konten sind seit einem Jahr nicht angemeldet? Bitte bis morgen – für alle Schulen.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Fertig: Reiter <span class="ui">Extensions</span>, z. B. <i>User-LicenseOverviewReport</i> (Lizenzen) oder <i>User-InactiveUsersReport</i> (inaktive Konten), Tenant wählen, <span class="ui">Starten</span> – Ergebnis als Excel-Datei.</span></li>
+          <li><span>Eigene Frage: Reiter <span class="ui">Quick Script</span>, Snippet wählen (12 Beispiele dabei) oder selbst schreiben, <span class="ui">Mehrere ▾</span> anhaken, <kbd>Strg</kbd>+<kbd>Enter</kbd>.</span></li>
+          <li><span><span class="ui">Tabelle</span>: filtern, nach CSV oder Excel exportieren – mit Spalte <i>Tenant</i>.</span></li>
+        </ol>
+        <div class="meta"><span>⏱ Sekunden je Tenant</span><span>Token und Graph-Funktionen sind schon da</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Eine Tabelle über alle Standorte statt fünf einzelner Exporte</li>
+          <li>Eigene Skripte als Snippets – mit Eingabefeldern, Beschreibung und Verlauf</li>
+          <li>Excel-Reports zum Weitergeben</li>
+        </ul>
+        <figure class="shot wide"><img src="screenshot.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot.png'" alt="Quick Script" loading="lazy"><figcaption>Quick Script mit Snippet und Ausgabe</figcaption></figure>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="morgens" style="--c: var(--red)">
+    <div class="scn-head">
+      <span class="tag">Teams-Meldungen</span>
+      <h3>Morgens wissen, ob alles läuft</h3>
+      <p class="quote">„Ich will nicht jeden Tag fünf Portale öffnen, um zu sehen, ob Geräte nicht mehr synchronisieren oder Defender etwas meldet.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>In Teams im Admin-Kanal einen Workflow „Webhook empfangen → im Kanal posten“ anlegen, die Adresse kopieren.</span></li>
+          <li><span>Reiter <span class="ui">Teams</span> › Ziel anlegen, <span class="ui">Test senden</span>.</span></li>
+          <li><span>Meldung wählen – z. B. <i>Tages-Ampel</i>, <i>Lizenzen knapp</i>, <i>Defender-Alarm</i> oder ein eigenes Snippet –, Tenants und Zeitplan, <span class="ui">Aufgabe anlegen</span>.</span></li>
+        </ol>
+        <div class="meta"><span>⏱ Einrichten: 10 Minuten</span><span>läuft über die Windows-Aufgabenplanung</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Jeden Morgen eine Karte je Tenant: grün, gelb oder rot</li>
+          <li>Meldungen nur bei Befund – kein Rauschen</li>
+          <li>Eigene Prüfungen (Drucker, Backup …) als Meldung aus einem Snippet</li>
+        </ul>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="unterwegs" style="--c: var(--teal)">
+    <div class="scn-head">
+      <span class="tag">Handy-Fernbedienung</span>
+      <h3>Ich bin nicht am PC</h3>
+      <p class="quote">„Eine Lehrerin ruft an: das Programm fehlt auf ihrem Notebook. Ich sitze aber nicht am Schreibtisch.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Am PC einmal <span class="ui">Remote FB</span> einrichten und das Handy per QR-Code koppeln.</span></li>
+          <li><span>Am Handy: freigegebenes Snippet, Extension oder Teams-Meldung wählen, Tenants und Felder setzen, starten.</span></li>
+          <li><span>Intune-Apps und Wartung: Installationsstand je Gerät, Zuweisungen setzen oder aufheben – echte Läufe nur mit PIN.</span></li>
+        </ol>
+        <div class="meta"><span>Web-App im Heimnetz oder über VPN</span><span>Zugangsdaten bleiben am PC</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Live-Ausgabe und Ergebnis je Tenant am Handy</li>
+          <li>Push-Meldung, wenn der Lauf fertig ist</li>
+          <li>Nur freigegebene Aktionen – nicht das ganze Programm</li>
+        </ul>
+        <p class="tip"><b>Empfehlung:</b> Die Fernbedienung nur in einer sicheren Homeoffice-Umgebung verwenden.</p>
+      </div>
+    </div>
+  </article>
+</section>
+
+<section class="first">
+  <h2>Der erste Versuch – ohne jedes Risiko</h2>
+  <p>Nach der Einrichtung im Reiter <span class="ui">Quick Script</span> das Snippet <b>Tenant-Übersicht</b> wählen, unter <span class="ui">Mehrere ▾</span> alle Tenants anhaken und <kbd>Strg</kbd>+<kbd>Enter</kbd> drücken. Das Skript <b>liest nur</b> – Name, Domänen, Lizenzen und Geräteanzahl je Tenant erscheinen als Tabelle. Danach <span class="ui">Analyse</span> › <span class="ui">Was bekommt …?</span> mit deinem eigenen Benutzernamen ausprobieren, ebenfalls nur lesend.</p>
+</section>
+
+<section class="sec">
+  <h2>In 10 Minuten startklar</h2>
+  <p class="sub">Du brauchst: Windows 10 / 11 (PowerShell 5.1 ist dabei) und je Tenant einmal ein Konto mit der Rolle Global Administrator. Administratorrechte am PC sind nicht nötig.</p>
+  <div class="start">
+    <div class="card" style="grid-column: 1 / -1">
+      <div class="n">1</div>
+      <h3>Herunterladen</h3>
+      <p><a href="https://github.com/ChiliApple/HU-MultiTenant/raw/main/Pull.ps1"><code>Pull.ps1</code></a> herunterladen (Rechtsklick › <i>Link speichern unter …</i>), in einen <b>leeren</b> Ordner legen und starten:</p>
+      <pre>powershell.exe -NoProfile -ExecutionPolicy Bypass -File Pull.ps1</pre>
+      <p style="font-size:14px;color:var(--muted)">Lädt die freigegebene Version, prüft jede Datei per SHA-256 und die Signatur des Releases. Updates kommen später über den Knopf <b>Update</b> im Programm – genauso geprüft.</p>
+    </div>
+    <div class="card">
+      <div class="n">2</div>
+      <h3>Tenant einrichten</h3>
+      <p>Erster Start mit <b>Start-HUMultiTenant.cmd</b>. HU-MultiTenant bietet <b>Tenant einrichten</b> an: als Global Admin im Browser anmelden – App-Registrierung, Zertifikat und Rechte legt das Tool selbst an. Je Tenant wiederholen.</p>
+    </div>
+    <div class="card">
+      <div class="n">3</div>
+      <h3>Verknüpfung</h3>
+      <p>Einstellungen › Allgemein › <b>Desktop-Verknüpfung</b>: ab dann mit eigenem Symbol und ohne Konsolenfenster starten. Alles Weitere erklärt die Anleitung – im Tool jederzeit mit <b>F1</b>.</p>
+    </div>
+    <div class="card">
+      <div class="n" style="color:var(--muted)">oder</div>
+      <h3>Eigene App-Registrierung</h3>
+      <p>Wer die App-Registrierung lieber selbst anlegt (mit Client Secret): Schritte und Rechtetabelle in <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/INSTALL.md">INSTALL.md</a>, dann Einstellungen › Tenants › <b>+ Manuell</b>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <h2>Häufige Fragen</h2>
+  <div>
+    <details><summary>Brauche ich einen Server oder eine Datenbank?</summary><p>Nein. HU-MultiTenant läuft auf deinem PC und spricht direkt mit Microsoft Graph. Einstellungen, Snippets und Protokolle liegen im Programmordner bzw. in deinem Benutzerprofil.</p></details>
+    <details><summary>Muss ich PowerShell können?</summary><p>Für Apps, Wartung, Analyse, Teams und die Extensions nicht – das läuft über Knöpfe und Listen. Für eigene Abfragen im Quick Script hilft es; die 12 Beispiel-Snippets sind ein guter Start, und Wartungsskripte schreibt auf Wunsch eine KI.</p></details>
+    <details><summary>Was kostet das?</summary><p>Nichts. Die Nutzung ist frei, Details stehen in der Lizenz im Repository. Für Intune und Remediations brauchst du natürlich die passenden Microsoft-Lizenzen.</p></details>
+    <details><summary>Ersetzt das das Intune- oder Entra-Portal?</summary><p>Nein, es ergänzt sie. Alles, was HU-MultiTenant anlegt, siehst und änderst du weiter im Portal. Das Tool nimmt dir die Wiederholung über mehrere Tenants ab und zeigt Zusammenhänge, die im Portal verstreut sind.</p></details>
+    <details><summary>Welche Rechte bekommt das Tool in meinem Tenant?</summary><p>Die Rechte, die du bei der Einrichtung anhakst – vorausgewählt sind vor allem Leserechte und die Schreibrechte für Apps und Wartung. Weitreichende Rechte (Mail, Dateien, Benutzer schreiben …) sind rot markiert und brauchen eine eigene Bestätigung. Alle Rechte siehst du im Fenster <b>Berechtigungen</b>.</p></details>
+    <details><summary>Wo liegen die Zugangsdaten?</summary><p>Je Tenant ein Zertifikat im Zertifikatspeicher deines Windows-Benutzers – nicht exportierbar, nicht kopierbar. Ein zweiter PC bekommt ein eigenes Zertifikat. Der <b>Not-Aus</b> löscht alle Zugänge dieses PCs mit einem Klick.</p></details>
+    <details><summary>Wie kommen Updates?</summary><p>HU-MultiTenant meldet neue Versionen selbst (Knopf <b>Update</b> wird gold). Im Kanal <b>Stabil</b> landen nur geprüfte und signierte Versionen; jede Datei wird per Prüfsumme kontrolliert.</p></details>
+    <details><summary>Und der Datenschutz?</summary><p>Reports und Tabellen enthalten Namen und Geräte von Mitarbeitern und Schülern. Speichere sie nur dort, wo sie hingehören, und lösche sie, wenn sie nicht mehr gebraucht werden. Teams-Meldungen nennen Gerätenamen nur, wenn du das so einstellst – im Zweifel nur Anzahlen senden.</p></details>
+  </div>
+</section>
+
+<footer>
+  <p>HU-MultiTenant ist ein freies Werkzeug von Admins für Admins. Die Nutzung erfolgt ohne Gewähr – teste neue Abläufe zuerst in einem Tenant bzw. mit einer Pilotgruppe.</p>
+  <p><a href="Funktionen.html">Alle Funktionen im Überblick</a> · <a href="Anleitung.html">Ausführliche Anleitung</a> · <a href="https://github.com/ChiliApple/HU-MultiTenant">Repository</a></p>
+</footer>
+
+</div>
+</body>
+</html>

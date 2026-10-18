@@ -22,8 +22,21 @@
 - Alte Secrets werden nach der Einrichtung (und beim Start fuer bereits umgestellte Tenants) auf diesem PC geloescht -
   nur wenn das Zertifikat vorhanden ist.
 - Manuell mit App-ID und Secret geht weiterhin ("+ Manuell").
+- Nach der Admin-Anmeldung zeigt das Fenster, ob fuer "Microsoft Graph Command Line Tools" schon weitere Zustimmungen
+  bestehen - insbesondere eine Zustimmung fuer alle Benutzer (dafuer liest die Einrichtung zusaetzlich mit
+  `Directory.Read.All`). Nur Anzeige mit Link ins Entra Admin Center; Empfehlung "Zuweisung erforderlich".
+- Geraeteaktionen (`PrivilegedOperations.All`) und Wartungsskripte (`DeviceManagementScripts.ReadWrite.All`) gelten als
+  weitreichend (rot, eigene Bestaetigung); Liste weitreichender Rechte ergaenzt.
+- Einrichtung verlangt Global Administrator oder Privileged Role Administrator zusammen mit (Cloud) Application
+  Administrator; Rechte erteilen weiterhin auch mit Privileged Role Administrator.
+- Zertifikat erneuern: das alte Zertifikat wird erst geloescht, wenn das neue gespeichert ist; fehlt das eingetragene
+  Zertifikat, wird ein passendes vorhandenes angeboten. Schluessel-ID wird gemerkt (removeKey ohne Nachschlagen).
+- Anmeldung im Browser: Antworten mit fremdem state werden ignoriert statt die Anmeldung abzubrechen; ist der Port auf
+  ::1 belegt, wird ein anderer genommen.
 
 ### Doku
+- Neu: Seiten **Einstieg** (Situationen aus dem Alltag) und **Funktionen** (Top 10, alle Bereiche) im Stil von HUMig,
+  Reiter oben auf allen drei Seiten.
 - Anleitung, INSTALL und README: Einrichtung per Admin-Anmeldung, Zertifikat, Rechte erteilen; Rechtetabelle ergaenzt
   (`DeviceManagementServiceConfig.Read.All`, `SecurityAlert.Read.All`, `Directory.Read.All` optional).
 - INSTALL: Erstinstallation per ZIP ist nur dieses eine Mal ungeprueft - Updates pruefen Pruefsummen und Signatur.

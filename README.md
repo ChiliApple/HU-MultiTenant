@@ -14,6 +14,8 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
 </p>
 
 <p align="center">
+  <a href="https://chiliapple.github.io/HU-MultiTenant/Docs/Einstieg.html"><b>Einstieg</b></a> ·
+  <a href="https://chiliapple.github.io/HU-MultiTenant/Docs/Funktionen.html"><b>Funktionen</b></a> ·
   <a href="https://chiliapple.github.io/HU-MultiTenant/Docs/Anleitung.html"><b>Anleitung</b></a> ·
   <a href="INSTALL.md">Installation</a> ·
   <a href="SNIPPET-DEVELOPMENT.md">Snippets schreiben</a> ·
