@@ -145,7 +145,7 @@ Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
         $st = @(
             [pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Days = 12; DisplayName = 'neu'; Status = 'OK' }
             [pscustomobject]@{ Key = 'B'; Name = 'Schule B'; Ok = $true; Error = ''; Days = -1; DisplayName = 'alt'; Status = 'OK' }
-            [pscustomobject]@{ Key = 'C'; Name = 'BORG'; Ok = $false; Error = 'Kein Token (Secret fehlt oder abgelaufen)'; Days = $null; DisplayName = ''; Status = '' }
+            [pscustomobject]@{ Key = 'C'; Name = 'Schule B'; Ok = $false; Error = 'Kein Token (Secret fehlt oder abgelaufen)'; Days = $null; DisplayName = ''; Status = '' }
         )
         $s = New-HUSecretsCardSpec -Statuses $st -WarnDays 30
         $s.Level | Should -Be 'Error'
@@ -162,7 +162,7 @@ Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
             [pscustomobject]@{ Key = 'B'; Name = 'Schule B'; Ok = $true; Error = ''; Skus = @(
                 [pscustomobject]@{ Sku = 'A3'; Total = 10; Used = 12; Free = -2 }
             ) }
-            [pscustomobject]@{ Key = 'C'; Name = 'BORG'; Ok = $true; Error = ''; Skus = @(
+            [pscustomobject]@{ Key = 'C'; Name = 'Schule B'; Ok = $true; Error = ''; Skus = @(
                 [pscustomobject]@{ Sku = 'FLOW_FREE'; Total = 0; Used = 0; Free = 0 }
             ) }
         )
@@ -220,11 +220,11 @@ Describe 'Teams-Auftraege: v2.1.10 (Vorschau, Exit-Codes, Kultur, Ids)' {
     It 'Tages-Ampel: Vorschau mit Ampel-Zaehlung und Summen' {
         $st = @(
             [pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Devices = 100; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = 200; SecretStatus = 'OK' }
-            [pscustomobject]@{ Key = 'B'; Name = 'BORG'; Ok = $false; Error = 'Token'; Devices = 0; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = $null; SecretStatus = '' }
+            [pscustomobject]@{ Key = 'B'; Name = 'Schule B'; Ok = $false; Error = 'Token'; Devices = 0; NonCompliant = 0; Stale = 0; StaleDays = 7; NoPolicy = 0; SecretDays = $null; SecretStatus = '' }
         )
         $s = New-HUDailyCardSpec -Statuses $st
         $s.Preview | Should -Match '1 gruen, 0 gelb, 1 rot'
-        $s.Preview | Should -Match 'rot: BORG'
+        $s.Preview | Should -Match 'rot: Schule B'
         $s.Preview | Should -Match '100 Geraete'
     }
     It 'Tages-Ampel: OK ohne Ablaufdatum -> Hinweis, keine Warnung (B8c)' {
