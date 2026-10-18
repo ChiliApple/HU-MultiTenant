@@ -465,7 +465,7 @@ foreach ($c in $cmds) {
     elseif ($cn -match '^Connect-') { Add-Finding 'FEHLER' 'E07' $ln "$cn ist nicht moeglich: die Extension laeuft mit dem Token der App; Verbinden-Befehle und Exchange Online gehen hier nicht." }
     elseif ($cn -in @('Invoke-Expression', 'iex')) { Add-Finding 'FEHLER' 'E07' $ln 'Invoke-Expression ist nicht erlaubt (fuehrt beliebigen Text aus).' }
     elseif ($cn -in @('Write-Host', 'Write-Output')) { Add-Finding 'WARNUNG' 'E07' $ln "$cn ist im Protokoll der Oberflaeche nicht sichtbar - Write-HULogInfo / Write-HULogOK / Write-HULogWarn / Write-HULogError verwenden." }
-    elseif ($cn -in @('Get-Settings', 'Get-AllTenants', 'Get-TenantByKey')) { Add-Finding 'WARNUNG' 'E07' $ln "$cn liefert im Extension-Lauf keine Daten (Get-Settings = `$null, Get-AllTenants = leer) - Werte ueber -TenantKey/-Token bzw. Parameter beziehen." }
+    elseif ($cn -in @('Get-Settings', 'Get-AllTenants', 'Get-TenantByKey')) { Add-Finding 'WARNUNG' 'E07' $ln "$cn liefert nur in der App-Oberflaeche Daten (sonst `$null bzw. leer) - Werte besser ueber -TenantKey/-Token bzw. Parameter beziehen." }
     elseif ($cn -in @('Grant-HUSendApproval', 'Revoke-HUSendApproval', 'Set-HUNotifyRoute', 'Clear-HUNotifyRoute', 'Set-HUNotifyTargets', 'Add-HUNotifyTarget', 'Remove-HUNotifyTarget')) { Add-Finding 'FEHLER' 'E07' $ln "$cn nie aus einer Extension aufrufen - die Freigabe gibt die Rueckfrage bzw. die gespeicherte Meldung." }
     elseif ($cn -in @('Install-Module', 'Install-Package', 'Set-ExecutionPolicy', 'Import-Module')) {
         $mn = if ($cn -eq 'Import-Module') { Get-HULeadingString (@($c.CommandElements)[1]) } else { '' }

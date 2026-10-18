@@ -209,6 +209,8 @@ function Show-HUSettingsDialog {
         Set-HUProp $t 'domain' $c.tDomain.Text.Trim()
         Set-HUProp $t 'credentialName' $c.tCredName.Text.Trim()
         Set-HUProp $t 'adSchema' $(if ($c.tSchema.SelectedItem) { "$($c.tSchema.SelectedItem.Content)" } else { 'VirtualSchool' })
+        Set-HUProp $t 'adRoleAttr' $c.tRoleAttr.Text.Trim()
+        Set-HUProp $t 'adClassAttr' $c.tClassAttr.Text.Trim()
         Set-HUProp $t 'notes' $c.tNotes.Text
         Set-HUProp $t 'persistCredential' ([bool]$c.tPersist.IsChecked)
         $exp = $c.tExpires.Text.Trim()
@@ -232,7 +234,11 @@ function Show-HUSettingsDialog {
             $c.tDomain.Text = "$(Get-HUProp $t 'domain' '')"
             $c.tCredName.Text = "$(Get-HUProp $t 'credentialName' '')"
             $sch = "$(Get-HUProp $t 'adSchema' 'VirtualSchool')"
-            $c.tSchema.SelectedIndex = $(if ($sch -eq 'iPack') { 1 } else { 0 })
+            $c.tSchema.SelectedIndex = $(if ($sch -eq 'iPack') { 1 } elseif ($sch -eq 'Eigene') { 2 } else { 0 })
+            $c.tRoleAttr.Text = "$(Get-HUProp $t 'adRoleAttr' '')"
+            $c.tClassAttr.Text = "$(Get-HUProp $t 'adClassAttr' '')"
+            $c.tRoleAttr.IsEnabled = ($on -and $sch -eq 'Eigene')
+            $c.tClassAttr.IsEnabled = ($on -and $sch -eq 'Eigene')
             $c.tNotes.Text = "$(Get-HUProp $t 'notes' '')"
             $c.tPersist.IsChecked = [bool](Get-HUProp $t 'persistCredential' $true)
             $c.tPrimary.IsChecked = ((Get-HUProp $t 'isPrimary' $false) -eq $true)
@@ -251,6 +257,11 @@ function Show-HUSettingsDialog {
             $c.lblExpires.Text = $(if ($isCert) { 'Anmeldung' } else { "Secret g$([char]0xFC)ltig bis (manuell)" })
         } finally { $st.Busy = $false }
     }
+    $c.tSchema.Add_SelectionChanged({
+        $eig = ($c.tSchema.SelectedItem -and "$($c.tSchema.SelectedItem.Content)" -eq 'Eigene')
+        $c.tRoleAttr.IsEnabled = $eig
+        $c.tClassAttr.IsEnabled = $eig
+    })
     $c.lstTenants.Add_SelectionChanged({
         if ($st.Busy) { return }
         & $formToTenant

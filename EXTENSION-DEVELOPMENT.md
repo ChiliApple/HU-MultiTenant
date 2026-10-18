@@ -189,12 +189,12 @@ $perms = Get-TokenPermissions -Token $Token  # Gibt ArrayList aller Permissions 
 
 ### HU.Tenant
 
-Im Extension-Lauf (eigener Runspace) werden die Einstellungen **nicht geladen**: `Get-Settings` liefert `$null`, `Get-AllTenants` eine leere Liste (mit Warnung), `Get-TenantByKey` `$null`. Alles, was die Extension über den Tenant wissen muss, kommt über `-TenantKey`, `-Token` und die `.PARAM`-Felder.
+Der Extension-Lauf (eigener Runspace) lädt beim Start die `settings.json`: `Get-Settings`, `Get-AllTenants` und `Get-TenantByKey` liefern dann die Tenant-Einstellungen (ohne Secrets). Das gilt für die Oberfläche; wer die Extension außerhalb davon aufruft, bekommt `$null` bzw. eine leere Liste. Deshalb: Alles, was die Extension über den Tenant wissen muss, besser über `-TenantKey`, `-Token` und die `.PARAM`-Felder beziehen und die Einstellungen nur lesen, wenn es nicht anders geht (Beispiel: `adSchema` im Bericht „Inaktive Benutzer“).
 
 ```powershell
-$settings = Get-Settings                        # im Extension-Lauf $null
-$tenant = Get-TenantByKey -TenantKey $TenantKey # im Extension-Lauf $null
-$allTenants = Get-AllTenants                     # im Extension-Lauf leer
+$settings = Get-Settings                        # in der Oberfläche geladen, sonst $null
+$tenant = Get-TenantByKey -TenantKey $TenantKey # in der Oberfläche geladen, sonst $null
+$allTenants = Get-AllTenants                     # in der Oberfläche geladen, sonst leer
 ```
 
 ### HU.Excel (Report-Generierung)

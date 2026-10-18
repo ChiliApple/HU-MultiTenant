@@ -212,11 +212,20 @@
                                     <TextBox Grid.Row="5" Grid.Column="1" x:Name="tCredName" Style="{StaticResource DarkTextBox}" Margin="0,3"
                                              ToolTip="Dateiname des gespeicherten Secrets in %APPDATA%\HU-MultiTenant (leer = HU-&lt;Schluessel&gt;)"/>
                                     <TextBlock Grid.Row="6" Text="AD-Schema" Style="{StaticResource FieldLabel}"/>
-                                    <ComboBox Grid.Row="6" Grid.Column="1" x:Name="tSchema" Width="200" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
-                                              ToolTip="VirtualSchool: Rolle = jobTitle, Klasse = department. iPack: Rolle = faxNumber, Klasse = officeLocation">
-                                        <ComboBoxItem Content="VirtualSchool"/>
-                                        <ComboBoxItem Content="iPack"/>
-                                    </ComboBox>
+                                    <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                                        <ComboBox x:Name="tSchema" Width="200" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12"
+                                                  ToolTip="Wo der Bericht Inaktive Benutzer Rolle und Klasse findet. VirtualSchool: Rolle = jobTitle, Klasse = department. iPack: Rolle = faxNumber, Klasse = officeLocation. Eigene: Attribute selbst angeben.">
+                                            <ComboBoxItem Content="VirtualSchool"/>
+                                            <ComboBoxItem Content="iPack"/>
+                                            <ComboBoxItem Content="Eigene"/>
+                                        </ComboBox>
+                                        <TextBlock Text="Rolle" Style="{StaticResource FieldLabel}" Margin="14,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="tRoleAttr" Style="{StaticResource DarkTextBox}" Width="150" FontFamily="Consolas" IsEnabled="False"
+                                                 ToolTip="Attribut f&#xFC;r die Rolle, z. B. jobTitle, employeeType oder onPremisesExtensionAttributes.extensionAttribute1 (nur bei Eigene)"/>
+                                        <TextBlock Text="Klasse" Style="{StaticResource FieldLabel}" Margin="14,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="tClassAttr" Style="{StaticResource DarkTextBox}" Width="150" FontFamily="Consolas" IsEnabled="False"
+                                                 ToolTip="Attribut f&#xFC;r die Klasse oder Abteilung, z. B. department oder officeLocation (nur bei Eigene)"/>
+                                    </StackPanel>
                                     <TextBlock Grid.Row="7" x:Name="lblExpires" Text="Secret g&#xFC;ltig bis (manuell)" Style="{StaticResource FieldLabel}"/>
                                     <StackPanel Grid.Row="7" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
                                         <TextBox x:Name="tExpires" Style="{StaticResource DarkTextBox}" Width="120" ToolTip="TT.MM.JJJJ - nur noetig ohne Application.Read.All"/>

@@ -469,6 +469,9 @@ function Register-HUExtensionHandlers {
                     }
                 }
 
+                # Einstellungen laden, damit Get-Settings in der Extension Daten liefert (z. B. AD-Schema je Tenant)
+                try { [void](Import-TenantSettings -SettingsPath (Join-Path $AppRoot 'Config\settings.json') -ErrorAction Stop) } catch { }
+
                 # Sendefreigabe nur nach "Ja" in der Teams-Rueckfrage und nie im Probelauf; sonst sperrt das Modul selbst (Review 030 B4a)
                 if ($BgTeamsAllowed -and (Get-Command Grant-HUSendApproval -ErrorAction SilentlyContinue)) { Grant-HUSendApproval -Reason 'Erweiterung' }
                 if (-not (Get-Command Send-HUNotify -ErrorAction SilentlyContinue)) { function global:Send-HUNotify { [pscustomobject]@{ Ok = 0; Failed = 1; Text = 'Teams: HU.Notify nicht geladen - nichts gesendet' } } }   # wirft nie (Review 030 B4)
