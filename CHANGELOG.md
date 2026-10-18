@@ -7,7 +7,7 @@
   Graph Command Line Tools", Auth Code + PKCE). HU-MultiTenant legt die App-Registrierung "HU-MultiTenant" samt Service
   Principal an, erzeugt auf diesem PC ein nicht exportierbares Zertifikat (RSA 3072, 12 Monate), erteilt die gewaehlten
   Rechte (Administratorzustimmung), testet die Anmeldung und traegt den Tenant ein. Bei einem Fehler wird Angelegtes
-  wieder entfernt. Beim ersten Start wird die Einrichtung angeboten; sonst Einstellungen > Tenants > Einrichten.
+  wieder entfernt. Beim ersten Start wird die Einrichtung angeboten; sonst Einstellungen > Tenants > Tenant einrichten.
 - **Anmeldung per Zertifikat** (signiertes JWT, PS256) statt Client Secret - nichts zum Kopieren oder Abtippen.
   Bestehende Tenants werden beim Einrichten an der Tenant-ID erkannt (Schluessel und Einstellungen bleiben); danach die
   alte App-Registrierung mit Secret im Entra Admin Center loeschen.
@@ -24,6 +24,7 @@
 ### Doku
 - Anleitung, INSTALL und README: Einrichtung per Admin-Anmeldung, Zertifikat, Rechte erteilen; Rechtetabelle ergaenzt
   (`DeviceManagementServiceConfig.Read.All`, `SecurityAlert.Read.All`, `Directory.Read.All` optional).
+- INSTALL: Erstinstallation per ZIP ist nur dieses eine Mal ungeprueft - Updates pruefen Pruefsummen und Signatur.
 
 ## v2.1.12
 

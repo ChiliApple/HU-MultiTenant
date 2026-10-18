@@ -153,14 +153,15 @@
 
                     <DockPanel Grid.Column="0">
                         <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
-                            <Button x:Name="btnTenantSetup" Content="Einrichten (Admin-Anmeldung) ..." Style="{StaticResource ToolButton}" Foreground="#90CAF9" Margin="0,0,4,4"
-                                    ToolTip="Global Admin meldet sich im Browser an - App-Registrierung, Zertifikat und Rechte werden automatisch angelegt"/>
                             <Button x:Name="btnTenantAdd" Content="+ Manuell" Style="{StaticResource ToolButton}" Margin="0,0,4,4"
                                     ToolTip="Tenant von Hand eintragen (eigene App-Registrierung mit Secret)"/>
                             <Button x:Name="btnTenantRemove" Content="Entfernen" Style="{StaticResource ToolButton}" Foreground="#EF9A9A" Margin="0,0,4,4"/>
                             <Button x:Name="btnTenantUp" Content="&#x25B2;" Style="{StaticResource ToolButton}" Width="30" Margin="0,0,4,4"/>
                             <Button x:Name="btnTenantDown" Content="&#x25BC;" Style="{StaticResource ToolButton}" Width="30" Margin="0,0,4,4"/>
                         </WrapPanel>
+                        <Button x:Name="btnTenantSetup" DockPanel.Dock="Bottom" Content="&#x2795; Tenant einrichten (Admin-Anmeldung) ..." Background="#1976D2"
+                                Style="{StaticResource DarkButton}" Margin="0,6,0,0" HorizontalAlignment="Stretch"
+                                ToolTip="Global Admin meldet sich im Browser an - App-Registrierung, Zertifikat und Rechte werden automatisch angelegt"/>
                         <Button x:Name="btnCheckAllSecrets" DockPanel.Dock="Bottom" Content="&#x1F511; Alle Secrets pr&#xFC;fen" Background="#3E3E42"
                                 Style="{StaticResource DarkButton}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
                         <ListBox x:Name="lstTenants" Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}">

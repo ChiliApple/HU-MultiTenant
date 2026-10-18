@@ -414,7 +414,7 @@ function Start-HUCertRenewAll {
         $d = $null
         try { $d = Get-HUTenantCertDaysLeft $t } catch { }
         if ($null -eq $d) { continue }
-        if ($d -lt 0) { Write-HULogWarn 'Zertifikat abgelaufen - Tenant neu einrichten (Einstellungen > Tenants > Einrichten).' -Tenant "$($t.key)"; continue }
+        if ($d -lt 0) { Write-HULogWarn 'Zertifikat abgelaufen - Tenant neu einrichten (Einstellungen > Tenants > Tenant einrichten).' -Tenant "$($t.key)"; continue }
         if ($d -le $script:CertRenewDays) { [void](Start-HUCertRenew "$($t.key)") }
     }
 }

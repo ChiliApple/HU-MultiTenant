@@ -15,10 +15,10 @@
    (ohne Zielordner: `%USERPROFILE%\Desktop\HU-MultiTenant`; jeder andere Ordner geht auch – Updates landen immer dort, wo das Tool liegt)
 2. Erster Start mit **Start-HUMultiTenant.cmd**.
 
-Alternativ: Repository als ZIP laden und entpacken (dann ohne Prüfsumme/Signatur).
+Alternativ: Repository als ZIP laden und entpacken. Dabei werden Prüfsummen und Signatur nur bei dieser Erstinstallation nicht geprüft – alle späteren Updates (Knopf **Update** bzw. `Pull.ps1`) prüfen jede Datei per SHA-256 und die Signatur des Releases.
 
 ## Tenant einrichten (empfohlen)
-Im Programm **Einstellungen › Tenants › Einrichten (Admin-Anmeldung) …** (beim ersten Start wird das angeboten):
+Im Programm **Einstellungen › Tenants › Tenant einrichten (Admin-Anmeldung) …** (beim ersten Start wird das angeboten):
 1. Schlüssel eingeben, Rechte prüfen (Standard ist vorausgewählt, siehe Tabelle; weitere frei wählbar, weitreichende rot mit eigener Bestätigung).
 2. **Im Browser anmelden und einrichten** – als Global Administrator anmelden, bei *Microsoft Graph Command Line Tools* **Akzeptieren**. Das Häkchen *„Zustimmung im Namen Ihrer Organisation“* **nicht** setzen.
 3. HU-MultiTenant legt die App-Registrierung **HU-MultiTenant** an (nur dieses Verzeichnis, Anmeldung nur per Zertifikat), erzeugt auf diesem PC ein **nicht exportierbares Zertifikat** (Benutzer-Zertifikatspeicher, RSA 3072, 12 Monate), erteilt die Rechte samt Administratorzustimmung, testet die Anmeldung und trägt den Tenant ein. Bei einem Fehler wird Angelegtes wieder entfernt.
