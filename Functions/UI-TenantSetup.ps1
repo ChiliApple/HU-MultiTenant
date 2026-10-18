@@ -63,13 +63,16 @@ function Update-HUTsuPermList {
             $cb.IsChecked = (($cat -and $cat.default -eq $true) -or ($u.Mode -eq 'Grant' -and $usage[$n] -and -not $risky) -or ($u.Extra -contains $n))
         }
         $cb.Add_Click({ $script:TSU.Checked["$($this.Tag)"] = [bool]$this.IsChecked; Update-HUTsuState })
+        if ($granted) { $cb.Opacity = 0.75 }
         [void]$c.lstPerms.Items.Add($cb)
     }
     Update-HUTsuState
 }
 
+# Auswahl ohne bereits erteilte; nicht ueber IsEnabled (die Liste ist waehrend des Laufs gesperrt)
 function Get-HUTsuSelected {
-    return @($script:TSU.C.lstPerms.Items | Where-Object { $_.IsEnabled -and $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+    $u = $script:TSU
+    return @($u.C.lstPerms.Items | Where-Object { $_.IsChecked -and $u.Granted -notcontains "$($_.Tag)" } | ForEach-Object { "$($_.Tag)" })
 }
 
 function Update-HUTsuState {
@@ -192,7 +195,8 @@ function Complete-HUTsuLogin($Login) {
         Add-HUTsuLog 'Dieses Konto ist weder Global Administrator noch Privileged Role Administrator (bei PIM: Rolle zuerst aktivieren). Nichts geaendert.' 'Error'
         Stop-HUTsu; return
     }
-    $sel = @(Get-HUTsuSelected)
+    $sel = @($u.Sel)
+    if (-not $sel.Count) { Add-HUTsuLog 'Keine Rechte ausgewaehlt - nichts geaendert.' 'Error'; Stop-HUTsu; return }
     if ($u.Mode -eq 'Grant') {
         if ("$($Login.Tid)" -ne "$($u.Tenant.tenantId)") { Add-HUTsuLog "Angemeldet im falschen Tenant ($($Login.Tid)) - erwartet $($u.Tenant.tenantId). Nichts geaendert." 'Error'; Stop-HUTsu; return }
         $u.Login = $Login
@@ -280,7 +284,7 @@ function Show-HUTenantSetupDialog {
     $script:TSU = @{
         Window = $w; C = $c; Catalog = $catalog; Mode = $(if ($tenant) { 'Grant' } else { 'Setup' }); Tenant = $tenant
         Granted = $granted; GrantedKnown = $known; Extra = @(); Checked = @{}; Phase = 'Idle'; LoginCtx = $null; Login = $null; Worker = $null
-        Key = ''; WorkStarted = $null; Result = $null; Done = @()
+        Key = ''; WorkStarted = $null; Result = $null; Done = @(); Sel = @()
     }
     foreach ($p in $Preselect) { if ("$p") { $script:TSU.Checked["$p"] = $true; if (-not @($catalog.permissions | Where-Object { "$($_.name)" -eq "$p" }).Count) { $script:TSU.Extra += "$p" } } }
 
@@ -295,7 +299,7 @@ function Show-HUTenantSetupDialog {
     }
 
     $c.btnSelDefault.Add_Click({ $script:TSU.Checked = @{}; Update-HUTsuPermList })
-    $c.btnSelNone.Add_Click({ foreach ($cb in $script:TSU.C.lstPerms.Items) { if ($cb.IsEnabled) { $cb.IsChecked = $false; $script:TSU.Checked["$($cb.Tag)"] = $false } }; Update-HUTsuState })
+    $c.btnSelNone.Add_Click({ foreach ($cb in $script:TSU.C.lstPerms.Items) { if ($script:TSU.Granted -notcontains "$($cb.Tag)") { $cb.IsChecked = $false; $script:TSU.Checked["$($cb.Tag)"] = $false } }; Update-HUTsuState })
     $addPerm = {
         $u = $script:TSU
         $n = $u.C.txtExtraPerm.Text.Trim()
@@ -324,6 +328,7 @@ function Show-HUTenantSetupDialog {
         }
         try { $u.LoginCtx = Start-HUAdminLogin -TenantId $(if ($u.Tenant) { "$($u.Tenant.tenantId)" } else { '' }) }
         catch { Add-HUTsuLog "Anmeldung nicht gestartet: $($_.Exception.Message)" 'Error'; return }
+        $u.Sel = $sel
         $u.Phase = 'Login'
         Add-HUTsuLog "Browser geoeffnet - bitte als Administrator anmelden und 'Akzeptieren' (ohne Haekchen 'im Namen der Organisation'). Antwort an http://localhost:$($u.LoginCtx.Port)/" 'Info'
         Update-HUTsuState
