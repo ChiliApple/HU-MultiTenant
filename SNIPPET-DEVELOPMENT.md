@@ -3,6 +3,7 @@
 Referenz für eigene Quick-Script-Snippets (ab v2.0). Gilt für eigene Snippets ebenso wie für übernommene Skripte.
 Bedienung (Mehrere Tenants, Tabelle, Verlauf, Snippet-Verwaltung): [Anleitung](https://chiliapple.github.io/HU-MultiTenant/Docs/Anleitung.html#qs).
 Reports mit eigener Oberfläche im Extensions-Reiter: [EXTENSION-DEVELOPMENT.md](EXTENSION-DEVELOPMENT.md).
+Geprüfte Vorlagen und Prüfprogramm (auch zum Weitergeben an ein Assistenzprogramm, das Snippets schreibt): [skills/hu-snippet](skills/hu-snippet/SKILL.md), siehe Abschnitt 11.
 
 ## 1. Laufzeit
 
@@ -19,16 +20,21 @@ Reports mit eigener Oberfläche im Extensions-Reiter: [EXTENSION-DEVELOPMENT.md]
 | `$TenantKey` / `$Schule` | Schlüssel des laufenden Tenants (z. B. `Schule-1`) |
 | `$Settings` | alle Tenants: `$Settings.tenants` mit `key`, `displayName`, `tenantId`, `appId` |
 | `$AppRoot` | Programmordner, z. B. `Join-Path $AppRoot 'Reports'` |
-| `Invoke-GraphRequest -Token -Endpoint [-Method] [-Body] [-ApiVersion]` | ein Graph-Aufruf, Rückgabe = Antwortobjekt |
-| `Invoke-GraphRequestAll -Token -Endpoint` | alle Seiten (`@odata.nextLink`), Rückgabe = Liste der `value`-Einträge |
-| `Invoke-GraphRequestWithRetry` | wie `Invoke-GraphRequest`, wiederholt bei 429/5xx |
+| `Invoke-GraphRequest -Token -Endpoint [-Method] [-Body] [-ApiVersion] [-ContentType]` | ein Graph-Aufruf, Rückgabe = Antwortobjekt – bei einem HTTP-Fehler **kein Fehler, sondern ein Objekt** mit `IsError`, `StatusCode`, `ErrorMessage` |
+| `Invoke-GraphRequestAll -Token -Endpoint [-TenantKey] [-Settings] [-MaxPages]` | alle Seiten (`@odata.nextLink`), Rückgabe = Liste der `value`-Einträge – nur für **Listen** |
+| `Invoke-GraphRequestWithRetry -Token -Endpoint [-Method] [-Body] [-TenantKey] [-Settings] [-MaxRetries] [-ApiVersion]` | wie `Invoke-GraphRequest`, wiederholt bei 429/5xx |
 | `Get-HUToken [-Tenant <Schlüssel>]` | Token eines anderen Tenants |
 | `Send-HUNotify -Title [-Level] [-Lines] [-Facts] [-Rows] [-Preview]` | Karte an die Ziele der Teams-Meldung, zu der das Snippet gehört (ab v2.1.10) – siehe unten |
 
-- `-Endpoint` relativ (`'/users?$select=id,displayName'` → v1.0) oder absolut (`'https://graph.microsoft.com/beta/...'`)
-- `-Method`: `GET` (Standard), `POST`, `PATCH`, `DELETE`; `-Body` als Hashtable
+- `-Endpoint` relativ (`'/users?$select=id,displayName'` → v1.0) oder absolut (`'https://graph.microsoft.com/beta/...'`); `beta` auch über `-ApiVersion beta` (nicht bei `Invoke-GraphRequestAll`). Eine absolute Adresse wird unverändert aufgerufen und das Token geht mit: **nur** `https://graph.microsoft.com/…`
+- `$select`, `$filter`, `$top` in **einfachen** Anführungszeichen schreiben (in doppelten liest PowerShell sie als Variable); Werte in Filtern mit `[uri]::EscapeDataString(…)` kodieren
+- `-Method`: `GET` (Standard), `POST`, `PATCH`, `DELETE` (kein `PUT`); `-Body` nur bei `POST`/`PATCH`, als **Hashtable** (kein JSON-Text, kein `ConvertTo-Json`)
+- keine eigenen Header: `ConsistencyLevel`, `$count`, `$search` gehen nicht – clientseitig filtern
 - Tokens, die an diese Funktionen übergeben werden, erneuert das Programm bei langen Läufen automatisch
-- **nicht** `-Uri`/`-Headers` an `Invoke-GraphRequest` übergeben – das sind Parameter von `Invoke-RestMethod`
+- **nicht** `-Uri`/`-Headers` an `Invoke-GraphRequest` übergeben – das sind Parameter von `Invoke-RestMethod`; kein `Invoke-RestMethod` gegen Graph
+- **Fehlerobjekt:** `Invoke-GraphRequest`/`Invoke-GraphRequestWithRetry` werfen bei HTTP-Fehlern nicht. Das Ergebnis jedes **ändernden** Aufrufs auf `IsError` prüfen (siehe Vorlage „ändern“)
+- **`Invoke-GraphRequestAll` nur für Listen.** Für ein Einzelobjekt (`/users/<id>`) liefert es nichts – dort `Invoke-GraphRequest`. Fällt eine Folgeseite aus, kommen die bisherigen Einträge plus eine **Warnung** (keine Ausnahme): mit `-WarningVariable wv -WarningAction SilentlyContinue` abfangen und bei `$wv` abbrechen – vor ändernden Aufrufen Pflicht
+- **nicht vorhanden** im Snippet-Lauf: `Write-HULog*`, `Get-Settings`/`Get-TenantByKey`/`Get-AllTenants`, die Excel-Funktionen – dafür `Write-Host`/`Write-Warning`, `$Settings`/`$TenantKey`, Ergebnisobjekte bzw. eine Extension
 
 ## 3. Regeln
 
@@ -36,7 +42,8 @@ Reports mit eigener Oberfläche im Extensions-Reiter: [EXTENSION-DEVELOPMENT.md]
 - keine PowerShell-7-Syntax (`??`, `?.`, `? :`, `ForEach-Object -Parallel`)
 - `$TenantKey` nicht selbst setzen – der Tenant kommt aus der Auswahl bzw. *Mehrere*
 - einstellbare Werte als **Parameter** (Abschnitt 4), nicht als `$Wert = …` oben im Code
-- Snippets, die etwas ändern: Parameter `DryRun` mit Standard `true`
+- Snippets, die etwas ändern: Parameter `DryRun` mit Standard `true`; **jeder** ändernde Aufruf steht hinter der Abfrage (`if ($DryRun) { anzeigen } else { ändern }`)
+- nur ASCII im Code (`ae`, `oe`, `ue`), keine Eingaben (`Read-Host`, `Out-GridView`), kein `Connect-*`
 - Kopf: erste Zeile Kurzbeschreibung, zweite Zeile `# Berechtigungen: …`
 
 ## 4. Parameter
@@ -63,21 +70,26 @@ Zeilen der Form `# @param Name|Typ|Beschriftung|Standard|Auswahl` werden zu Eing
 
 ## 6. Vorlage: lesen
 
+Die Vorlagen liegen als Dateien in `skills/hu-snippet/templates/` und sind vom Prüfprogramm ohne Befund akzeptiert; ein automatischer Test lässt sie gegen eine Graph-Attrappe laufen.
+
 ```powershell
 # Intune-Geraete ohne Synchronisierung seit X Tagen
 # Berechtigungen: DeviceManagementManagedDevices.Read.All
 # @param Tage|int|Ohne Sync seit Tagen|30
 
 $grenze = (Get-Date).AddDays(-$Tage)
-$dev = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices?$select=deviceName,userPrincipalName,lastSyncDateTime')
-$alt = @($dev | Where-Object { [datetime]$_.lastSyncDateTime -lt $grenze })
+$wv = $null
+$dev = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices?$select=deviceName,userPrincipalName,lastSyncDateTime' -WarningVariable wv -WarningAction SilentlyContinue)
+if ($wv) { Write-Error "[$TenantKey] Abfrage unvollstaendig, Abbruch: $($wv -join ' | ')"; return }
+
+$alt = @($dev | Where-Object { -not $_.lastSyncDateTime -or [datetime]$_.lastSyncDateTime -lt $grenze })
 Write-Host "$($alt.Count) von $($dev.Count) Geraeten ohne Sync seit $Tage Tagen" -ForegroundColor Yellow
 
 foreach ($d in $alt) {
     [pscustomobject]@{
         Geraet      = $d.deviceName
         Benutzer    = $d.userPrincipalName
-        LetzterSync = ([datetime]$d.lastSyncDateTime).ToLocalTime()
+        LetzterSync = $(if ($d.lastSyncDateTime) { [datetime]$d.lastSyncDateTime } else { $null })
     }
 }
 ```
@@ -85,19 +97,41 @@ foreach ($d in $alt) {
 ## 7. Vorlage: ändern
 
 ```powershell
-# Geraet synchronisieren
-# Berechtigungen: DeviceManagementManagedDevices.PrivilegedOperations.All
-# @param Geraetename|string|Geraetename|
+# Intune-Geraet per Name synchronisieren
+# Berechtigungen: DeviceManagementManagedDevices.Read.All, DeviceManagementManagedDevices.PrivilegedOperations.All
+# @param Geraetename|string|Geraetename (genau)|
 # @param DryRun|bool|Probelauf (nur anzeigen)|true
 
-if (-not $Geraetename) { Write-Warning 'Geraetename fehlt'; return }
-$d = @(Invoke-GraphRequestAll -Token $Token -Endpoint "/deviceManagement/managedDevices?`$filter=deviceName eq '$Geraetename'&`$select=id,deviceName")
-if (-not $d.Count) { Write-Warning "[$TenantKey] $Geraetename nicht gefunden"; return }
+function Test-FehlerAntwort($Antwort) {
+    return ($null -ne $Antwort -and $null -ne $Antwort.PSObject.Properties['IsError'] -and $Antwort.IsError -eq $true)
+}
 
-foreach ($x in $d) {
-    if ($DryRun) { Write-Host "[DRY-RUN] wuerde $($x.deviceName) synchronisieren" -ForegroundColor Yellow; continue }
-    Invoke-GraphRequest -Token $Token -Endpoint "/deviceManagement/managedDevices/$($x.id)/syncDevice" -Method POST | Out-Null
-    Write-Host "$($x.deviceName) synchronisiert" -ForegroundColor Green
+$name = "$Geraetename".Trim()
+if (-not $name) { Write-Warning 'Bitte oben im Feld Geraetename einen Namen eintragen.'; return }
+
+$filter = "deviceName eq '" + ($name -replace "'", "''") + "'"
+$wv = $null
+$dev = @(Invoke-GraphRequestAll -Token $Token -Endpoint ('/deviceManagement/managedDevices?$select=id,deviceName&$filter=' + [uri]::EscapeDataString($filter)) -WarningVariable wv -WarningAction SilentlyContinue)
+if ($wv) { Write-Error "[$TenantKey] Abfrage unvollstaendig, nichts geaendert: $($wv -join ' | ')"; return }
+if (-not $dev.Count) { Write-Warning "[$TenantKey] '$name' nicht gefunden"; return }
+
+foreach ($d in $dev) {
+    if ($DryRun) {
+        $status = 'Probelauf'
+        Write-Host "[Probelauf] wuerde $($d.deviceName) synchronisieren" -ForegroundColor Yellow
+    }
+    else {
+        $r = Invoke-GraphRequestWithRetry -Token $Token -Method POST -Endpoint "/deviceManagement/managedDevices/$($d.id)/syncDevice"
+        if (Test-FehlerAntwort $r) {
+            $status = "Fehler $($r.StatusCode): $($r.ErrorMessage)"
+            Write-Host "$($d.deviceName): $status" -ForegroundColor Red
+        }
+        else {
+            $status = 'Sync gesendet'
+            Write-Host "$($d.deviceName): $status" -ForegroundColor Green
+        }
+    }
+    [pscustomobject]@{ Geraet = $d.deviceName; Ergebnis = $status }
 }
 ```
 
@@ -162,3 +196,20 @@ Ein Snippet erscheint in der Handy-Fernbedienung erst, wenn es am PC freigegeben
 - kein PowerShell 7 (nur Extensions mit `.RUNTIME PS7`)
 - kein `Connect-ExchangeOnline` (braucht Zertifikats-Anmeldung)
 - nach neuen Berechtigungen in Entra: Programm neu starten (Token-Cache)
+
+## 11. Skill und Prüfprogramm (`skills/hu-snippet`)
+
+Der Ordner `skills/hu-snippet` enthält alles, damit ein Snippet beim ersten Versuch läuft – für Menschen ebenso wie für Assistenzprogramme, die den Code schreiben:
+
+| Datei | Inhalt |
+|---|---|
+| `SKILL.md` | Anleitung in Kurzform: Laufzeit, Kopf und Felder, Graph-Aufrufe, Probelauf, Fallen, Checkliste, drei Vorlagen |
+| `templates/` | `lesen.ps1`, `aendern.ps1` (mit Probelauf), `teams-meldung.ps1` |
+| `tools/Test-HUSnippet.ps1` | statisches Prüfprogramm (Regeln S01–S16): Syntax, PowerShell-7-Syntax, Felder, Graph-Aufrufe, Probelauf, `IsError`, Rechte, Token |
+
+```powershell
+# Zielmaschine: beliebiger PC mit Windows PowerShell 5.1 oder PowerShell 7 (es wird nichts ausgeführt oder verbunden)
+powershell -NoProfile -File skills\hu-snippet\tools\Test-HUSnippet.ps1 -Path .\mein-snippet.ps1
+```
+
+`FEHLER` heißt: läuft so nicht oder ist unsicher. `WARNUNG`: prüfen. Weitergabe an ein Assistenzprogramm: den Ordner als Skill hinzufügen oder `SKILL.md` mitgeben – Einzelheiten in [skills/README.md](skills/README.md).

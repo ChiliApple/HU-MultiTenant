@@ -4,6 +4,8 @@
 
 .DESCRIPTION
     [Detaillierte Beschreibung]
+    Vorlage: Datei kopieren, umbenennen (Kategorie-Name.ps1, z.B. Device-MeinBericht.ps1) und anpassen.
+    Fertige, geprueft lauffaehige Beispiele und die Pruefwerkzeuge: Ordner skills\hu-extension.
 
 .REQUIRED_PERMISSIONS
     DeviceManagementManagedDevices.Read.All
@@ -18,18 +20,33 @@
     []
 
 .BATCH_CAPABLE
-    $false
+    false
 
 .DRY_RUN_CAPABLE
-    $false
+    false
+
+.RUNTIME
+    PS5
+
+.MODE
+    ReadOnly
+
+.PARAM
+    Tage|int|Beispiel-Eingabefeld (Tage)|30
 
 .EXAMPLE
     . .\Template.ps1
-    Invoke-TemplateAction -TenantKey "Schule-1" -Token $token
+    Invoke-TemplateAction -TenantKey 'Schule-1' -Token $token -Tage 30
+
+.NOTES
+    - Schreibend (POST/PATCH/DELETE)? Dann .MODE ReadWrite, .DRY_RUN_CAPABLE true und [switch]$WhatIf
+      in param() - SupportsShouldProcess NICHT zusaetzlich verwenden (sonst "defined multiple times").
+    - Fehler muessen mit throw enden, sonst meldet die Oberflaeche "Fertig".
+    - Hilfsfunktionen duerfen nicht mit Invoke- beginnen.
 #>
 
 function Invoke-TemplateAction {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [string]$TenantKey,
@@ -37,31 +54,26 @@ function Invoke-TemplateAction {
         [Parameter(Mandatory)]
         [string]$Token,
 
-        [switch]$WhatIf
+        [int]$Tage = 30
     )
 
-    # ── Logging (HU.Logging muss geladen sein) ──
-    Write-HULog -Message "Starte Template-Action..." -Level 'INFO' -Tenant $TenantKey
-
-    if ($WhatIf) {
-        Write-HULog -Message "DRY-RUN: Keine Änderungen durchgeführt." -Level 'WARN' -Tenant $TenantKey
-        return [PSCustomObject]@{ DryRun = $true; Message = "Keine Aktion (DRY-RUN)" }
-    }
-
-    # ── Hauptlogik ──
     try {
-        # Graph API Aufruf (HU.Graph muss geladen sein)
-        # $result = Invoke-GraphRequestWithRetry -Token $Token -Endpoint '/...' -TenantKey $TenantKey
+        Write-HULogInfo "Starte Template-Action ..." -Tenant $TenantKey
 
-        Write-HULog -Message "Template-Action erfolgreich abgeschlossen." -Level 'OK' -Tenant $TenantKey
+        # Lesen: Invoke-GraphRequestAll liefert bei einer Listen-Abfrage alle Eintraege. Bricht eine Seite ab,
+        # kommen die bisherigen Eintraege plus eine Warnung - deshalb mit -WarningVariable abfangen.
+        $wv = $null
+        $daten = @(Invoke-GraphRequestAll -Token $Token -Endpoint '/deviceManagement/managedDevices?$select=deviceName' -TenantKey $TenantKey -WarningVariable wv -WarningAction SilentlyContinue)
+        if ($wv) { throw "Abfrage unvollstaendig: $($wv -join ' | ')" }
 
+        Write-HULogOK "$($daten.Count) Eintraege gelesen." -Tenant $TenantKey
         return [PSCustomObject]@{
             Success = $true
-            Data    = @()
+            Anzahl  = $daten.Count
         }
     }
     catch {
-        Write-HULog -Message "Fehler: $($_.Exception.Message)" -Level 'ERROR' -Tenant $TenantKey
+        Write-HULogError "Fehlgeschlagen: $($_.Exception.Message)" -Tenant $TenantKey
         throw
     }
 }
