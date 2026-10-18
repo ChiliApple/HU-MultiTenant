@@ -39,7 +39,8 @@ function Show-SecretSetupDialog {
 
     # Check which tenants are missing secrets
     $missingTenants = @()
-    foreach ($tenant in @($script:Settings.tenants | Where-Object { "$($_.tenantId)" -and "$($_.tenantId)" -notmatch '<' })) {
+    # Tenants mit Zertifikat (ab 2.2.0) brauchen kein Secret
+    foreach ($tenant in @($script:Settings.tenants | Where-Object { "$($_.tenantId)" -and "$($_.tenantId)" -notmatch '<' -and -not (Test-HUTenantCertAuth $_) })) {
         $stored = Get-StoredCredential -TenantKey $tenant.key -Settings $script:Settings
         if (-not $stored) {
             $missingTenants += $tenant

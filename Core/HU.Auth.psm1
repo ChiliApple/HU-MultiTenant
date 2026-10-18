@@ -4,8 +4,11 @@
 .SYNOPSIS
     HU.Auth - Authentifizierung & Credential Management für HU-MultiTenant.
 .DESCRIPTION
-    OAuth2 Client Credentials Flow gegen Microsoft Graph API.
-    Credential-Speicherung: Windows Credential Manager (DPAPI) → DPAPI-File Fallback → RAM-Only.
+    OAuth2 Client Credentials Flow gegen Microsoft Graph API - je Tenant mit Zertifikat (auth = certificate,
+    empfohlen, ab 2.2.0) oder Client Secret.
+    Zertifikat: Cert:\CurrentUser\My\<certThumbprint>, Schluessel nicht exportierbar; Anmeldung per signiertem
+    JWT (client_assertion, PS256 + x5t#S256 laut learn.microsoft.com/entra/identity-platform/certificate-credentials).
+    Secret: DPAPI-verschluesselte Datei je Tenant (%APPDATA%\HU-MultiTenant\<credentialName>.cred).
     Token-Caching mit TTL (50 min Standard).
     Token werden NIEMALS in Logs geschrieben.
 .NOTES
@@ -35,6 +38,73 @@ $script:GraphScope = 'https://graph.microsoft.com/.default'
 
 # DPAPI Credential-Ordner
 $script:CredentialBasePath = [System.IO.Path]::Combine($env:APPDATA, 'HU-MultiTenant')
+
+# ============================================================================
+# ZERTIFIKAT (ab 2.2.0)
+# ============================================================================
+
+function Test-HUTenantCertAuth($Tenant) { return ($Tenant -and $Tenant.PSObject.Properties['auth'] -and "$($Tenant.auth)" -eq 'certificate') }
+
+function ConvertTo-HUBase64Url([byte[]]$Bytes) { return [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_') }
+
+function Get-HUTenantCertificate {
+    <#
+    .SYNOPSIS
+        Zertifikat eines Tenants aus Cert:\CurrentUser\My (per certThumbprint) - $null, wenn es fehlt.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings)
+    $tenant = $Settings.tenants | Where-Object { $_.key -eq $TenantKey } | Select-Object -First 1
+    if (-not (Test-HUTenantCertAuth $tenant)) { return $null }
+    $tp = "$($tenant.certThumbprint)" -replace '[^0-9A-Fa-f]', ''
+    if ($tp.Length -ne 40) { return $null }
+    $c = Get-Item -LiteralPath "Cert:\CurrentUser\My\$tp" -ErrorAction SilentlyContinue
+    if ($c -and $c.HasPrivateKey) { return $c }
+    return $null
+}
+
+function New-HUClientAssertion {
+    <#
+    .SYNOPSIS
+        Signiertes JWT fuer die Anmeldung per Zertifikat (client_assertion).
+    .DESCRIPTION
+        Header alg PS256 + x5t#S256 (SHA-256 des Zertifikats), Claims aud/iss/sub/jti/nbf/iat/exp (10 Min.).
+        Signatur mit dem privaten Schluessel (RSACng, PSS). Mit -Alg RS256: PKCS#1 + x5t (SHA-1), z. B. fuer addKey.
+        Quelle: learn.microsoft.com/entra/identity-platform/certificate-credentials
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
+        [Parameter(Mandatory)][string]$Issuer,
+        [Parameter(Mandatory)][string]$Audience,
+        [ValidateSet('PS256', 'RS256')][string]$Alg = 'PS256',
+        [string]$Subject = ''
+    )
+    $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Certificate)
+    if (-not $rsa) { throw 'Zertifikat ohne privaten RSA-Schluessel' }
+    $hdr = [ordered]@{ alg = $Alg; typ = 'JWT' }
+    if ($Alg -eq 'PS256') { $sha = [System.Security.Cryptography.SHA256]::Create(); try { $hdr['x5t#S256'] = ConvertTo-HUBase64Url ($sha.ComputeHash($Certificate.RawData)) } finally { $sha.Dispose() } }
+    else { $hdr['x5t'] = ConvertTo-HUBase64Url ($Certificate.GetCertHash()) }
+    $now = [long][Math]::Floor(([DateTimeOffset]::UtcNow).ToUnixTimeSeconds())
+    $pl = [ordered]@{ aud = $Audience; iss = $Issuer; sub = $(if ($Subject) { $Subject } else { $Issuer }); jti = [guid]::NewGuid().ToString(); nbf = $now; iat = $now; exp = $now + 600 }
+    $enc = New-Object System.Text.UTF8Encoding $false
+    $u = (ConvertTo-HUBase64Url ($enc.GetBytes((ConvertTo-Json $hdr -Compress)))) + '.' + (ConvertTo-HUBase64Url ($enc.GetBytes((ConvertTo-Json $pl -Compress))))
+    $pad = if ($Alg -eq 'PS256') { [System.Security.Cryptography.RSASignaturePadding]::Pss } else { [System.Security.Cryptography.RSASignaturePadding]::Pkcs1 }
+    $sig = $rsa.SignData([System.Text.Encoding]::ASCII.GetBytes($u), [System.Security.Cryptography.HashAlgorithmName]::SHA256, $pad)
+    return "$u.$(ConvertTo-HUBase64Url $sig)"
+}
+
+function Test-HUTenantCredential {
+    <#
+    .SYNOPSIS
+        Hat dieser PC einen Zugang fuer den Tenant? Zertifikat (mit privatem Schluessel) bzw. gespeichertes Secret.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings)
+    $tenant = $Settings.tenants | Where-Object { $_.key -eq $TenantKey } | Select-Object -First 1
+    if (Test-HUTenantCertAuth $tenant) { return [bool](Get-HUTenantCertificate -TenantKey $TenantKey -Settings $Settings) }
+    return [bool](Get-StoredCredential -TenantKey $TenantKey -Settings $Settings)
+}
 
 # ============================================================================
 # CREDENTIAL MANAGEMENT
@@ -265,33 +335,50 @@ function Get-GraphToken {
             return $null
         }
 
-        # 3. Secret laden
-        $secureSecret = Get-StoredCredential -TenantKey $TenantKey -Settings $Settings
-        if (-not $secureSecret) {
-            Write-Error "[Auth] Kein Secret für '$TenantKey' gefunden. Bitte über GUI eingeben."
-            return $null
-        }
-
-        # SecureString → Klartext für HTTP Body
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureSecret)
-        try {
-            $plainSecret = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
-        }
-        finally {
-            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-        }
-
-        # 4. Token Request (Client Credentials Flow)
         $tokenUrl = $script:TokenEndpointTemplate -f $tenant.tenantId
-        $body = @{
-            grant_type    = 'client_credentials'
-            client_id     = $tenant.appId
-            client_secret = $plainSecret
-            scope         = $script:GraphScope
+        if (Test-HUTenantCertAuth $tenant) {
+            # 3a. Zertifikat (empfohlen): signiertes JWT statt Secret
+            $cert = Get-HUTenantCertificate -TenantKey $TenantKey -Settings $Settings
+            if (-not $cert) {
+                Write-Error "[Auth] Zertifikat fuer '$TenantKey' fehlt auf diesem PC (Thumbprint $($tenant.certThumbprint)) - Tenant neu einrichten (Einstellungen > Tenants)."
+                return $null
+            }
+            if ($cert.NotAfter -lt (Get-Date)) {
+                Write-Error "[Auth] Zertifikat fuer '$TenantKey' ist am $($cert.NotAfter.ToString('dd.MM.yyyy')) abgelaufen - Tenant neu einrichten (Einstellungen > Tenants)."
+                return $null
+            }
+            try { $assertion = New-HUClientAssertion -Certificate $cert -Issuer "$($tenant.appId)" -Audience $tokenUrl }
+            catch { Write-Error "[Auth] Zertifikat fuer '$TenantKey' nicht nutzbar: $($_.Exception.Message)"; return $null }
+            $body = @{
+                grant_type            = 'client_credentials'
+                client_id             = $tenant.appId
+                client_assertion_type = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+                client_assertion      = $assertion
+                scope                 = $script:GraphScope
+            }
+            $assertion = $null
         }
-
-        # Klartext-Secret sofort nullen
-        $plainSecret = $null
+        else {
+            # 3b. Secret laden
+            $secureSecret = Get-StoredCredential -TenantKey $TenantKey -Settings $Settings
+            if (-not $secureSecret) {
+                Write-Error "[Auth] Kein Secret für '$TenantKey' gefunden. Bitte über GUI eingeben."
+                return $null
+            }
+            # SecureString → Klartext für HTTP Body
+            $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureSecret)
+            try { $plainSecret = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr) }
+            finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+            # 4. Token Request (Client Credentials Flow)
+            $body = @{
+                grant_type    = 'client_credentials'
+                client_id     = $tenant.appId
+                client_secret = $plainSecret
+                scope         = $script:GraphScope
+            }
+            # Klartext-Secret sofort nullen
+            $plainSecret = $null
+        }
 
         $retryCount = 0
         $token = $null
@@ -548,6 +635,13 @@ function Get-AppSecretExpiry {
     $out = [pscustomobject]@{ Status = 'Error'; EndDate = $null; Matched = $false; DisplayName = ''; Error = '' }
     $tenant = $Settings.tenants | Where-Object { $_.key -eq $TenantKey } | Select-Object -First 1
     if (-not $tenant -or -not "$($tenant.appId)") { $out.Error = 'AppId fehlt'; return $out }
+    # Zertifikat: Ablauf steht lokal im Zertifikat - kein Graph-Aufruf, kein Application.Read.All noetig
+    if (Test-HUTenantCertAuth $tenant) {
+        $c = Get-HUTenantCertificate -TenantKey $TenantKey -Settings $Settings
+        if (-not $c) { $out.Error = 'Zertifikat fehlt auf diesem PC'; return $out }
+        $out.Status = 'OK'; $out.EndDate = $c.NotAfter; $out.Matched = $true; $out.DisplayName = 'Zertifikat'
+        return $out
+    }
 
     $hint = ''
     $sec = Get-StoredCredential -TenantKey $TenantKey -Settings $Settings
@@ -591,4 +685,9 @@ Export-ModuleMember -Function @(
     'Get-TokenMasked'
     'Select-AppSecretMatch'
     'Get-AppSecretExpiry'
+    'Test-HUTenantCertAuth'
+    'Get-HUTenantCertificate'
+    'New-HUClientAssertion'
+    'Test-HUTenantCredential'
+    'ConvertTo-HUBase64Url'
 )

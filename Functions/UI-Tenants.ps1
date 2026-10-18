@@ -64,12 +64,16 @@ function Get-HUSecretInfo([string]$TenantKey) {
         try { $manual = [datetime]::Parse("$($tenant.secretExpires)", [Globalization.CultureInfo]::InvariantCulture) } catch { }
     }
     $end = $null
-    if ($e -and "$($e.EndDate)") { try { $end = [datetime]::Parse("$($e.EndDate)", [Globalization.CultureInfo]::InvariantCulture); $r.Source = 'Graph' } catch { } }
+    $isCert = Test-HUTenantCertAuth $tenant
+    $what = if ($isCert) { 'Zertifikat' } else { 'Secret' }
+    # Zertifikat (ab 2.2.0): Ablauf direkt aus dem Zertifikat auf diesem PC
+    if ($isCert) { $cc = $null; try { $cc = Get-HUTenantCertificate -TenantKey $TenantKey -Settings $script:Settings } catch { }; if ($cc) { $end = $cc.NotAfter; $r.Source = 'Zertifikat' } }
+    if (-not $end -and $e -and "$($e.EndDate)") { try { $end = [datetime]::Parse("$($e.EndDate)", [Globalization.CultureInfo]::InvariantCulture); $r.Source = 'Graph' } catch { } }
     if (-not $end -and $manual) { $end = $manual; $r.Source = 'manuell' }
     $checked = if ($e -and "$($e.Checked)") { try { ([datetime]"$($e.Checked)").ToString('dd.MM.yyyy HH:mm') } catch { '' } } else { '' }
 
     if (-not $end) {
-        $r.Text = "$($script:KeyIcon) Secret-Ablauf unbekannt"
+        $r.Text = "$($script:KeyIcon) $what-Ablauf unbekannt"
         $why = if ($e -and $e.Status -eq 'NoPermission') { 'Der App fehlt die Berechtigung Application.Read.All (Application).' }
                elseif ($e -and "$($e.Error)") { "Letzte Pruefung: $($e.Error)" } else { 'Noch nicht geprueft - wird beim Verbinden ermittelt.' }
         $r.Tooltip = "$why`nAlternativ: Einstellungen > Tenants > 'Secret gueltig bis' manuell eintragen."
@@ -78,15 +82,16 @@ function Get-HUSecretInfo([string]$TenantKey) {
     $days = [int][Math]::Floor(($end.Date - (Get-Date).Date).TotalDays)
     $r.Days = $days; $r.EndDate = $end
     $warn = Get-HUSecretWarnDays
-    if ($days -lt 0) { $r.Level = 'Expired'; $r.Color = '#F44336'; $r.Text = "$($script:KeyIcon) Secret ABGELAUFEN seit $($end.ToString('dd.MM.yyyy'))"; $r.Short = 'abgelaufen' }
+    if ($days -lt 0) { $r.Level = 'Expired'; $r.Color = '#F44336'; $r.Text = "$($script:KeyIcon) $what ABGELAUFEN seit $($end.ToString('dd.MM.yyyy'))"; $r.Short = 'abgelaufen' }
     else {
-        $r.Text = "$($script:KeyIcon) Secret gueltig bis $($end.ToString('dd.MM.yyyy')) ($days Tage)"
+        $r.Text = "$($script:KeyIcon) $what gueltig bis $($end.ToString('dd.MM.yyyy')) ($days Tage)"
         $r.Short = "$days T"
         if ($days -le 7) { $r.Level = 'Critical'; $r.Color = '#F44336' }
         elseif ($days -le $warn) { $r.Level = 'Warn'; $r.Color = '#FF9800' }
         else { $r.Level = 'OK'; $r.Color = '#8BC34A' }
     }
-    $src = if ($r.Source -eq 'manuell') { 'manuell eingetragen (Einstellungen)' }
+    $src = if ($r.Source -eq 'Zertifikat') { 'Zertifikat auf diesem PC (wird 30 Tage vor Ablauf erneuert bzw. per Neueinrichtung)' }
+           elseif ($r.Source -eq 'manuell') { 'manuell eingetragen (Einstellungen)' }
            elseif ($e.Matched) { 'Graph - genau das gespeicherte Secret (erkannt an den ersten 3 Zeichen)' }
            else { 'Graph - naechstes ablaufendes Secret der App (gespeichertes Secret nicht eindeutig erkannt)' }
     $r.Tooltip = "Quelle: $src$(if ($checked) { "`nGeprueft: $checked" })`nWarnung ab $warn Tagen (Einstellungen > Allgemein)."
@@ -131,7 +136,7 @@ function Start-HUSecretCheckAll([switch]$Force, [scriptblock]$Done = $null) {
             foreach ($k in $keys) {
                 $r = [pscustomobject]@{ Key = $k; Status = 'Error'; EndDate = ''; Matched = $false; Error = '' }
                 try {
-                    if (-not (Get-StoredCredential -TenantKey $k -Settings $settings)) { $r.Error = 'kein Secret gespeichert'; $out += $r; continue }
+                    if (-not (Test-HUTenantCredential -TenantKey $k -Settings $settings)) { $r.Error = 'kein Zugang auf diesem PC (Zertifikat/Secret)'; $out += $r; continue }
                     $tok = Get-GraphToken -TenantKey $k -Settings $settings -ErrorAction SilentlyContinue
                     if (-not $tok) { $r.Error = 'Anmeldung fehlgeschlagen (Secret abgelaufen oder falsch?)'; $out += $r; continue }
                     $x = Get-AppSecretExpiry -TenantKey $k -Settings $settings -Token $tok

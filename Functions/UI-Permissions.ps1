@@ -68,7 +68,7 @@ function Start-HUPermFetch([string[]]$Keys, [switch]$Force) {
             foreach ($k in $keys) {
                 $r = [pscustomobject]@{ Key = $k; Roles = @(); Error = '' }
                 try {
-                    if (-not (Get-StoredCredential -TenantKey $k -Settings $settings)) { $r.Error = 'kein Secret gespeichert'; $out += $r; continue }
+                    if (-not (Test-HUTenantCredential -TenantKey $k -Settings $settings)) { $r.Error = 'kein Zugang auf diesem PC (Zertifikat/Secret)'; $out += $r; continue }
                     $p = @{ TenantKey = $k; Settings = $settings; ErrorAction = 'SilentlyContinue' }
                     if ($force) { $p.ForceRefresh = $true }
                     $tok = Get-GraphToken @p

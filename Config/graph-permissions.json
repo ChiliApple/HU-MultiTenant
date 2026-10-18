@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "_info": "Rechte (Microsoft Graph, Anwendungsberechtigungen) fuer die Einrichtung je Tenant. default = bei der Einrichtung vorausgewaehlt. Die IDs werden zur Laufzeit am Graph-Service-Principal des Tenants nachgeschlagen (per Name).",
+  "permissions": [
+    { "name": "Organization.Read.All", "default": true, "why": "Tenant-Uebersicht, Lizenzen, Verbindungstest" },
+    { "name": "User.Read.All", "default": true, "why": "Benutzer-Reports, Lizenzen, Sync-Monitor, Was bekommt ...?" },
+    { "name": "AuditLog.Read.All", "default": true, "why": "MFA-Status, inaktive Benutzer (signInActivity)" },
+    { "name": "Group.Read.All", "default": true, "why": "Zielgruppen fuer Apps und Wartung, Analyse" },
+    { "name": "Device.Read.All", "default": true, "why": "Analyse: Was bekommt ...? fuer Geraete" },
+    { "name": "DeviceManagementManagedDevices.Read.All", "default": true, "why": "Geraete-Reports, Compliance, Defender" },
+    { "name": "DeviceManagementConfiguration.Read.All", "default": true, "why": "Richtlinien, Analyse, Backup" },
+    { "name": "DeviceManagementServiceConfig.Read.All", "default": true, "why": "Autopilot-Profile, Defender-Report" },
+    { "name": "DeviceManagementApps.ReadWrite.All", "default": true, "why": "Reiter Apps (hochladen, zuweisen, Status), Remote FB > Intune" },
+    { "name": "DeviceManagementScripts.ReadWrite.All", "default": true, "why": "Reiter Wartung (Remediations), Remote FB > Intune" },
+    { "name": "DeviceManagementManagedDevices.PrivilegedOperations.All", "default": true, "why": "Wartung: Jetzt auf Geraet ausfuehren, Sync" },
+    { "name": "SecurityAlert.Read.All", "default": true, "why": "Defender-Alarm (Teams), Defender-Report" },
+    { "name": "Policy.Read.All", "default": true, "why": "Analyse: Conditional Access, benannte Orte" },
+    { "name": "Application.Read.All", "default": true, "why": "Enterprise-App-Inventur" },
+    { "name": "RoleManagement.Read.Directory", "default": true, "why": "Rollennamen im Tenant-Vergleich" },
+    { "name": "DeviceManagementConfiguration.ReadWrite.All", "default": false, "why": "Analyse: Profile/Richtlinien kopieren und aus Backup wiederherstellen" },
+    { "name": "Policy.ReadWrite.ConditionalAccess", "default": false, "why": "Conditional Access aus Backup wiederherstellen" },
+    { "name": "Directory.Read.All", "default": false, "why": "aeltere Extensions (Enterprise-App-Inventur: Berechtigungen)" }
+  ],
+  "risky": [
+    "Application.ReadWrite.All", "Application.ReadWrite.OwnedBy", "AppRoleAssignment.ReadWrite.All",
+    "RoleManagement.ReadWrite.Directory", "Directory.ReadWrite.All", "DelegatedPermissionGrant.ReadWrite.All",
+    "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All",
+    "Mail.*", "Files.*", "Sites.*", "Policy.ReadWrite.*", "RoleManagement.ReadWrite.*", "PrivilegedAccess.ReadWrite.*",
+    "UserAuthenticationMethod.ReadWrite.All", "Domain.ReadWrite.All"
+  ]
+}

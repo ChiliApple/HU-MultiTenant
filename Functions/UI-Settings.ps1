@@ -175,8 +175,10 @@ function Show-HUSettingsDialog {
         param($t)
         $i = Get-HUSecretInfo "$($t.key)"
         $has = $false
-        try { $has = [bool](Get-StoredCredential -TenantKey "$($t.key)" -Settings ([pscustomobject]@{ tenants = @($t); credentials = $S.credentials })) } catch { }
-        if (-not $has) { return @('Kein Secret auf diesem PC gespeichert', '#FF9800') }
+        $cert = Test-HUTenantCertAuth $t
+        try { $has = [bool](Test-HUTenantCredential -TenantKey "$($t.key)" -Settings ([pscustomobject]@{ tenants = @($t); credentials = $S.credentials })) } catch { }
+        if (-not $has) { return @($(if ($cert) { 'Zertifikat fehlt auf diesem PC - Tenant neu einrichten' } else { 'Kein Secret auf diesem PC gespeichert' }), '#FF9800') }
+        if ($cert -and $i.EndDate) { return @("Zertifikat gueltig bis $($i.EndDate.ToString('dd.MM.yyyy'))", $i.Color) }
         if ($i.EndDate) { return @(($i.Text -replace '^\S+\s', ''), $i.Color) }
         return @('Secret gespeichert, Ablauf unbekannt', '#858585')
     }
