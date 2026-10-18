@@ -1,5 +1,28 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.1
+
+### AD-Schema "Eigene" (Bericht Inaktive Benutzer)
+- **Neue Option "Eigene"** unter Einstellungen > Tenants > AD-Schema: Rolle und Klasse kommen aus frei waehlbaren
+  Benutzer-Attributen (z. B. `employeeType`, `department` oder `onPremisesExtensionAttributes.extensionAttribute1`).
+  Damit passt der Bericht auch fuer Tenants, die weder dem Schema VirtualSchool noch iPack folgen. Es werden nur einfache
+  Attributnamen angenommen; fehlt ein Attribut, bleibt die Spalte leer.
+- **Fehler behoben:** Extensions bekamen keine Einstellungen (`Get-Settings` war im Extension-Lauf leer). Dadurch galt im
+  Bericht Inaktive Benutzer immer VirtualSchool, auch wenn bei einem Tenant iPack eingestellt war. PS5-Runspace und
+  PS7-Runner laden jetzt die `settings.json` vor dem Start; `Get-Settings`, `Get-TenantByKey` und `Get-AllTenants`
+  liefern in der Oberflaeche die Tenant-Einstellungen (ohne Secrets).
+
+### KI-Skills
+- **Skills `hu-snippet` und `hu-extension`** im Ordner `skills\`: Anleitung, geprueften Vorlagen und ein Pruefprogramm
+  (`Test-HUSnippet.ps1`, `Test-HUExtension.ps1`), damit ein KI-Assistent Snippets und Extensions schreibt, die beim ersten
+  Lauf funktionieren. Einbinden als Skill oder `SKILL.md` in den Chat geben; Einzelheiten in `skills\README.md`.
+- Anleitung: eigener Abschnitt "KI-Skills"; Funktionen: eigene Kachel; Einstieg: Hinweis und Frage in den Haeufigen
+  Fragen.
+- `SNIPPET-DEVELOPMENT.md` und `EXTENSION-DEVELOPMENT.md` auf den Stand des Programmcodes gebracht (Fehlerobjekt der
+  Graph-Aufrufe, Listen mit Seitenfehlern, was im Snippet- und Extension-Lauf fehlt); Vorlagen ersetzt durch die
+  geprueften Dateien. `Extensions\Template.ps1` neu.
+- Automatische Tests fuer Pruefprogramme und Vorlagen (`Skills.Tests.ps1`, `Extensions.InactiveUsers.Tests.ps1`).
+
 ## v2.2.0
 
 ### Tenant einrichten mit Zertifikat (neu)
