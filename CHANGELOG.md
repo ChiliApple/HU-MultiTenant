@@ -1,5 +1,35 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.1.12
+
+Uebernahme des Vorab-Stands 2.1.9 (PR #12) auf 2.1.11. Startbildschirm und Maskierung der Quick-Script-Protokolle waren
+schon in 2.1.10 enthalten.
+
+### Apps
+- **Skript als Setup:** neben MSI und EXE jetzt auch PowerShell-Skripte (`.ps1`) und Batch-Dateien (`.cmd`, `.bat`) - z. B.
+  Plugin-Installer ohne eigenes Setup. Name und Version kommen aus dem Ordnernamen (`HUScroll-0.5.2` ergibt HUScroll,
+  0.5.2), der ganze Ordner wird mitgepackt. Hat das Skript die Schalter `-AllUsers`/`-Uninstall`, werden Installations- und
+  Deinstallationsbefehl damit vorgeschlagen.
+- **Setup-Ordner:** Setups werden beim Hinzufuegen nach `<Setup-Ordner>\<App>\<Version>` kopiert (letzte zwei Versionen je
+  App bleiben) - Downloads kann danach aufgeraeumt werden. Vorschlag OneDrive\HU-MultiTenant-Setups, aenderbar unter
+  Einstellungen > Allgemein; "Vorhandene uebernehmen" holt bestehende Bibliotheks-Apps nach.
+- **Testinstallation mit Abhaengigkeiten:** Abhaengigkeiten aus der Bibliothek werden in der Sandbox vorher installiert
+  (z. B. Greenshot vor einem Greenshot-Plugin); Abhaengigkeiten nur aus Intune werden als Hinweis genannt.
+- **Testinstallation prueft die Erkennungsregel** nach der Installation und nach der Deinstallation (Datei/Ordner,
+  Registry, MSI-Produktcode) - "NICHT gefunden" heisst, Intune wuerde die Installation als fehlgeschlagen melden.
+- **Testinstallation wie Intune:** Befehle starten in der Sandbox aus einem 32-Bit-Prozess wie bei der Intune Management
+  Extension (wahlweise "Start 64-Bit (eigener PC)"). Skript- und Batch-Setups werden mit `%SystemRoot%\Sysnative\...`
+  vorgeschlagen und laufen damit auch unter Intune als 64-Bit (Program Files statt Program Files (x86)).
+- **Ohne Eintrag in "Apps & Features"** (Skripte, Plugins): neue Programmdateien (EXE/DLL) werden erkannt und als
+  Datei-Erkennung mit Version vorgeschlagen; der Deinstallationstest meldet "nicht pruefbar" statt eines falschen "OK".
+
+### Behoben
+- **Absturz bei "+ Setup ..."** (vorher "+ MSI / EXE ..."): das Programm beendete sich nach der Dateiauswahl.
+- Fehler in einer Schaltflaeche beenden nicht mehr das ganze Programm - sie werden protokolliert, das Programm laeuft weiter.
+- Sperre: Meldung "Verzoegerte Aktion: Die Variable $state ..." 30 s nach dem Entsperren entfernt.
+- Sandbox-Fenster startete winzig: das kleine Fenster beim Herunterfahren der Sandbox wurde als Lage gemerkt; jetzt nur
+  Groessen ab 800x500. Testinstallation: klarer Hinweis, wenn keine Erkennungsregel festgelegt ist.
+
 ## v2.1.11
 
 ### Handy-Fernbedienung (neu)

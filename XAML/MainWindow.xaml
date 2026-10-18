@@ -396,7 +396,7 @@
                             <DockPanel x:Name="pnlAppLibLeft">
                                 <TextBlock DockPanel.Dock="Top" Text="App-Bibliothek" Style="{StaticResource SectionTitle}"/>
                                 <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                                    <Button x:Name="btnAppAdd" Content="+ MSI / EXE ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
+                                    <Button x:Name="btnAppAdd" Content="+ Setup ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
                                             ToolTip="Setup-Datei waehlen - Name, Version, Befehle und Erkennung werden ausgelesen"/>
                                     <Button x:Name="btnAppAddStore" Content="+ Store-App" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,4,4"
                                             ToolTip="Microsoft Store App (neu) - nur die Store-ID, kein Paket"/>
@@ -582,7 +582,12 @@
                                                         <Button x:Name="btnAppSandbox" Content="&#x1F9EA; Testinstallation in der Windows Sandbox" Background="#6A1B9A" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,10,0"
                                                                 ToolTip="Installiert in einer Wegwerf-Sandbox und ermittelt Erkennung und Deinstallation - dein PC bleibt sauber"/>
                                                         <CheckBox x:Name="chkAppSandboxUninstall" Content="Deinstallation mittesten" IsChecked="True" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                                        <CheckBox x:Name="chkAppSandboxKeep" Content="Sandbox offen lassen" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
+                                                        <CheckBox x:Name="chkAppSandboxKeep" Content="Sandbox offen lassen" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                        <ComboBox x:Name="cmbAppSandboxArch" Width="190" FontSize="11" Style="{StaticResource DarkComboBox}" VerticalAlignment="Center"
+                                                                  ToolTip="Wie Intune: Befehl startet aus einem 32-Bit-Prozess (wie die Intune Management Extension) - zeigt, was auf den Geraeten passiert. 64-Bit: wie ein Aufruf am eigenen PC.">
+                                                            <ComboBoxItem Content="Start wie Intune (32-Bit)" Tag="intune" IsSelected="True"/>
+                                                            <ComboBoxItem Content="Start 64-Bit (eigener PC)" Tag="x64"/>
+                                                        </ComboBox>
                                                     </WrapPanel>
                                                     <TextBlock x:Name="txtAppSandbox" Style="{StaticResource HintText}" Margin="0,4,0,0"/>
                                                 </StackPanel>

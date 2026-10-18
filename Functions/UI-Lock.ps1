@@ -353,7 +353,8 @@ function Show-HULockDialog([switch]$AtStart) {
     $w.Add_ContentRendered({
             & $hello
             # Sicherheitsnetz: falls Hello haengt, nach 30 s trotzdem anzeigen
-            Invoke-HUDelayed -Seconds 30 -Do { if (-not ($state.Unlocked -or $state.Exit)) { & $reveal } }
+            # nach dem Schliessen gibt es $state nicht mehr -> dann nichts tun
+            Invoke-HUDelayed -Seconds 30 -Do { if ((Test-Path variable:state) -and -not ($state.Unlocked -or $state.Exit)) { & $reveal } }
         })
     [void]$w.ShowDialog()
     if ($state.Exit) {

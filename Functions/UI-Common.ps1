@@ -307,7 +307,7 @@ function Update-HUSandboxWindowKeeper {
         $s.Applied++
         $x = [int]$saved.X; $y = [int]$saved.Y; $w = [int]$saved.W; $hh = [int]$saved.H
         $vis = [System.Windows.Forms.SystemInformation]::VirtualScreen
-        if ($w -ge 400 -and $hh -ge 300 -and $x -lt $vis.Right - 50 -and $y -lt $vis.Bottom - 50 -and $x + $w -gt $vis.Left + 50 -and $y -gt $vis.Top - 50) {
+        if ($w -ge 800 -and $hh -ge 500 -and $x -lt $vis.Right - 50 -and $y -lt $vis.Bottom - 50 -and $x + $w -gt $vis.Left + 50 -and $y -gt $vis.Top - 50) {
             if ($saved.Max) { [void][HU.SbWin]::ShowWindow($h, 3) }
             else {
                 [void][HU.SbWin]::ShowWindow($h, 9)
@@ -324,6 +324,9 @@ function Update-HUSandboxWindowKeeper {
     $r = New-Object HU.SbWin+RECT
     if (-not [HU.SbWin]::GetWindowRect($h, [ref]$r)) { return }
     $cur = [pscustomobject]@{ X = $r.Left; Y = $r.Top; W = $r.Right - $r.Left; H = $r.Bottom - $r.Top; Max = [bool]$max }
+    # Beim Herunterfahren zeigt die Sandbox ein kleines Fenster (ca. 620x320) - das nicht als Lage merken,
+    # sonst startet die naechste Sandbox winzig (gespeicherte Lage wurde ueberschrieben)
+    if (-not $max -and ($cur.W -lt 800 -or $cur.H -lt 500)) { return }
     if ($max -and $saved) { $cur.X = [int]$saved.X; $cur.Y = [int]$saved.Y; $cur.W = [int]$saved.W; $cur.H = [int]$saved.H }
     $key = "$($cur.X)|$($cur.Y)|$($cur.W)|$($cur.H)|$($cur.Max)"
     if ($key -ne $s.Last) {
