@@ -1,5 +1,9 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.3 (Testversion, 19.10.2026)
+
+- **Doku (F1):** die Seiten kommen weiterhin von GitHub (Fassung der installierten Version), werden aber jetzt zusammen mit den anderen Seiten und den Bildern unter ihrem echten Namen in einen Temp-Ordner geladen. Die Links zwischen den Seiten (z. B. Roadmap) und die Screenshots funktionieren dadurch auch dort; vorher fuehrten sie ins Leere.
+
 ## v2.2.2 (Testversion, 19.10.2026)
 
 - **Sicherheitskatalog, neue Regeln nach BMBWF Security Baseline V2.1 (jetzt 30 Regeln):** MSOL-PowerShell blockiert (A21), Benutzerrechte Apps/Sicherheitsgruppen/Tenants (A22), Gaeste-Sitzungsdauer (A23), Geoblock (A24), Notfallkonten in allen Richtlinien ausgenommen (V1), Adminportale fuer Benutzer gesperrt (A25), offene Gaesteinladungen (A26), veraltete Admin-Konten (A27), Kennwortschutz lokales AD (A28), PIM-Lizenz (A29), riskante Anmeldungen blockiert (A30), Partner-Organisationen (A31), Secure Score (A32, braucht SecurityEvents.Read.All).
