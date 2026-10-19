@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HU-MultiTenant Roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Gleiche Farben, Schriften und Bausteine wie Einstieg.html: Kopf mit Logo, Kennzahlen, Top 3 als grosse Karten,
+   Platz 4-10 kompakt, danach alle Bereiche als Kacheln in der Farbe ihres Bereichs (Spaltenlayout ohne Luecken) */
+:root {
+  --bg: #eff1f5; --surface: #ffffff; --surface-2: #e6e9ef; --line: #ccd0da;
+  --fg: #3b3e52; --fg-strong: #1e1e2e; --muted: #6c6f85;
+  --green: #40a02b; --mauve: #8839ef; --yellow: #c78b0a; --teal: #13867f; --blue: #1e66f5; --red: #d20f39; --peach: #e2620e;
+  --tint: 12%; --chip-fg: #ffffff;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1e1e2e; --surface: #262637; --surface-2: #313244; --line: #3d3e55;
+  --fg: #cdd6f4; --fg-strong: #ffffff; --muted: #a6adc8;
+  --green: #a6e3a1; --mauve: #cba6f7; --yellow: #f9e2af; --teal: #94e2d5; --blue: #89b4fa; --red: #f38ba8; --peach: #fab387;
+  --tint: 16%; --chip-fg: #1e1e2e; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #1e1e2e; --surface: #262637; --surface-2: #313244; --line: #3d3e55;
+  --fg: #cdd6f4; --fg-strong: #ffffff; --muted: #a6adc8;
+  --green: #a6e3a1; --mauve: #cba6f7; --yellow: #f9e2af; --teal: #94e2d5; --blue: #89b4fa; --red: #f38ba8; --peach: #fab387;
+  --tint: 16%; --chip-fg: #1e1e2e; color-scheme: dark }
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 16px/1.6 var(--f-body); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 40px 16px 72px; display: grid; gap: 64px; }
+h1, h2, h3, h4 { font-family: var(--f-display); color: var(--fg-strong); margin: 0; text-wrap: balance; }
+p { margin: 0; }
+a { color: var(--blue); }
+code { font: 500 .88em/1.4 var(--f-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+/* Kopf */
+header { display: grid; gap: 20px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+.logo { width: 44px; height: 44px; border-radius: 11px; background: var(--surface); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; }
+.logo img { width: 30px; height: 30px; }
+.ver { font: 500 13px/1 var(--f-mono); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; }
+nav { display: flex; gap: 6px; flex-wrap: wrap; }
+nav a { text-decoration: none; color: var(--fg); font-size: 14px; font-weight: 600; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+nav a:hover { border-color: var(--blue); color: var(--blue); }
+nav a[aria-current] { background: var(--fg-strong); color: var(--bg); border-color: var(--fg-strong); }
+h1 { font-size: clamp(32px, 6vw, 54px); font-weight: 800; line-height: 1.05; letter-spacing: -.02em; }
+h1 em { font-style: normal; color: var(--mauve); }
+.lead { font-size: 19px; max-width: 64ch; }
+.promise { display: flex; flex-wrap: wrap; gap: 10px; }
+.promise span { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; }
+
+/* Kennzahlen */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.stats div { --c: var(--blue); background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: 12px; padding: 14px 16px; display: grid; gap: 2px; }
+.stats b { font: 800 34px/1.05 var(--f-display); color: var(--c); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stats span { font-size: 14px; color: var(--fg); }
+
+/* Abschnittskopf */
+.sec { display: grid; gap: 22px; }
+.sec > h2 { font-size: clamp(24px, 4vw, 32px); font-weight: 700; }
+.sec > p.sub { color: var(--muted); max-width: 70ch; margin-top: -10px; }
+.kicker { font: 600 12px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: -14px; }
+
+/* Top 3 */
+.podium { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.podium li { --c: var(--blue); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
+.podium .head { padding: 18px 20px 14px; background: color-mix(in srgb, var(--c) var(--tint), var(--surface)); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.podium .rank { font: 800 40px/1 var(--f-display); color: var(--c); letter-spacing: -.03em; }
+.podium .body { padding: 16px 20px 20px; display: grid; gap: 8px; align-content: start; }
+.podium h3 { font-size: 21px; font-weight: 700; }
+.podium p { font-size: 15px; }
+.area { font: 600 11.5px/1 var(--f-body); text-transform: uppercase; letter-spacing: .08em; color: var(--c); text-decoration: none; border: 1px solid color-mix(in srgb, var(--c) 55%, var(--line)); border-radius: 999px; padding: 6px 10px; white-space: nowrap; }
+.area:hover { background: var(--c); color: var(--surface); }
+
+/* Platz 4-10 */
+.rest { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 10px; }
+.rest li { --c: var(--blue); display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: start; padding: 14px 16px 14px 14px; background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--c); border-radius: 12px; min-width: 0; }
+.rest .rank { font: 800 26px/1 var(--f-display); color: var(--c); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.rest h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 2px; }
+.rest p { color: var(--muted); font-size: 14.5px; }
+.rest .area { align-self: center; }
+
+/* Sprungleiste */
+.jump { display: flex; flex-wrap: wrap; gap: 8px; }
+.jump a { --c: var(--blue); display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--fg-strong); font-size: 14px; font-weight: 600; padding: 7px 12px 7px 9px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+.jump a::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
+.jump a:hover { border-color: var(--c); }
+
+/* Bereiche: drei Spalten, Kacheln von Hand verteilt, damit alle Spalten etwa gleich lang sind */
+.cats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
+.col { display: grid; gap: 16px; min-width: 0; }
+.cat { --c: var(--blue); margin: 0; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: 14px; overflow: hidden; scroll-margin-top: 16px; }
+.cat-head { padding: 16px 18px 14px; background: color-mix(in srgb, var(--c) var(--tint), var(--surface)); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chip { font: 600 12px/1 var(--f-body); padding: 7px 10px; border-radius: 6px; background: var(--c); color: var(--chip-fg); white-space: nowrap; }
+.cat h3 { font-size: 19px; font-weight: 700; flex: 1; }
+.count { font: 500 12px/1 var(--f-mono); color: var(--muted); }
+.cat-body { padding: 14px 18px 18px; display: grid; gap: 14px; }
+.group { display: grid; gap: 6px; }
+.group h4 { font: 600 12px/1 var(--f-body); letter-spacing: .1em; text-transform: uppercase; color: var(--c); display: flex; align-items: center; gap: 8px; }
+.group h4::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--c) 35%, var(--line)); }
+.cat ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.cat li { position: relative; padding-left: 16px; font-size: 14.5px; line-height: 1.5; }
+.cat li::before { content: ""; position: absolute; left: 2px; top: .6em; width: 6px; height: 6px; border-radius: 2px; background: var(--c); }
+.new { font: 600 10.5px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--c); border: 1px solid var(--c); border-radius: 4px; padding: 2px 5px; margin-left: 4px; vertical-align: 1px; white-space: nowrap; }
+.shot { margin: 2px 0 0; display: grid; gap: 6px; }
+.shot a { display: block; }
+.shot img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); }
+.shot figcaption { font-size: 12.5px; color: var(--muted); }
+.shot.phone { max-width: 180px; }
+
+footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 20px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+footer a { text-decoration: none; } footer a:hover { text-decoration: underline; }
+
+@media (max-width: 980px) { .cats { grid-template-columns: 1fr 1fr; } .col:nth-child(3) { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; align-items: start; } }
+@media (max-width: 640px) {
+  .wrap { gap: 48px; padding-top: 28px; }
+  .cats, .col:nth-child(3) { grid-template-columns: 1fr; }
+  .lead { font-size: 17px; }
+  .rest li { grid-template-columns: 32px 1fr; }
+  .rest .area { grid-column: 2; justify-self: start; }
+  .podium .rank { font-size: 34px; }
+}
+kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line); border-bottom-width: 2px; background: var(--surface-2); color: var(--fg-strong); }
+
+/* Roadmap: fuenf Etappen als Kacheln, jede in ihrer Farbe */
+.road { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
+.stage { --c: var(--blue); background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: 14px; overflow: hidden; }
+.stage-head { padding: 16px 18px 14px; background: color-mix(in srgb, var(--c) var(--tint), var(--surface)); border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+.stage-head .when { font: 600 12px/1 var(--f-body); letter-spacing: .1em; text-transform: uppercase; color: var(--c); }
+.stage-head h3 { font-size: 19px; font-weight: 700; }
+.stage ul { margin: 0; padding: 14px 18px 18px; list-style: none; display: grid; gap: 10px; }
+.stage li { position: relative; padding-left: 16px; font-size: 14.5px; line-height: 1.5; }
+.stage li::before { content: ""; position: absolute; left: 2px; top: .6em; width: 6px; height: 6px; border-radius: 2px; background: var(--c); }
+.stage li b { color: var(--fg-strong); font-weight: 600; }
+.note { color: var(--muted); font-size: 14px; max-width: 70ch; }
+@media (max-width: 980px) { .road { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .road { grid-template-columns: 1fr; } }
+</style>
+<body>
+<div class="wrap">
+<header>
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
+      HU-MultiTenant · Roadmap <span class="ver">v2.2.2</span>
+    </div>
+    <nav aria-label="Seiten">
+      <a href="Einstieg.html">Einstieg</a>
+      <a href="Funktionen.html">Funktionen</a>
+      <a href="Anleitung.html">Anleitung</a>
+      <a href="Roadmap.html" aria-current="page">Roadmap</a>
+      <a href="https://github.com/ChiliApple/HU-MultiTenant/releases">Download</a>
+    </nav>
+  </div>
+  <h1>Wohin es <em>geht</em>.</h1>
+  <p class="lead">Der Schwerpunkt der nächsten Versionen: eine Sicherheitsanalyse über alle Tenants – nicht nur Intune, sondern auch Entra, Teams, SharePoint und Mail. Die Prüfungen lesen nur; Änderungen kommen erst mit „Angleichen“ – bewusst freigegeben und mit Vorschau.</p>
+</header>
+
+<section class="sec" aria-labelledby="t-road">
+  <h2 id="t-road">Überblick</h2>
+  <div class="road">
+    <article class="stage" style="--c: var(--green)">
+      <div class="stage-head"><span class="when">Jetzt · 2.2.2</span><h3>Sicherheitsanalyse</h3></div>
+      <ul>
+        <li><b>Analyse &gt; Sicherheit:</b> eine Matrix – Prüfungen als Zeilen, Tenants als Spalten; Unterschiede zwischen den Tenants fallen sofort auf.</li>
+        <li>Rund 30 Prüfungen, angelehnt an die <b>BMBWF Security Baseline V2.1</b>: bedingter Zugriff und MFA, Admin-Rollen und veraltete Admin-Konten, Notfallkonten, Geoblock, Adminportale, App-Zustimmung, ablaufende Secrets, Gäste und offene Einladungen, Kennwortschutz, Partner-Organisationen, Secure Score, Compliance und Verschlüsselung.</li>
+        <li>Zu jeder Zahl gibt es eine Liste dahinter (Richtlinien, Konten, Apps, Geräte, Gäste) – mit Filter nach Bereich und Schweregrad.</li>
+        <li>Klare Ergebnisse: OK, Abweichung, Ausnahme oder „nicht prüfbar“ mit Grund (Recht, Lizenz, Technik).</li>
+        <li>Ausnahmen mit Begründung und Ablaufdatum, Verlauf ohne Namen.</li>
+      </ul>
+    </article>
+    <article class="stage" style="--c: var(--blue)">
+      <div class="stage-head"><span class="when">Als Nächstes · 2.2.x</span><h3>Weitere Prüfpakete</h3></div>
+      <ul>
+        <li>Teams und Gruppen (Besitzer, Gäste, öffentliche Teams).</li>
+        <li>Intune-Einstellungen im Vergleich zwischen den Tenants.</li>
+        <li>Lizenzen und Konten-Hygiene, Anmeldeauffälligkeiten, Secure-Score-Empfehlungen im Detail.</li>
+        <li>Teams-Meldung, wenn sich etwas verschlechtert.</li>
+        <li>Noch offen aus der Security Baseline: SharePoint-Freigaben mit Ablaufdatum und wer mit wem teilen darf, Tenant-Standardeinstellungen für Gäste, Cross-Tenant-Zugriff im Detail (Standardregeln statt nur Partnerliste), riskante OAuth-Apps, Notfallkonten namentlich erkennen, Anmelderisiko-Auswertung (mit P2).</li>
+      </ul>
+    </article>
+    <article class="stage" style="--c: var(--teal)">
+      <div class="stage-head"><span class="when">Dann</span><h3>Angleichen</h3></div>
+      <ul>
+        <li><b>Von Tenant X übernehmen:</b> abweichende Einstellungen direkt aus der Matrix auf andere Tenants übertragen.</li>
+        <li>Mit Vorschau „vorher → nachher“, doppelter Rückfrage und Backup vor jeder Änderung.</li>
+        <li>Gruppen und Orte werden über den Namen zugeordnet; bedingter Zugriff kommt zuerst nur im Berichtsmodus an, Notfallkonten bleiben ausgenommen.</li>
+        <li>Schreibrechte als eigene Stufe, nur wenn man sie bewusst freigibt.</li>
+        <li><b>Baseline-Einstellungen auf andere Tenants übertragen:</b> was in einem Tenant nach der Security Baseline eingestellt ist (z. B. Geoblock, Adminportale gesperrt, Gäste-Sitzungsdauer, Benutzerrechte, MSOL blockiert, Kennwortschutz), lässt sich später auf die anderen Tenants übernehmen – ebenfalls mit Vorschau und Backup.</li>
+      </ul>
+    </article>
+    <article class="stage" style="--c: var(--mauve)">
+      <div class="stage-head"><span class="when">Danach</span><h3>Mail, Teams, Backup</h3></div>
+      <ul>
+        <li>Exchange- und Teams-Richtlinien: externe Weiterleitung, Überwachungsprotokoll, Mailschutz, externe Teams-Zugriffe – nur mit Leserolle.</li>
+        <li>Konfigurations-Backup für alle Tenant-Einstellungen, nicht nur Intune und bedingten Zugriff – <b>inklusive der Baseline-Einstellungen</b> (Autorisierungsrichtlinie, Kennwortregeln, Cross-Tenant-Zugriff) mit <b>Wiederherstellen</b> aus dem Backup.</li>
+        <li><b>Wichtiges Ziel: Sichern, Wiederherstellen und Übertragen auf Basis des Katalogs</b> – in dieser Reihenfolge: (1) vollständige Einstellungen sichern (nicht nur Ergebnisse) und einen Mustertenant als Soll-Stand festhalten, (2) Gruppen, Orte, Apps und Notfallkonten je Zieltenant über den Namen zuordnen, (3) zurückspielen oder übertragen mit Testlauf „vorher → nachher“. Der Katalog selbst bleibt rein lesend; Schreiben läuft getrennt, mit eigenen Rechten, bedingter Zugriff zuerst nur im Berichtsmodus. Sicherungen enthalten vollständige Richtlinien und liegen deshalb nur lokal, mit Ablaufdatum.</li>
+        <li>On-Premises-Teile der Baseline (Delegierung bei Admin-Konten, Betriebssystemstände im AD, Kennwortlänge, LAPS bzw. Tier-Konzept) liegen nicht in der Cloud und bleiben einem eigenen Werkzeug vorbehalten.</li>
+      </ul>
+    </article>
+    <article class="stage" style="--c: var(--peach)">
+      <div class="stage-head"><span class="when">Später · Ideen</span><h3>Auf der Liste</h3></div>
+      <ul>
+        <li>Schuljahreswechsel-Assistent: alte, doppelte und ausgeschiedene Geräte aufräumen, mit Probelauf.</li>
+        <li>Teams: Freigaben direkt aus der Meldung.</li>
+        <li>Sandbox-Tests mit mehreren Fällen und Vorbereitungsskript.</li>
+        <li>PowerShell 7 zusätzlich nutzen: die App erkennt beim Start, ob es installiert ist, und nutzt es dann; sonst bleibt sie bei Windows PowerShell 5.1. Code läuft weiter auf beiden, Logik bleibt getrennt von der Oberfläche.</li>
+      </ul>
+    </article>
+  </div>
+  <p class="note">Ein Plan, keine Zusage – Reihenfolge und Umfang können sich ändern. Was fertig ist, steht im <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/CHANGELOG.md">Changelog</a>.</p>
+</section>
+
+<footer>
+  <span>Stand 19.10.2026 · Version 2.2.2</span>
+  <a href="Einstieg.html">Einstieg</a>
+  <a href="Funktionen.html">Funktionen</a>
+  <a href="Anleitung.html">Anleitung</a>
+  <a href="https://github.com/ChiliApple/HU-MultiTenant">Projekt auf GitHub</a>
+</footer>
+</div>
+</body>
+</html>

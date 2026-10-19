@@ -416,29 +416,34 @@ function Show-HUAbout {
     [void]$w.ShowDialog()
 }
 
-# --- Anleitung (F1): Fassung der installierten Version von GitHub, sonst die mitgelieferte ---
+# --- Doku-Seiten (F1 = Anleitung): Fassung der installierten Version von GitHub, sonst die mitgelieferte ---
+# Nur feste Seiten; der Aufrufer gibt nie einen Pfad oder Dateinamen vor.
+$script:HUDocPages = [ordered]@{ Anleitung = 'Anleitung.html'; Einstieg = 'Einstieg.html'; Funktionen = 'Funktionen.html'; Roadmap = 'Roadmap.html' }
 function Show-HUManual {
-    $script:ManualLocal = Join-Path $script:AppRoot 'Docs\Anleitung.html'
+    param([ValidateSet('Anleitung', 'Einstieg', 'Funktionen', 'Roadmap')][string]$Page = 'Anleitung')
+    $file = $script:HUDocPages[$Page]
+    $local = Join-Path $script:AppRoot "Docs\$file"
     $cfg = Update-UpdateConfig
     $ref = if ($cfg -and $cfg.UseBranch) { $cfg.Branch } else { "v$($script:Version)" }
-    $tmpTarget = Join-Path $env:TEMP 'HU-MultiTenant_Anleitung.html'
+    $tmpTarget = Join-Path $env:TEMP "HU-MultiTenant_$file"
+    $onDone = {
+        param($r)
+        $r = "$r".Trim()
+        $f = if ($r -match '^OK:(.+)$') { $Matches[1] } elseif (Test-Path -LiteralPath $local) { $local } else { $null }
+        if (-not $f) { Write-HULogError "Doku-Seite $Page nicht verfuegbar: $($r -replace '^(ERR:|FEHLER:)\s*', '')"; return }
+        Open-HUUrl $f
+    }.GetNewClosure()
     Invoke-AsyncCommand -ScriptBlock {
-        param($token, $owner, $repo, $ref, $target)
+        param($token, $owner, $repo, $ref, $target, $rel)
         try {
             try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
-            $rel = 'Docs/Anleitung.html'
+            if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue }
             if ($token) { Invoke-WebRequest "https://api.github.com/repos/$owner/$repo/contents/${rel}?ref=$ref" -Headers @{ Accept = 'application/vnd.github.v3.raw'; 'User-Agent' = 'HU-MultiTenant'; Authorization = "token $token" } -UseBasicParsing -TimeoutSec 15 -OutFile $target -ErrorAction Stop }
             else { Invoke-WebRequest "https://raw.githubusercontent.com/$owner/$repo/$ref/$rel" -Headers @{ 'User-Agent' = 'HU-MultiTenant' } -UseBasicParsing -TimeoutSec 15 -OutFile $target -ErrorAction Stop }
             if ((Get-Item -LiteralPath $target).Length -lt 1000) { return 'ERR:Datei leer' }
             return "OK:$target"
         } catch { return "ERR:$($_.Exception.Message)" }
-    } -ArgumentList @((Read-GitHubToken), $(if ($cfg) { $cfg.Owner } else { 'ChiliApple' }), $(if ($cfg) { $cfg.Repo } else { 'HU-MultiTenant' }), $ref, $tmpTarget) -TimeoutSec 25 -OnComplete {
-        param($r)
-        $r = "$r".Trim()
-        $f = if ($r -match '^OK:(.+)$') { $Matches[1] } elseif (Test-Path -LiteralPath $script:ManualLocal) { $script:ManualLocal } else { $null }
-        if (-not $f) { Write-HULogError "Anleitung nicht verfuegbar: $($r -replace '^(ERR:|FEHLER:)\s*', '')"; return }
-        Open-HUUrl $f
-    }
+    } -ArgumentList @((Read-GitHubToken), $(if ($cfg) { $cfg.Owner } else { 'ChiliApple' }), $(if ($cfg) { $cfg.Repo } else { 'HU-MultiTenant' }), $ref, $tmpTarget, "Docs/$file") -TimeoutSec 25 -OnComplete $onDone
 }
 
 function Register-HUUpdateHandlers {
@@ -452,6 +457,7 @@ function Register-HUUpdateHandlers {
     [void](& $add 'Jetzt nach Updates suchen' { Invoke-UpdateCheck })
     [void](& $add 'Info ...' { Show-HUAbout })
     [void](& $add 'Anleitung (F1)' { Show-HUManual })
+    [void](& $add 'Roadmap - wie es weitergeht' { Show-HUManual -Page 'Roadmap' })
     [void]$cm.Items.Add((New-Object System.Windows.Controls.Separator))
     [void](& $add 'GitHub-Token (nur privates Repo) ...' {
         $f = Get-GitHubTokenFile
@@ -468,4 +474,11 @@ function Register-HUUpdateHandlers {
     $cm.Add_Opened({ $v = $(if (Test-HUCanSign) { 'Visible' } else { 'Collapsed' }); foreach ($m in $script:UpdMenuSign) { $m.Visibility = $v } })
     $b.ContextMenu = $cm
     $script:Controls['btnHelp'].Add_Click({ Show-HUManual })
+    $hm = New-Object System.Windows.Controls.ContextMenu
+    foreach ($p in @(@('Anleitung (F1)', 'Anleitung', 'Schritt-fuer-Schritt-Anleitung'), @('Funktionen', 'Funktionen', 'Alle Funktionen auf einer Seite'), @('Roadmap - wie es weitergeht', 'Roadmap', 'Ueberblick ueber die naechsten Versionen'))) {
+        $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = $p[0]; $mi.Tag = $p[1]; $mi.ToolTip = $p[2]
+        $mi.Add_Click({ param($s, $e) Show-HUManual -Page "$($s.Tag)" }); [void]$hm.Items.Add($mi)
+    }
+    $script:Controls['btnHelp'].ContextMenu = $hm
+    $script:Controls['btnHelp'].ToolTip = "Anleitung (F1)`nRechtsklick: Funktionen, Roadmap"
 }

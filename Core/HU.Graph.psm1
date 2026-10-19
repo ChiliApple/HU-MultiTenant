@@ -52,6 +52,8 @@ function Invoke-GraphRequest {
         API Version override (default: v1.0)
     .PARAMETER ContentType
         Content-Type Header (default: application/json)
+    .PARAMETER ThrowOnError
+        Bei einem HTTP-Fehler eine Exception werfen statt das Fehlerobjekt (IsError) zurueckzugeben.
     .OUTPUTS
         [PSCustomObject] API Response oder $null bei Fehler
     #>
@@ -73,7 +75,9 @@ function Invoke-GraphRequest {
 
         [string]$ApiVersion,
 
-        [string]$ContentType = 'application/json'
+        [string]$ContentType = 'application/json',
+
+        [switch]$ThrowOnError
     )
 
     process {
@@ -105,6 +109,10 @@ function Invoke-GraphRequest {
         # Body hinzufügen (nur bei POST/PATCH)
         if ($Body -and $Method -in @('POST', 'PATCH')) {
             $params.Body = ($Body | ConvertTo-Json -Depth 10 -Compress)
+        }
+        elseif ($Method -eq 'POST') {
+            # POST ohne Body (z. B. .../restore): sonst fehlt der Content-Type und Graph antwortet mit 415
+            $params.Body = '{}'
         }
 
         try {
@@ -145,6 +153,7 @@ function Invoke-GraphRequest {
             }
 
             Write-Verbose "[Graph] Fehler: $errorDetail"
+            if ($ThrowOnError) { throw "Graph $Method $Endpoint : $errorDetail" }
             return $errorResult
         }
     }
@@ -176,6 +185,8 @@ function Invoke-GraphRequestWithRetry {
         Max Retries (default: 3)
     .PARAMETER ApiVersion
         API Version override
+    .PARAMETER ThrowOnError
+        Nach den Wiederholungen bei einem Fehler eine Exception werfen statt das Fehlerobjekt (IsError) zurueckzugeben.
     .OUTPUTS
         [PSCustomObject] API Response
     #>
@@ -199,11 +210,18 @@ function Invoke-GraphRequestWithRetry {
 
         [int]$MaxRetries,
 
-        [string]$ApiVersion
+        [string]$ApiVersion,
+
+        [switch]$ThrowOnError
     )
 
     process {
         if (-not $MaxRetries) { $MaxRetries = $script:DefaultMaxRetries }
+        $failResult = {
+            param($r)
+            if ($ThrowOnError -and $r -and $r.PSObject.Properties['IsError'] -and $r.IsError) { throw "Graph $($r.Method) $($r.Endpoint) : $($r.ErrorMessage)" }
+            $r
+        }
 
         $currentToken = $Token
         $retryCount = 0
@@ -230,7 +248,7 @@ function Invoke-GraphRequestWithRetry {
             # 403 → Permissions-Problem, kein Retry
             if ($statusCode -eq 403) {
                 Write-Warning "[Graph] 403 Forbidden für $Endpoint - Permissions prüfen. Kein Retry."
-                return $response
+                return (& $failResult $response)
             }
 
             # 401 → Token-Refresh versuchen (1x)
@@ -244,7 +262,7 @@ function Invoke-GraphRequestWithRetry {
                 }
                 else {
                     Write-Warning "[Graph] Token-Refresh fehlgeschlagen."
-                    return $response
+                    return (& $failResult $response)
                 }
             }
 
@@ -271,11 +289,11 @@ function Invoke-GraphRequestWithRetry {
 
             # Alle anderen Fehler → kein Retry
             Write-Warning "[Graph] Fehler $statusCode für $Endpoint - kein Retry."
-            return $response
+            return (& $failResult $response)
         }
 
         Write-Warning "[Graph] Max Retries ($MaxRetries) erreicht für $Endpoint."
-        return $response
+        return (& $failResult $response)
     }
 }
 

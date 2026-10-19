@@ -30,7 +30,11 @@ function Get-HUPermInfo([string]$Perm) {
     $e = (Get-HUPermRegistry)[$Perm]
     $risk = if ($e -and "$($e.risk)") { switch ("$($e.risk)") { 'Low' { 'niedrig' } 'Medium' { 'mittel' } 'High' { 'hoch' } default { "$($e.risk)" } } } else { '?' }
     $desc = if ($e) { "$($e.description)" } else { '' }
-    if (-not $desc -and $Perm -match 'ReadWrite|PrivilegedOperations') { $desc = 'schreibender Zugriff' }
+    # nicht im Register: nach dem Namen schaetzen und als geschaetzt kennzeichnen
+    if (-not $e) {
+        if ($Perm -match 'ReadWrite|Write|PrivilegedOperations') { $risk = 'hoch (geschaetzt)'; $desc = 'nicht in der Liste - nach dem Namen: schreibender Zugriff' }
+        elseif ($Perm -match 'Read') { $risk = 'mittel (geschaetzt)'; $desc = 'nicht in der Liste - nach dem Namen: lesender Zugriff' }
+    }
     return @{ Risk = $risk; Desc = $desc }
 }
 

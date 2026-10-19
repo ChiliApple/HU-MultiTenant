@@ -308,7 +308,7 @@ function Test-HUPermCoverage($Cmds, $Mutations, [string[]]$Perms, [string]$Pfx) 
 }
 # Ein Recht pruefen: Name gueltig? ($true = ok)
 function Test-HUPermName([string]$Name) {
-    return ($Name -match '^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9\-]*)+$')
+    return ($Name -match '^[A-Za-z][A-Za-z0-9\-]*(\.[A-Za-z][A-Za-z0-9\-]*)+$')
 }
 #endregion Gemeinsam
 

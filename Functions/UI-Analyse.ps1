@@ -51,28 +51,51 @@ function Get-HUAnaKind {
 
 function Set-HUAnaMode([string]$Mode) {
     $c = $script:Controls
-    if ($Mode -notin 'asg', 'cmp', 'bak') { $Mode = 'asg' }
+    if ($Mode -notin 'asg', 'cmp', 'bak', 'sec') { $Mode = 'asg' }
     $script:AnaMode = $Mode
     $vis = { param($b) if ($b) { 'Visible' } else { 'Collapsed' } }
     $c['pnlAnaAsg'].Visibility = & $vis ($Mode -eq 'asg')
     $c['pnlAnaCmp'].Visibility = & $vis ($Mode -eq 'cmp')
     $c['pnlAnaBak'].Visibility = & $vis ($Mode -eq 'bak')
+    $c['pnlAnaSec'].Visibility = & $vis ($Mode -eq 'sec')
     $c['gridAna'].Visibility = $c['pnlAnaAsg'].Visibility
     $c['gridCmp'].Visibility = $c['pnlAnaCmp'].Visibility
     $c['gridBak'].Visibility = $c['pnlAnaBak'].Visibility
+    $c['gridSec'].Visibility = $c['pnlAnaSec'].Visibility
     $c['btnAnaModeAsg'].Background = Get-HUBrush $(if ($Mode -eq 'asg') { '#1976D2' } else { '#3E3E42' })
     $c['btnAnaModeCmp'].Background = Get-HUBrush $(if ($Mode -eq 'cmp') { '#1976D2' } else { '#3E3E42' })
     $c['btnAnaModeBak'].Background = Get-HUBrush $(if ($Mode -eq 'bak') { '#1976D2' } else { '#3E3E42' })
+    $c['btnAnaModeSec'].Background = Get-HUBrush $(if ($Mode -eq 'sec') { '#1976D2' } else { '#3E3E42' })
     Set-HUStateValue 'anaMode' $Mode
     if ($Mode -eq 'bak') { Update-HUBakView }
     Update-HUAnaHint
 }
 
+# Pulsierender gruener Punkt vor der Statuszeile (Analyse), solange gelesen/geprueft wird (wie Teams-Meldung)
+function Set-HUAnaRunDot([bool]$On) {
+    $d = $script:Controls['dotAnaRun']
+    if (-not $d) { return }
+    if ($On) {
+        if ($d.Visibility -eq 'Visible') { return }
+        $an = New-Object System.Windows.Media.Animation.DoubleAnimation
+        $an.From = 1.0; $an.To = 0.2; $an.Duration = [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(700))
+        $an.AutoReverse = $true; $an.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+        $d.Visibility = 'Visible'
+        $d.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $an)
+    }
+    else {
+        $d.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+        $d.Opacity = 1.0; $d.Visibility = 'Collapsed'
+    }
+}
+
 function Update-HUAnaHint {
     if ($script:AnaMode -eq 'cmp') { Update-HUCmpHint; return }
     if ($script:AnaMode -eq 'bak') { Update-HUBakHint; return }
+    if ($script:AnaMode -eq 'sec') { Update-HUSecHint; return }
     $c = $script:Controls
     $wait = @($script:AnaWait.Keys)
+    Set-HUAnaRunDot ($wait.Count -gt 0)
     $n = $script:AnaRows.Count
     if ($wait.Count) {
         $c['lblAnaHint'].Text = "$($script:AnaLabel): $n Eintrag/Eintraege bisher - warte auf $(@($wait | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ') ..."
@@ -173,12 +196,13 @@ $script:CmpMatrix = @()
 function Update-HUCmpHint {
     $c = $script:Controls
     $wait = @($script:CmpWait.Keys)
+    Set-HUAnaRunDot ($wait.Count -gt 0)
     if ($wait.Count) { $c['lblAnaHint'].Text = "Lese Bestand ... warte auf $(@($wait | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')"; return }
     if (-not $script:CmpKeys.Count) { $c['lblAnaHint'].Text = 'Tenants anhaken (mindestens 2) und Vergleichen klicken. Verglichen werden Profile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot, Conditional Access und Apps - nach Name.'; return }
     $all = @($script:CmpMatrix)
     $d = @($all | Where-Object Diff).Count
     $vis = @(Get-HUCmpVisibleRows).Count
-    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' nur fuer Profile, Compliance, Feature-Updates und Autopilot. Doppelklick zeigt die abweichenden Einstellungen. Kopieren ohne Zuweisungen."
+    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' nur fuer Profile, Compliance, Feature-Updates, Autopilot und Conditional Access (dort zeigt die Zelle Ein, Aus oder Melden; Gruppen und Orte werden nur nach Anzahl verglichen, die Namen zeigt der Doppelklick). Doppelklick zeigt die abweichenden Einstellungen. Kopieren ohne Zuweisungen."
 }
 
 function Get-HUCmpVisibleRows {
@@ -192,6 +216,13 @@ function Get-HUCmpVisibleRows {
     return @($rows | Sort-Object Typ, Name)
 }
 
+# Zelle im Vergleich: Haken, bei Conditional Access der Status (Ein / Aus / Melden)
+function Get-HUCmpCellText($M, [string]$Key) {
+    $it = @($M.Items | Where-Object { $_.Tenant -eq $Key })[0]
+    if ($it -and $it.PSObject.Properties['Info'] -and "$($it.Info)") { return "$($it.Info)" }
+    return "$([char]0x2714)"
+}
+
 function Update-HUCmpGrid {
     $c = $script:Controls
     $g = $c['gridCmp']
@@ -201,7 +232,7 @@ function Update-HUCmpGrid {
     $add = { param($h, $b, $w) $col = New-Object System.Windows.Controls.DataGridTextColumn; $col.Header = $h; $col.Binding = New-Object System.Windows.Data.Binding($b); $col.Width = $w; [void]$g.Columns.Add($col) }
     & $add 'Typ' 'Typ' (New-Object System.Windows.Controls.DataGridLength(150))
     & $add 'Name' 'Name' (New-Object System.Windows.Controls.DataGridLength(2, 'Star'))
-    for ($i = 0; $i -lt $keys.Count; $i++) { & $add (Get-HUAnaTenantName $keys[$i]) "T$i" (New-Object System.Windows.Controls.DataGridLength(95)) }
+    for ($i = 0; $i -lt $keys.Count; $i++) { & $add (Get-HUAnaTenantName $keys[$i]) "T$i" (New-Object System.Windows.Controls.DataGridLength(1, [System.Windows.Controls.DataGridLengthUnitType]::Auto)); $g.Columns[$g.Columns.Count - 1].MinWidth = 120 }
     & $add 'Status' 'Status' (New-Object System.Windows.Controls.DataGridLength(1, 'Star'))
     # Arten-Auswahl
     $cb = $c['cmbCmpType']; $cur = "$($cb.SelectedItem)"
@@ -214,7 +245,7 @@ function Update-HUCmpGrid {
     }
     $items = foreach ($m in @(Get-HUCmpVisibleRows)) {
         $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
-        for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = $(if ($m.Have -contains $keys[$i]) { "$([char]0x2714)" } elseif (@($m.Unknown) -contains $keys[$i]) { '?' } else { "$([char]0x2014)" }) }
+        for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = $(if ($m.Have -contains $keys[$i]) { Get-HUCmpCellText $m $keys[$i] } elseif (@($m.Unknown) -contains $keys[$i]) { '?' } else { "$([char]0x2014)" }) }
         $o.Status = "$($m.Status)$(if ($m.Missing.Count -and -not $m.Copy) { ' (nur anzeigen)' })"
         $o.Ref = $m
         [pscustomobject]$o
@@ -351,7 +382,7 @@ function Register-HUCmpHandlers {
             $keys = @($script:CmpKeys)
             $rows = foreach ($m in @(Get-HUCmpVisibleRows)) {
                 $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
-                foreach ($k in $keys) { $o[(Get-HUAnaTenantName $k)] = $(if ($m.Have -contains $k) { 'ja' } else { 'fehlt' }) }
+                foreach ($k in $keys) { $o[(Get-HUAnaTenantName $k)] = $(if ($m.Have -contains $k) { $(if ((Get-HUCmpCellText $m $k) -in 'Ein', 'Aus', 'Melden') { Get-HUCmpCellText $m $k } else { 'ja' }) } else { 'fehlt' }) }
                 $o.Status = $m.Status
                 [pscustomobject]$o
             }
@@ -370,6 +401,7 @@ function Get-HUBakRootSafe { try { return (Get-HUBackupRoot $script:Settings) } 
 
 function Update-HUBakHint {
     $c = $script:Controls
+    Set-HUAnaRunDot ([bool]$script:BakBusy)
     if ($script:BakBusy) { return }
     if (-not $script:BakInfo) { $c['lblAnaHint'].Text = 'Backup jetzt sichert die angehakten Tenants. Danach im Verlauf zwei Staende waehlen und Anzeigen: neu, geloescht, Einstellungen/Zuweisungen geaendert, umbenannt - mit Benutzer aus dem Intune-Protokoll. Doppelklick zeigt die Unterschiede.'; return }
     $all = @($script:BakRows); $vis = @(Get-HUBakVisibleRows).Count
@@ -429,6 +461,7 @@ function Start-HUBakNow([string[]]$Keys = @(), [switch]$Auto) {
     $keep = [int](Get-HUProp $script:Settings.ui 'backupKeep' 30)
     $script:BakBusy = $true
     $c['btnBakNow'].IsEnabled = $false
+    Set-HUAnaRunDot $true
     $c['lblAnaHint'].Text = "Backup laeuft ($($Keys.Count) Tenant(s)) - je Tenant 1-3 Minuten ..."
     Add-HURtbLine $c['rtbAna'] "$(if ($Auto) { 'Automatisches ' })Backup: $(@($Keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" '#90CAF9'
     [void](Start-HUJob -Name 'Backup' -Output $c['rtbAna'] -Vars @{ Keys = $Keys; Keep = $keep } -Code {
@@ -444,6 +477,7 @@ function Start-HUBakNow([string[]]$Keys = @(), [switch]$Auto) {
         } -OnDone {
             param($Result, $Errors)
             $script:BakBusy = $false
+            Set-HUAnaRunDot $false
             $script:Controls['btnBakNow'].IsEnabled = $true
             Set-HUStateValue 'bakLast' (Get-Date).ToString('s')
             if ($script:AnaMode -eq 'bak') { Update-HUBakSnapshots; Update-HUBakHint }
@@ -569,6 +603,7 @@ function Register-HUAnaHandlers {
     Update-HUAnaTypes
     $c['btnAnaModeAsg'].Add_Click({ Set-HUAnaMode 'asg' })
     $c['btnAnaModeCmp'].Add_Click({ Set-HUAnaMode 'cmp' })
+    $c['btnAnaModeSec'].Add_Click({ Set-HUAnaMode 'sec' })
     $c['btnAnaRun'].Add_Click({ Start-HUAnaRun })
     $c['txtAnaName'].Add_KeyDown({ param($s, $e) if ("$($e.Key)" -eq 'Return') { $e.Handled = $true; Start-HUAnaRun } })
     $c['cmbAnaKind'].Add_SelectionChanged({ $script:Controls['btnAnaPick'].IsEnabled = ((Get-HUAnaKind) -eq 'group') })
@@ -586,5 +621,6 @@ function Register-HUAnaHandlers {
     Add-HUOutputMenu $c['rtbAna'] { $script:Controls['rtbAna'].Document.Blocks.Clear() }
     Register-HUCmpHandlers
     Register-HUBakHandlers
+    Register-HUSecHandlers
     Set-HUAnaMode "$(Get-HUStateValue 'anaMode' 'asg')"
 }

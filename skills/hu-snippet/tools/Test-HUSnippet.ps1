@@ -308,7 +308,7 @@ function Test-HUPermCoverage($Cmds, $Mutations, [string[]]$Perms, [string]$Pfx) 
 }
 # Ein Recht pruefen: Name gueltig? ($true = ok)
 function Test-HUPermName([string]$Name) {
-    return ($Name -match '^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9\-]*)+$')
+    return ($Name -match '^[A-Za-z][A-Za-z0-9\-]*(\.[A-Za-z][A-Za-z0-9\-]*)+$')
 }
 #endregion Gemeinsam
 
@@ -485,7 +485,7 @@ else {
     foreach ($item in @($permText -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -notmatch '^(keine|none|-)$' })) {
         if ($item -match '^\.+$') { Add-Finding 'WARNUNG' 'S14' 2 'Platzhalter in der Rechte-Zeile - die echten Rechtenamen eintragen.'; continue }
         if ($item -match '\s') { Add-Finding 'WARNUNG' 'S14' 2 "'$item': Text in der Rechte-Zeile - Rechte mit Komma trennen, Erklaerungen in Klammern dahinter."; continue }
-        if ($item -notmatch '^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9\-]*)+$') { Add-Finding 'FEHLER' 'S14' 2 "'$item' ist kein gueltiger Graph-Rechtename (Beispiel: DeviceManagementManagedDevices.Read.All)."; continue }
+        if ($item -notmatch '^[A-Za-z][A-Za-z0-9\-]*(\.[A-Za-z][A-Za-z0-9\-]*)+$') { Add-Finding 'FEHLER' 'S14' 2 "'$item' ist kein gueltiger Graph-Rechtename (Beispiel: DeviceManagementManagedDevices.Read.All)."; continue }
         $perms += $item
     }
 }

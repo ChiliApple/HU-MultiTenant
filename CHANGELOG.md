@@ -1,5 +1,28 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.2 (Testversion, 19.10.2026)
+
+- **Sicherheitskatalog, neue Regeln nach BMBWF Security Baseline V2.1 (jetzt 30 Regeln):** MSOL-PowerShell blockiert (A21), Benutzerrechte Apps/Sicherheitsgruppen/Tenants (A22), Gaeste-Sitzungsdauer (A23), Geoblock (A24), Notfallkonten in allen Richtlinien ausgenommen (V1), Adminportale fuer Benutzer gesperrt (A25), offene Gaesteinladungen (A26), veraltete Admin-Konten (A27), Kennwortschutz lokales AD (A28), PIM-Lizenz (A29), riskante Anmeldungen blockiert (A30), Partner-Organisationen (A31), Secure Score (A32, braucht SecurityEvents.Read.All).
+- **Katalog-Oberflaeche:** Filter nach Bereich und Schweregrad, Zeilen nach Schweregrad dezent eingefaerbt, Detailknopf zeigt je nach Regel Konten, Richtlinien (mit Namen der Ausnahmen), Einladungen oder Partner. Ergebnisfenster passt sich der Spaltenbreite an.
+- **Rechtenamen mit Bindestrich:** die Pruefung in den Snippet- und Extension-Pruefprogrammen lehnt `User-OnPremisesSyncBehavior.ReadWrite.All`, `Group-...` und `Contacts-...` nicht mehr ab.
+- **Graph-Aufrufe:** neuer Schalter `-ThrowOnError` bei `Invoke-GraphRequest` und `Invoke-GraphRequestWithRetry` (auch im Quick Script Runner): bei HTTP-Fehlern (z. B. 403) wird eine Exception geworfen, `try/catch` greift. Ohne den Schalter bleibt alles wie bisher (Fehlerobjekt mit `IsError`).
+- **POST ohne Body** (z. B. `.../restore`): schickt `{}` mit Content-Type `application/json`, kein 415 mehr.
+
+- **Analyse > Sicherheit:** neue Ansicht mit Matrix (Regeln als Zeilen, Tenants als Spalten), Filter, Doppelklick-Details, Ausnahmen mit Begruendung und Ablaufdatum, Tabelle/Export. Nur lesend; jeder Lauf wird im Verlauf gespeichert.
+
+### Sicherheitsanalyse (Grundgeruest, noch ohne Oberflaeche)
+- **Neues Modul `Core\HU.SecCatalog.psm1`:** Regeln pruefen Tenant-Einstellungen, nur lesend. Ergebnis je Regel und Tenant:
+  OK, Abweichung, Ausnahme, Nicht pruefbar (Grund: Recht, Lizenz, Technisch, Manuell) oder Fehler. Ein Abruffehler,
+  fehlendes Recht oder fehlende Lizenz erscheint nie als OK.
+- Erste Regeln: A01 Conditional-Access-Richtlinien aktiv, A04 Legacy-Anmeldung blockiert, A08 Anzahl Global Administratoren,
+  A14 Gastrolle eingeschraenkt, A15 wer Gaeste einladen darf, A17 Benutzer-Consent, V5 MFA-Grundschutz, V11 Geraetecode-Flow.
+- Ausnahmen je Regel und Tenant mit Pflichtbegruendung und Ablaufdatum (hoechstens 12 Monate, bei Kritisch 3); abgelaufen
+  = wieder Abweichung. Sollwerte: Standard im Code, Ueberschreibung je Tenant; Regeln mit Mindeststandard lassen sich nicht abschalten.
+- Verlauf: je Lauf nur Status und Zahlen (keine Namen oder IDs), 24 Monate. Ablage unter `%APPDATA%\HU-MultiTenant\katalog\`.
+- Doku-Seiten: neue Seite Roadmap; `?`-Knopf (Rechtsklick) und Update-Menue oeffnen Anleitung, Funktionen oder Roadmap.
+  `Show-HUManual` nimmt nur diese festen Seiten an, jede Seite hat eine eigene Temp-Datei.
+- Tests: `HU.SecCatalog.Tests.ps1`, `HU.Docs.Tests.ps1`.
+
 ## v2.2.1
 
 ### AD-Schema "Eigene" (Bericht Inaktive Benutzer)
