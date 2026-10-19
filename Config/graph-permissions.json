@@ -13,13 +13,15 @@
     { "name": "DeviceManagementApps.ReadWrite.All", "default": true, "why": "Reiter Apps (hochladen, zuweisen, Status), Remote FB > Intune" },
     { "name": "DeviceManagementScripts.ReadWrite.All", "default": true, "why": "Reiter Wartung (Remediations), Remote FB > Intune - erlaubt Skripte als SYSTEM auf allen verwalteten Geraeten" },
     { "name": "DeviceManagementManagedDevices.PrivilegedOperations.All", "default": true, "why": "Wartung: Jetzt auf Geraet ausfuehren, Sync - erlaubt auch Loeschen, Zuruecksetzen und Ausserbetriebnahme von Geraeten" },
+    { "name": "ReportSettings.Read.All", "default": true, "why": "Sicherheitskatalog: Berichte verbergen Namen (V15)" },
     { "name": "SecurityAlert.Read.All", "default": true, "why": "Defender-Alarm (Teams), Defender-Report" },
     { "name": "Policy.Read.All", "default": true, "why": "Analyse: Conditional Access, benannte Orte" },
     { "name": "Application.Read.All", "default": true, "why": "Enterprise-App-Inventur" },
     { "name": "RoleManagement.Read.Directory", "default": true, "why": "Rollennamen im Tenant-Vergleich" },
     { "name": "DeviceManagementConfiguration.ReadWrite.All", "default": false, "why": "Analyse: Profile/Richtlinien kopieren und aus Backup wiederherstellen" },
     { "name": "Policy.ReadWrite.ConditionalAccess", "default": false, "why": "Conditional Access aus Backup wiederherstellen" },
-    { "name": "Directory.Read.All", "default": false, "why": "aeltere Extensions (Enterprise-App-Inventur: Berechtigungen)" }
+    { "name": "Directory.Read.All", "default": false, "why": "aeltere Extensions (Enterprise-App-Inventur: Berechtigungen)" },
+    { "name": "SecurityEvents.Read.All", "default": true, "why": "Sicherheitskatalog: Microsoft Secure Score (A32)" }
   ],
   "risky": [
     "Application.ReadWrite.All", "Application.ReadWrite.OwnedBy", "AppRoleAssignment.ReadWrite.All",

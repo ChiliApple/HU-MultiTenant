@@ -43,7 +43,8 @@ function Invoke-GraphRequest {
         [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string]$Method = 'GET',
         [hashtable]$Body,
         [string]$ApiVersion,
-        [string]$ContentType = 'application/json'
+        [string]$ContentType = 'application/json',
+        [switch]$ThrowOnError
     )
     $PSBoundParameters['Token'] = Update-HUQSToken $Token
     HU.Graph\Invoke-GraphRequest @PSBoundParameters
@@ -59,7 +60,8 @@ function Invoke-GraphRequestWithRetry {
         [string]$TenantKey,
         [PSCustomObject]$Settings,
         [int]$MaxRetries,
-        [string]$ApiVersion
+        [string]$ApiVersion,
+        [switch]$ThrowOnError
     )
     $PSBoundParameters['Token'] = Update-HUQSToken $Token
     HU.Graph\Invoke-GraphRequestWithRetry @PSBoundParameters

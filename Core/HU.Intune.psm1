@@ -2325,7 +2325,7 @@ function Get-HUCompareSources {
         @{ Typ = 'Plattform-Skript'; Ep = '/deviceManagement/deviceManagementScripts'; Base = '/deviceManagement/deviceManagementScripts'; Name = 'displayName'; Copy = 'generic'; Hash = $false }
         @{ Typ = 'Feature-Update'; Ep = '/deviceManagement/windowsFeatureUpdateProfiles'; Base = '/deviceManagement/windowsFeatureUpdateProfiles'; Name = 'displayName'; Copy = 'generic'; Hash = $true }
         @{ Typ = 'Autopilot-Profil'; Ep = '/deviceManagement/windowsAutopilotDeploymentProfiles'; Base = ''; Name = 'displayName'; Copy = ''; Hash = $true }
-        @{ Typ = 'Conditional Access'; Ep = '/identity/conditionalAccess/policies'; Base = ''; Name = 'displayName'; Copy = ''; Hash = $false }
+        @{ Typ = 'Conditional Access'; Ep = '/identity/conditionalAccess/policies'; Base = ''; Name = 'displayName'; Copy = ''; Hash = $true }
         @{ Typ = 'App'; Ep = '/deviceAppManagement/mobileApps?$select=id,displayName'; Base = ''; Name = 'displayName'; Copy = ''; Hash = $false }
     )
 }
@@ -2366,6 +2366,35 @@ function Get-HUCompareHash($Obj) {
     try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("$json"))) -replace '-', '').Substring(0, 16) } finally { $sha.Dispose() }
 }
 
+# Conditional Access: Benutzer-, Gruppen- und Ort-IDs sind je Tenant verschieden und werden fuer den Hash durch ihre Anzahl ersetzt.
+# Rollen und Apps (in allen Tenants gleich) bleiben erhalten; die genauen Namen zeigt der Doppelklick (Einstellungen vergleichen).
+function ConvertTo-HUCaComparable($Obj) {
+    $c = $Obj | ConvertTo-Json -Depth 50 | ConvertFrom-Json
+    $keepU = @('All', 'None', 'GuestsOrExternalUsers'); $keepL = @('All', 'AllTrusted')
+    $m = {
+        param($t, [string[]]$keys, [string[]]$keep)
+        if ($null -eq $t) { return }
+        foreach ($k in $keys) {
+            if (-not $t.PSObject.Properties[$k]) { continue }
+            $l = @($t.$k | Where-Object { $null -ne $_ })
+            $res = @($l | Where-Object { $keep -contains "$_" })
+            $n = @($l | Where-Object { $keep -notcontains "$_" }).Count
+            if ($n) { $res += "($n Eintraege)" }
+            $t.$k = $res
+        }
+    }
+    if ($c.conditions) {
+        & $m $c.conditions.users @('includeUsers', 'excludeUsers') $keepU
+        & $m $c.conditions.users @('includeGroups', 'excludeGroups') @()
+        & $m $c.conditions.locations @('includeLocations', 'excludeLocations') $keepL
+    }
+    return $c
+}
+
+function Get-HUCaStateLabel($Obj) {
+    switch ("$($Obj.state)") { 'enabled' { 'Ein' } 'disabled' { 'Aus' } 'enabledForReportingButNotEnforced' { 'Melden' } default { "$($Obj.state)" } }
+}
+
 # Bestand eines Tenants -> Zeilen Typ, Name, Id, Hash, Copy
 function Get-HUCompareInventory {
     [CmdletBinding()]
@@ -2386,7 +2415,8 @@ function Get-HUCompareInventory {
             $name = "$($o.($src.Name))"
             if (-not $name) { continue }
             $n++
-            [pscustomobject]@{ Tenant = $TenantKey; Typ = $src.Typ; Name = $name; Id = "$($o.id)"; Hash = $(if ($src.Hash) { Get-HUCompareHash $o } else { '' }); Copy = $src.Copy }
+            $isCa = ($src.Typ -eq 'Conditional Access')
+            [pscustomobject]@{ Tenant = $TenantKey; Typ = $src.Typ; Name = $name; Id = "$($o.id)"; Hash = $(if ($src.Hash) { if ($isCa) { Get-HUCompareHash (ConvertTo-HUCaComparable $o) } else { Get-HUCompareHash $o } } else { '' }); Copy = $src.Copy; Info = $(if ($isCa) { Get-HUCaStateLabel $o } else { '' }) }
         }
         Write-HULog -Message "$($src.Typ): $n" -Level 'INFO' -Tenant $TenantKey
     }
@@ -2397,7 +2427,7 @@ function Get-HUCompareMatrix([object[]]$Rows, [string[]]$Keys) {
     # nicht lesbare Arten je Tenant (Typ '*' = ganzer Tenant)
     $failed = @{}
     foreach ($e in @($Rows | Where-Object { $_.PSObject.Properties['Error'] -and $_.Error })) { $failed["$($e.Tenant)|$($e.Typ)"] = $true }
-    $groups = @($Rows | Where-Object { "$($_.Name)" } | Group-Object { "$($_.Typ)|$($_.Name.ToLowerInvariant())" })
+    $groups = @($Rows | Where-Object { "$($_.Name)" } | Group-Object { "$($_.Typ)|$((("$($_.Name)" -replace '\s+', ' ').Trim()).ToLowerInvariant())" })
     foreach ($g in $groups) {
         $first = $g.Group[0]
         $have = @($g.Group | ForEach-Object { $_.Tenant } | Select-Object -Unique)

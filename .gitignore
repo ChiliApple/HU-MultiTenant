@@ -19,6 +19,9 @@ Config/GitHubToken_*.xml
 *.pulltmp
 
 # === LAUFZEIT ===
+katalog/
+Katalog-*.json
+Katalog-Liste*
 Logs/
 Reports/
 Backups/

@@ -64,7 +64,7 @@ function Update-HUQSTableButton {
 }
 
 # -Objects: andere Quelle (Reiter Apps/Wartung), -FilePrefix: Vorschlag fuer den Dateinamen beim Export
-function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string]$FilePrefix = 'QuickScript') {
+function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string]$FilePrefix = 'QuickScript', [switch]$NoExport) {
     $src = if ($null -ne $Objects) { @($Objects) } else { $script:QS_Objects.ToArray() }
     if (-not @($src).Count) { return }
     $data = ConvertTo-HUQSRows $src
@@ -117,6 +117,13 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
     $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
     $w = $d.Window; $c = $d.C
+    # Nur Anzeige (Listen mit Personendaten, z. B. Sicherheitskatalog): kein CSV, Excel, Kopieren, Strg+C
+    if ($NoExport) {
+        foreach ($n in 'btnCsv', 'btnXlsx', 'btnCopy') { $c[$n].Visibility = 'Collapsed'; $c[$n].IsEnabled = $false }
+        $c.grid.ClipboardCopyMode = [System.Windows.Controls.DataGridClipboardCopyMode]::None
+        $c.grid.ContextMenu = $null
+        $w.Title = "$($w.Title) (nur Anzeige)"
+    }
     $w.Title = "Ergebnis$(if ($Title) { " - $Title" })"
     Restore-HUDialogState $w 'QSTable'
     $view = $dt.DefaultView
@@ -125,7 +132,19 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
     $wrap.Setters.Add((New-Object System.Windows.Setter([System.Windows.Controls.TextBlock]::TextWrappingProperty, [System.Windows.TextWrapping]::Wrap)))
     $c.grid.Tag = $wrap
     $c.grid.Add_AutoGeneratingColumn({ param($s0, $e) $e.Column.Header = $map[$e.PropertyName]; $e.Column.MaxWidth = 600; if ($e.Column -is [System.Windows.Controls.DataGridTextColumn]) { $e.Column.ElementStyle = $s0.Tag } })
-    $c.grid.Add_Loaded({ param($s0, $e) foreach ($col in @($s0.Columns)) { $aw = $col.ActualWidth; $col.MaxWidth = [double]::PositiveInfinity; if ($aw -gt 0) { $col.Width = New-Object System.Windows.Controls.DataGridLength($aw) } } })
+    $c.grid.Add_Loaded({ param($s0, $e) foreach ($col in @($s0.Columns)) { $aw = $col.ActualWidth; $col.MaxWidth = [double]::PositiveInfinity; if ($aw -gt 0) { $col.Width = New-Object System.Windows.Controls.DataGridLength($aw) } }
+        # Fenster an die Spalten anpassen (nur vergroessern, hoechstens bis zum Bildschirmrand)
+        try {
+            $win = [System.Windows.Window]::GetWindow($s0)
+            $need = 60; foreach ($col in @($s0.Columns)) { $need += $col.ActualWidth }
+            $wa = [System.Windows.SystemParameters]::WorkArea
+            $target = [Math]::Min($need, $wa.Width - 20)
+            if ($win -and $win.ActualWidth -gt 0 -and $target -gt $win.ActualWidth) {
+                $win.Width = $target
+                if (($win.Left + $target) -gt ($wa.Left + $wa.Width)) { $win.Left = [Math]::Max($wa.Left, $wa.Left + $wa.Width - $target - 10) }
+            }
+        } catch { }
+    })
     $c.grid.ItemsSource = $view
     $updCount = { $c.txtCount.Text = "$($view.Count) von $($dt.Rows.Count) Zeilen  |  $($map.Count) Spalten" }
     & $updCount

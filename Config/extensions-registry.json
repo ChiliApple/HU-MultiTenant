@@ -116,11 +116,25 @@
       "setupInstructions": "Einstellungen > Berechtigungen > Fehlende Rechte erteilen, oder Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Microsoft Graph > Anwendungsberechtigungen > SecurityAlert.Read.All > Administratorzustimmung erteilen"
     },
     "SecurityEvents.Read.All": {
-      "description": "Sicherheitswarnungen lesen (Microsoft Graph Security)",
+      "description": "Microsoft Secure Score und Sicherheitsereignisse lesen (Sicherheitskatalog A32)",
       "risk": "Low",
       "category": "Security",
       "usedBy": [],
       "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > SecurityEvents.Read.All > Administratorzustimmung erteilen"
+    },
+    "ReportSettings.Read.All": {
+      "description": "Berichtseinstellung lesen: zeigen Berichte Benutzer-, Gruppen- und Standortnamen? (Sicherheitskatalog)",
+      "risk": "Low",
+      "category": "Security",
+      "usedBy": [],
+      "setupInstructions": "Einstellungen > Berechtigungen > Fehlende Rechte erteilen, oder Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Microsoft Graph > Anwendungsberechtigungen > ReportSettings.Read.All > Administratorzustimmung erteilen"
+    },
+    "User-OnPremisesSyncBehavior.ReadWrite.All": {
+      "description": "Sync-Verhalten von Benutzern lesen und aendern (Quelle der Autoritaet, lokal/Cloud)",
+      "risk": "High",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Wird von keiner Funktion gebraucht. Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung entfernen, wenn nicht gewollt"
     },
     "Group.Read.All": {
       "description": "Gruppen und Gruppeneigenschaften lesen",

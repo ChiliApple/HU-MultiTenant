@@ -20,19 +20,19 @@ Geprüfte Vorlagen und Prüfprogramm (auch zum Weitergeben an ein Assistenzprogr
 | `$TenantKey` / `$Schule` | Schlüssel des laufenden Tenants (z. B. `Schule-1`) |
 | `$Settings` | alle Tenants: `$Settings.tenants` mit `key`, `displayName`, `tenantId`, `appId` |
 | `$AppRoot` | Programmordner, z. B. `Join-Path $AppRoot 'Reports'` |
-| `Invoke-GraphRequest -Token -Endpoint [-Method] [-Body] [-ApiVersion] [-ContentType]` | ein Graph-Aufruf, Rückgabe = Antwortobjekt – bei einem HTTP-Fehler **kein Fehler, sondern ein Objekt** mit `IsError`, `StatusCode`, `ErrorMessage` |
+| `Invoke-GraphRequest -Token -Endpoint [-Method] [-Body] [-ApiVersion] [-ContentType] [-ThrowOnError]` | ein Graph-Aufruf, Rückgabe = Antwortobjekt – bei einem HTTP-Fehler **kein Fehler, sondern ein Objekt** mit `IsError`, `StatusCode`, `ErrorMessage` |
 | `Invoke-GraphRequestAll -Token -Endpoint [-TenantKey] [-Settings] [-MaxPages]` | alle Seiten (`@odata.nextLink`), Rückgabe = Liste der `value`-Einträge – nur für **Listen** |
-| `Invoke-GraphRequestWithRetry -Token -Endpoint [-Method] [-Body] [-TenantKey] [-Settings] [-MaxRetries] [-ApiVersion]` | wie `Invoke-GraphRequest`, wiederholt bei 429/5xx |
+| `Invoke-GraphRequestWithRetry -Token -Endpoint [-Method] [-Body] [-TenantKey] [-Settings] [-MaxRetries] [-ApiVersion] [-ThrowOnError]` | wie `Invoke-GraphRequest`, wiederholt bei 429/5xx |
 | `Get-HUToken [-Tenant <Schlüssel>]` | Token eines anderen Tenants |
 | `Send-HUNotify -Title [-Level] [-Lines] [-Facts] [-Rows] [-Preview]` | Karte an die Ziele der Teams-Meldung, zu der das Snippet gehört (ab v2.1.10) – siehe unten |
 
 - `-Endpoint` relativ (`'/users?$select=id,displayName'` → v1.0) oder absolut (`'https://graph.microsoft.com/beta/...'`); `beta` auch über `-ApiVersion beta` (nicht bei `Invoke-GraphRequestAll`). Eine absolute Adresse wird unverändert aufgerufen und das Token geht mit: **nur** `https://graph.microsoft.com/…`
 - `$select`, `$filter`, `$top` in **einfachen** Anführungszeichen schreiben (in doppelten liest PowerShell sie als Variable); Werte in Filtern mit `[uri]::EscapeDataString(…)` kodieren
-- `-Method`: `GET` (Standard), `POST`, `PATCH`, `DELETE` (kein `PUT`); `-Body` nur bei `POST`/`PATCH`, als **Hashtable** (kein JSON-Text, kein `ConvertTo-Json`)
+- `-Method`: `GET` (Standard), `POST`, `PATCH`, `DELETE` (kein `PUT`); `POST` ohne `-Body` schickt `{}` mit Content-Type `application/json` (z. B. `.../restore`); `-Body` nur bei `POST`/`PATCH`, als **Hashtable** (kein JSON-Text, kein `ConvertTo-Json`)
 - keine eigenen Header: `ConsistencyLevel`, `$count`, `$search` gehen nicht – clientseitig filtern
 - Tokens, die an diese Funktionen übergeben werden, erneuert das Programm bei langen Läufen automatisch
 - **nicht** `-Uri`/`-Headers` an `Invoke-GraphRequest` übergeben – das sind Parameter von `Invoke-RestMethod`; kein `Invoke-RestMethod` gegen Graph
-- **Fehlerobjekt:** `Invoke-GraphRequest`/`Invoke-GraphRequestWithRetry` werfen bei HTTP-Fehlern nicht. Das Ergebnis jedes **ändernden** Aufrufs auf `IsError` prüfen (siehe Vorlage „ändern“)
+- **Fehlerobjekt:** `Invoke-GraphRequest`/`Invoke-GraphRequestWithRetry` werfen bei HTTP-Fehlern standardmaessig nicht; mit `-ThrowOnError` kommt stattdessen eine Exception (fuer `try/catch`). Das Ergebnis jedes **ändernden** Aufrufs auf `IsError` prüfen (siehe Vorlage „ändern“)
 - **`Invoke-GraphRequestAll` nur für Listen.** Für ein Einzelobjekt (`/users/<id>`) liefert es nichts – dort `Invoke-GraphRequest`. Fällt eine Folgeseite aus, kommen die bisherigen Einträge plus eine **Warnung** (keine Ausnahme): mit `-WarningVariable wv -WarningAction SilentlyContinue` abfangen und bei `$wv` abbrechen – vor ändernden Aufrufen Pflicht
 - **nicht vorhanden** im Snippet-Lauf: `Write-HULog*`, `Get-Settings`/`Get-TenantByKey`/`Get-AllTenants`, die Excel-Funktionen – dafür `Write-Host`/`Write-Warning`, `$Settings`/`$TenantKey`, Ergebnisobjekte bzw. eine Extension
 

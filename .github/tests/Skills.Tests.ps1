@@ -264,14 +264,14 @@ Describe 'Anleitungen (SKILL.md)' {
 Describe 'Aussagen der Anleitungen gegen den Programmcode' {
     It 'Snippet-Laufzeit: Funktionen und Parameter wie in der Tabelle' {
         $rt = Join-Path $script:Repo 'Core\HU.QSRuntime.ps1'
-        (Get-FunctionParamNames $rt 'Invoke-GraphRequest') -join ',' | Should -Be 'Token,Endpoint,Method,Body,ApiVersion,ContentType'
-        (Get-FunctionParamNames $rt 'Invoke-GraphRequestWithRetry') -join ',' | Should -Be 'Token,Endpoint,Method,Body,TenantKey,Settings,MaxRetries,ApiVersion'
+        (Get-FunctionParamNames $rt 'Invoke-GraphRequest') -join ',' | Should -Be 'Token,Endpoint,Method,Body,ApiVersion,ContentType,ThrowOnError'
+        (Get-FunctionParamNames $rt 'Invoke-GraphRequestWithRetry') -join ',' | Should -Be 'Token,Endpoint,Method,Body,TenantKey,Settings,MaxRetries,ApiVersion,ThrowOnError'
         (Get-FunctionParamNames $rt 'Invoke-GraphRequestAll') -join ',' | Should -Be 'Token,Endpoint,TenantKey,Settings,MaxPages'
     }
     It 'Modul HU.Graph: gleiche Parameter wie die Laufzeit-Huellen' {
         $g = Join-Path $script:Repo 'Core\HU.Graph.psm1'
-        (Get-FunctionParamNames $g 'Invoke-GraphRequest') -join ',' | Should -Be 'Token,Endpoint,Method,Body,ApiVersion,ContentType'
-        (Get-FunctionParamNames $g 'Invoke-GraphRequestWithRetry') -join ',' | Should -Be 'Token,Endpoint,Method,Body,TenantKey,Settings,MaxRetries,ApiVersion'
+        (Get-FunctionParamNames $g 'Invoke-GraphRequest') -join ',' | Should -Be 'Token,Endpoint,Method,Body,ApiVersion,ContentType,ThrowOnError'
+        (Get-FunctionParamNames $g 'Invoke-GraphRequestWithRetry') -join ',' | Should -Be 'Token,Endpoint,Method,Body,TenantKey,Settings,MaxRetries,ApiVersion,ThrowOnError'
         (Get-FunctionParamNames $g 'Invoke-GraphRequestAll') -join ',' | Should -Be 'Token,Endpoint,TenantKey,Settings,MaxPages'
     }
     It 'Graph: nur GET, POST, PATCH, DELETE; Fehler als Objekt; absolute https-Adresse unveraendert; Body nur bei POST/PATCH' {
@@ -373,13 +373,13 @@ Describe 'Snippet-Vorlagen laufen gegen eine Graph-Attrappe' {
         }
         function global:Invoke-GraphRequestWithRetry {
             [CmdletBinding()]
-            param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$Endpoint, [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string]$Method = 'GET', [hashtable]$Body, [string]$TenantKey, [PSCustomObject]$Settings, [int]$MaxRetries, [string]$ApiVersion)
+            param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$Endpoint, [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string]$Method = 'GET', [hashtable]$Body, [string]$TenantKey, [PSCustomObject]$Settings, [int]$MaxRetries, [string]$ApiVersion, [switch]$ThrowOnError)
             [void]$global:HUSkillTest.Calls.Add([pscustomobject]@{ Fn = 'Retry'; Endpoint = $Endpoint; Method = $Method; TenantKey = $TenantKey })
             $global:HUSkillTest.PostResult
         }
         function global:Invoke-GraphRequest {
             [CmdletBinding()]
-            param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$Endpoint, [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string]$Method = 'GET', [hashtable]$Body, [string]$ApiVersion, [string]$ContentType = 'application/json')
+            param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$Endpoint, [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string]$Method = 'GET', [hashtable]$Body, [string]$ApiVersion, [string]$ContentType = 'application/json', [switch]$ThrowOnError)
             [void]$global:HUSkillTest.Calls.Add([pscustomobject]@{ Fn = 'Single'; Endpoint = $Endpoint; Method = $Method; TenantKey = '' })
             $global:HUSkillTest.PostResult
         }
@@ -552,7 +552,7 @@ Describe 'Extension-Vorlagen laufen ueber den echten Lader gegen eine Graph-Attr
         }
         function global:Invoke-GraphRequestWithRetry {
             [CmdletBinding()]
-            param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$Endpoint, [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string]$Method = 'GET', [hashtable]$Body, [string]$TenantKey, [PSCustomObject]$Settings, [int]$MaxRetries, [string]$ApiVersion)
+            param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$Endpoint, [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string]$Method = 'GET', [hashtable]$Body, [string]$TenantKey, [PSCustomObject]$Settings, [int]$MaxRetries, [string]$ApiVersion, [switch]$ThrowOnError)
             [void]$global:HUSkillExt.Calls.Add([pscustomobject]@{ Fn = 'Retry'; Endpoint = $Endpoint; Method = $Method; TenantKey = $TenantKey })
             $global:HUSkillExt.PostResult
         }
