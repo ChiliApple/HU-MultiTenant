@@ -419,13 +419,14 @@ function Show-HUAbout {
 # --- Doku-Seiten (F1 = Anleitung): Fassung der installierten Version von GitHub, sonst die mitgelieferte ---
 # Nur feste Seiten; der Aufrufer gibt nie einen Pfad oder Dateinamen vor.
 $script:HUDocPages = [ordered]@{ Anleitung = 'Anleitung.html'; Einstieg = 'Einstieg.html'; Funktionen = 'Funktionen.html'; Roadmap = 'Roadmap.html' }
+$script:HUDocImages = @('screenshot.png', 'screenshot-apps.png', 'screenshot-extensions.png', 'screenshot-sperre.png', 'screenshot-wartung.png')
 function Show-HUManual {
     param([ValidateSet('Anleitung', 'Einstieg', 'Funktionen', 'Roadmap')][string]$Page = 'Anleitung')
     $file = $script:HUDocPages[$Page]
     $local = Join-Path $script:AppRoot "Docs\$file"
     $cfg = Update-UpdateConfig
     $ref = if ($cfg -and $cfg.UseBranch) { $cfg.Branch } else { "v$($script:Version)" }
-    $tmpTarget = Join-Path $env:TEMP "HU-MultiTenant_$file"
+    $tmpDir = Join-Path $env:TEMP 'HU-MultiTenant_Docs'   # alle Seiten + Bilder unter ihrem echten Namen, damit die Links untereinander funktionieren
     $onDone = {
         param($r)
         $r = "$r".Trim()
@@ -434,16 +435,28 @@ function Show-HUManual {
         Open-HUUrl $f
     }.GetNewClosure()
     Invoke-AsyncCommand -ScriptBlock {
-        param($token, $owner, $repo, $ref, $target, $rel)
+        param($token, $owner, $repo, $ref, $dir, $file, $all)
         try {
             try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
-            if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue }
-            if ($token) { Invoke-WebRequest "https://api.github.com/repos/$owner/$repo/contents/${rel}?ref=$ref" -Headers @{ Accept = 'application/vnd.github.v3.raw'; 'User-Agent' = 'HU-MultiTenant'; Authorization = "token $token" } -UseBasicParsing -TimeoutSec 15 -OutFile $target -ErrorAction Stop }
-            else { Invoke-WebRequest "https://raw.githubusercontent.com/$owner/$repo/$ref/$rel" -Headers @{ 'User-Agent' = 'HU-MultiTenant' } -UseBasicParsing -TimeoutSec 15 -OutFile $target -ErrorAction Stop }
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            $get = {
+                param($name, $must)
+                $t = Join-Path $dir $name
+                $rel = "Docs/$name"
+                try {
+                    $tmp = "$t.part"
+                    if ($token) { Invoke-WebRequest "https://api.github.com/repos/$owner/$repo/contents/${rel}?ref=$ref" -Headers @{ Accept = 'application/vnd.github.v3.raw'; 'User-Agent' = 'HU-MultiTenant'; Authorization = "token $token" } -UseBasicParsing -TimeoutSec 15 -OutFile $tmp -ErrorAction Stop }
+                    else { Invoke-WebRequest "https://raw.githubusercontent.com/$owner/$repo/$ref/$rel" -Headers @{ 'User-Agent' = 'HU-MultiTenant' } -UseBasicParsing -TimeoutSec 15 -OutFile $tmp -ErrorAction Stop }
+                    Move-Item -LiteralPath $tmp -Destination $t -Force
+                } catch { Remove-Item -LiteralPath "$t.part" -Force -ErrorAction SilentlyContinue; if ($must) { throw } }
+            }
+            & $get $file $true                                   # gewuenschte Seite muss kommen
+            foreach ($n in $all) { if ($n -ne $file) { & $get $n $false } }   # Rest (andere Seiten, Bilder) nur wenn erreichbar
+            $target = Join-Path $dir $file
             if ((Get-Item -LiteralPath $target).Length -lt 1000) { return 'ERR:Datei leer' }
             return "OK:$target"
         } catch { return "ERR:$($_.Exception.Message)" }
-    } -ArgumentList @((Read-GitHubToken), $(if ($cfg) { $cfg.Owner } else { 'ChiliApple' }), $(if ($cfg) { $cfg.Repo } else { 'HU-MultiTenant' }), $ref, $tmpTarget, "Docs/$file") -TimeoutSec 25 -OnComplete $onDone
+    } -ArgumentList @((Read-GitHubToken), $(if ($cfg) { $cfg.Owner } else { 'ChiliApple' }), $(if ($cfg) { $cfg.Repo } else { 'HU-MultiTenant' }), $ref, $tmpDir, $file, (@($script:HUDocPages.Values) + @($script:HUDocImages))) -TimeoutSec 60 -OnComplete $onDone
 }
 
 function Register-HUUpdateHandlers {

@@ -28,11 +28,25 @@ Describe 'Show-HUManual: nur feste Seiten' {
         $p = $script:Fn.Body.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Page' }
         "$($p.DefaultValue.Value)" | Should -Be 'Anleitung'
     }
-    It 'jede Seite der Liste existiert in docs\' {
-        foreach ($pg in $script:Pages) { Test-Path -LiteralPath (Join-Path $script:Root "docs\$pg.html") | Should -BeTrue -Because $pg }
+    It 'jede Seite der Liste existiert in Docs\' {
+        foreach ($pg in $script:Pages) { Test-Path -LiteralPath (Join-Path $script:Root "Docs\$pg.html") | Should -BeTrue -Because $pg }
     }
-    It 'Temp-Datei ist je Seite getrennt' {
+    It 'Seiten und Bilder liegen unter ihrem echten Namen in einem Temp-Ordner (Links untereinander)' {
         $txt = Get-Content -LiteralPath $script:Src -Raw
-        $txt | Should -Match 'HU-MultiTenant_\$file'
+        $txt | Should -Match 'HU-MultiTenant_Docs'
+        $txt | Should -Not -Match 'HU-MultiTenant_\$file'
+    }
+    It 'jedes Bild, das eine Seite einbindet, steht in der Bildliste' {
+        $txt = Get-Content -LiteralPath $script:Src -Raw
+        foreach ($pg in $script:Pages) {
+            $h = Get-Content -LiteralPath (Join-Path $script:Root "Docs\$pg.html") -Raw -Encoding UTF8
+            foreach ($m in [regex]::Matches($h, 'src="([A-Za-z0-9_\-]+\.png)"')) { $txt | Should -Match ([regex]::Escape("'$($m.Groups[1].Value)'")) -Because "$pg -> $($m.Groups[1].Value)" }
+        }
+    }
+    It 'jeder relative Seiten-Link zeigt auf eine Seite der Liste' {
+        foreach ($pg in $script:Pages) {
+            $h = Get-Content -LiteralPath (Join-Path $script:Root "Docs\$pg.html") -Raw -Encoding UTF8
+            foreach ($m in [regex]::Matches($h, 'href="([A-Za-z0-9_\-]+\.html)')) { $script:Pages | Should -Contain ($m.Groups[1].Value -replace '\.html$', '') -Because "$pg -> $($m.Groups[1].Value)" }
+        }
     }
 }
