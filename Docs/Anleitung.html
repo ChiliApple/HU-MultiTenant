@@ -330,7 +330,7 @@ powershell -NoProfile -File skills\hu-extension\tools\Test-HUExtension.ps1 -Path
 
 <section id="analyse">
   <h2><span class="n">9</span>Analyse</h2>
-  <p>Drei Ansichten oben links. Die Tenants darunter anhaken (Standard: alle). <i>Was bekommt …?</i> ist nur lesend; im Tenant-Vergleich und im Backup wird nur nach Rückfrage etwas angelegt – immer neu und ohne Zuweisungen, Bestehendes wird nie überschrieben.</p>
+  <p>Vier Ansichten oben links. Die Tenants darunter anhaken (Standard: alle). <i>Was bekommt …?</i> ist nur lesend; im Tenant-Vergleich und im Backup wird nur nach Rückfrage etwas angelegt – immer neu und ohne Zuweisungen, Bestehendes wird nie überschrieben.</p>
   <h3 id="ana-asg">Was bekommt …?</h3>
   <p>Zeigt alles, was eine <b>Gruppe</b>, ein <b>Gerät</b> oder ein <b>Benutzer</b> in den angehakten Tenants bekommt: Apps (mit Absicht erforderlich / verfügbar / deinstallieren), Konfigurationsprofile, Einstellungskatalog, Administrative Vorlagen, Compliance-Richtlinien, Wartungsskripte, Plattformskripte, Feature-Updates und Autopilot-Profile.</p>
   <ol class="steps">
@@ -359,11 +359,58 @@ powershell -NoProfile -File skills\hu-extension\tools\Test-HUExtension.ps1 -Path
     <li><span class="ui">Wiederherstellen …</span>: legt markierte Einträge aus dem <b>linken (älteren)</b> Stand <b>neu</b> an – Name mit „(wiederhergestellt Datum)“, ohne Zuweisungen; Conditional Access deaktiviert. Der bestehende Eintrag bleibt unverändert: vergleichen, zuweisen, alten Eintrag selbst entfernen. Auch für gelöschte Einträge.</li>
   </ol>
   <div class="note warn"><b class="h">Ablage</b>Standard: <code>%LOCALAPPDATA%\HU-MultiTenant\Backups</code> (nicht im Programmordner, nicht in OneDrive). Backups enthalten Skripte und Richtlinien im Klartext (auch Kennwörter aus Wartungsskripten) – nicht in einen geteilten Ordner legen. Nicht wiederherstellbar: Autopilot-Profile und Apps. Berechtigungen wie beim Vergleich, für <i>Geändert von</i> zusätzlich Lesen des Intune-Protokolls (<code>DeviceManagementApps.Read.All</code> oder <code>DeviceManagementConfiguration.Read.All</code>).</div>
+  <h3 id="ana-sec">Sicherheit (Katalog)</h3>
+  <p>Prüft die angehakten Tenants gegen <b>31 Regeln</b> (Entra, Apps, Intune, Teams, SharePoint) – ausschließlich <b>lesend</b>, es wird nichts verändert. Die Regeln beruhen auf den Security Baselines und sind nach Schweregrad sortiert (Kritisch, Hoch, Mittel, Niedrig).</p>
+  <ol class="steps">
+    <li><span class="ui b">▶ Prüfen</span> – liest je Tenant die nötigen Einstellungen und zeigt eine Matrix: Zeile = Regel, Spalte = Tenant. Filter nach Text, Schweregrad und Bereich; <span class="ui">Nur Abweichungen</span> und <span class="ui">Nur Unterschiede</span> blenden Unauffälliges aus.</li>
+    <li><b>Zeichen</b>: ✔ in Ordnung · ✖ Abweichung (die Zahl ist die Anzahl betroffener Einträge) · ◐ Ausnahme · <b>?</b> nicht prüfbar (mit Grund: <i>Recht</i> fehlt, <i>Lizenz</i> fehlt, <i>Technik</i> = Abruf fehlgeschlagen) · ⚠ Fehler · i nur Information.</li>
+    <li><b>Soll speichern</b>: speichert den aktuellen Stand (nur Status und Zahlen). Die Teams-Meldung <i>Sicherheits-Änderung</i> vergleicht danach nach Zeitplan und sendet nur bei Änderung; nicht prüfbare Regeln zählen nicht als Änderung und lösen allein nichts aus. Ohne gespeicherten Soll-Stand wird nichts gesendet. Verglichen werden nur Status und Zähler, keine Objekte. War eine Regel im Soll prüfbar und ist an 3 Läufen in Folge nicht prüfbar, kommt einmal <i>Prüfung verloren</i>.</li>
+    <li><b>Ampel</b> (letzte Zeile): je Tenant „in Ordnung von geprüften“; <b>rot</b> ab 10 nicht erfüllten Regeln, <b>gelb</b> bei 1 bis 9, <b>grün</b> ohne Abweichung, grau = nichts geprüft. Gezählt werden nur Abweichungen und Fehler; „nicht prüfbar“ färbt nicht.</li>
+    <li><b>Doppelklick</b> auf eine Zelle: Begründung und Hinweis zur Regel; bei Zählregeln <span class="ui">Konten anzeigen</span> (lädt die betroffenen Einträge, solange steht am Knopf „Lade …“).</li>
+    <li><span class="ui">Ausnahme …</span> / <span class="ui">Ausnahmen …</span>: eine Abweichung <b>befristet und mit Begründung</b> als gewollt eintragen. Nach Ablauf zählt sie wieder; zum Anwenden erneut <span class="ui b">▶ Prüfen</span>.</li>
+    <li><span class="ui">📊 Tabelle / Export</span>: Matrix als Tabelle mit CSV/Excel-Export.</li>
+  </ol>
+  <div class="note"><b class="h">Rechte und Lizenzen</b>Jede Regel braucht ein lesendes Graph-Recht (letzte Spalte). Fehlt es, zeigt die Regel „? Recht“ – <span class="ui">Einstellungen › Berechtigungen › Fehlende Rechte erteilen</span>. Regeln mit Entra-ID-Lizenz (P1/P2) zeigen ohne Lizenz „? Lizenz“; das ist kein Fehler. A21 braucht ein weitreichendes Schreibrecht, das das Programm bewusst nicht anfordert: die Regel zeigt „? Manuell“ und wird im Entra Admin Center selbst geprüft.</div>
+  <div class="note warn"><b class="h">Grenzen</b>Geprüft wird die <b>Einstellung im Tenant</b>, nicht die Wirkung im Alltag. Nicht per Graph prüfbar sind lokales AD/GPO (z. B. LAPS, Delegierung), Exchange-Anti-Spam-Richtlinien und das Ablaufdatum von Freigabelinks. Die Richtlinien des bedingten Zugriffs liest der Katalog aus v1.0 und ergänzt Richtlinien, die nur über beta sichtbar sind (in einem Tenant fehlte eine aktive Richtlinie in v1.0, Ursache nicht geklärt); sie sind in der Detailliste mit „nur über beta sichtbar“ markiert.</div>
+  <table>
+    <tr><th>Nr</th><th>Bereich</th><th>Grad</th><th>Regel</th><th>Recht</th></tr>
+    <tr><td>A02</td><td>Entra</td><td>Kritisch</td><td>MFA für Administratoren erzwungen (wichtige Admin-Rollen abgedeckt)</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A09</td><td>Entra</td><td>Kritisch</td><td>Administratoren haben MFA registriert</td><td><code>AuditLog.Read.All, User.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A17</td><td>Entra</td><td>Kritisch</td><td>Benutzer dürfen Apps nicht selbst zustimmen (User Consent)</td><td><code>Policy.Read.All</code></td></tr>
+    <tr><td>V1</td><td>Entra</td><td>Kritisch</td><td>Notfallkonten sind von allen aktiven blockierenden oder einschränkenden Conditional-Access-Richtlinien ausgenommen</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>V5</td><td>Entra</td><td>Kritisch</td><td>MFA-Grundschutz vorhanden (Security Defaults oder CA-Richtlinie für alle)</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A01</td><td>Entra</td><td>Hoch</td><td>Conditional Access: mindestens eine Richtlinie ist aktiv (nicht nur Berichtsmodus)</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A03</td><td>Entra</td><td>Hoch</td><td>MFA gilt auch für Gäste</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A04</td><td>Entra</td><td>Hoch</td><td>Legacy-Authentifizierung ist per Richtlinie blockiert</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A08</td><td>Entra</td><td>Hoch</td><td>Anzahl Global Administratoren</td><td><code>RoleManagement.Read.Directory</code></td></tr>
+    <tr><td>A15</td><td>Entra</td><td>Hoch</td><td>Gäste einladen dürfen nur Administratoren und Gast-Einlader</td><td><code>Policy.Read.All</code></td></tr>
+    <tr><td>A27</td><td>Entra</td><td>Hoch</td><td>Keine veralteten Administrator-Konten (lange nicht angemeldet)</td><td><code>RoleManagement.Read.Directory, User.Read.All, AuditLog.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A30</td><td>Entra</td><td>Hoch</td><td>Riskante Anmeldungen von Administratoren sind per Conditional Access blockiert</td><td><code>Policy.Read.All, Organization.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>V11</td><td>Entra</td><td>Hoch</td><td>Gerätecode-Flow ist per Richtlinie blockiert</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>V15</td><td>Entra</td><td>Hoch</td><td>Berichte verbergen Benutzer-, Gruppen- und Standortnamen</td><td><code>ReportSettings.Read.All</code></td></tr>
+    <tr><td>A19</td><td>Apps</td><td>Hoch</td><td>Zugangsdaten von App-Registrierungen laufen ab oder sind abgelaufen</td><td><code>Application.Read.All</code></td></tr>
+    <tr><td>C02</td><td>Teams</td><td>Hoch</td><td>Gastkonten im Tenant (externe Mitglieder in Teams und Gruppen)</td><td><code>User.Read.All</code></td></tr>
+    <tr><td>E01</td><td>Intune</td><td>Hoch</td><td>Compliance-Richtlinien vorhanden und zugewiesen</td><td><code>DeviceManagementConfiguration.Read.All</code></td></tr>
+    <tr><td>E03</td><td>Intune</td><td>Hoch</td><td>Anteil nicht konformer Geräte ist niedrig</td><td><code>DeviceManagementManagedDevices.Read.All</code></td></tr>
+    <tr><td>E04</td><td>Intune</td><td>Hoch</td><td>Windows-Geräte sind verschlüsselt (BitLocker)</td><td><code>DeviceManagementManagedDevices.Read.All</code></td></tr>
+    <tr><td>A14</td><td>Entra</td><td>Mittel</td><td>Gäste haben die am stärksten eingeschränkte Verzeichnisrolle</td><td><code>Policy.Read.All</code></td></tr>
+    <tr><td>A21</td><td>Entra</td><td>Mittel</td><td>Zugriff über das alte MSOL-PowerShell ist blockiert</td><td>manuell prüfen</td></tr>
+    <tr><td>A22</td><td>Entra</td><td>Mittel</td><td>Benutzer dürfen keine Apps, Sicherheitsgruppen oder Tenants anlegen</td><td><code>Policy.Read.All</code></td></tr>
+    <tr><td>A23</td><td>Entra</td><td>Mittel</td><td>Gäste müssen sich regelmäßig neu anmelden (Sitzungsdauer)</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A24</td><td>Entra</td><td>Mittel</td><td>Anmeldungen sind per Standort (Geoblock) eingeschränkt</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A25</td><td>Entra</td><td>Mittel</td><td>Normale Benutzer sind von den Microsoft-Adminportalen ausgesperrt (Conditional Access)</td><td><code>Policy.Read.All</code> · Entra ID P1</td></tr>
+    <tr><td>A26</td><td>Entra</td><td>Mittel</td><td>Keine offenen Gästeeinladungen (nie angenommen)</td><td><code>User.Read.All</code></td></tr>
+    <tr><td>A28</td><td>Entra</td><td>Mittel</td><td>Kennwortschutz für das lokale AD ist im Tenant eingeschaltet (Modus Erzwingen)</td><td><code>Group.Read.All</code></td></tr>
+    <tr><td>A33</td><td>SharePoint</td><td>Mittel</td><td>Externe Freigabe ohne Anmeldung (anonyme Links) ist ausgeschaltet</td><td><code>SharePointTenantSettings.Read.All</code></td></tr>
+    <tr><td>A29</td><td>Entra</td><td>Niedrig</td><td>Lizenz für Privileged Identity Management (PIM) vorhanden</td><td><code>Organization.Read.All</code></td></tr>
+    <tr><td>A31</td><td>Entra</td><td>Niedrig</td><td>Partner-Organisationen (Cross-Tenant-Zugriff) sind bekannt</td><td><code>Policy.Read.All</code></td></tr>
+    <tr><td>A32</td><td>Entra</td><td>Niedrig</td><td>Microsoft Secure Score (Fortschritt der Sicherheitsempfehlungen)</td><td><code>SecurityEvents.Read.All</code></td></tr>
+  </table>
 </section>
 
 <section id="teams">
   <h2><span class="n">10</span>Teams</h2>
-  <p>Meldungen als Karte in Teams-Kanäle. Es gibt <b>Ziele</b> (Kanäle) und <b>Meldungen</b>: <i>eingebaute Meldungen</i> (Tages-Ampel, Secret-Countdown, Lizenzen, Defender) und <i>Meldungen aus Skripten</i> (Deine Quick-Script-Snippets). Jede Meldung hat ihre Ziele, sendet auf Knopfdruck und auf Wunsch nach Zeitplan. Gesendet wird über Teams-<b>Workflows</b> (Webhook) – keine App-Registrierung, keine zusätzlichen Graph-Rechte für das Senden.</p>
+  <p>Meldungen als Karte in Teams-Kanäle. Es gibt <b>Ziele</b> (Kanäle) und <b>Meldungen</b>: <i>eingebaute Meldungen</i> (Tages-Ampel, Secret-Countdown, Lizenzen, Defender, Sicherheits-Änderung) und <i>Meldungen aus Skripten</i> (Deine Quick-Script-Snippets). Jede Meldung hat ihre Ziele, sendet auf Knopfdruck und auf Wunsch nach Zeitplan. Gesendet wird über Teams-<b>Workflows</b> (Webhook) – keine App-Registrierung, keine zusätzlichen Graph-Rechte für das Senden.</p>
   <h3 id="teams-ziel">Ziel einrichten</h3>
   <ol class="steps">
     <li>In Teams im gewünschten Kanal: <span class="ui">⋯</span> › <span class="ui">Workflows</span> › Vorlage <i>Post to a channel when a webhook request is received</i> (Webhookanforderung empfangen → im Kanal posten). Name vergeben, Team/Kanal bestätigen, <span class="ui">Workflow hinzufügen</span> und die angezeigte Adresse kopieren.</li>
@@ -377,6 +424,7 @@ powershell -NoProfile -File skills\hu-extension\tools\Test-HUExtension.ps1 -Path
   <p>Rechts im Reiter steht die Liste <b>Meldungen</b>, getrennt in <i>Eingebaute Meldungen</i> und <i>Meldungen aus Skripten</i>. Jede Meldung hat dieselben Einstellungen: <b>Senden an</b> (Ziele), <b>Tenants</b>, <span class="ui g">▶ Jetzt senden</span> und – auf Wunsch – einen <b>Zeitplan</b> (Uhrzeit, Wochentage, <span class="ui">Aufgabe anlegen</span>).</p>
   <table>
     <tr><th>Eingebaute Meldung</th><th>Inhalt</th><th>Sendet</th><th>Berechtigung (Graph, Anwendung)</th></tr>
+    <tr><td>Sicherheits-Änderung</td><td>Sicherheitskatalog gegen den gespeicherten Soll-Stand (Analyse &gt; Sicherheit &gt; Soll speichern)</td><td>nur bei Änderung</td><td>die Rechte des Katalogs (lesend)</td></tr>
     <tr><td>Tages-Ampel</td><td>je Tenant Geräte, nicht konform, ohne Sync, Ablauf des App-Secrets – grün/gelb/rot</td><td>immer</td><td><code>DeviceManagementManagedDevices.Read.All</code>, <code>Application.Read.All</code> (Secret-Ablauf)</td></tr>
     <tr><td>Secret-Countdown</td><td>App-Secrets, die in höchstens N Tagen ablaufen (Warnschwelle aus den Einstellungen, Standard 30)</td><td>nur bei Befund</td><td><code>Application.Read.All</code></td></tr>
     <tr><td>Lizenzen knapp</td><td>SKUs mit weniger als 5 freien Lizenzen, Überbuchung rot</td><td>nur bei Befund</td><td><code>Organization.Read.All</code></td></tr>

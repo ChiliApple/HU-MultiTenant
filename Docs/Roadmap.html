@@ -149,7 +149,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Roadmap <span class="ver">v2.2.2</span>
+      HU-MultiTenant · Roadmap <span class="ver">v2.2.4</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -167,13 +167,14 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <h2 id="t-road">Überblick</h2>
   <div class="road">
     <article class="stage" style="--c: var(--green)">
-      <div class="stage-head"><span class="when">Jetzt · 2.2.2</span><h3>Sicherheitsanalyse</h3></div>
+      <div class="stage-head"><span class="when">Jetzt · 2.2.4</span><h3>Sicherheitsanalyse</h3></div>
       <ul>
         <li><b>Analyse &gt; Sicherheit:</b> eine Matrix – Prüfungen als Zeilen, Tenants als Spalten; Unterschiede zwischen den Tenants fallen sofort auf.</li>
-        <li>Rund 30 Prüfungen, angelehnt an die <b>BMBWF Security Baseline V2.1</b>: bedingter Zugriff und MFA, Admin-Rollen und veraltete Admin-Konten, Notfallkonten, Geoblock, Adminportale, App-Zustimmung, ablaufende Secrets, Gäste und offene Einladungen, Kennwortschutz, Partner-Organisationen, Secure Score, Compliance und Verschlüsselung.</li>
+        <li>31 Prüfungen, angelehnt an die <b>BMBWF Security Baseline V2.1</b>: bedingter Zugriff und MFA, Admin-Rollen und veraltete Admin-Konten, Notfallkonten, Geoblock, Adminportale, App-Zustimmung, ablaufende Secrets, Gäste und offene Einladungen, Kennwortschutz, Partner-Organisationen, Secure Score, Compliance und Verschlüsselung.</li>
         <li>Zu jeder Zahl gibt es eine Liste dahinter (Richtlinien, Konten, Apps, Geräte, Gäste) – mit Filter nach Bereich und Schweregrad.</li>
         <li>Klare Ergebnisse: OK, Abweichung, Ausnahme oder „nicht prüfbar“ mit Grund (Recht, Lizenz, Technik).</li>
         <li>Ausnahmen mit Begründung und Ablaufdatum, Verlauf ohne Namen.</li>
+        <li>Ampel je Tenant in der letzten Matrixzeile; <b>Soll speichern</b> hält den geprüften Stand fest, die Teams-Meldung „Sicherheits-Änderung“ meldet täglich jede Änderung dagegen.</li>
       </ul>
     </article>
     <article class="stage" style="--c: var(--blue)">
@@ -182,8 +183,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
         <li>Teams und Gruppen (Besitzer, Gäste, öffentliche Teams).</li>
         <li>Intune-Einstellungen im Vergleich zwischen den Tenants.</li>
         <li>Lizenzen und Konten-Hygiene, Anmeldeauffälligkeiten, Secure-Score-Empfehlungen im Detail.</li>
-        <li>Teams-Meldung, wenn sich etwas verschlechtert.</li>
-        <li>Noch offen aus der Security Baseline: SharePoint-Freigaben mit Ablaufdatum und wer mit wem teilen darf, Tenant-Standardeinstellungen für Gäste, Cross-Tenant-Zugriff im Detail (Standardregeln statt nur Partnerliste), riskante OAuth-Apps, Notfallkonten namentlich erkennen, Anmelderisiko-Auswertung (mit P2).</li>
+        <li>Noch offen aus der Security Baseline: SharePoint-Freigaben mit Ablaufdatum (anonyme Links werden schon geprüft) und wer mit wem teilen darf, Tenant-Standardeinstellungen für Gäste, Cross-Tenant-Zugriff im Detail (Standardregeln statt nur Partnerliste), riskante OAuth-Apps, Notfallkonten namentlich erkennen, Anmelderisiko-Auswertung (mit P2).</li>
       </ul>
     </article>
     <article class="stage" style="--c: var(--teal)">
@@ -219,7 +219,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 </section>
 
 <footer>
-  <span>Stand 19.10.2026 · Version 2.2.2</span>
+  <span>Stand 20.10.2026 · Version 2.2.4</span>
   <a href="Einstieg.html">Einstieg</a>
   <a href="Funktionen.html">Funktionen</a>
   <a href="Anleitung.html">Anleitung</a>

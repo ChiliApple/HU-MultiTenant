@@ -10,6 +10,7 @@
       Kind 'Secrets'  Secret-Countdown: App-Secrets, die in <= warnDays ablaufen. Sendet nur bei Befund.
       Kind 'Licenses' Lizenzen knapp: SKUs mit weniger als minFree freien Lizenzen. Sendet nur bei Befund.
       Kind 'Defender' Defender-Alarm: Geraete mit gemeldeter Bedrohung oder Fehlkonfiguration. Sendet nur bei Befund.
+      Kind 'SecDrift' Sicherheits-Aenderung: Sicherheitskatalog gegen den gespeicherten Soll-Stand (Analyse > Sicherheit > Soll speichern). Sendet nur bei Aenderung.
     Meldung aus Skript:
       Kind 'Script'   fuehrt ein gespeichertes Quick-Script-Snippet (Options.snippet = Name) je Tenant aus, mit den
                       Werten seiner @param-Zeilen (an der Meldung gespeichert, sonst Standard). Jedes Send-HUNotify im Snippet geht an die Ziele der Meldung.
@@ -36,7 +37,7 @@
 $script:TeamsJobsFile = 'Config\teams-jobs.json'
 $script:TeamsTaskPath = '\HU-MultiTenant\'
 $script:TeamsTaskPrefix = 'Teams-'
-$script:TeamsJobKinds = @('Daily', 'Secrets', 'Licenses', 'Defender', 'Script')
+$script:TeamsJobKinds = @('Daily', 'Secrets', 'Licenses', 'Defender', 'SecDrift', 'Script')
 $script:TeamsScriptTimeoutMin = 25   # Meldung aus Skript: laengste Laufzeit (Aufgabenplanung bricht nach 30 min ab, Review 030 B40)
 $script:TeamsJobIdPattern = '^[0-9a-f]{8}$'
 $script:TeamsDayNames = @('So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa')   # [DayOfWeek] 0 = Sonntag
@@ -86,7 +87,7 @@ function New-HUTeamsJob {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Name,
-        [ValidateSet('Daily', 'Secrets', 'Licenses', 'Defender', 'Script')][string]$Kind = 'Daily',
+        [ValidateSet('Daily', 'Secrets', 'Licenses', 'Defender', 'SecDrift', 'Script')][string]$Kind = 'Daily',
         [string[]]$Tenants = @(),
         [string]$Time = '07:00',
         [int[]]$Days = @(),
@@ -332,6 +333,7 @@ function Get-HUTeamsKinds {
     [pscustomobject]@{ Key = 'Secrets';  Label = 'Secret-Countdown'; Category = 'Secrets';  OnlyFindings = $true }
     [pscustomobject]@{ Key = 'Licenses'; Label = 'Lizenzen knapp';   Category = 'Licenses'; OnlyFindings = $true }
     [pscustomobject]@{ Key = 'Defender'; Label = 'Defender-Alarm';   Category = 'Defender'; OnlyFindings = $true }
+    [pscustomobject]@{ Key = 'SecDrift'; Label = 'Sicherheits-Aenderung'; Category = 'Security'; OnlyFindings = $true }
     [pscustomobject]@{ Key = 'Script';   Label = 'Aus Skript';       Category = '';         OnlyFindings = $true }
 }
 
@@ -690,6 +692,56 @@ function New-HUDefenderCardSpec {
     }
 }
 
+function New-HUSecDriftCardSpec {
+    <#
+    .SYNOPSIS
+        Karteninhalt Sicherheits-Aenderung (reine Funktion): Aenderungen gegen den gespeicherten Soll-Stand. $null = nichts zu melden.
+    .PARAMETER Compare
+        Ergebnis von Compare-HUSecReference (Changes, Unchecked, Since).
+    .PARAMETER Names
+        Anzeigenamen je Tenant-Schluessel (sonst der Schluessel).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Compare, [hashtable]$Names = @{}, [string]$Title = 'Sicherheits-Aenderung', [int]$MaxPerTenant = 4, [object[]]$Lost = @())
+    $ch = @($Compare.Changes)
+    $Lost = @($Lost | Where-Object { $_ })
+    if (-not $ch.Count -and -not $Lost.Count) { return $null }
+    $rows = @()
+    foreach ($g in ($ch | Group-Object Tenant | Sort-Object Name)) {
+        $nm = if ($Names.ContainsKey("$($g.Name)")) { "$($Names["$($g.Name)"])" } else { "$($g.Name)" }
+        $items = @($g.Group)
+        $txt = (@($items | Select-Object -First $MaxPerTenant | ForEach-Object {
+                    $w = if ($_.Kind -eq 'Anzahl') { "Anzahl $($_.WasCount) > $($_.IsCount)" } else { "$($_.Was) > $($_.Is)" }
+                    "$($_.RuleId) $($_.Title) ($w)"
+                }) -join '; ')
+        if ($items.Count -gt $MaxPerTenant) { $txt += " und $($items.Count - $MaxPerTenant) weitere" }
+        $bad = @($items | Where-Object { $_.Worse }).Count
+        $rows += @{ Name = $nm; Status = $(if ($bad) { 'Error' } else { 'Warning' }); Text = (ConvertTo-HUNotifySafeText -Text $txt -Max 400) }
+    }
+    foreach ($g in ($Lost | Group-Object Tenant | Sort-Object Name)) {
+        $nm = if ($Names.ContainsKey("$($g.Name)")) { "$($Names["$($g.Name)"])" } else { "$($g.Name)" }
+        $txt = (@($g.Group | Select-Object -First $MaxPerTenant | ForEach-Object { "$($_.RuleId) $($_.Title) (seit $($_.Runs) Laeufen nicht pruefbar$(if ($_.Reason) { ": $($_.Reason)" }))" }) -join '; ')
+        $rows += @{ Name = "$nm - Pruefung verloren"; Status = 'Error'; Text = (ConvertTo-HUNotifySafeText -Text $txt -Max 400) }
+    }
+    $worse = @($ch | Where-Object { $_.Worse }).Count
+    $tn = @($ch | Select-Object -ExpandProperty Tenant -Unique).Count
+    $pv = if ($ch.Count) { "$(Get-HUTeamsCountText $ch.Count 'Aenderung' 'Aenderungen') in $(Get-HUTeamsCountText $tn 'Tenant' 'Tenants')$(if ($worse) { ", $worse schlechter" })" } else { '' }
+    if ($Lost.Count) { $pv = ("$pv$(if ($pv) { ', ' })$(Get-HUTeamsCountText $Lost.Count 'Pruefung' 'Pruefungen') verloren").Trim() }
+    $facts = [ordered]@{ 'Aenderungen' = $ch.Count; 'davon schlechter' = $worse }
+    if ($Lost.Count) { $facts['Pruefung verloren'] = $Lost.Count }
+    if ($Compare.Unchecked -gt 0) { $facts['Nicht pruefbar (nicht verglichen)'] = $Compare.Unchecked }
+    $since = ''
+    try { if ($Compare.Since) { $since = ([datetime]$Compare.Since).ToLocalTime().ToString('dd.MM.yyyy HH:mm', [cultureinfo]::InvariantCulture) } } catch { }
+    return @{
+        Preview = $pv
+        Title = "$Title - $(Get-HUTeamsDateLabel)"
+        Level = $(if ($worse -or $Lost.Count) { 'Error' } else { 'Warning' })
+        Rows  = $rows
+        Facts = $facts
+        Lines = @("Vergleich mit dem gespeicherten Soll-Stand$(if ($since) { " vom $since" }). Neuen Stand uebernehmen: Analyse > Sicherheit > Soll speichern.")
+    }
+}
+
 # ============================================================================
 # AUSFUEHRUNG
 # ============================================================================
@@ -784,6 +836,21 @@ function Invoke-HUTeamsJob {
                 $st = @(); foreach ($k in $keys) { & $readLog $k; $st += Get-HUDefenderStatus -TenantKey $k -Settings $Settings }
                 $spec = New-HUDefenderCardSpec -Statuses $st -Title "$($Job.Name)" -MaskDevices:$mask
                 $detail = "$((@($st | ForEach-Object { @($_.Findings).Count }) | Measure-Object -Sum).Sum) Geraete mit Befund, $(@($st | Where-Object { -not $_.Ok }).Count) Tenants nicht lesbar"
+            }
+            'SecDrift' {
+                $ref = $null; try { $ref = Get-HUSecReference } catch { }
+                if (-not $ref) { $res.Message = 'Kein Soll-Stand gespeichert (Analyse > Sicherheit > Soll speichern) - nichts verglichen'; $res.Code = 3; return $res }
+                $all = @(); $names = @{}
+                foreach ($k in $keys) {
+                    & $readLog $k
+                    $tt = $Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1
+                    $names[$k] = "$(if ($tt) { $tt.displayName } else { $k })"
+                    try { $all += @(Invoke-HUSecCatalog -TenantKey $k -Settings $Settings) } catch { if ($log) { Write-HULog -Message "[Teams] $($Job.Name): $k Katalog fehlgeschlagen: $($_.Exception.Message)" -Level WARN } }
+                }
+                $cmp = Compare-HUSecReference -Results $all -Reference $ref -Keys $keys
+                $lost = @(); try { $lost = @(Update-HUSecLost -Results $all -Reference $ref -Keys $keys -NoWrite:$NoSend) } catch { }
+                $spec = New-HUSecDriftCardSpec -Compare $cmp -Names $names -Title "$($Job.Name)" -Lost $lost
+                $detail = "$(@($cmp.Changes).Count) Aenderungen, $($cmp.Unchecked) nicht pruefbar, $($lost.Count) Pruefungen verloren"
             }
             default { $res.Message = "Unbekannte Auftragsart: $($Job.Kind)"; $res.Code = 3; return $res }
         }
@@ -907,6 +974,7 @@ Export-ModuleMember -Function @(
     'New-HULicenseCardSpec',
     'Get-HUDefenderStatus',
     'New-HUDefenderCardSpec',
+    'New-HUSecDriftCardSpec',
     'Invoke-HUTeamsJob',
     'Get-HUTeamsJobTaskName',
     'Get-HUTeamsJobTask',
