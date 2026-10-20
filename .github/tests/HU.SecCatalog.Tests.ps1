@@ -374,4 +374,11 @@ Describe 'Katalog-Detaillisten: kein Export (B1)' {
         $script:Qs | Should -Match 'ClipboardCopyMode'
         $script:Qs | Should -Match 'ContextMenu = \$null'
     }
+    It 'Konten anzeigen zeigt Ladeanzeige (Knopf, Sanduhr, Punkt) und beendet sie in jedem Fall' {
+        $script:Sec | Should -Match 'function Set-HUSecBusy'
+        $script:Sec | Should -Match '-Window \$w -Button \$ctl\.btnList'
+        $script:Sec | Should -Match "Content = 'Lade \.\.\.'"
+        # Abschluss: im OnDone (vor jedem return) und wenn der Job nicht startet
+        ([regex]::Matches($script:Sec, 'Set-HUSecBusy \$false')).Count | Should -BeGreaterOrEqual 2
+    }
 }

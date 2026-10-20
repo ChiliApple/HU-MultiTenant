@@ -138,25 +138,44 @@ function Get-HUSecStatusText($Cell) {
     return "$($sym.Split(' ')[0]) $word$why"
 }
 
+# Ladeanzeige fuer das Detailfenster: Knopf "Lade ...", Sanduhr, gruener Punkt im Hauptfenster
+function Set-HUSecBusy([bool]$On) {
+    $b = $script:SecBusy
+    try {
+        if ($On) {
+            if ($b.Btn) { $b.Btn.IsEnabled = $false; $b.Btn.Content = 'Lade ...' }
+            if ($b.Win) { $b.Win.Cursor = [System.Windows.Input.Cursors]::Wait }
+        } else {
+            if ($b.Btn) { $b.Btn.IsEnabled = $true; $b.Btn.Content = "$($b.Label)" }
+            if ($b.Win) { $b.Win.Cursor = $null }
+        }
+    } catch { }
+    try { Set-HUAnaRunDot ($On -or ($script:SecWait -and $script:SecWait.Count -gt 0)) } catch { }
+}
+
 function Start-HUSecItems {
-    param([string]$Key, [string]$RuleId, [string]$Title)
+    param([string]$Key, [string]$RuleId, [string]$Title, $Window = $null, $Button = $null)
+    $script:SecBusy = @{ Win = $Window; Btn = $Button; Label = $(if ($Button) { "$($Button.Content)" } else { '' }) }
+    Set-HUSecBusy $true
     $script:SecItemsTitle = "$Title - $(Get-HUAnaTenantName $Key)"
     $script:SecItemsLabel = Get-HUSecItemsLabel $RuleId
     Add-HURtbLine $script:Controls['rtbAna'] "Lade $($script:SecItemsLabel): $(Get-HUAnaTenantName $Key) ($RuleId) ..." '#90CAF9'
-    [void](Start-HUJob -Name "SecItems-$RuleId-$Key" -Quiet -Output $script:Controls['rtbAna'] -Vars @{ TK = $Key; RID = $RuleId } -Code {
+    $started = Start-HUJob -Name "SecItems-$RuleId-$Key" -Quiet -Output $script:Controls['rtbAna'] -Vars @{ TK = $Key; RID = $RuleId } -Code {
             $rows = @(); $err = ''
             try { $rows = @(Get-HUSecItems -TenantKey $TK -Settings $Settings -RuleId $RID) }
             catch { $err = "$($_.Exception.Message)"; Write-HULog -Message $err -Level 'ERROR' -Tenant $TK }
             [pscustomobject]@{ __SecItems = $true; Rows = $rows; Err = $err }
         } -OnDone {
             param($Result, $Errors)
+            Set-HUSecBusy $false
             $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__SecItems'] }) | Select-Object -First 1
-            if (-not $d) { return }
+            if (-not $d) { Show-HUMessage "$($script:SecItemsLabel): keine Antwort erhalten (siehe Log)." -Icon Warning; return }
             if ($d.Err) { Show-HUMessage "$($script:SecItemsLabel) konnten nicht gelesen werden: $($d.Err)" -Icon Warning; return }
             if (-not @($d.Rows).Count) { Show-HUMessage "Keine betroffenen $($script:SecItemsLabel)." -Icon Info; return }
             Add-HURtbLine $script:Controls['rtbAna'] "$(@($d.Rows).Count) Eintraege (nur Anzeige, nicht gespeichert)" '#81C784'
             Show-HUQSTable -Title $script:SecItemsTitle -Objects @($d.Rows) -FilePrefix 'Katalog-Liste' -NoExport
-        })
+        }
+    if (-not $started) { Set-HUSecBusy $false }
 }
 
 function Show-HUSecDetail {
@@ -211,7 +230,7 @@ function Show-HUSecDetail {
     $ctl.btnList.Add_Click({
             $sel = $ctl.gridD.SelectedItem
             if (-not $sel) { Show-HUMessage 'Bitte zuerst einen Tenant in der Tabelle markieren.' -Icon Info -Owner $w; return }
-            Start-HUSecItems -Key "$($sel.Key)" -RuleId "$($m.RuleId)" -Title "$($m.Title)"
+            Start-HUSecItems -Key "$($sel.Key)" -RuleId "$($m.RuleId)" -Title "$($m.Title)" -Window $w -Button $ctl.btnList
         })
     $state = @{ Exc = $false }
     $ctl.btnExc.Add_Click({ $state.Exc = $true; $w.Close() })
