@@ -227,6 +227,13 @@
       "usedBy": [],
       "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > RoleManagement.Read.Directory > Administratorzustimmung erteilen"
     },
+    "SharePointTenantSettings.Read.All": {
+      "description": "SharePoint-/OneDrive-Tenant-Einstellungen lesen (Sicherheitskatalog A33: externe Freigabe)",
+      "risk": "Low",
+      "category": "Security",
+      "usedBy": [],
+      "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > SharePointTenantSettings.Read.All > Administratorzustimmung erteilen"
+    },
     "Policy.ReadWrite.ConditionalAccess": {
       "description": "Conditional-Access-Richtlinien anlegen (Analyse: aus Backup wiederherstellen, wird deaktiviert angelegt)",
       "risk": "High",

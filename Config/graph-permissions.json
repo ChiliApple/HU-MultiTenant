@@ -16,6 +16,7 @@
     { "name": "ReportSettings.Read.All", "default": true, "why": "Sicherheitskatalog: Berichte verbergen Namen (V15)" },
     { "name": "SecurityAlert.Read.All", "default": true, "why": "Defender-Alarm (Teams), Defender-Report" },
     { "name": "Policy.Read.All", "default": true, "why": "Analyse: Conditional Access, benannte Orte" },
+    { "name": "SharePointTenantSettings.Read.All", "default": true, "why": "Sicherheitskatalog: externe Freigabe (A33), nur lesend" },
     { "name": "Application.Read.All", "default": true, "why": "Enterprise-App-Inventur" },
     { "name": "RoleManagement.Read.Directory", "default": true, "why": "Rollennamen im Tenant-Vergleich" },
     { "name": "DeviceManagementConfiguration.ReadWrite.All", "default": false, "why": "Analyse: Profile/Richtlinien kopieren und aus Backup wiederherstellen" },

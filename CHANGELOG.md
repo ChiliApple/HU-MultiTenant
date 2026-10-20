@@ -1,5 +1,22 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.4 (Testversion, 20.10.2026)
+
+- **Sicherheitskatalog, Konten anzeigen:** waehrend die Liste geladen wird, zeigt der Knopf "Lade ..." (gesperrt), der Mauszeiger ist eine Sanduhr und der gruene Punkt im Hauptfenster blinkt. Vorher sah es aus, als haengt das Programm. Ein Fehler oder eine leere Antwort wird jetzt immer gemeldet.
+
+- **Sicherheitskatalog, Conditional Access:** die Richtlinien kommen aus v1.0; zusaetzlich wird beta gelesen und eine dort vorhandene, in v1.0 fehlende Richtlinie ergaenzt (Hinweis "nur ueber beta sichtbar"). Grund: v1.0 liess in einem Tenant eine aktive Richtlinie (Geraetecode-Flow blockiert) aus, V11 meldete deshalb zu Unrecht eine Abweichung. Ursache nicht geklaert. Schlaegt beta fehl, gilt v1.0 allein.
+- **Sicherheitskatalog, Soll-Stand:** Knopf "Soll speichern" (Analyse > Sicherheit) speichert den aktuellen Pruefstand (nur Status und Zahlen, lokal). Neue Teams-Meldung "Sicherheits-Aenderung": prueft taeglich nach Zeitplan und sendet nur, wenn sich gegen das Soll etwas aendert (Status oder Anzahl, schlechter zuerst). Nicht pruefbare Regeln gelten nicht als Aenderung und loesen allein nichts aus. Ohne gespeichertes Soll wird nichts gesendet (Hinweis, Code 3). Verglichen werden Status und Zaehler, keine Objekte; im Soll stehen nur Regel, Tenant, Status und Anzahl.
+- **Sicherheitskatalog, "Pruefung verloren":** war eine Regel im Soll pruefbar und ist an 3 Laeufen in Folge nicht pruefbar (z. B. Recht entzogen), meldet die Teams-Meldung das einmal; sonst wuerde ein Verstoss lautlos verschwinden. Zaehler nur lokal (Regel, Tenant, Anzahl), Reset bei "Soll speichern".
+- **Sicherheitskatalog, V1 (Notfallkonten):** geprueft werden nur aktive Richtlinien fuer alle Benutzer oder Admin-Rollen, die blockieren oder etwas verlangen (MFA, Geraet, Nutzungsbedingungen ...). Reine Sitzungs- und Berichtsrichtlinien brauchen keine Ausnahme (Microsoft Learn).
+- **Sicherheitskatalog, Ampel:** letzte Zeile der Matrix, je Tenant in derselben Spalte: farbiger Punkt (Rot = ab 10 nicht erfuellte Regeln, Gelb = 1 bis 9, Gruen = keine, Grau = nichts geprueft) und "x von y" geprueften Regeln in Ordnung. Fuellt sich waehrend der Pruefung Tenant fuer Tenant.
+- **Sicherheitskatalog, neue Regel A33 (Mittel, Bereich SharePoint):** prueft, ob die Freigabe an "Jeden" per Link ohne Anmeldung erlaubt ist. Braucht das lesende Recht `SharePointTenantSettings.Read.All` (neu, vorausgewaehlt). Ob Freigabelinks ein Ablaufdatum haben, liefert Graph nicht und wird daher nicht geprueft. Neuer Filter "SharePoint".
+- **Sicherheitskatalog A29 (PIM-Lizenz):** ohne Entra ID P2 zeigt die Matrix jetzt "? Lizenz" statt "i Info".
+- **Sicherheitskatalog A31 (Partner-Organisationen):** leere Spalten heissen jetzt "Standard" (Partner nutzt die Einstellung des Tenants); Spalte "MfaAkzeptiert".
+- **Sicherheitskatalog A32 (Secure Score):** Fehler AADSTS500011 (Dienst im Tenant nicht bereitgestellt) zeigt jetzt Klartext, bleibt aber "? Technik" - die Ursache (Lizenz oder nicht) ist nicht belegt.
+- **Quick Script Runner:** neue Beispiel-Favoriten "Alle Geraete synchronisieren" und "Alle MDM Defender Intelligence aktualisieren" (nur bei Neuinstallation).
+- **Sicherheitskatalog A21 (MSOL-PowerShell blockiert):** das Feld ist nur mit dem weitreichenden Schreibrecht `Policy.ReadWrite.Authorization` lesbar. Das fordert das Programm nicht mehr an; A21 zeigt "? Manuell" mit Hinweis (im Entra Admin Center selbst pruefen).
+- **Sicherheitskatalog A33:** ein unbekannter Wert (z. B. unknownFutureValue) gilt als "? Technik", nicht als OK.
+
 ## v2.2.3 (Testversion, 19.10.2026)
 
 - **Doku (F1):** die Seiten kommen weiterhin von GitHub (Fassung der installierten Version), werden aber jetzt zusammen mit den anderen Seiten und den Bildern unter ihrem echten Namen in einen Temp-Ordner geladen. Die Links zwischen den Seiten (z. B. Roadmap) und die Screenshots funktionieren dadurch auch dort; vorher fuehrten sie ins Leere.

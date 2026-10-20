@@ -49,6 +49,7 @@ Umsteigen von Secret: bestehenden Tenant einfach einrichten (wird an der Tenant-
 | `Group.Read.All` | Apps/Wartung: Zielgruppe per Name finden |
 | `DeviceManagementManagedDevices.PrivilegedOperations.All` | Wartung: *Jetzt auf Gerät ausführen*, Sync – **weitreichend**: erlaubt auch Löschen, Zurücksetzen und Außerbetriebnahme von Geräten |
 | `Policy.Read.All` | Analyse: Conditional Access im Vergleich und Backup, Namen benannter Orte |
+| `SharePointTenantSettings.Read.All` | Sicherheitskatalog: externe Freigabe (A33), nur lesend |
 | `Device.Read.All` | Analyse: *Was bekommt …?* für Geräte (Gerätegruppen) |
 | `DeviceManagementConfiguration.ReadWrite.All` | Analyse: fehlende Profile/Richtlinien in andere Tenants kopieren, aus Backup wiederherstellen (zum Lesen reicht `Read.All`) |
 | `RoleManagement.Read.Directory` | optional: Rollennamen statt IDs im Tenant-Vergleich |

@@ -1212,6 +1212,8 @@
                                     <DockPanel>
                                         <Button x:Name="btnSecTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
                                                 ToolTip="Die angezeigten Zeilen als Tabelle ansehen, kopieren oder exportieren"/>
+                                        <Button x:Name="btnSecRef" DockPanel.Dock="Right" Content="Soll speichern" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                                ToolTip="Den aktuellen Pruefstand als Soll speichern. Die Meldung 'Sicherheits-Aenderung' (Reiter Teams) meldet danach jede Abweichung davon. Gespeichert werden nur Status und Zahlen."/>
                                         <Button x:Name="btnSecExc" DockPanel.Dock="Right" Content="Ausnahmen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
                                                 ToolTip="Alle Ausnahmen ansehen, fuer die markierte Regel eine neue befristete Ausnahme eintragen oder eine entfernen"/>
                                         <Button x:Name="btnSecRun" DockPanel.Dock="Right" Content="&#x25B6; Pruefen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
@@ -1232,6 +1234,7 @@
                                             <ComboBoxItem Content="Apps" Tag="Apps"/>
                                             <ComboBoxItem Content="Intune" Tag="Intune"/>
                                             <ComboBoxItem Content="Teams" Tag="Teams"/>
+                                            <ComboBoxItem Content="SharePoint" Tag="SharePoint"/>
                                         </ComboBox>
                                         <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                         <TextBox x:Name="txtSecFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Nummer, Bereich, Regel oder Schweregrad (mehrere Woerter: alle muessen vorkommen)"/>
@@ -1407,11 +1410,12 @@
                                                 <DockPanel Margin="0,0,0,6" LastChildFill="False">
                                                     <StackPanel DockPanel.Dock="Left" Width="160" Margin="0,0,10,0">
                                                         <TextBlock Text="Eingebaute Meldung" Style="{StaticResource FieldLabel}"/>
-                                                        <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Fertige Meldungen. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp und Defender-Alarm nur, wenn es etwas zu melden gibt. Fuer ein eigenes Skript das Feld darunter verwenden." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
+                                                        <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Fertige Meldungen. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp, Defender-Alarm und Sicherheits-Aenderung nur, wenn es etwas zu melden gibt. Fuer ein eigenes Skript das Feld darunter verwenden." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
                                                             <ComboBoxItem Content="Tages-Ampel" Tag="Daily"/>
                                                             <ComboBoxItem Content="Secret-Countdown" Tag="Secrets"/>
                                                             <ComboBoxItem Content="Lizenzen knapp" Tag="Licenses"/>
                                                             <ComboBoxItem Content="Defender-Alarm" Tag="Defender"/>
+                                                            <ComboBoxItem Content="Sicherheits-Aenderung" Tag="SecDrift"/>
                                                         </ComboBox>
                                                     </StackPanel>
                                                     <StackPanel DockPanel.Dock="Left" Width="70" Margin="0,0,10,0">

@@ -133,7 +133,7 @@ Describe 'Teams-Auftraege: Ausfuehrung ohne Ziele' {
 Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
     It 'Kinds-Liste und Kategorien' {
         $k = @(Get-HUTeamsKinds)
-        $k.Key | Should -Be @('Daily', 'Secrets', 'Licenses', 'Defender', 'Script')
+        $k.Key | Should -Be @('Daily', 'Secrets', 'Licenses', 'Defender', 'SecDrift', 'Script')
         ($k | Where-Object Key -eq 'Daily').OnlyFindings | Should -BeFalse
         ($k | Where-Object Key -eq 'Secrets').Category | Should -Be 'Secrets'
     }
@@ -441,5 +441,55 @@ Describe 'Teams-Auftraege: Review 030' {
         $s = New-HUSecretsCardSpec -Statuses @([pscustomobject]@{ Key = 'A'; Name = 'Schule A'; Ok = $true; Error = ''; Days = 30; DisplayName = 'x'; Status = 'OK' }) -WarnDays 30
         $s | Should -Not -BeNullOrEmpty
         $s.Facts['Warnschwelle'] | Should -Be '30 Tage oder weniger'
+    }
+}
+
+Describe 'Teams-Auftraege: Sicherheits-Aenderung' {
+    BeforeAll {
+        function script:Cmp($n) {
+            $ch = 1..$n | ForEach-Object { [pscustomobject]@{ Tenant = 'T1'; RuleId = "A0$_"; Title = 'Regel'; Sev = 'Hoch'; Kind = 'Status'; Worse = ($_ -eq 1); Was = 'OK'; Is = 'Abweichung'; WasCount = 0; IsCount = 1 } }
+            [pscustomobject]@{ Changes = @($ch); Unchecked = 2; Since = '2026-10-20T10:00:00.0000000Z' }
+        }
+    }
+    It 'Art ist registriert, sendet nur bei Aenderung, Kategorie Security' {
+        $k = Get-HUTeamsKinds | Where-Object Key -eq 'SecDrift'
+        $k.OnlyFindings | Should -BeTrue
+        $k.Category | Should -Be 'Security'
+        (New-HUTeamsJob -Name 'S' -Kind 'SecDrift').Kind | Should -Be 'SecDrift'
+    }
+    It 'keine Aenderung: $null' {
+        New-HUSecDriftCardSpec -Compare ([pscustomobject]@{ Changes = @(); Unchecked = 0; Since = '' }) | Should -BeNullOrEmpty
+    }
+    It 'Karte: Vorschau, Stufe, Kuerzung' {
+        $s = New-HUSecDriftCardSpec -Compare (Cmp 6) -Names @{ T1 = 'Schule A' }
+        $s.Preview | Should -Be '6 Aenderungen in 1 Tenant, 1 schlechter'
+        $s.Level | Should -Be 'Error'
+        $s.Rows[0].Name | Should -Be 'Schule A'
+        $s.Rows[0].Text | Should -Match 'und 2 weitere'
+        $s.Facts['Nicht pruefbar (nicht verglichen)'] | Should -Be 2
+    }
+    It 'nur Verbesserungen: Stufe Warning' {
+        $c = Cmp 1; $c.Changes[0].Worse = $false
+        (New-HUSecDriftCardSpec -Compare $c).Level | Should -Be 'Warning'
+    }
+    It 'ohne Soll-Stand: Konfigurationsfehler (Code 3), nichts gesendet' {
+        $j = New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1')
+        $r = Invoke-HUTeamsJob -Job $j -Settings ([pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; displayName = 'A' }) }) -AppRoot $script:TestRoot -NoSend
+        $r.Code | Should -Be 3
+        $r.Message | Should -Match 'Soll-Stand'
+    }
+}
+
+Describe 'Teams-Auftraege: Pruefung verloren' {
+    It 'ohne Aenderung aber mit verlorener Pruefung: Karte, Level Error' {
+        $cmp = [pscustomobject]@{ Changes = @(); Unchecked = 2; Since = $null }
+        $lost = @([pscustomobject]@{ Tenant = 'T1'; RuleId = 'A03'; Title = 'x'; Sev = 'Hoch'; Runs = 3; Reason = 'Recht' })
+        $s = New-HUSecDriftCardSpec -Compare $cmp -Names @{ T1 = 'Schule' } -Lost $lost
+        $s | Should -Not -BeNullOrEmpty
+        $s.Level | Should -Be 'Error'
+        $s.Preview | Should -BeLike '*verloren*'
+    }
+    It 'ohne beides: $null' {
+        New-HUSecDriftCardSpec -Compare ([pscustomobject]@{ Changes = @(); Unchecked = 5; Since = $null }) | Should -BeNullOrEmpty
     }
 }

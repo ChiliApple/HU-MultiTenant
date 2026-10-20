@@ -135,7 +135,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Funktionsübersicht <span class="ver">v2.2.1</span>
+      HU-MultiTenant · Funktionsübersicht <span class="ver">v2.2.4</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -181,7 +181,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     <li style="--c: var(--mauve)"><span class="rank">5</span><div><h3>Tenant-Vergleich</h3><p>Was fehlt wo, was ist anders eingestellt? Fehlendes mit einem Klick kopieren – ohne Zuweisung.</p></div><a class="area" href="#analyse">Analyse</a></li>
     <li style="--c: var(--mauve)"><span class="rank">6</span><div><h3>Konfigurations-Backup mit Verlauf</h3><p>Täglich automatisch; zeigt neu, gelöscht, geändert und von wem – Wiederherstellen als neuer Eintrag.</p></div><a class="area" href="#analyse">Analyse</a></li>
     <li style="--c: var(--blue)"><span class="rank">7</span><div><h3>App-Updates über winget</h3><p>Erkennt neue Versionen der Bibliotheks-Apps, holt den Installer und aktualisiert dieselbe Intune-App.</p></div><a class="area" href="#apps">Apps</a></li>
-    <li style="--c: var(--red)"><span class="rank">8</span><div><h3>Meldungen in Teams</h3><p>Tages-Ampel, Lizenzen knapp, Defender-Alarm oder eigene Snippets – mit Zeitplan über die Aufgabenplanung.</p></div><a class="area" href="#teams">Teams</a></li>
+    <li style="--c: var(--red)"><span class="rank">8</span><div><h3>Meldungen in Teams</h3><p>Tages-Ampel, Lizenzen knapp, Defender-Alarm, Sicherheits-Änderung oder eigene Snippets – mit Zeitplan über die Aufgabenplanung.</p></div><a class="area" href="#teams">Teams</a></li>
     <li style="--c: var(--teal)"><span class="rank">9</span><div><h3>Handy-Fernbedienung</h3><p>Freigegebene Snippets, Extensions und Intune-Aktionen vom Handy starten, Live-Ausgabe, Push am Ende.</p></div><a class="area" href="#handy">Handy</a></li>
     <li style="--c: var(--peach)"><span class="rank">10</span><div><h3>Einrichtung per Admin-Anmeldung <span class="new">neu</span></h3><p>Global Admin meldet sich einmal an – App-Registrierung, Zertifikat und Rechte legt das Tool an, Erneuerung automatisch.</p></div><a class="area" href="#sicherheit">Sicherheit</a></li>
   </ol>
@@ -317,7 +317,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
       <div class="cat-body">
         <ul>
           <li>Ziele über Teams-Workflows, Test-Karte</li>
-          <li>Eingebaut: Tages-Ampel, Ablauf-Countdown, Lizenzen knapp, Defender-Alarm</li>
+          <li>Eingebaut: Tages-Ampel, Ablauf-Countdown, Lizenzen knapp, Defender-Alarm, Sicherheits-Änderung</li>
           <li>Meldungen aus eigenen Snippets mit <code>Send-HUNotify</code></li>
           <li>Je Meldung Ziele, Tenants und Zeitplan (Aufgabenplanung)</li>
           <li>Jetzt senden, einmalig an einen Kanal</li>
@@ -343,7 +343,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 
     <div class="col">
     <article class="cat" id="wartung" style="--c: var(--green)">
-      <div class="cat-head"><span class="chip">🛠 Wartung</span><h3>Wartung (Remediations)</h3><span class="count">9 Punkte</span></div>
+      <div class="cat-head"><span class="chip">🛠 Wartung</span><h3>Wartung (Remediations)</h3><span class="count">12 Punkte</span></div>
       <div class="cat-body">
         <ul>
           <li>Prüf- und Reparaturskript, fünf fertige Beispiele</li>
@@ -361,7 +361,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     </article>
 
     <article class="cat" id="analyse" style="--c: var(--mauve)">
-      <div class="cat-head"><span class="chip">🔍 Analyse</span><h3>Analyse</h3><span class="count">9 Punkte</span></div>
+      <div class="cat-head"><span class="chip">🔍 Analyse</span><h3>Analyse</h3><span class="count">13 Punkte</span></div>
       <div class="cat-body">
         <div class="group"><h4>Was bekommt …?</h4>
           <ul>
@@ -382,6 +382,14 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
             <li>Intune-Konfiguration und Conditional Access als JSON, täglich automatisch</li>
             <li>Verlauf mit „Geändert von“ aus dem Intune-Protokoll</li>
             <li>Wiederherstellen als neuer Eintrag, CA deaktiviert</li>
+          </ul>
+        </div>
+        <div class="group"><h4>Sicherheit (Katalog)</h4>
+          <ul>
+            <li>31 Regeln aus den Security Baselines, rein lesend, alle Tenants in einer Matrix</li>
+            <li>Schweregrad, Bereich und Abweichungen filtern; Details und betroffene Konten per Doppelklick</li>
+            <li>Befristete Ausnahmen mit Begründung; Tabelle und Export</li>
+            <li>Ampel je Tenant; Soll-Stand speichern und Änderungen daran täglich nach Teams melden (auch „Prüfung verloren“ nach 3 Läufen) <span class="new">neu</span></li>
           </ul>
         </div>
       </div>
@@ -408,7 +416,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 </section>
 
 <footer>
-  <span>Stand 18.10.2026 · Version 2.2.1</span>
+  <span>Stand 20.10.2026 · Version 2.2.4</span>
   <a href="Einstieg.html">Einstieg</a>
   <a href="Anleitung.html">Anleitung</a>
   <a href="https://github.com/ChiliApple/HU-MultiTenant">Projekt auf GitHub</a>

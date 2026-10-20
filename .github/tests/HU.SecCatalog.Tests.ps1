@@ -17,7 +17,8 @@ BeforeAll {
 
     Mock -ModuleName HU.SecCatalog Get-HUSecTokenRoles { return @() }
     Mock -ModuleName HU.SecCatalog Invoke-HUSecFetch {
-        param($TenantKey, $Settings, $Endpoint, [switch]$All)
+        param($TenantKey, $Settings, $Endpoint, [switch]$All, [switch]$Beta)
+        $global:HUSecBeta = [bool]$Beta
         $hit = $null
         foreach ($k in $global:HUSecFx.Keys) { if ($Endpoint -like "*$k*") { $hit = $global:HUSecFx[$k]; break } }
         if ($null -eq $hit) { throw 'nicht vorbereitet' }
@@ -373,5 +374,164 @@ Describe 'Katalog-Detaillisten: kein Export (B1)' {
         $script:Qs | Should -Match '\[switch\]\$NoExport'
         $script:Qs | Should -Match 'ClipboardCopyMode'
         $script:Qs | Should -Match 'ContextMenu = \$null'
+    }
+
+    It 'Konten anzeigen zeigt Ladeanzeige (Knopf, Sanduhr, Punkt) und beendet sie in jedem Fall' {
+        $script:Sec | Should -Match 'function Set-HUSecBusy'
+        $script:Sec | Should -Match '-Window \$w -Button \$ctl\.btnList'
+        $script:Sec | Should -Match "Content = 'Lade \.\.\.'"
+        ([regex]::Matches($script:Sec, 'Set-HUSecBusy \$false')).Count | Should -BeGreaterOrEqual 2
+    }
+}
+
+Describe 'A21 ist manuell (kein Schreibrecht angefordert)' {
+    BeforeEach { Base; $global:HUSecFx['authorizationPolicy'] = [pscustomobject]@{ blockMsolPowerShell = $true; guestUserRoleId = '2af84b1e-32c8-42b7-82bc-daa82404023b' } }
+    It 'ohne das Recht: Nicht pruefbar (Manuell) mit Klartext' {
+        Mock -ModuleName HU.SecCatalog Get-HUSecTokenRoles { return @('Policy.Read.All') }
+        $r = Run 'A21'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Manuell'; $r.Detail | Should -BeLike '*Entra Admin Center*'
+    }
+    It 'die uebrigen Regeln auf der Berechtigungsrichtlinie brauchen weiter nur Policy.Read.All' {
+        Mock -ModuleName HU.SecCatalog Get-HUSecTokenRoles { return @('Policy.Read.All') }
+        (Run 'A14').Reason | Should -Not -Be 'Recht'
+    }
+}
+
+Describe 'Anmeldefehler AADSTS500011 in Klartext' {
+    BeforeEach { Base }
+    It 'A32: Fehler 400 mit AADSTS500011 zeigt verstaendlichen Text statt Rohmeldung' {
+        $global:HUSecFx['secureScores'] = { $ex = New-Object System.Exception('Graph-Fehler: AADSTS500011: The resource principal named https://mgmt-tenantdiscoverygw-prd.securitycenter.microsoft.com was not found'); $ex.Data['StatusCode'] = 400; throw $ex }
+        $r = Run 'A32'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Technisch'
+        $r.Detail | Should -BeLike '*AADSTS500011*'; $r.Detail | Should -Not -BeLike '*resource principal*'
+    }
+}
+
+Describe 'A33 externe Freigabe ohne Anmeldung' {
+    BeforeEach { Base }
+    It 'anonyme Links erlaubt: Abweichung' {
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ sharingCapability = 'externalUserAndGuestSharing' }
+        (Run 'A33').Status | Should -Be 'Abweichung'
+    }
+    It 'nur angemeldete Gaeste: OK' {
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ sharingCapability = 'externalUserSharingOnly' }
+        (Run 'A33').Status | Should -Be 'OK'
+    }
+    It 'unbekannter Wert (unknownFutureValue): nicht pruefbar Technisch, nicht OK' {
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ sharingCapability = 'unknownFutureValue' }
+        $r = Run 'A33'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Technisch'
+    }
+    It 'Feld fehlt: nicht pruefbar, nicht OK' {
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ x = 1 }
+        (Run 'A33').Status | Should -Be 'NichtPruefbar'
+    }
+}
+
+Describe 'Ampel je Tenant (Get-HUSecLight)' {
+    function script:MkRes($id, $st) { [pscustomobject]@{ Tenant = 'T'; RuleId = $id; Status = $st; Reason = $null; Count = 0 } }
+    It 'Zaehlung ok von geprueft, kritische Abweichung zaehlt je Schweregrad' {
+        $l = Get-HUSecLight -Key 'T' -Results @((MkRes 'A17' 'Abweichung'), (MkRes 'A03' 'OK'), (MkRes 'A04' 'OK'), (MkRes 'A30' 'NichtPruefbar'))
+        $l.Ok | Should -Be 2; $l.Checked | Should -Be 3; $l.BySev['Kritisch'] | Should -Be 1; $l.NotCheckable | Should -Be 1; $l.Color | Should -Be 'Gelb'
+    }
+    It 'Rot ab 10 nicht erfuellten Regeln, 9 sind noch Gelb' {
+        $ids = 'A01','A02','A03','A04','A08','A09','A14','A15','A17','A19'
+        (Get-HUSecLight -Key 'T' -Results @($ids[0..8] | ForEach-Object { MkRes $_ 'Abweichung' })).Color | Should -Be 'Gelb'
+        (Get-HUSecLight -Key 'T' -Results @($ids | ForEach-Object { MkRes $_ 'Abweichung' })).Color | Should -Be 'Rot'
+    }
+    It 'Gelb bei einzelner Abweichung' {
+        (Get-HUSecLight -Key 'T' -Results @((MkRes 'A08' 'Abweichung'), (MkRes 'A03' 'OK'))).Color | Should -Be 'Gelb'
+    }
+    It 'Gruen ohne Abweichung, Ausnahme zaehlt als in Ordnung' {
+        $l = Get-HUSecLight -Key 'T' -Results @((MkRes 'A03' 'OK'), (MkRes 'A17' 'Ausnahme'))
+        $l.Color | Should -Be 'Gruen'; $l.Ok | Should -Be 2
+    }
+    It 'Grau, wenn nichts geprueft wurde (nur nicht pruefbar)' {
+        (Get-HUSecLight -Key 'T' -Results @((MkRes 'A30' 'NichtPruefbar'))).Color | Should -Be 'Grau'
+    }
+}
+
+Describe 'Soll-Stand: speichern und vergleichen' {
+    BeforeAll { function script:Mk($t, $id, $st, $cnt = 0) { [pscustomobject]@{ Tenant = $t; RuleId = $id; Title = 'x'; Sev = 'Hoch'; Status = $st; Reason = ''; Count = $cnt; ExceptionId = '' } } }
+    It 'ohne gespeicherten Stand: $null' {
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'soll.json') -Force -ErrorAction SilentlyContinue
+        Get-HUSecReference | Should -BeNullOrEmpty
+    }
+    It 'Soll enthaelt nur Status und Zahlen' {
+        $f = Save-HUSecReference -Results @((Mk 'T1' 'A03' 'OK'), (Mk 'T1' 'A04' 'Abweichung' 3))
+        $j = Get-Content -LiteralPath $f -Raw | ConvertFrom-Json
+        (@($j.rows[0].PSObject.Properties.Name | Sort-Object) -join ',') | Should -Be 'count,reason,ruleId,status,tenant'
+        (Get-HUSecReference).rows.Count | Should -Be 2
+    }
+    It 'gleicher Stand: keine Aenderung' {
+        $c = Compare-HUSecReference -Results @((Mk 'T1' 'A03' 'OK'), (Mk 'T1' 'A04' 'Abweichung' 3)) -Reference (Get-HUSecReference)
+        @($c.Changes).Count | Should -Be 0
+    }
+    It 'Status- und Anzahl-Aenderung, schlechter zuerst' {
+        $c = Compare-HUSecReference -Results @((Mk 'T1' 'A03' 'Abweichung' 1), (Mk 'T1' 'A04' 'Abweichung' 2)) -Reference (Get-HUSecReference)
+        @($c.Changes).Count | Should -Be 2
+        $c.Changes[0].RuleId | Should -Be 'A03'
+        $c.Changes[0].Worse | Should -BeTrue
+        $c.Changes[1].Kind | Should -Be 'Anzahl'
+        $c.Changes[1].Worse | Should -BeFalse
+    }
+    It 'nicht pruefbar ist keine Aenderung, wird nur gezaehlt' {
+        $c = Compare-HUSecReference -Results @((Mk 'T1' 'A03' 'NichtPruefbar')) -Reference (Get-HUSecReference)
+        @($c.Changes).Count | Should -Be 0
+        $c.Unchecked | Should -Be 1
+    }
+    It 'Regeln ohne Eintrag im Soll und nicht gewaehlte Tenants werden uebergangen' {
+        $c = Compare-HUSecReference -Results @((Mk 'T1' 'A99' 'Abweichung'), (Mk 'T2' 'A03' 'Abweichung')) -Reference (Get-HUSecReference) -Keys @('T1')
+        @($c.Changes).Count | Should -Be 0
+    }
+}
+
+Describe 'Conditional Access: v1.0 fuehrt, beta ergaenzt' {
+    BeforeEach { Base }
+    It 'Richtlinie nur in beta: wird ergaenzt und markiert' {
+        $a = (Pol 'enabled'); $a | Add-Member id 'a' -Force
+        $b = (Pol 'enabled'); $b | Add-Member id 'b' -Force
+        $global:HUSecFx['conditionalAccess'] = { if ($global:HUSecBeta) { @($a, $b) } else { @($a) } }
+        $ctx = New-HUSecContext -TenantKey 'T1' -Settings ([pscustomobject]@{})
+        $ca = @((Get-HUSecFact -Ctx $ctx -Key 'ca').Data)
+        $ca.Count | Should -Be 2
+        @($ca | Where-Object { $_.PSObject.Properties['__OnlyBeta'] }).Count | Should -Be 1
+    }
+    It 'beta schlaegt fehl: nur v1.0, kein Fehler' {
+        $a = (Pol 'enabled'); $a | Add-Member id 'a' -Force
+        $global:HUSecFx['conditionalAccess'] = { if ($global:HUSecBeta) { throw 'beta kaputt' } else { @($a) } }
+        $ctx = New-HUSecContext -TenantKey 'T1' -Settings ([pscustomobject]@{})
+        @((Get-HUSecFact -Ctx $ctx -Key 'ca').Data).Count | Should -Be 1
+    }
+}
+
+Describe 'V1: nur blockierende oder einschraenkende Richtlinien' {
+    It 'reine Sitzungsrichtlinie ohne Grant braucht keine Ausnahme' {
+        $p = Pol 'enabled' -grant @(); $p.grantControls.builtInControls = @()
+        InModuleScope HU.SecCatalog -Parameters @{ p = $p } { param($p) Test-HUSecCaRestricts $p } | Should -BeFalse
+    }
+    It 'MFA-Richtlinie braucht eine' {
+        $p = Pol 'enabled'
+        InModuleScope HU.SecCatalog -Parameters @{ p = $p } { param($p) Test-HUSecCaRestricts $p } | Should -BeTrue
+    }
+}
+
+Describe 'Pruefung verloren (3 Laeufe in Folge nicht pruefbar)' {
+    BeforeAll { function script:Mk2($id, $st) { [pscustomobject]@{ Tenant = 'T1'; RuleId = $id; Title = 'x'; Sev = 'Hoch'; Status = $st; Reason = 'Recht'; Count = 0; ExceptionId = '' } } }
+    It 'erst im dritten Lauf, nur einmal, Reset bei pruefbar' {
+        Save-HUSecReference -Results @((Mk2 'A03' 'OK')) | Out-Null
+        $ref = Get-HUSecReference
+        @(Update-HUSecLost -Results @((Mk2 'A03' 'NichtPruefbar')) -Reference $ref).Count | Should -Be 0
+        @(Update-HUSecLost -Results @((Mk2 'A03' 'NichtPruefbar')) -Reference $ref).Count | Should -Be 0
+        @(Update-HUSecLost -Results @((Mk2 'A03' 'NichtPruefbar')) -Reference $ref).Count | Should -Be 1
+        @(Update-HUSecLost -Results @((Mk2 'A03' 'NichtPruefbar')) -Reference $ref).Count | Should -Be 0
+        @(Update-HUSecLost -Results @((Mk2 'A03' 'OK')) -Reference $ref).Count | Should -Be 0
+        @(Update-HUSecLost -Results @((Mk2 'A03' 'NichtPruefbar')) -Reference $ref).Count | Should -Be 0
+    }
+    It 'Zaehlerdatei enthaelt nur Schluessel, Anzahl, Flag' {
+        Update-HUSecLost -Results @((Mk2 'A03' 'NichtPruefbar')) -Reference (Get-HUSecReference) | Out-Null
+        $j = Get-Content -LiteralPath (Join-Path (Get-HUSecPath) 'soll-verloren.json') -Raw | ConvertFrom-Json
+        (@($j.rows[0].PSObject.Properties.Name | Sort-Object) -join ',') | Should -Be 'key,reported,runs'
+    }
+    It 'neuer Soll-Stand setzt die Zaehler zurueck' {
+        Save-HUSecReference -Results @((Mk2 'A03' 'OK')) | Out-Null
+        Test-Path (Join-Path (Get-HUSecPath) 'soll-verloren.json') | Should -BeFalse
     }
 }
