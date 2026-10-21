@@ -1,0 +1,1596 @@
+{
+  "version": 1,
+  "stand": "2026-10-21",
+  "hinweis": "Menuenamen wie in der englischen Portal-Oberflaeche und in Microsoft Learn. Massgeblich ist der verlinkte Learn-Artikel; Microsoft benennt Menues gelegentlich um.",
+  "rules": {
+    "A01": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies",
+      "steps": [
+        "Liste der Richtlinien pruefen: steht bei allen \"Report-only\" oder \"Off\", schuetzt keine davon.",
+        "Eine getestete Richtlinie oeffnen (zuerst die Basis, z. B. MFA fuer alle Benutzer) und unter Assignments > Users or workload identities > Exclude > \"Users and groups\" die Notfallkonten ausnehmen.",
+        "Vor dem Umschalten die Report-only-Ergebnisse ansehen (Policy impact bzw. Anmeldeprotokolle, Tab \"Report-only\").",
+        "\"Enable policy\" von \"Report-only\" auf \"On\" stellen > Save.",
+        "Fehlt noch jede Richtlinie: zuerst eine neue anlegen (siehe V5/A02/A04), im Modus \"Report-only\" testen, dann auf \"On\"."
+      ],
+      "learn": [
+        {
+          "title": "Report-only-Modus: Ergebnisse pruefen, dann auf On",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-conditional-access-report-only#reviewing-results"
+        },
+        {
+          "title": "Basis-Richtlinie: MFA fuer alle Benutzer",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-all-users-mfa-strength#create-a-conditional-access-policy"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A02": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies > New policy",
+      "steps": [
+        "Assignments > Users or workload identities: Include \"Directory roles\" und mindestens die im Learn-Artikel gelisteten Admin-Rollen waehlen (u. a. Global Administrator, Exchange Administrator, SharePoint Administrator, User Administrator, Conditional Access Administrator); Exclude \"Users and groups\" mit den Notfallkonten.",
+        "Target resources > Resources (formerly cloud apps) > Include: \"All resources (formerly 'All cloud apps')\".",
+        "Access controls > Grant: \"Grant access\" > \"Require authentication strength\" > \"Multifactor authentication strength\" bzw. \"Phishing-resistant MFA strength\" (nur wenn die Admins z. B. Passkeys schon registriert haben, sonst droht Aussperrung) > Select.",
+        "Enable policy zuerst \"Report-only\", Ergebnisse pruefen, dann auf \"On\" stellen.",
+        "Nur eingebaute Rollen werden erfasst; Rollen mit Administrative-Unit-Bereich und benutzerdefinierte Rollen nicht."
+      ],
+      "learn": [
+        {
+          "title": "MFA fuer Administratoren (Rollenliste und Schritte)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-admin-phish-resistant-mfa#create-a-conditional-access-policy"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A03": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies > New policy",
+      "steps": [
+        "Assignments > Users or workload identities: Include \"Select users and groups\" > \"Guest or external users\" und alle Gast-/externen Benutzertypen waehlen; Exclude \"Users and groups\" mit den Notfallkonten.",
+        "Target resources > Resources (formerly cloud apps) > Include: \"All resources (formerly 'All cloud apps')\".",
+        "Access controls > Grant: \"Grant access\" > \"Require authentication strength\" > \"Multifactor authentication strength\" > Select. Fuer Gaeste mit Email one-time passcode, Google oder Microsoft-Konto wirkt Authentication strength nicht, dort \"Require multifactor authentication\" verwenden.",
+        "Enable policy zuerst \"Report-only\", Ergebnisse pruefen, dann auf \"On\" stellen.",
+        "Alternativ deckt eine MFA-Richtlinie fuer \"All users\" die Gaeste mit ab, solange Gaeste dort nicht ausgenommen sind."
+      ],
+      "learn": [
+        {
+          "title": "MFA fuer Gaeste und externe Benutzer",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-guests-mfa-strength#create-a-conditional-access-policy"
+        },
+        {
+          "title": "MFA fuer alle Benutzer (schliesst Gaeste ein)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-all-users-mfa-strength#create-a-conditional-access-policy"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A04": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies > New policy",
+      "steps": [
+        "Vorher pruefen, wer noch Legacy-Auth nutzt: Entra ID > Monitoring & health > Sign-in logs, Filter \"Client App\" auf die Legacy-Protokolle (auch Tab \"User sign-ins (non-interactive)\").",
+        "Assignments > Users or workload identities: Include \"All users\"; Exclude \"Users and groups\" mit den Notfallkonten (und Konten, die Legacy-Auth noch zwingend brauchen).",
+        "Target resources > Resources (formerly cloud apps) > Include: \"All resources (formerly 'All cloud apps')\".",
+        "Conditions > Client apps: Configure \"Yes\", nur \"Exchange ActiveSync clients\" und \"Other clients\" anhaken > Done.",
+        "Access controls > Grant: \"Block access\" > Select.",
+        "Enable policy zuerst \"Report-only\", Anmeldeprotokolle pruefen, dann auf \"On\" stellen."
+      ],
+      "learn": [
+        {
+          "title": "Legacy-Authentifizierung per Conditional Access blockieren",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-legacy-authentication#create-a-conditional-access-policy"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A08": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Roles & admins > Global Administrator > Assignments",
+      "steps": [
+        "Entra ID > Roles & admins > Rolle \"Global Administrator\" anklicken (kein Haken setzen) > Assignments: alle Zuweisungen pruefen, auch Gruppen.",
+        "Zu viele: Konten, die keine volle Admin-Berechtigung brauchen, eine schwaechere Rolle geben (z. B. User Administrator, Intune Administrator) und dann Haken setzen > \"Remove assignment\" > Yes.",
+        "Ueber eine Gruppe zugewiesen: den Benutzer aus der rollenzuweisbaren Gruppe entfernen.",
+        "Zu wenige: ueber \"Add assignments\" ein zweites Konto zuweisen, am besten ein reines Cloud-Notfallkonto (*.onmicrosoft.com).",
+        "Ziel 2 bis 4 Konten; die eigene Global-Administrator-Zuweisung kann man nicht selbst entfernen."
+      ],
+      "learn": [
+        {
+          "title": "Best Practice: weniger als 5 Global Administratoren",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/best-practices#5-limit-the-number-of-global-administrators-to-less-than-5"
+        },
+        {
+          "title": "Rollenzuweisungen anzeigen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/view-assignments"
+        },
+        {
+          "title": "Rollenzuweisungen entfernen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/groups-remove-assignment"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A09": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Authentication methods > Activity",
+      "steps": [
+        "Entra ID > Authentication methods > Activity > Registration > \"Users capable of Azure multifactor authentication\" anklicken und nach \"Not Capable\" filtern; Admin-Konten heraussuchen.",
+        "Betroffene Admins melden sich an und registrieren unter https://aka.ms/mysecurityinfo eine Methode (z. B. Microsoft Authenticator oder Passkey).",
+        "Kommt der Admin nicht weiter: Entra ID > Users > Benutzer > Authentication methods > Add authentication method > \"Temporary Access Pass\" (fuer Admins braucht das die Rolle Privileged Authentication Administrator).",
+        "Der Bericht aktualisiert sich mit bis zu 36 Stunden Verzoegerung; danach erneut pruefen.",
+        "Notfallkonten (V1) zaehlt die Regel bewusst nicht mit."
+      ],
+      "learn": [
+        {
+          "title": "Authentication Methods Activity (Registrierungsbericht)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/howto-authentication-methods-activity"
+        },
+        {
+          "title": "Temporary Access Pass erstellen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/howto-authentication-temporary-access-pass#create-a-temporary-access-pass"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A14": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > External Identities > External collaboration settings > Guest user access",
+      "steps": [
+        "Entra ID > External Identities > External collaboration settings oeffnen.",
+        "Unter \"Guest user access\" die Option \"Guest user access is restricted to properties and memberships of their own directory objects (most restrictive)\" waehlen.",
+        "Save - die Aenderung kann bis zu 15 Minuten brauchen, bis sie fuer Gaeste wirkt.",
+        "Danach Gast-Szenarien testen: Learn fuehrt Forms, Project Online, Viva Engage und Planner in SharePoint als noch nicht unterstuetzt (moegliche Kompatibilitaetsprobleme)."
+      ],
+      "learn": [
+        {
+          "title": "Gastbenutzerzugriff konfigurieren",
+          "url": "https://learn.microsoft.com/en-us/entra/external-id/external-collaboration-settings-configure#to-configure-guest-user-access"
+        },
+        {
+          "title": "Gastberechtigungen einschraenken (Auswirkungen, unterstuetzte Dienste)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/users-restrict-guest-permissions#update-in-the-microsoft-entra-admin-center"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Die Gast-Einstellungen von Teams und SharePoint werden dadurch nicht ersetzt, sie steuern den Zugriff in diesen Apps weiterhin."
+    },
+    "A15": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > External Identities > External collaboration settings > Guest invite settings",
+      "steps": [
+        "Entra ID > External Identities > External collaboration settings oeffnen.",
+        "Unter \"Guest invite settings\" die Option \"Only users assigned to specific admin roles can invite guest users\" waehlen.",
+        "Speichern (Save).",
+        "Wer trotzdem Gaeste einladen soll (z. B. Teams-Verantwortliche), bekommt die Rolle \"Guest Inviter\" statt einer hoeheren Admin-Rolle.",
+        "Achtung: Danach koennen normale Lehrkraefte keine neuen Gaeste mehr in Teams einladen."
+      ],
+      "learn": [
+        {
+          "title": "Guest invite settings konfigurieren",
+          "url": "https://learn.microsoft.com/en-us/entra/external-id/external-collaboration-settings-configure#to-configure-guest-invite-settings"
+        },
+        {
+          "title": "Rolle Guest Inviter zuweisen",
+          "url": "https://learn.microsoft.com/en-us/entra/external-id/external-collaboration-settings-configure#assign-the-guest-inviter-role-to-a-user"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A17": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Enterprise apps > Consent and permissions > User consent settings",
+      "steps": [
+        "Entra ID > Enterprise apps > Consent and permissions > User consent settings oeffnen (Global Administrator noetig).",
+        "Unter \"User consent for applications\" die Option \"Do not allow user consent\" waehlen > Save.",
+        "Damit Benutzer trotzdem Apps anfragen koennen: Consent and permissions > Admin consent settings > \"Users can request admin consent to apps they are unable to consent to\" auf Yes, Pruefer festlegen > Save.",
+        "Bereits erteilte Zustimmungen bleiben bestehen: Enterprise apps regelmaessig auf unbekannte Apps mit Benutzerzustimmung pruefen."
+      ],
+      "learn": [
+        {
+          "title": "User consent settings im Entra admin center",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-user-consent?pivots=portal"
+        },
+        {
+          "title": "Admin consent workflow einrichten",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-admin-consent-workflow#enable-the-admin-consent-workflow"
+        },
+        {
+          "title": "Troubleshooting: Einstellung User consent pruefen",
+          "url": "https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/app-integration/troubleshoot-consent-issues#troubleshoot-steps"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Der Konfigurationsartikel nennt noch den alten Pfad Identity > Applications > Enterprise apps; im aktuellen Portal heisst es Entra ID > Enterprise apps."
+    },
+    "A19": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > App registrations > Certificates & secrets",
+      "steps": [
+        "Entra ID > App registrations > All applications: die betroffene App oeffnen > Certificates & secrets; in der Spalte \"Expires\" das Ablaufdatum pruefen.",
+        "Neue Zugangsdaten anlegen, bevor die alten ablaufen: Client secrets > \"New client secret\" (Laufzeit hoechstens 24 Monate, Microsoft empfiehlt unter 12) bzw. Certificates > \"Upload certificate\" (.cer, .pem, .crt).",
+        "Den Secret-Wert sofort kopieren (wird nur einmal angezeigt) und im Dienst bzw. Skript eintragen, das die App nutzt.",
+        "Pruefen, ob der Dienst mit den neuen Zugangsdaten laeuft (z. B. in den Anmeldeprotokollen), erst dann das alte Secret bzw. Zertifikat loeschen.",
+        "Abgelaufene Eintraege von Apps, die niemand mehr nutzt: App bzw. Zugangsdaten entfernen statt erneuern.",
+        "Uebersicht: Entra ID > Overview > Recommendations > \"Renew expiring application credentials\" listet ablaufende Zugangsdaten (Preview)."
+      ],
+      "learn": [
+        {
+          "title": "Zugangsdaten einer App hinzufuegen (Zertifikat, Client Secret)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials#add-a-credential-to-your-application"
+        },
+        {
+          "title": "Empfehlung: Ablaufende App-Zugangsdaten erneuern",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/recommendation-renew-expiring-application-credential#action-plan"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A21": {
+      "portal": "entra",
+      "path": "",
+      "steps": [
+        "Vorher pruefen, welche Skripte noch das MSOnline-Modul (Connect-MsolService) nutzen, und sie auf Microsoft Graph PowerShell umstellen (Zuordnungstabelle MSOnline zu Graph in Learn).",
+        "Microsoft Graph PowerShell: Import-Module Microsoft.Graph.Identity.SignIns; Connect-MgGraph -Scopes \"Policy.ReadWrite.Authorization\".",
+        "Update-MgPolicyAuthorizationPolicy -BodyParameter @{ blockMsolPowerShell = $true }",
+        "Kontrolle: Get-MgPolicyAuthorizationPolicy | Select-Object BlockMsolPowerShell (soll True sein)."
+      ],
+      "learn": [
+        {
+          "title": "Update-MgPolicyAuthorizationPolicy: MSOL PowerShell blockieren",
+          "url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.identity.signins/update-mgpolicyauthorizationpolicy?view=graph-powershell-1.0#example-2-block-msol-powershell-in-tenant"
+        },
+        {
+          "title": "MSOnline-Cmdlets in Microsoft Graph PowerShell finden",
+          "url": "https://learn.microsoft.com/en-us/powershell/microsoftgraph/azuread-msoline-cmdlet-map?view=graph-powershell-1.0"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Laut Learn sperrt die Einstellung auch den benutzerbasierten Zugriff auf den alten Dienstendpunkt, den MSOL PowerShell verwendet."
+    },
+    "A22": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Users > User settings",
+      "steps": [
+        "Entra ID > Users > User settings oeffnen (mindestens Cloud Application Administrator).",
+        "\"Users can register applications\" auf \"No\" - wer Apps registrieren soll, bekommt die Rolle \"Application Developer\".",
+        "\"Restrict non-admin users from creating tenants\" auf \"Yes\" - Ausnahmen bekommen die Rolle \"Tenant Creator\"; Einstellungen speichern.",
+        "Gruppen-Einstellungen \"General\" oeffnen (Learn: All groups > Groups > General settings) und \"Users can create security groups in Azure portals, API or PowerShell\" auf \"No\".",
+        "Benutzer mit mindestens User Administrator koennen weiterhin Sicherheitsgruppen anlegen; Besitzer verwalten ihre bestehenden Gruppen weiter."
+      ],
+      "learn": [
+        {
+          "title": "App-Registrierung fuer Benutzer abschalten",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/delegate-app-roles#to-disable-the-default-ability-to-create-application-registrations-or-consent-to-applications"
+        },
+        {
+          "title": "Standard-Benutzerrechte einschraenken (Apps, Sicherheitsgruppen, Tenants)",
+          "url": "https://learn.microsoft.com/en-us/entra/fundamentals/users-default-permissions#restrict-member-users-default-permissions"
+        },
+        {
+          "title": "Gruppen-Einstellungen: Sicherheitsgruppen anlegen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/groups-self-service-management#make-a-group-available-for-user-self-service"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A23": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies > New policy",
+      "steps": [
+        "Assignments > Users or workload identities: Include > \"Select users and groups\" > \"Guest or external users\" (alle Typen waehlen); Exclude \"Users and groups\" mit den Notfallkonten.",
+        "Target resources > Resources (formerly cloud apps) > Include: \"All resources (formerly 'All cloud apps')\".",
+        "Access controls > Session: \"Sign-in frequency\" > \"Periodic reauthentication\" mit hoechstens 24 \"Hours\" (oder \"Every time\") > Select.",
+        "Enable policy zuerst \"Report-only\", Ergebnisse pruefen, dann auf \"On\" stellen."
+      ],
+      "learn": [
+        {
+          "title": "Anmeldehaeufigkeit per Conditional Access festlegen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/howto-conditional-access-session-lifetime#policy-1-sign-in-frequency-control"
+        },
+        {
+          "title": "Gaeste und externe Benutzer als Ziel waehlen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-guests-mfa-strength#create-a-conditional-access-policy"
+        },
+        {
+          "title": "Sign-in frequency: Verhalten und Hinweise",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-session-lifetime#configuring-authentication-session-controls"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Ist \"Remember MFA on trusted devices\" eingeschaltet, empfiehlt Learn, es vor der Sign-in frequency abzuschalten, da beide zusammen unerwartete Abfragen ausloesen koennen."
+    },
+    "A24": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Named locations",
+      "steps": [
+        "Entra ID > Conditional Access > Named locations: \"Countries location\" anlegen, Namen vergeben, die zu sperrenden Countries/Regions waehlen > Create.",
+        "Conditional Access > Policies > New policy: Users or workload identities: Include \"All users\"; Exclude \"Users and groups\" mit den Notfallkonten.",
+        "Target resources > Resources (formerly cloud apps) > Include: \"All resources (formerly 'All cloud apps')\".",
+        "Network: Configure \"Yes\", Include \"Selected networks and locations\", den angelegten Laender-Standort waehlen > Select.",
+        "Access controls > Grant: \"Block access\" > Select.",
+        "Enable policy zuerst \"Report-only\", Anmeldeprotokolle pruefen, dann auf \"On\" stellen."
+      ],
+      "learn": [
+        {
+          "title": "Zugriff nach Standort blockieren",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-by-location#create-a-conditional-access-policy"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A25": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies > New policy",
+      "steps": [
+        "Assignments > Users or workload identities: Include \"All users\"; Exclude \"Directory roles\" (die Admin-Rollen, die die Portale brauchen) sowie \"Users and groups\" mit den Notfallkonten bzw. der als Admin-Gruppe hinterlegten Gruppe.",
+        "Target resources > Resources (formerly cloud apps) > Include > Select resources: \"Microsoft Admin Portals\".",
+        "Access controls > Grant: \"Block access\" > Select.",
+        "Enable policy zuerst auf \"Report-only\", Anmeldeprotokolle pruefen, dann auf \"On\" stellen.",
+        "Achtung: Die Sperre trifft auch die Microsoft-365-Selbstinstallationsseite (Office-Installation durch Benutzer)."
+      ],
+      "learn": [
+        {
+          "title": "Conditional Access: Target resources - Microsoft Admin Portals",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-conditional-access-cloud-apps#microsoft-admin-portals"
+        },
+        {
+          "title": "Richtlinie fuer die Microsoft Admin Portals anlegen (Muster: MFA fuer Admins)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-old-require-mfa-admin-portals#create-a-conditional-access-policy"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A26": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Users",
+      "steps": [
+        "Entra ID > Users: die vom Pruefer gemeldeten Gastkonten oeffnen; unter Properties steht \"Invitation state\" (\"Pending acceptance\" = nie angenommen).",
+        "Mit der einladenden Person (Sponsor) klaeren, ob der Gast noch gebraucht wird.",
+        "Noch gebraucht: in der Kachel \"B2B collaboration\" \"Resend invitation\" waehlen; die Regel zaehlt dann ab der neuen Einladung.",
+        "Nicht mehr gebraucht: Konto auswaehlen > \"Delete user\"; es bleibt 30 Tage unter \"Deleted users\" wiederherstellbar."
+      ],
+      "learn": [
+        {
+          "title": "Einladungsstatus pruefen und erneut senden",
+          "url": "https://learn.microsoft.com/en-us/entra/fundamentals/how-to-create-delete-users#guest-user-invitations"
+        },
+        {
+          "title": "Benutzer loeschen",
+          "url": "https://learn.microsoft.com/en-us/entra/fundamentals/how-to-create-delete-users#delete-a-user"
+        },
+        {
+          "title": "Gast-Eigenschaften vor der Einloesung",
+          "url": "https://learn.microsoft.com/en-us/entra/external-id/user-properties#invitation-redemption"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A27": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Users > Manage view > Edit columns",
+      "steps": [
+        "Entra ID > Users > Manage view > Edit columns > \"+ Add column\" > \"Last interactive sign-in time\" > Save; mit \"Add filter\" (Operator \"< =\") Konten vor einem Stichtag (z. B. vor 90 Tagen) anzeigen.",
+        "Die vom Pruefer gemeldeten Admin-Konten einzeln oeffnen (Overview > Sign-ins) und klaeren, ob sie noch gebraucht werden.",
+        "Nicht mehr gebraucht: Benutzer > Assigned roles > bei der Rolle \"Remove\" (bei Rolle ueber Gruppe: Benutzer aus der Gruppe entfernen), danach Konto sperren oder loeschen.",
+        "Noch gebraucht: der Inhaber meldet sich einmal erfolgreich an; Fehlversuche zaehlen nicht.",
+        "Notfallkonten sind ausgenommen, sofern sie unter V1 hinterlegt sind."
+      ],
+      "learn": [
+        {
+          "title": "Inaktive Benutzerkonten finden",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/howto-manage-inactive-user-accounts#how-to-find-and-investigate-inactive-user-accounts"
+        },
+        {
+          "title": "Rollen eines Benutzers entfernen",
+          "url": "https://learn.microsoft.com/en-us/entra/fundamentals/how-to-assign-roles-to-users#remove-roles"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A28": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Authentication methods > Password protection",
+      "steps": [
+        "Voraussetzung: Proxy-Dienst und DC-Agent von Microsoft Entra Password Protection im lokalen AD installiert und registriert (Deploy-Artikel); ohne Agent wirkt die Einstellung nicht.",
+        "Entra ID > Authentication methods > Password protection (mindestens Authentication Administrator): \"Enable password protection on Windows Server Active Directory\" auf \"Yes\".",
+        "\"Mode\" zuerst auf \"Audit\" stellen > Save und die Ereignisprotokolle der Domaenencontroller beobachten (schwache Kennwoerter werden nur protokolliert).",
+        "Passt alles: \"Mode\" auf \"Enforced\" > Save. Unsichere Kennwoerter werden dann abgelehnt; Benutzer sehen die uebliche Meldung, dass das Kennwort die Anforderungen nicht erfuellt."
+      ],
+      "learn": [
+        {
+          "title": "Password Protection fuer das lokale AD einschalten",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/howto-password-ban-bad-on-premises-operations#enable-on-premises-password-protection"
+        },
+        {
+          "title": "Proxy und DC-Agent bereitstellen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/howto-password-ban-bad-on-premises-deploy"
+        },
+        {
+          "title": "Lizenzanforderungen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-password-ban-bad#license-requirements"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Fuer Benutzer, die aus dem lokalen AD synchronisiert werden, braucht Password Protection Entra ID P1 oder P2."
+    },
+    "A29": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Roles & admins",
+      "steps": [
+        "Info-Regel: PIM braucht Entra ID P2 oder Entra ID Governance (P2 ist z. B. in Microsoft 365 E5/A5 enthalten); mit nur P1 ist PIM nicht verfuegbar.",
+        "Bei Kauf: Lizenzen fuer alle Benutzer mit berechtigten (eligible) oder zeitlich begrenzten Rollen, fuer Genehmiger von Aktivierungen und fuer Access-Review-Pruefer einplanen.",
+        "Ersatz mit P1: Entra ID > Roles & admins > Rolle (z. B. Global Administrator) anklicken > Assignments und die Zuweisungen regelmaessig pruefen.",
+        "Zum Dokumentieren: Roles & admins > All roles > \"Download assignments\" (CSV aller aktiven Zuweisungen); je Benutzer unter Users > Benutzer > Assigned roles (direkt oder ueber Gruppe)."
+      ],
+      "learn": [
+        {
+          "title": "Lizenzen fuer Privileged Identity Management",
+          "url": "https://learn.microsoft.com/en-us/entra/id-governance/licensing-fundamentals#privileged-identity-management"
+        },
+        {
+          "title": "Rollenzuweisungen auflisten",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/view-assignments#list-role-assignments-with-tenant-scope"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Laeuft eine P2- bzw. Governance-Lizenz ab, werden berechtigte (eligible) Rollenzuweisungen entfernt; dauerhafte aktive Zuweisungen bleiben."
+    },
+    "A30": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > New policy",
+      "steps": [
+        "Assignments > Users or workload identities: Include \"All users\" (oder \"Directory roles\" mit den Admin-Rollen); Exclude \"Users and groups\" mit den Notfallkonten.",
+        "Target resources > Include: \"All resources (formerly 'All cloud apps')\".",
+        "Conditions > Sign-in risk: Configure \"Yes\", \"High\" und \"Medium\" waehlen > Done.",
+        "Access controls > Grant: \"Grant access\" > \"Require authentication strength\" > \"Multifactor authentication\" > Select; Session > \"Sign-in frequency\" > \"Every time\" > Select.",
+        "Enable policy zuerst \"Report-only\", Ergebnisse pruefen, dann auf \"On\" stellen.",
+        "Benutzer ohne MFA-Registrierung werden bei riskanter Anmeldung blockiert (AADSTS53004), daher vorher MFA-Registrierung sicherstellen."
+      ],
+      "learn": [
+        {
+          "title": "MFA bei erhoehtem Anmelderisiko (Sign-in risk)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-risk-based-sign-in#enable-with-conditional-access-policy"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Anmelderisiko in Conditional Access braucht Entra ID P2; mit nur P1 ist die Regel nicht erfuellbar, dann helfen MFA fuer alle, Legacy-Auth- und Geraetecode-Flow-Block."
+    },
+    "A31": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > External Identities > Cross-tenant access settings > Organizational settings",
+      "steps": [
+        "Entra ID > External Identities > Cross-tenant access settings oeffnen (mindestens Security Administrator), Tab \"Organizational settings\".",
+        "Jede gelistete Organisation (Domain bzw. Tenant-ID) pruefen: Ist sie ein bekannter Partner, z. B. Schulerhalter oder Dienstleister?",
+        "In den Spalten \"Inbound access\" und \"Outbound access\" sehen, ob die Einstellungen geerbt (\"Inherited from default\") oder angepasst sind; angepasste per Link oeffnen und pruefen.",
+        "Nur eine unbekannte bzw. nicht mehr benoetigte Organisation entfernen: Muelleimer-Symbol in ihrer Zeile - danach gelten fuer sie wieder die Default settings."
+      ],
+      "learn": [
+        {
+          "title": "Organisationsbezogene Einstellungen pruefen und aendern",
+          "url": "https://learn.microsoft.com/en-us/entra/external-id/cross-tenant-access-settings-b2b-collaboration#modify-inbound-access-settings"
+        },
+        {
+          "title": "Organisation aus Organizational settings entfernen",
+          "url": "https://learn.microsoft.com/en-us/entra/external-id/cross-tenant-access-settings-b2b-collaboration#remove-an-organization"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Eine Organisation, die als Cloud-Dienstanbieter eingetragen ist (isServiceProvider), laesst sich nicht entfernen."
+    },
+    "A32": {
+      "portal": "defender",
+      "path": "Microsoft Defender portal > Microsoft Secure Score > Recommended actions",
+      "steps": [
+        "https://security.microsoft.com/securescore oeffnen: die Kachel \"Your secure score\" zeigt Prozent und Punkte; ueber \"Include\" laesst sich \"Current license score\" (mit den vorhandenen Lizenzen erreichbar) einblenden.",
+        "Tab \"Recommended actions\": nach Kategorie (z. B. Identity) filtern; oben stehen Massnahmen mit vielen offenen Punkten und wenig Aufwand.",
+        "Massnahme oeffnen, \"Implementation\" (Voraussetzungen, Lizenzen, Schritte) und \"User impact\" lesen, dann umsetzen (ggf. ueber \"Manage in Microsoft Defender XDR\").",
+        "Passt eine Massnahme nicht: Status \"Risk accepted\" mit Notiz (keine Punkte); ist sie anders geloest: \"Resolved through third party\" bzw. \"Resolved through alternate mitigation\".",
+        "Umgesetzte Aenderungen erscheinen nach 24 bis 48 Stunden im Score; danach Verlauf im Katalog vergleichen."
+      ],
+      "learn": [
+        {
+          "title": "Secure Score: Empfehlungen umsetzen",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/microsoft-secure-score-improvement-actions#take-action-to-improve-your-score"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A33": {
+      "portal": "m365",
+      "path": "SharePoint admin center > Policies > Sharing > External sharing",
+      "steps": [
+        "Microsoft 365 admin center > Admin centers > SharePoint oeffnen (ggf. \"Show all\"), dort Policies > Sharing.",
+        "Unter External sharing steht SharePoint auf \"Anyone\": Regler auf \"New and existing guests\" oder enger (\"Existing guests\", siehe A46) stellen.",
+        "OneDrive darf nicht freizuegiger sein als SharePoint; den OneDrive-Regler ebenfalls unter \"Anyone\" setzen.",
+        "Save. Der Link-Typ \"Anyone with the link\" steht danach nicht mehr zur Verfuegung."
+      ],
+      "learn": [
+        {
+          "title": "Freigabeeinstellungen fuer SharePoint und OneDrive",
+          "url": "https://learn.microsoft.com/en-us/sharepoint/turn-external-sharing-on-or-off#change-organization-level-external-sharing-setting"
+        },
+        {
+          "title": "SharePoint admin center ueber Admin centers oeffnen",
+          "url": "https://learn.microsoft.com/en-us/troubleshoot/sharepoint/sharing-and-permissions/organization-policies-do-not-allow-you-to-share-with-users-error"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A34": {
+      "portal": "m365",
+      "path": "SharePoint admin center > Policies > Access control > Apps that don't use modern authentication",
+      "steps": [
+        "Vorher pruefen, ob noch alte Anwendungen anmelden: Entra admin center > Entra ID > Monitoring & health > Sign-in logs, Filter \"Client App\" auf die Legacy-Protokolle (auch Registerkarte \"User sign-ins (non-interactive)\").",
+        "Microsoft 365 admin center > Admin centers > SharePoint oeffnen (ggf. \"Show all\").",
+        "Policies > Access control > \"Apps that don't use modern authentication\" waehlen.",
+        "\"Block access\" auswaehlen > Save. Betroffen sind u. a. Drittanbieter-Apps und Office-Versionen vor Office 2013."
+      ],
+      "learn": [
+        {
+          "title": "Apps ohne moderne Authentifizierung blockieren",
+          "url": "https://learn.microsoft.com/en-us/sharepoint/control-access-from-unmanaged-devices#how-do-i-block-access"
+        },
+        {
+          "title": "Legacy-Anmeldungen in den Sign-in logs finden",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-legacy-authentication#identify-legacy-authentication-use"
+        },
+        {
+          "title": "Set-SPOTenant (LegacyAuthProtocolsEnabled)",
+          "url": "https://learn.microsoft.com/en-us/powershell/module/sharepoint-online/set-spotenant"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A35": {
+      "portal": "m365",
+      "path": "SharePoint admin center > Policies > Sharing > More external sharing settings",
+      "steps": [
+        "Microsoft 365 admin center > Admin centers > SharePoint oeffnen (ggf. \"Show all\"), dort Policies > Sharing.",
+        "Abschnitt \"More external sharing settings\" aufklappen.",
+        "Haken bei \"Allow guests to share items they don't own\" entfernen.",
+        "Save. Danach muessen Gaeste Vollzugriff (full control) haben, um Elemente nach aussen zu teilen."
+      ],
+      "learn": [
+        {
+          "title": "Weitere Einstellungen fuer externe Freigabe",
+          "url": "https://learn.microsoft.com/en-us/sharepoint/turn-external-sharing-on-or-off#more-external-sharing-settings"
+        },
+        {
+          "title": "Graph-Eigenschaft isResharingByExternalUsersEnabled",
+          "url": "https://learn.microsoft.com/en-us/graph/api/resources/sharepointsettings"
+        },
+        {
+          "title": "SharePoint admin center ueber Admin centers oeffnen",
+          "url": "https://learn.microsoft.com/en-us/troubleshoot/sharepoint/sharing-and-permissions/organization-policies-do-not-allow-you-to-share-with-users-error"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A36": {
+      "portal": "m365",
+      "path": "SharePoint admin center > Policies > Sharing > More external sharing settings > Limit external sharing by domain",
+      "steps": [
+        "Microsoft 365 admin center > Admin centers > SharePoint oeffnen (ggf. \"Show all\"), dort Policies > Sharing. Bereich \"More external sharing settings\" aufklappen.",
+        "\"Limit external sharing by domain\": zeigt, ob Freigaben nur an erlaubte bzw. nicht an gesperrte Domaenen gehen; Domaenen im Format domain.com eintragen > Save.",
+        "Leerlauf-Abmeldung ansehen: Policies > Access control > \"Idle session sign-out\".",
+        "\"Sign out inactive users automatically\" einschalten, Zeitpunkt fuer Warnung und Abmeldung waehlen > Save. Gilt fuer die ganze Organisation; auf verwalteten Geraeten mit Edge wird normalerweise nicht abgemeldet.",
+        "Auch die erlaubten bzw. gesperrten Domaenen in Microsoft Entra (External collaboration settings) wirken auf SharePoint-Freigaben."
+      ],
+      "learn": [
+        {
+          "title": "Externe Freigabe nach Domaene einschraenken",
+          "url": "https://learn.microsoft.com/en-us/sharepoint/turn-external-sharing-on-or-off#more-external-sharing-settings"
+        },
+        {
+          "title": "Inaktive Benutzer abmelden",
+          "url": "https://learn.microsoft.com/en-us/sharepoint/sign-out-inactive-users"
+        },
+        {
+          "title": "SharePoint admin center ueber Admin centers oeffnen",
+          "url": "https://learn.microsoft.com/en-us/troubleshoot/sharepoint/sharing-and-permissions/organization-policies-do-not-allow-you-to-share-with-users-error"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Idle session sign-out setzt Microsoft Entra ID P1 oder P2 voraus."
+    },
+    "A37": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Users > New user > Create new user",
+      "steps": [
+        "Fuer jeden betroffenen Admin ein eigenes reines Cloud-Konto anlegen: Entra ID > Users > New user > Create new user, Domain am besten *.onmicrosoft.com.",
+        "Dem neuen Konto die noetige Rolle geben: Benutzer > Assigned roles > Add assignments.",
+        "Am neuen Konto MFA registrieren und die Anmeldung testen.",
+        "Dann beim synchronisierten Konto die Rolle entfernen: Benutzer > Assigned roles > Remove (bzw. aus der rollenzuweisbaren Gruppe nehmen).",
+        "Das synchronisierte Konto bleibt fuer die normale Arbeit (Mail, Teams) bestehen."
+      ],
+      "learn": [
+        {
+          "title": "Best Practice: reine Cloud-Konten fuer Entra-Rollen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/best-practices#9-use-cloud-native-accounts-for-microsoft-entra-roles"
+        },
+        {
+          "title": "Benutzer anlegen",
+          "url": "https://learn.microsoft.com/en-us/entra/fundamentals/how-to-create-delete-users"
+        },
+        {
+          "title": "Rollen an Benutzer zuweisen und entfernen",
+          "url": "https://learn.microsoft.com/en-us/entra/fundamentals/how-to-assign-roles-to-users"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A38": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Entra Connect > Connect sync",
+      "steps": [
+        "Entra ID > Entra Connect > Connect sync: oben die letzte Synchronisierung ablesen.",
+        "Auf dem Entra-Connect-Server in PowerShell Get-ADSyncScheduler ausfuehren: SyncCycleEnabled muss True sein, StagingModeEnabled False (im Staging-Modus wird nicht exportiert).",
+        "Ist der Scheduler aus: Set-ADSyncScheduler -SyncCycleEnabled $true.",
+        "Sync von Hand anstossen: Start-ADSyncSyncCycle -PolicyType Delta, danach die Zeit im Portal erneut pruefen.",
+        "Laeuft der Sync weiter nicht: pruefen, ob der Server laeuft und Internetzugang hat; Fehler im Synchronization Service Manager ansehen."
+      ],
+      "learn": [
+        {
+          "title": "Letzte Synchronisierung im Entra admin center pruefen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-post-installation#verify-the-scheduled-synchronization-task"
+        },
+        {
+          "title": "Entra Connect Sync: Scheduler",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-sync-feature-scheduler"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A39": {
+      "portal": "entra",
+      "path": "Microsoft Entra Connect Health > Sync services > Sync errors",
+      "steps": [
+        "Voraussetzung: Connect-Health-Agent auf jedem Entra-Connect-Sync-Server installiert; sonst fehlt der Fehlerbericht.",
+        "Microsoft Entra Connect Health (https://aka.ms/aadconnecthealth) > Sync services > Dienst waehlen > Sync errors; Kategorie (z. B. \"Duplicate Attribute\") waehlen und Zeile aufklappen: Attribut sowie AD- und Entra-Objekt werden angezeigt.",
+        "Entscheiden, welches Objekt den doppelten Wert (z. B. UPN oder Mailadresse) behalten soll, und beim anderen den Wert im Quellverzeichnis entfernen bzw. aendern - bei synchronisierten Objekten im lokalen AD; manchmal muss ein Objekt geloescht werden.",
+        "Naechsten Sync abwarten; der Bericht wird alle 30 Minuten aktualisiert.",
+        "Bei unterstuetzten Duplicate-Attribute-Fehlern hilft \"Fix this error\" > \"Troubleshoot\" (Assistent; braucht mindestens Contributor-Rechte in Azure RBAC)."
+      ],
+      "learn": [
+        {
+          "title": "Connect Health: Sync-Fehlerbericht",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-health-sync#object-level-synchronization-error-report"
+        },
+        {
+          "title": "Sync-Fehler verstehen und beheben (doppelte Attribute)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/tshoot-connect-sync-errors#duplicate-attributes"
+        },
+        {
+          "title": "Doppelte Attribute mit Fix this error beheben",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-health-diagnose-sync-errors#diagnostic-and-troubleshooting-steps-in-connect-health"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "A40": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Authentication methods > Policies",
+      "steps": [
+        "Vorher sicherstellen, dass betroffene Benutzer eine staerkere Methode registriert haben (Authenticator, Passkey), z. B. per Entra ID > Authentication methods > Registration campaign - wer nur SMS/Anruf hat, muss sonst neu registrieren.",
+        "Entra ID > Authentication methods > Policies > \"SMS\" oeffnen, \"Enable\" ausschalten > Save.",
+        "Ebenso \"Voice call\" oeffnen, \"Enable\" ausschalten > Save.",
+        "Alte Richtlinien pruefen: eine Methode ist erst gesperrt, wenn sie in allen Richtlinien aus ist (Legacy-MFA \"Call to phone\", SSPR \"Mobile phone\"/\"Office phone\"); alternativ unter \"Manage migration\" auf \"Migration Complete\" stellen."
+      ],
+      "learn": [
+        {
+          "title": "Authentication methods policy und Zusammenspiel mit Legacy-Richtlinien",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-methods-manage#how-policies-work-together"
+        },
+        {
+          "title": "SMS-Methode in der Richtlinie (Enable, Target, Save)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/howto-authentication-sms-signin#enable-the-sms-based-authentication-method"
+        },
+        {
+          "title": "Abkuendigung von SMS und Sprachanruf durch Microsoft",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-sms-voice-retirement"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Microsoft stellt die eigene SMS-/Sprachzustellung ab 1. Februar 2027 ein, fuer Global Administrators und externe Benutzer ab 1. Juli 2027."
+    },
+    "A41": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Enterprise apps > Consent and permissions > Admin consent settings",
+      "steps": [
+        "Als Global Administrator Entra ID > Enterprise apps > Consent and permissions > Admin consent settings oeffnen.",
+        "Unter \"Admin consent requests\" die Option \"Users can request admin consent to apps they are unable to consent to\" auf \"Yes\".",
+        "\"Who can review admin consent requests\": Pruefer (Benutzer, Gruppen oder Rollen) waehlen; E-Mail-Benachrichtigungen und Ablauf-Erinnerungen einschalten, \"Consent request expires after (days)\" festlegen.",
+        "Save - es kann bis zu einer Stunde dauern, bis der Workflow aktiv ist.",
+        "Anfragen bearbeiten: Entra ID > Enterprise apps > Activity > \"Admin consent requests\", Tab \"My Pending\"."
+      ],
+      "learn": [
+        {
+          "title": "Admin consent workflow einschalten",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-admin-consent-workflow#enable-the-admin-consent-workflow"
+        },
+        {
+          "title": "Admin-Zustimmungsanfragen pruefen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/review-admin-consent-requests#review-and-take-action-on-admin-consent-requests-1"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Pruefer koennen nur genehmigen, wenn sie selbst Admin-Zustimmung erteilen duerfen; Anfragen fuer Microsoft-Graph-Anwendungsberechtigungen kann nur ein Global Administrator genehmigen."
+    },
+    "A42": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Enterprise apps > All applications > Permissions > Admin consent",
+      "steps": [
+        "Entra ID > Enterprise apps > All applications: die gemeldete App oeffnen > Permissions > Tab \"Admin consent\" (Rechte fuer die ganze Organisation).",
+        "Je Recht klaeren, ob die App es wirklich braucht (Hersteller-Doku, Zweck der App); Details zeigt ein Klick auf das Recht (\"Permission Details\").",
+        "Nicht benoetigtes Recht entfernen: beim Recht auf \"...\" > \"Revoke permission\".",
+        "Bei eigenen App-Registrierungen das Recht zusaetzlich aus der Anforderung nehmen: Entra ID > App registrations > App > API permissions > \"Revoke admin consent\", dann \"remove permission\" - sonst kann es erneut erteilt werden.",
+        "Wird die App gar nicht mehr gebraucht, die App selbst entfernen statt einzelne Rechte."
+      ],
+      "learn": [
+        {
+          "title": "Rechte von Enterprise-Apps pruefen und widerrufen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/manage-application-permissions#review-and-revoke-permissions-in-the-microsoft-entra-admin-center"
+        },
+        {
+          "title": "Angeforderte Rechte einer App-Registrierung entfernen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity-platform/howto-update-permissions#stop-requesting-permissions-for-static-consent"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Rollen: mindestens Cloud Application Administrator."
+    },
+    "A43": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Settings > Org settings > Services > Self-service trials and purchases",
+      "steps": [
+        "E-Mail-Selbstregistrierung per Microsoft Graph PowerShell sperren: Import-Module Microsoft.Graph.Identity.SignIns; Connect-MgGraph -Scopes \"Policy.ReadWrite.Authorization\".",
+        "Update-MgPolicyAuthorizationPolicy -BodyParameter @{ allowedToSignUpEmailBasedSubscriptions = $false; allowEmailVerifiedUsersToJoinOrganization = $false } - danach gibt es keine Self-Service-Anmeldung per E-Mail mehr und kein Konto kann per E-Mail-Bestaetigung dem Tenant beitreten (beides prueft die Regel).",
+        "Kontrolle: Get-MgPolicyAuthorizationPolicy | Select-Object AllowedToSignUpEmailBasedSubscriptions, AllowEmailVerifiedUsersToJoinOrganization.",
+        "Testabos und Kaeufe (Global Administrator): Microsoft 365 admin center > Settings > Org settings > Tab \"Services\" > \"Self-service trials and purchases\".",
+        "Je Produkt (z. B. Power BI Pro) oeffnen, \"Do not allow\" waehlen > \"Save changes\"; alternativ per MSCommerce-Modul (Global oder Billing Administrator): Install-Module MSCommerce; Connect-MSCommerce; Update-MSCommerceProductPolicy -PolicyId AllowSelfServicePurchase -ProductId <ProductId> -Value \"Disabled\"."
+      ],
+      "learn": [
+        {
+          "title": "Self-Service-Anmeldung per E-Mail steuern (Autorisierungsrichtlinie)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/directory-self-service-signup#control-these-capabilities"
+        },
+        {
+          "title": "Self-Service-Kaeufe und Testabos zulassen oder sperren",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/commerce/subscriptions/manage-self-service-purchases-admins?view=o365-worldwide#allow-or-block-self-service-purchases-and-trials"
+        },
+        {
+          "title": "MSCommerce: AllowSelfServicePurchase je Produkt sperren",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/commerce/subscriptions/allowselfservicepurchase-powershell#view-or-set-the-status-for-allowselfservicepurchase-for-microsoft-products"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Kaeufe und Testabos lassen sich nur je Produkt sperren, neue Produkte sind standardmaessig erlaubt, und die Aenderung kann bis zu 72 Stunden dauern."
+    },
+    "A44": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > External Identities > Cross-tenant access settings > Default settings",
+      "steps": [
+        "Entra ID > External Identities > Cross-tenant access settings oeffnen (mindestens Security Administrator), Tab \"Default settings\".",
+        "\"Edit inbound defaults\" > Tab \"B2B direct connect\": \"External users and groups\" auf \"Block access\" fuer \"All external users and groups\"; Tab \"Applications\" auf \"Block access\" fuer \"All applications\" > Save.",
+        "\"Edit outbound defaults\" > Tab \"B2B direct connect\": \"Users and groups\" auf \"Block access\" fuer alle eigenen Benutzer; Tab \"External applications\" auf \"Block access\" fuer \"All external applications\" > Save.",
+        "Braucht eine Partnerschule B2B direct connect (geteilte Teams-Kanaele), nur diese Organisation unter \"Organizational settings\" freigeben - beide Seiten muessen es aktivieren."
+      ],
+      "learn": [
+        {
+          "title": "B2B direct connect: Standard-Einstellungen",
+          "url": "https://learn.microsoft.com/en-us/entra/external-id/cross-tenant-access-settings-b2b-direct-connect#configure-default-settings"
+        },
+        {
+          "title": "Eingehende B2B-direct-connect-Einstellungen",
+          "url": "https://learn.microsoft.com/en-us/entra/external-id/cross-tenant-access-settings-b2b-direct-connect#to-change-inbound-b2b-direct-connect-settings"
+        },
+        {
+          "title": "Ausgehende B2B-direct-connect-Einstellungen",
+          "url": "https://learn.microsoft.com/en-us/entra/external-id/cross-tenant-access-settings-b2b-direct-connect#to-change-the-outbound-access-settings"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Microsoft-Standard ist B2B direct connect eingehend und ausgehend blockiert."
+    },
+    "A45": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Enterprise apps > All applications > Permissions > Admin consent",
+      "steps": [
+        "Entra ID > Enterprise apps > All applications: die gemeldete App oeffnen > Permissions > Tab \"Admin consent\" zeigt die fuer die ganze Organisation erteilten Rechte.",
+        "Je kritischem Recht (Mail, Dateien, Verzeichnis schreiben ...) klaeren, ob die App es fuer alle Benutzer braucht; Details per Klick auf das Recht.",
+        "Nicht benoetigte Zustimmung entfernen: beim Recht auf \"...\" > \"Revoke permission\".",
+        "Der Widerruf verhindert nicht, dass die App das Recht erneut anfordert: bei eigenen Apps das Recht unter App registrations > API permissions entfernen; Benutzer-Zustimmung allgemein einschraenken (siehe Link).",
+        "Microsoft-eigene Apps nur widerrufen, wenn klar ist, dass sie nicht gebraucht werden."
+      ],
+      "learn": [
+        {
+          "title": "Rechte von Enterprise-Apps pruefen und widerrufen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/manage-application-permissions#review-and-revoke-permissions-in-the-microsoft-entra-admin-center"
+        },
+        {
+          "title": "Festlegen, wie Benutzer Apps zustimmen duerfen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-user-consent"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Zustimmungen einzelner Benutzer (Tab \"User consent\") lassen sich im Portal nicht widerrufen, nur per Graph oder PowerShell."
+    },
+    "A46": {
+      "portal": "m365",
+      "path": "SharePoint admin center > Policies > Sharing > External sharing",
+      "steps": [
+        "Microsoft 365 admin center > Admin centers > SharePoint oeffnen (ggf. \"Show all\"), dort Policies > Sharing.",
+        "Unter External sharing den SharePoint-Regler auf \"Existing guests\" (nur Gaeste, die schon im Verzeichnis sind) oder \"Only people in your organization\" stellen.",
+        "Den OneDrive-Regler gleich oder enger einstellen (OneDrive darf nicht freizuegiger sein als SharePoint).",
+        "Save. Nach dem Einschraenken verlieren Gaeste den Zugriff meist innerhalb einer Stunde.",
+        "Einzelne Websites koennen nur gleich oder enger als die Organisation eingestellt werden: Sites > Active sites > Website > Sharing."
+      ],
+      "learn": [
+        {
+          "title": "Freigabestufen fuer SharePoint und OneDrive",
+          "url": "https://learn.microsoft.com/en-us/sharepoint/turn-external-sharing-on-or-off#external-sharing-options"
+        },
+        {
+          "title": "SharePoint admin center ueber Admin centers oeffnen",
+          "url": "https://learn.microsoft.com/en-us/troubleshoot/sharepoint/sharing-and-permissions/organization-policies-do-not-allow-you-to-share-with-users-error"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "C02": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Users > Guest users",
+      "steps": [
+        "Users > Guest users: Liste der Gastkonten durchgehen; jeder Gast, der in Teams, SharePoint oder ueber Entra eingeladen wurde, steht hier.",
+        "Je Gast klaeren, wer ihn eingeladen hat und ob er noch gebraucht wird (die Teams- und Gruppenmitgliedschaften zeigt C06).",
+        "Nicht mehr benoetigte Gaeste entfernen: Gast auswaehlen > \"Delete a user\".",
+        "Regelmaessig wiederholen und die neue Gastzahl als Vergleichswert nehmen; automatisches Aufraeumen inaktiver Gaeste geht mit Access reviews (eigene Lizenz, siehe Hinweis)."
+      ],
+      "learn": [
+        {
+          "title": "Gast entfernen (Microsoft 365 admin center)",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/manage-guest-access-in-groups#remove-a-guest"
+        },
+        {
+          "title": "Gaeste im Microsoft 365 admin center",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/add-users/about-guest-users"
+        },
+        {
+          "title": "Inaktive Gaeste mit Access reviews aufraeumen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/clean-up-stale-guest-accounts"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Access reviews brauchen Microsoft Entra ID Governance oder Entra Suite, nicht in P1 enthalten."
+    },
+    "C03": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Teams & groups > Active teams & groups > Ownerless groups",
+      "steps": [
+        "Teams & groups > Active teams & groups > Filter > \"Ownerless groups\": Liste der Gruppen und Teams ohne Besitzer.",
+        "Gruppe oeffnen > Membership > Owners > Add: mindestens einen aktuellen Besitzer (z. B. Klassenvorstand) eintragen > Close.",
+        "Alternativ Teams admin center > Teams > Manage teams: Spalte Owners zeigt die Besitzerzahl; im Team-Profil Besitzer hinzufuegen.",
+        "Vorbeugend: Settings > Org settings > Services > Microsoft 365 Groups > \"When there's no owner, email and ask active group members to become an owner\" > Save.",
+        "Gewollte Ausnahmen (z. B. bewusst verwaltete Sammel-Teams) in HU-MultiTenant eintragen."
+      ],
+      "learn": [
+        {
+          "title": "Gruppen und Teams ohne Besitzer",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/ownerless-groups-teams#see-which-groups-are-ownerless"
+        },
+        {
+          "title": "Besitzer einer Gruppe verwalten",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/manage-groups#manage-group-owners-and-members"
+        },
+        {
+          "title": "Teams im Teams admin center verwalten",
+          "url": "https://learn.microsoft.com/en-us/microsoftteams/manage-teams-in-modern-portal"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "C04": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Teams & groups > Active teams & groups > Membership > Owners",
+      "steps": [
+        "Befund ansehen: Teams admin center > Teams > Manage teams; die Spalte Owners zeigt die Anzahl der Besitzer je Team.",
+        "Im Microsoft 365 admin center: Teams & groups > Active teams & groups > Gruppe bzw. Team oeffnen.",
+        "Membership > Owners > Add: einen zweiten Besitzer (z. B. weitere Lehrkraft) eintragen > Close.",
+        "Faellt ein Besitzer trotzdem weg, hilft die Ownerless-Richtlinie (siehe C03)."
+      ],
+      "learn": [
+        {
+          "title": "Besitzer einer Gruppe verwalten",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/manage-groups#manage-group-owners-and-members"
+        },
+        {
+          "title": "Teams im Teams admin center verwalten",
+          "url": "https://learn.microsoft.com/en-us/microsoftteams/manage-teams-in-modern-portal"
+        },
+        {
+          "title": "Richtlinie fuer Gruppen ohne Besitzer",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/ownerless-groups-teams#set-up-the-ownerless-group-or-team-policy"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "C05": {
+      "portal": "teams",
+      "path": "Teams admin center > Teams > Manage teams > Edit > Privacy",
+      "steps": [
+        "Teams > Manage teams: die Spalte Privacy zeigt, ob ein Team public oder private ist.",
+        "Team auswaehlen (links neben dem Namen) > Edit.",
+        "Privacy auf \"Private\" setzen und speichern.",
+        "M365-Gruppen ohne Team per Exchange Online PowerShell: Set-UnifiedGroup -Identity \"<Gruppe>\" -AccessType Private.",
+        "Gewollte oeffentliche Teams in HU-MultiTenant als Ausnahme eintragen."
+      ],
+      "learn": [
+        {
+          "title": "Team bearbeiten (Privacy) im Teams admin center",
+          "url": "https://learn.microsoft.com/en-us/microsoftteams/manage-teams-in-modern-portal#edit-a-team"
+        },
+        {
+          "title": "Set-UnifiedGroup -AccessType",
+          "url": "https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/set-unifiedgroup"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "C06": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Teams & groups > Active teams & groups > Membership > Members",
+      "steps": [
+        "Teams & groups > Active teams & groups: die gemeldete Gruppe bzw. das Team oeffnen > Membership > Members.",
+        "Beim unerwuenschten Gast auf das X klicken > Save. Bis Teams die Aenderung zeigt, kann es laenger dauern; schneller geht es direkt in Teams ueber den Team-Besitzer.",
+        "Gewollte Gaeste (z. B. externe Lehrkraefte) in HU-MultiTenant als Ausnahme eintragen (Analyse > Sicherheit > Ausnahmen ...).",
+        "Gaeste in Gruppen generell verhindern: Settings > Org settings > Services > Microsoft 365 Groups > \"Let group owners add people outside your organization to Microsoft 365 Groups as guests\" abwaehlen.",
+        "Gastzugriff fuer Teams ganz abschalten (falls nicht gebraucht): Teams admin center > Users > Guest access > \"Guest access\" auf Off. Bestehende Gaeste bleiben dann sichtbar, haben aber keinen Zugriff mehr."
+      ],
+      "learn": [
+        {
+          "title": "Mitglied aus einer Microsoft-365-Gruppe entfernen",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/add-or-remove-members-from-groups#remove-a-member-from-a-group-in-the-admin-center"
+        },
+        {
+          "title": "Gastzugriff in Microsoft-365-Gruppen steuern",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/manage-guest-access-in-groups#manage-groups-guest-access"
+        },
+        {
+          "title": "Gastzugriff in Teams ein- oder ausschalten",
+          "url": "https://learn.microsoft.com/en-us/microsoftteams/set-up-guests#configure-guest-access-in-the-teams-admin-center"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "C07": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Teams & groups > Active teams and groups > Security groups",
+      "steps": [
+        "Teams & groups > Active teams and groups > Security groups > \"Add a security group\": Gruppe fuer erlaubte Ersteller anlegen (z. B. Lehrkraefte), Mitglieder hinzufuegen (nicht als Besitzer).",
+        "Nur eine Gruppe pro Tenant steuert die Erstellung; weitere Gruppen koennen darin verschachtelt werden.",
+        "Mit Microsoft Graph PowerShell (Beta-Modul) das Skript aus Learn ausfuehren: Group.Unified-Einstellung EnableGroupCreation = False und GroupCreationAllowedGroupId = Id der Gruppe.",
+        "Nach 30 Minuten oder mehr mit einem Benutzer ausserhalb der Gruppe testen (z. B. Planner > New Plan muss abgelehnt werden).",
+        "Admin-Rollen wie Teams Service Administrator oder User Administrator koennen weiterhin Gruppen anlegen."
+      ],
+      "learn": [
+        {
+          "title": "Festlegen, wer M365-Gruppen erstellen darf",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/solutions/manage-creation-of-groups"
+        },
+        {
+          "title": "Sicherheitsgruppe im Microsoft 365 admin center anlegen",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/email/create-edit-or-delete-a-security-group#manage-security-groups-in-the-admin-center"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Der Admin, der das einrichtet, und die Mitglieder der erlaubten Gruppe brauchen Microsoft Entra ID P1/P2 oder Microsoft Entra Basic EDU."
+    },
+    "C08": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Teams & groups > Active teams & groups > Membership > Owners",
+      "steps": [
+        "Teams & groups > Active teams & groups: gemeldete Gruppe bzw. Team oeffnen > Membership > Owners.",
+        "Beim Gast-Besitzer auf X klicken und einen internen Besitzer hinzufuegen > Close.",
+        "Tenant-Einstellung pruefen: Microsoft Graph PowerShell, Get-MgBetaDirectorySetting, Werte der Einstellung Group.Unified; AllowGuestsToBeGroupOwner muss False sein (Standard).",
+        "Steht der Wert auf True: mit Update-MgBetaDirectorySetting AllowGuestsToBeGroupOwner auf False setzen (vorher alle aktuellen Werte mit Get-MgBetaDirectorySetting lesen und beim Update vollstaendig zurueckschreiben, sonst werden andere Einstellungen ueberschrieben).",
+        "Zur Kenntnis, ob Gaeste ueberhaupt in Gruppen duerfen: Settings > Org settings > Services > Microsoft 365 Groups."
+      ],
+      "learn": [
+        {
+          "title": "Besitzer einer Gruppe verwalten",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/manage-groups#manage-group-owners-and-members"
+        },
+        {
+          "title": "Gruppeneinstellungen mit PowerShell (AllowGuestsToBeGroupOwner)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/groups-settings-cmdlets#template-settings"
+        },
+        {
+          "title": "Gastzugriff in Microsoft-365-Gruppen",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/manage-guest-access-in-groups#manage-groups-guest-access"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "E01": {
+      "portal": "intune",
+      "path": "Intune admin center > Devices > Manage devices > Compliance > Create policy > Platform \"Windows 10 and later\"",
+      "steps": [
+        "Devices > Manage devices > Compliance > Create policy; Platform \"Windows 10 and later\" > Create.",
+        "Basics: Name vergeben (z. B. \"Windows - Grundschutz\").",
+        "Compliance settings: mindestens das pruefen, was die Schule wirklich verlangt, z. B. \"Require BitLocker\", \"Firewall\", \"Microsoft Defender Antimalware\" und \"Real-time protection\" auf \"Require\".",
+        "Actions for noncompliance: Standardaktion \"Mark device noncompliant\" bei Bedarf mit Schonfrist (z. B. 1 Tag) versehen.",
+        "Assignments: \"Add groups\" - die Geraetegruppen (bzw. Benutzergruppen) der Schule zuweisen > Review + create > Create."
+      ],
+      "learn": [
+        {
+          "title": "Compliance-Richtlinie in Intune erstellen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/compliance/create-policy#create-the-policy"
+        },
+        {
+          "title": "Compliance-Einstellungen fuer Windows",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/compliance/ref-windows-settings"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Eine Richtlinie ohne Zuweisung zaehlt nicht - erst die Zuweisung an eine Gruppe macht sie wirksam."
+    },
+    "E03": {
+      "portal": "intune",
+      "path": "Intune admin center > Reports > Device compliance > Reports > Noncompliant devices and settings",
+      "steps": [
+        "Reports > Device compliance > Reports tab > \"Noncompliant devices and settings\" > \"Generate report\".",
+        "Spalten \"Noncompliant setting\" und \"Noncompliant policy\" zeigen je Geraet, welche Einstellung den Status verursacht.",
+        "Die haeufigsten Ursachen gesammelt beheben (z. B. fehlende Verschluesselung, veraltetes Windows, Defender aus) - meist ueber die passende Konfigurations- bzw. Endpoint-security-Richtlinie fuer die Geraetegruppe.",
+        "Ueberblick: Devices > Compliance > Monitor tab > \"Device compliance status\"; veraltete oder nicht mehr genutzte Geraete aufraeumen, damit sie die Quote nicht verfaelschen.",
+        "Nach der Behebung den naechsten Check-in der Geraete abwarten, dann erneut pruefen."
+      ],
+      "learn": [
+        {
+          "title": "Intune-Berichte: Noncompliant devices and settings",
+          "url": "https://learn.microsoft.com/en-us/intune/device-management/reports/overview#noncompliant-devices-report-organizational"
+        },
+        {
+          "title": "Geraete-Compliance ueberwachen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/compliance/monitor-policy#device-compliance-dashboard"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "E04": {
+      "portal": "intune",
+      "path": "Intune admin center > Devices > Manage devices > Configuration > Monitor > Device encryption status",
+      "steps": [
+        "Bericht oeffnen: Devices > Manage devices > Configuration > Monitor tab > \"Device encryption status\"; Spalten \"Encryption readiness\" und \"Encryption status\" pruefen.",
+        "Ein Geraet anklicken: im Bereich \"Device encryption status\" stehen die Gruende, warum nicht verschluesselt wurde (z. B. fehlendes TPM).",
+        "Sicherstellen, dass eine BitLocker-Richtlinie an die Geraetegruppe zugewiesen ist (siehe E08).",
+        "Fuer stille Verschluesselung in der BitLocker-Richtlinie: \"Require Device Encryption\" = Enabled, \"Allow Warning For Other Disk Encryption\" = Disabled, \"Allow Standard User Encryption\" = Enabled.",
+        "Geraete mit \"Not ready\" (z. B. ohne aktives TPM) einzeln pruefen."
+      ],
+      "learn": [
+        {
+          "title": "Geraeteverschluesselung mit Intune ueberwachen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/monitor-encryption"
+        },
+        {
+          "title": "Stille BitLocker-Verschluesselung konfigurieren",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/encrypt-bitlocker-windows#configure-silent-bitlocker-encryption"
+        },
+        {
+          "title": "BitLocker-Fehler mit dem Encryption report finden",
+          "url": "https://learn.microsoft.com/en-us/troubleshoot/mem/intune/device-protection/troubleshoot-bitlocker-admin-center"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Kommen BitLocker-Einstellungen zusaetzlich per GPO, koennen sie der Intune-Richtlinie widersprechen und die Verschluesselung verhindern."
+    },
+    "E05": {
+      "portal": "intune",
+      "path": "Intune admin center > Endpoint security > Device compliance > Compliance policy settings",
+      "steps": [
+        "Vorher pruefen, dass alle Geraete eine Compliance-Richtlinie zugewiesen haben (E01), sonst sind sie danach sofort nicht konform.",
+        "Endpoint security > Device compliance > Compliance policy settings oeffnen.",
+        "\"Mark devices with no compliance policy assigned as\" auf \"Not compliant\" stellen > Save.",
+        "Betroffene Geraete findest du unter Reports > Device compliance > Reports tab > \"Devices without compliance policy\"."
+      ],
+      "learn": [
+        {
+          "title": "Compliance policy settings (mandantenweit)",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/compliance/overview#compliance-policy-settings"
+        },
+        {
+          "title": "Bericht: Devices without compliance policy",
+          "url": "https://learn.microsoft.com/en-us/intune/device-management/reports/overview#devices-without-compliance-policy-organizational"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Wichtig vor allem, wenn bedingter Zugriff \"Require device to be marked as compliant\" verlangt."
+    },
+    "E06": {
+      "portal": "intune",
+      "path": "Intune admin center > Devices > Manage devices > Compliance > Create policy > Platform \"Windows 10 and later\" > Device Properties > Minimum OS version",
+      "steps": [
+        "Devices > Manage devices > Compliance; bestehende Windows-Richtlinie bearbeiten oder \"Create policy\" mit Platform \"Windows 10 and later\" > Create.",
+        "Compliance settings > Device Properties > Operating System Version: \"Minimum OS version\" im Format major.minor.build.revision eintragen; Build-Nummer aus Windows release information, mit passendem Versionspraefix.",
+        "Fuer alle Tenants denselben Wert verwenden, damit die Schulen vergleichbar bleiben.",
+        "Assignments: Geraetegruppen (bzw. Benutzergruppen) der Schule zuweisen > Review + create > Create."
+      ],
+      "learn": [
+        {
+          "title": "Compliance-Einstellungen fuer Windows: Operating System Version",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/compliance/ref-windows-settings#operating-system-version"
+        },
+        {
+          "title": "Compliance-Richtlinie in Intune erstellen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/compliance/create-policy#create-the-policy"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Geraete mit aelterer Version werden als noncompliant gemeldet und bekommen einen Hinweis zum Aktualisieren."
+    },
+    "E07": {
+      "portal": "intune",
+      "path": "Intune admin center > Devices > By platform > Windows > Manage updates > Windows updates > Update rings > Create profile",
+      "steps": [
+        "Devices > By platform > Windows > Manage updates > Windows updates; Tab \"Update rings\" > \"Create profile\" (oder bestehenden Ring bearbeiten).",
+        "Update ring settings: \"Quality update deferral period (days)\" auf hoechstens 7 setzen (Sollwert E07).",
+        "Optional: \"Use deadline settings\" = Allow und \"Deadline for quality updates\" setzen, damit Updates sicher installiert werden.",
+        "Assignments: \"Select groups to include\" - Geraetegruppen zuweisen (Microsoft empfiehlt Geraetegruppen) > Review + create > Create."
+      ],
+      "learn": [
+        {
+          "title": "Update-Ringe erstellen und zuweisen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-updates/windows/manage-update-rings#create-and-assign-update-rings"
+        },
+        {
+          "title": "Einstellungen der Update-Ringe",
+          "url": "https://learn.microsoft.com/en-us/intune/device-updates/windows/ref-update-ring-settings#update-settings"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "E08": {
+      "portal": "intune",
+      "path": "Intune admin center > Endpoint security > Disk encryption > Create Policy > Platform Windows, Profile BitLocker",
+      "steps": [
+        "Endpoint security > Disk encryption > Create Policy; Platform \"Windows\", Profile \"BitLocker\" > Create.",
+        "Configuration settings: Verschluesselungsmethode und Wiederherstellungsoptionen festlegen; fuer stille Verschluesselung \"Require Device Encryption\" = Enabled und \"Allow Warning For Other Disk Encryption\" = Disabled.",
+        "Bei Standardbenutzern zusaetzlich \"Allow Standard User Encryption\" = Enabled.",
+        "Assignments: Geraetegruppen der Schule zuweisen > Review + create > Create.",
+        "Ergebnis pruefen ueber den Encryption report (siehe E04)."
+      ],
+      "learn": [
+        {
+          "title": "BitLocker per Endpoint-security-Richtlinie konfigurieren",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/encrypt-bitlocker-windows#create-endpoint-security-policy"
+        },
+        {
+          "title": "Disk encryption policy in Intune",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/disk-encryption"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Vorher keine Drittanbieter-Verschluesselung auf den Geraeten; BitLocker-Einstellungen aus GPOs koennen sich mit der Intune-Richtlinie ueberschneiden."
+    },
+    "E09": {
+      "portal": "intune",
+      "path": "Intune admin center > Endpoint security > Antivirus > Create Policy > Platform Windows, Profile \"Microsoft Defender Antivirus\"",
+      "steps": [
+        "Endpoint security > Antivirus > Create Policy; Platform \"Windows\", Profile \"Microsoft Defender Antivirus\" > Create.",
+        "Configuration settings (Defender): u. a. \"Allow Realtime Monitoring\" und \"Allow Cloud Protection\" auf Allowed.",
+        "Manipulationsschutz: zweite Antivirus-Richtlinie mit Profile \"Windows Security experience\", dort \"Tamper protection (device)\" = On.",
+        "Assignments: Geraetegruppen zuweisen > Review + create > Create."
+      ],
+      "learn": [
+        {
+          "title": "Antivirus-Richtlinie fuer Endpoint security",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/antivirus"
+        },
+        {
+          "title": "Beispielwerte fuer Microsoft Defender Antivirus",
+          "url": "https://learn.microsoft.com/en-us/intune/solutions/cloud-native-endpoints/tutorial-cloud-native-setup#microsoft-defender-antivirus-mdav"
+        },
+        {
+          "title": "Manipulationsschutz in Intune einrichten",
+          "url": "https://learn.microsoft.com/en-us/defender-endpoint/tamper-protection-windows-configure#configure-tamper-protection-in-microsoft-intune"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Defender-Einstellungen per GPO koennen der Intune-Richtlinie widersprechen; mit aktivem Manipulationsschutz greifen manche lokale/GPO-Aenderungen nicht mehr."
+    },
+    "E10": {
+      "portal": "intune",
+      "path": "Intune admin center > Endpoint security > Firewall > Create Policy > Platform Windows, Profile \"Windows Firewall\"",
+      "steps": [
+        "Endpoint security > Firewall > Create Policy; Platform \"Windows\", Profile \"Windows Firewall\" > Create.",
+        "Basics: Name vergeben (z. B. \"Windows - Firewall\").",
+        "Configuration settings: die Firewall fuer die Netzwerkprofile Domain, Private und Public jeweils einschalten (True).",
+        "Assignments: Geraetegruppen der Schule zuweisen > Review + create > Create.",
+        "Kontrolle: Endpoint security > Firewall > Summary bzw. Bericht \"MDM devices running Windows 10 or later with firewall off\"."
+      ],
+      "learn": [
+        {
+          "title": "Firewall-Richtlinie fuer Endpoint security",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/firewall"
+        },
+        {
+          "title": "Endpoint-security-Richtlinie erstellen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/manage-policies"
+        },
+        {
+          "title": "Sicherheits-Baseline Windows: Firewall-Standardwerte",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/security-baselines/ref-windows-mdm-settings"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Eine zugewiesene Sicherheits-Baseline fuer Windows schaltet mit ihren Standardwerten die Firewall bereits ein (\"Enable Domain/Private/Public Network Firewall\" = True)."
+    },
+    "E11": {
+      "portal": "intune",
+      "path": "Intune admin center > Endpoint security > Account protection > Create Policy > Platform Windows, Profile \"Local admin password solution (Windows LAPS)\"",
+      "steps": [
+        "Nur bei Sicherung nach Entra ID (Entra-joined Geraete): Entra admin center > Entra ID > Devices > Overview > Device settings > \"Enable Local Administrator Password Solution (LAPS)\" auf Yes > Save. Bei Sicherung ins lokale Active Directory entfaellt dieser Schritt.",
+        "In Intune: Endpoint security > Account protection > Create Policy; Platform \"Windows\", Profile \"Local admin password solution (Windows LAPS)\" > Create.",
+        "Configuration settings: \"Backup Directory\" waehlen (Entra ID oder Active Directory, passend zur Geraete-Verbindung), Kennwortlaenge und -alter festlegen.",
+        "Zuweisen an eine Geraetegruppe (nicht an Benutzergruppen) und pro Geraet nur eine LAPS-Richtlinie.",
+        "LAPS legt kein Konto an: das verwaltete lokale Admin-Konto muss es auf dem Geraet schon geben."
+      ],
+      "learn": [
+        {
+          "title": "Deploy Windows LAPS policy with Microsoft Intune",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/laps/deploy-policy"
+        },
+        {
+          "title": "Enable Windows LAPS with Microsoft Entra ID",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/devices/howto-manage-local-admin-passwords#enabling-windows-laps-with-microsoft-entra-id"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "E12": {
+      "portal": "intune",
+      "path": "Intune admin center > Devices > Organize devices > Device cleanup rules > Preview affected devices",
+      "steps": [
+        "Befund ansehen: Devices > Organize devices > Device cleanup rules > Create; Platform waehlen, bei \"Remove devices that haven't checked in for this many days\" 30 eintragen und \"Preview affected devices\" oeffnen (Liste der Geraete ohne Check-in).",
+        "Je Geraet mit der Schule klaeren: verloren, kaputt oder ausgeschieden - oder nur lange nicht eingeschaltet.",
+        "Ausgeschiedene Geraete loeschen: Devices > All devices > Geraet waehlen > Delete > Yes (bei Windows wird dabei Retire ausgeloest).",
+        "Optional die Bereinigungsregel speichern (30 bis 270 Tage): sie blendet inaktive Geraete nur aus, ohne Wipe oder Retire.",
+        "Der Geraeteeintrag in Entra ID bleibt bestehen und muss dort eigens aufgeraeumt werden."
+      ],
+      "learn": [
+        {
+          "title": "Device cleanup rules in Intune",
+          "url": "https://learn.microsoft.com/en-us/intune/governance/configure-cleanup-rules#how-to-create-a-device-cleanup-rule"
+        },
+        {
+          "title": "Geraet in Intune loeschen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-management/actions/delete"
+        },
+        {
+          "title": "Veraltete Geraete in Entra ID verwalten",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/devices/manage-stale-devices"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "E13": {
+      "portal": "intune",
+      "path": "Intune admin center > Endpoint security > Attack surface reduction > Create Policy > Platform Windows, Profile \"Attack Surface Reduction Rules\"",
+      "steps": [
+        "Endpoint security > Attack surface reduction > Create Policy; Platform \"Windows\", Profile \"Attack Surface Reduction Rules\" > Create.",
+        "Configuration settings: die Standard-Schutzregeln (z. B. \"Block credential stealing from the Windows local security authority subsystem\") direkt auf Block oder Warn setzen.",
+        "Weitere Regeln (z. B. \"Block all Office applications from creating child processes\", \"Block executable content from email client and webmail\") zuerst im Modus Audit testen, dann auf Block oder Warn umstellen.",
+        "Assignments: nur Geraetegruppen zuweisen (keine Benutzergruppen) > Review + create > Create."
+      ],
+      "learn": [
+        {
+          "title": "ASR-Regeln in Intune konfigurieren",
+          "url": "https://learn.microsoft.com/en-us/defender-endpoint/enable-attack-surface-reduction#configure-asr-rules-in-microsoft-intune"
+        },
+        {
+          "title": "Attack surface reduction policy in Intune",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/attack-surface-reduction"
+        },
+        {
+          "title": "Uebersicht der ASR-Regeln",
+          "url": "https://learn.microsoft.com/en-us/defender-endpoint/attack-surface-reduction-rules-reference"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Fuer dieselbe Einstellung widerspruechliche ASR-Werte aus mehreren Richtlinien (z. B. zusaetzlich Sicherheits-Baseline) werden nicht angewendet."
+    },
+    "E14": {
+      "portal": "intune",
+      "path": "Intune admin center > Endpoint security > Endpoint detection and response > Create Policy > Platform Windows, Profile \"Endpoint detection and response\"",
+      "steps": [
+        "Voraussetzung: Verbindung Intune - Defender for Endpoint ist aktiv (siehe E15).",
+        "Schnellweg: Endpoint security > Endpoint detection and response > Tab \"EDR Onboarding Status\" > \"Deploy preconfigured policy\" > \"Windows\" + \"Endpoint detection and response\", Namen vergeben > Create.",
+        "Alternativ gezielt: Tab \"Summary\" > Create Policy; Platform \"Windows\", Profile \"Endpoint detection and response\" > Create.",
+        "Configuration settings: \"Microsoft Defender for Endpoint client configuration package type\" = \"Auto from connector\"; \"Sample Sharing\" nach Datenschutzvorgabe der Schule.",
+        "Assignments: Geraetegruppen der Schule zuweisen > Review + create > Create; Fortschritt im Tab \"EDR Onboarding Status\" pruefen."
+      ],
+      "learn": [
+        {
+          "title": "EDR-Richtlinie mit Intune bereitstellen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/deploy-edr"
+        },
+        {
+          "title": "Endpoint-security-Richtlinie erstellen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/manage-policies"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Braucht eine Lizenz fuer Defender for Endpoint (z. B. Defender for Endpoint Plan 1 oder Microsoft 365 A5); ohne Lizenz die Regel als Ausnahme eintragen."
+    },
+    "E15": {
+      "portal": "intune",
+      "path": "Intune admin center > Endpoint security > Defender for Endpoint > Connection status",
+      "steps": [
+        "Endpoint security > Defender for Endpoint: \"Connection status\" pruefen; \"Enabled\" heisst verbunden.",
+        "Bei \"Unavailable\": Microsoft Defender portal > System > Settings > Endpoints > General > Advanced features; \"Intune connection\" auf On > \"Save preferences\".",
+        "Zurueck in Intune: \"Connection status\" zeigt nach bis zu 15 Minuten \"Enabled\".",
+        "Unter \"Compliance policy evaluation\" \"Connect Windows devices to Defender for Endpoint\" auf On setzen, damit die Risikostufe der Geraete in der Compliance genutzt werden kann."
+      ],
+      "learn": [
+        {
+          "title": "Defender for Endpoint mit Intune verbinden",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/microsoft-defender/configure-integration#connect-defender-for-endpoint-to-intune"
+        },
+        {
+          "title": "Integrationseinstellungen konfigurieren",
+          "url": "https://learn.microsoft.com/en-us/intune/device-security/microsoft-defender/configure-integration#configure-integration-settings"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Im Defender-Portal ist die Rolle Security Administrator (oder eine entsprechende Defender-Berechtigung) noetig, in Intune Endpoint Security Manager."
+    },
+    "E16": {
+      "portal": "defender",
+      "path": "Microsoft Defender portal > Incidents & alerts > Alerts",
+      "steps": [
+        "Microsoft Defender portal > Incidents & alerts > Alerts oeffnen.",
+        "Filter: \"Severity\" auf hoch und mittel, \"Status\" auf \"New\" und \"In progress\" einschraenken.",
+        "Jeden Alarm oeffnen, betroffenes Geraet und Ablauf pruefen und die noetigen Massnahmen setzen.",
+        "Danach \"Manage alert\": Status \"Resolved\" und Classification (\"True positive\", \"Informational, expected activity\" oder \"False positive\") setzen.",
+        "Wiederkehrende, bekannte harmlose Alarme ggf. ueber Alert tuning automatisch erledigen lassen - nur mit Vorsicht."
+      ],
+      "learn": [
+        {
+          "title": "Alarme untersuchen und verwalten",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/investigate-alerts#manage-alert-status-and-classification"
+        },
+        {
+          "title": "Alarm abschliessen (Resolve an alert)",
+          "url": "https://learn.microsoft.com/en-us/defender-xdr/investigate-alerts#resolve-an-alert"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Die Alarmliste zeigt standardmaessig nur neue und laufende Alarme der letzten sieben Tage - fuer aeltere offene Alarme den Zeitraum erweitern."
+    },
+    "K01": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Users > Manage view > Edit columns",
+      "steps": [
+        "Entra ID > Users > Manage view > Edit columns > \"+ Add column\" > \"Last interactive sign-in time\" > Save; mit \"Add filter\" (Operator \"< =\") Konten vor dem Stichtag (Standard: vor 180 Tagen) anzeigen.",
+        "Die vom Pruefer gemeldeten Konten einzeln oeffnen (Overview > Kachel \"Sign-ins\") und klaeren, ob sie noch gebraucht werden (z. B. Karenz, ausgeschieden, Absolvent).",
+        "Konto aus dem lokalen AD: dort deaktivieren (bei Verdacht zusaetzlich Kennwort zuruecksetzen); die Aenderung kommt mit dem naechsten Sync in Entra ID an.",
+        "Reines Cloud-Konto: Benutzer > Account status > Edit > \"Account enabled\" deaktivieren > Save, danach auf der Overview-Seite \"Revoke sessions\"; oder Konto loeschen (\"Delete user\").",
+        "Noch gebraucht: der Inhaber meldet sich einmal erfolgreich an; der Wert der letzten Anmeldung kann bis zu 24 Stunden nachhinken."
+      ],
+      "learn": [
+        {
+          "title": "Inaktive Benutzerkonten finden",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/howto-manage-inactive-user-accounts#how-to-find-and-investigate-inactive-user-accounts"
+        },
+        {
+          "title": "Zugriff sperren (lokales AD und Entra ID)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access#revoke-access-for-a-user-in-the-hybrid-environment"
+        },
+        {
+          "title": "Benutzer loeschen",
+          "url": "https://learn.microsoft.com/en-us/entra/fundamentals/how-to-create-delete-users#delete-a-user"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Die Eigenschaft der letzten erfolgreichen Anmeldung ist nur mit Entra ID P1 oder P2 abrufbar."
+    },
+    "K02": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Billing > Licenses",
+      "steps": [
+        "Billing > Licenses > Produkt waehlen: direkt zugewiesene Lizenzen stehen mit dem Benutzernamen, gruppenbasierte mit dem Gruppennamen in der Liste.",
+        "Direkte Zuweisung: Haken bei den gemeldeten (deaktivierten) Benutzern setzen > \"Unassign licenses\"; alternativ Users > Active users > Benutzer > \"Licenses and Apps\" > Haken entfernen > \"Save changes\".",
+        "Zuweisung ueber Gruppe: den Benutzer aus der lizenzierenden Gruppe nehmen (dort, wo die Gruppe gepflegt wird); verlaesst er die Gruppe, entfernt Entra ID die Lizenz.",
+        "Vorher bedenken: Exchange-Online-Daten bleiben nach dem Entzug 30 Tage erhalten und werden danach geloescht (Aufbewahrungsrichtlinien ausgenommen).",
+        "Wird das Konto gar nicht mehr gebraucht, gibt auch das Loeschen des Kontos die Lizenz sofort frei."
+      ],
+      "learn": [
+        {
+          "title": "Lizenzen im Microsoft 365 admin center entziehen",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/manage/remove-licenses-from-users#unassign-licenses-by-using-the-licenses-page"
+        },
+        {
+          "title": "Gruppenbasierte Lizenzen: Entzug beim Verlassen der Gruppe",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/directory-overview-user-model#assign-licenses-to-groups"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "K03": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Billing > Licenses",
+      "steps": [
+        "Billing > Licenses: je Produkt verfuegbare und zugewiesene Lizenzen pruefen (die Seite summiert alle Abos desselben Produkts).",
+        "Lizenzen freigeben: Lizenzen deaktivierter oder ausgeschiedener Konten entziehen (siehe K02) - Produkt waehlen, Benutzer anhaken > \"Unassign licenses\"; geloeschte Konten geben ihre Lizenz sofort frei.",
+        "Im Produkt den Tab \"Errors & Issues\" oeffnen: dort stehen Benutzer, die mangels freier Lizenz keine bekommen haben; nach dem Freigeben Benutzer bzw. Gruppe waehlen > \"Reprocess\".",
+        "Reicht das nicht: Billing > Your products > Abo waehlen > \"Buy licenses\", neue Gesamtzahl eintragen > Save. Bei Kauf ueber einen Reseller/CSP-Partner die Lizenzen dort bestellen."
+      ],
+      "learn": [
+        {
+          "title": "Lizenzen entziehen und Errors & Issues",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/manage/remove-licenses-from-users#understand-errors-and-issues-when-managing-licenses"
+        },
+        {
+          "title": "Lizenzen dazukaufen",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/commerce/licenses/buy-licenses"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "K04": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Monitoring & health > Sign-in logs",
+      "steps": [
+        "Entra ID > Monitoring & health > Sign-in logs: Filter \"Status\" auf \"Failure\" und \"User\" auf das gemeldete Konto setzen.",
+        "Fehlgeschlagene Anmeldungen oeffnen: \"Sign-in error code\" 50126 = falsches Kennwort; IP-Adresse, Ort und App vergleichen.",
+        "Gab es dazwischen eine erfolgreiche Anmeldung von derselben fremden Adresse: Kennwort zuruecksetzen, Sitzungen widerrufen und MFA fuer das Konto sicherstellen.",
+        "Smart lockout pruefen: Entra ID > Authentication methods > Password protection > \"Lockout threshold\" (Standard 10, nicht hoeher) und \"Lockout duration in seconds\" (mindestens 60).",
+        "Im selben Bereich \"Enforce custom list\" auf Yes stellen und in die \"Custom banned password list\" Schulname, Ort usw. eintragen, damit leicht erratbare Kennwoerter nicht gesetzt werden koennen."
+      ],
+      "learn": [
+        {
+          "title": "Fehlgeschlagene Anmeldungen im Sign-in log finden",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/howto-troubleshoot-sign-in-errors#gather-sign-in-details"
+        },
+        {
+          "title": "Smart lockout einstellen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/howto-password-smart-lockout#manage-microsoft-entra-smart-lockout-values"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Eigene Smart-lockout-Werte und die eigene Liste gesperrter Kennwoerter brauchen Entra ID P1."
+    },
+    "K05": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Monitoring & health > Sign-in logs",
+      "steps": [
+        "Entra ID > Monitoring & health > Sign-in logs: Zeitraum auf die letzten 24 Stunden, \"Add filters\" > \"User\" (gemeldetes Konto) und \"Status\" = \"Success\" > Apply; auch den Tab der nicht-interaktiven Anmeldungen pruefen.",
+        "Eintrag oeffnen (Activity Details) und Ort, IP-Adresse und Anwendung ansehen; mit dem Kontoinhaber klaeren, ob die Anmeldung von ihm stammt (Urlaub, eigener VPN).",
+        "Nicht erklaerbar: Konto sichern - bei Konten aus dem lokalen AD dort Kennwort zuruecksetzen bzw. Konto deaktivieren; in Entra ID > Users > Benutzer > Overview \"Revoke sessions\".",
+        "Erklaerbar und dauerhaft (z. B. Konto mit eigenem VPN): Konto im Sollwert K05 accounts eintragen.",
+        "Laendersperre pruefen: Entra ID > Conditional Access > Named locations (Laender-Standort) und die Sperr-Richtlinie samt Ausnahmen (siehe A24)."
+      ],
+      "learn": [
+        {
+          "title": "Anmeldeprotokolle filtern",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/howto-customize-filter-logs#filter-the-sign-in-logs-"
+        },
+        {
+          "title": "Zugriff eines Benutzers sperren (hybrid)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access#revoke-access-for-a-user-in-the-hybrid-environment"
+        },
+        {
+          "title": "Named locations (Laender) fuer Conditional Access",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-assignment-network#countries"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Das Land wird aus der oeffentlichen IP-Adresse bestimmt; bei Cloud-Proxy oder VPN zaehlt die IP-Adresse des Proxys bzw. VPN."
+    },
+    "K06": {
+      "portal": "entra",
+      "path": "Entra admin center > ID Protection > Risky users",
+      "steps": [
+        "ID Protection > Risky users: den Benutzer anklicken und in den Risky User Details die Ursache (Timeline, Risikoerkennungen) ansehen.",
+        "Bei echtem Verdacht: \"Reset password\" waehlen, das temporaere Kennwort dem Benutzer geben; er muss es bei der naechsten Anmeldung aendern. Damit wird das Risiko auf \"Remediated\" gesetzt.",
+        "Bei Verdacht auf aktiven Angreifer zusaetzlich \"Block user\" bzw. \"Confirm user compromised\" und Sitzungen widerrufen.",
+        "Ist das Risiko nach Pruefung harmlos (z. B. bekannter Test): \"Dismiss user risk\". Das aendert das Kennwort nicht.",
+        "Rollen: Security Operator zum Verwerfen, zusaetzlich User Administrator zum Zuruecksetzen des Kennworts."
+      ],
+      "learn": [
+        {
+          "title": "Risiken beheben: Kennwort zuruecksetzen, Risiko verwerfen",
+          "url": "https://learn.microsoft.com/en-us/entra/id-protection/howto-identity-protection-remediate-unblock#administrator-manual-remediation"
+        },
+        {
+          "title": "Bericht Risky users und Aktionen",
+          "url": "https://learn.microsoft.com/en-us/entra/id-protection/concept-risky-user-report#take-action-on-a-risky-user"
+        },
+        {
+          "title": "Menuepfad ID Protection > Risky users",
+          "url": "https://learn.microsoft.com/en-us/entra/id-protection/concept-identity-protection-unified-risk#view-compounded-risk"
+        }
+      ],
+      "checked": "2026-10-21",
+      "note": "Vollstaendige Daten erst mit Entra ID P2; mit P1 zeigt das Portal nur eine eingeschraenkte Liste."
+    },
+    "V1": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies",
+      "steps": [
+        "Am besten eine eigene Sicherheitsgruppe fuer die Notfallkonten anlegen (z. B. \"EmergencyAccess\").",
+        "Jede aktive Richtlinie oeffnen, die blockiert oder etwas verlangt (MFA, konformes Geraet ...): Assignments > Users or workload identities > Exclude > \"Users and groups\" > die Gruppe bzw. die Notfallkonten waehlen > Save.",
+        "Richtlinien im Modus \"Report-only\" blockieren nicht und brauchen keine Ausnahme.",
+        "Die Objekt-IDs der Notfallkonten in den Sollwerten unter V1 accounts eintragen, dann prueft die Regel genau diese Konten.",
+        "Regelmaessig (z. B. vierteljaehrlich) testen, ob die Anmeldung mit den Notfallkonten klappt."
+      ],
+      "learn": [
+        {
+          "title": "Manage emergency access accounts - Conditional Access considerations",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/security-emergency-access#conditional-access-considerations"
+        },
+        {
+          "title": "Beispiel: Ausnahme fuer Notfallkonten in einer Richtlinie",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-by-location#create-a-conditional-access-policy"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "V5": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies > New policy",
+      "steps": [
+        "Mit Entra ID P1 empfohlen: Conditional-Access-Richtlinie. Assignments > Users or workload identities: Include \"All users\"; Exclude \"Users and groups\" mit den Notfallkonten (bei Entra Connect zusaetzlich \"Directory roles\" > \"Directory Synchronization Accounts\").",
+        "Target resources > Resources (formerly cloud apps) > Include: \"All resources (formerly 'All cloud apps')\".",
+        "Access controls > Grant: \"Grant access\" > \"Require authentication strength\" > \"Multifactor authentication strength\" > Select.",
+        "Enable policy zuerst \"Report-only\", Ergebnisse pruefen, dann auf \"On\" stellen.",
+        "Alternative ohne CA: Entra ID > Overview > Properties > \"Manage security defaults\" > \"Security defaults\" auf \"Enabled\" > Save. Fuer eigene CA-Richtlinien muessen die Security Defaults dagegen deaktiviert sein."
+      ],
+      "learn": [
+        {
+          "title": "MFA fuer alle Benutzer per Conditional Access",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-all-users-mfa-strength#create-a-conditional-access-policy"
+        },
+        {
+          "title": "Security Defaults aktivieren",
+          "url": "https://learn.microsoft.com/en-us/entra/fundamentals/security-defaults#enabling-security-defaults"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "V11": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies > New policy",
+      "steps": [
+        "Assignments > Users or workload identities: Include \"All users\"; Exclude \"Users and groups\" mit den Notfallkonten und nur wirklich noetigen Ausnahmen (Liste regelmaessig pruefen).",
+        "Target resources > Resources (formerly cloud apps) > Include: \"All resources (formerly 'All cloud apps')\".",
+        "Conditions > Authentication Flows: Configure \"Yes\", \"Device code flow\" waehlen > Done.",
+        "Access controls > Grant: \"Block access\" > Select.",
+        "Enable policy zuerst \"Report-only\", pruefen ob der Geraetecode-Flow noch genutzt wird, dann auf \"On\" stellen."
+      ],
+      "learn": [
+        {
+          "title": "Geraetecode-Flow per Conditional Access blockieren",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-authentication-flows#device-code-flow-policies"
+        }
+      ],
+      "checked": "2026-10-21"
+    },
+    "V15": {
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Settings > Org settings > Services > Reports",
+      "steps": [
+        "Settings > Org settings oeffnen (falls Settings fehlt: \"Show all\").",
+        "Registerkarte Services > Reports.",
+        "Haken bei \"Conceal user, group, and site names in all reports\" setzen > Save.",
+        "Die Einstellung gilt auch fuer die Nutzungsberichte im Teams admin center, in Microsoft Graph und Power BI; die Aenderung braucht einige Minuten."
+      ],
+      "learn": [
+        {
+          "title": "Benutzer-, Gruppen- und Websitenamen in Berichten verbergen",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/activity-reports/activity-reports#show-user-group-or-site-details-in-usage-reports"
+        }
+      ],
+      "checked": "2026-10-21"
+    }
+  }
+}

@@ -732,6 +732,13 @@ function New-HUSecDriftCardSpec {
     $facts = [ordered]@{ 'Aenderungen' = $ch.Count; 'davon schlechter' = $worse }
     if ($Lost.Count) { $facts['Pruefung verloren'] = $Lost.Count }
     if ($Compare.Unchecked -gt 0) { $facts['Heute nicht pruefbar (im Soll pruefbar)'] = $Compare.Unchecked }
+    # Fusszeile: bewusst gefilterte Meldungen (Sollwerte Katalog statusOnly / silent) offenlegen
+    $flt = @()
+    $hid = 0; try { $hid = [int]$Compare.HiddenCount } catch { }
+    $sil = @(); try { $sil = @($Compare.Silent | Where-Object { $_ }) } catch { }
+    if ($hid -gt 0) { $flt += "$(Get-HUTeamsCountText $hid 'Zahlenaenderung' 'Zahlenaenderungen') bei Nur-Status-Regeln nicht gemeldet" }
+    if ($sil.Count) { $flt += "stumm: $($sil -join ', ')" }
+    $fline = if ($flt.Count) { "Gefiltert (Sollwerte Katalog statusOnly/silent): $($flt -join '; ')." } else { '' }
     $since = ''
     try { if ($Compare.Since) { $since = ([datetime]$Compare.Since).ToLocalTime().ToString('dd.MM.yyyy HH:mm', [cultureinfo]::InvariantCulture) } } catch { }
     return @{
@@ -740,7 +747,7 @@ function New-HUSecDriftCardSpec {
         Level = $(if ($worse -or $Lost.Count) { 'Error' } else { 'Warning' })   # Soll schlechter allein: Warnung
         Rows  = $rows
         Facts = $facts
-        Lines = @(@("Vergleich mit dem gespeicherten Soll-Stand$(if ($since) { " vom $since" }). Neuen Stand uebernehmen: Analyse $([char]0x203A) Sicherheit $([char]0x203A) Soll speichern.") + @(if ($SollWorse -gt 0) { "Hinweis: Der Soll-Stand$(if ($since) { " vom $since" }) ist bei $(Get-HUTeamsCountText $SollWorse 'Regel' 'Regeln') schlechter als der vorige - diese Verschlechterungen werden nicht mehr als Aenderung gemeldet." }))
+        Lines = @(@("Vergleich mit dem gespeicherten Soll-Stand$(if ($since) { " vom $since" }). Neuen Stand uebernehmen: Analyse $([char]0x203A) Sicherheit $([char]0x203A) Soll speichern.") + @(if ($SollWorse -gt 0) { "Hinweis: Der Soll-Stand$(if ($since) { " vom $since" }) ist bei $(Get-HUTeamsCountText $SollWorse 'Regel' 'Regeln') schlechter als der vorige - diese Verschlechterungen werden nicht mehr als Aenderung gemeldet." }) + @(if ($fline) { $fline }))
     }
 }
 

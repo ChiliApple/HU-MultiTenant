@@ -19,7 +19,7 @@ function Get-HUSecCellText($Cell) {
         'Ausnahme' { return "$([char]0x25D0)" }
         'NichtPruefbar' { return "? $why".Trim() }
         'Fehler' { return "$([char]0x26A0)" }
-        'Info' { if ("$($Cell.Detail)" -match '\(([0-9.,]+ %)\)\s*$') { return $Matches[1] }; return 'i' }
+        'Info' { if ("$($Cell.Reason)" -eq 'Aus') { return 'aus' }; if ("$($Cell.Detail)" -match '\(([0-9.,]+ %)\)\s*$') { return $Matches[1] }; return 'i' }
         default { return "$($Cell.Status)" }
     }
 }
@@ -34,6 +34,7 @@ function Get-HUSecCellColor($Cell) {
         'Fehler' { return '#EF5350' }
         'Ausnahme' { return '#FFB74D' }
         'NichtPruefbar' { return '#8A8A8A' }
+        'Info' { if ("$($Cell.Reason)" -eq 'Aus') { return '#8A8A8A' }; return $def }
         default { return $def }
     }
 }
@@ -135,7 +136,7 @@ function Update-HUSecGrid {
     & $pad 16
     & $add 'Nr' 'Nr' (New-Object System.Windows.Controls.DataGridLength(1, $cells))
     & $pad 16
-    & $add $(if ($script:SecRan) { "Regel ($(@(Get-HUSecVisibleRows).Count))" } else { 'Regel' }) 'Rule' (New-Object System.Windows.Controls.DataGridLength(1, $cells))
+    & $add $(if (@($script:SecMatrix).Count) { "Regel ($(@(Get-HUSecVisibleRows).Count))" } else { 'Regel' }) 'Rule' (New-Object System.Windows.Controls.DataGridLength(1, $cells))
     & $pad 28
     # Tenant-Spalten: Text wie bisher, in der letzten Zeile (Ampel) zusaetzlich ein farbiger Punkt
     for ($i = 0; $i -lt $keys.Count; $i++) {
@@ -174,6 +175,14 @@ function Update-HUSecGrid {
     }
     $g.ItemsSource = @($items)
     Update-HUSecHint
+}
+
+# Vor dem ersten Pruefen: Regelliste schon zeigen (leere Zellen) - fuer die angehakten Tenants
+function Show-HUSecPreview {
+    if ($script:SecRan) { return }
+    $script:SecKeys = @(Get-HUCheckedTenants $script:Controls['spAnaTenants'])
+    $script:SecMatrix = @(Get-HUSecMatrix -Results @() -Keys $script:SecKeys)
+    Update-HUSecGrid
 }
 
 function Start-HUSecRun {
@@ -281,12 +290,21 @@ function Show-HUSecBaseline {
         </StackPanel>
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"
                    Text="In der Spalte Wert eintragen (einfach hineinklicken). Leer = kein eigener Wert: dann gilt der Wert fuer alle Tenants bzw. der Standard. Objekt-IDs mit Komma trennen (Entra Admin Center > Benutzer bzw. Gruppen > Objekt-ID). Gespeichert wird lokal in deinem Profil; beim naechsten Pruefen gilt der neue Wert."/>
+        <TextBlock x:Name="lblReplace" DockPanel.Dock="Top" Foreground="#FFB74D" TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"
+                   Text="Ein Tenant-Wert ersetzt den Wert fuer alle Tenants vollstaendig - auch bei Listen (Katalog disabled, statusOnly, silent, Notfallkonten). Was aus der Spalte 'Alle Tenants' weiter gelten soll, hier mit eintragen."/>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <TextBlock x:Name="lblState" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,12,0"/>
             <Button x:Name="btnSave" Content="Speichern" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
             <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
         </StackPanel>
         <DataGrid x:Name="gridB" Style="{StaticResource DarkDataGrid}" IsReadOnly="False" AutoGenerateColumns="False" HeadersVisibility="Column" SelectionMode="Single" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Regel}" Value="Katalog"><Setter Property="Background" Value="#1C2A38"/></DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Regel" Binding="{Binding Regel}" IsReadOnly="True" Width="60"/>
                 <DataGridTextColumn Header="Sollwert" Binding="{Binding Name}" IsReadOnly="True" Width="140"/>
@@ -326,6 +344,7 @@ function Show-HUSecBaseline {
         $st.Table = $tb
         $ctl.gridB.ItemsSource = $tb.DefaultView
         $ctl.colGlob.Visibility = $(if ($st.Scope) { 'Visible' } else { 'Collapsed' })
+        $ctl.lblReplace.Visibility = $(if ($st.Scope) { 'Visible' } else { 'Collapsed' })
         $st.Dirty = $false; $ctl.lblState.Text = ''
         $st.Loading = $false
     }
@@ -380,6 +399,8 @@ function Show-HUSecDetail {
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="btnList" Content="Konten anzeigen" Width="140" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Die betroffenen Eintraege des markierten Tenants anzeigen (nur Anzeige, wird nicht gespeichert)"/>
+            <Button x:Name="btnFix" Content="So behebst du es" Width="140" Background="#388E3C" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
+                    ToolTip="Kurzanleitung: wo im Portal und welche Schritte, mit Link auf Microsoft Learn"/>
             <Button x:Name="btnExc" Content="Ausnahme ..." Width="120" Background="#3E3E42" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Fuer diese Regel eine befristete Ausnahme eintragen oder entfernen"/>
             <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" IsDefault="True"/>
@@ -425,10 +446,100 @@ function Show-HUSecDetail {
             if (-not (& $listable $m.Cells["$($sel.Key)"])) { Show-HUMessage "Bei $($sel.Tenant) war die Regel nicht pruefbar - keine Liste." -Icon Info -Owner $w; return }
             Start-HUSecItems -Key "$($sel.Key)" -RuleId "$($m.RuleId)" -Title "$($m.Title)" -Window $w -Button $ctl.btnList
         })
+    $ctl.btnFix.Add_Click({ Show-HUSecFix -RuleId "$($m.RuleId)" })
     $state = @{ Exc = $false }
     $ctl.btnExc.Add_Click({ $state.Exc = $true; $w.Close() })
     [void]$w.ShowDialog()
     if ($state.Exc) { Start-HUSecException -Row $m }
+}
+
+# ============================================================================
+# "So behebst du es": Anleitung je Regel (Docs/Behebung.json, frische Fassung von GitHub main)
+# ============================================================================
+function Show-HUSecFix {
+    param([Parameter(Mandatory)][string]$RuleId)
+    $f = Get-HUSecFix -RuleId $RuleId -LocalPath (Join-Path $script:AppRoot 'Docs\Behebung.json')
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="760" Height="560" MinWidth="520" MinHeight="320" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <DockPanel Margin="16">
+        <WrapPanel DockPanel.Dock="Bottom" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="btnLearn" Content="Microsoft Learn oeffnen" Width="180" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+            <Button x:Name="btnPortal" Content="Portal oeffnen" Width="130" Background="#3E3E42" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+            <Button x:Name="btnCopy" Content="Pfad kopieren" Width="120" Background="#3E3E42" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+            <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" IsDefault="True"/>
+        </WrapPanel>
+        <TextBlock x:Name="lblTitle" DockPanel.Dock="Top" Foreground="White" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock x:Name="lblMeta" DockPanel.Dock="Top" Foreground="#90CAF9" FontSize="11" Margin="0,2,0,10"/>
+        <TextBlock x:Name="lblSrc" DockPanel.Dock="Bottom" Foreground="#888888" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"/>
+        <TextBlock x:Name="lblOld" DockPanel.Dock="Bottom" Foreground="#FFB74D" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="Wo im Portal" Foreground="#AAAAAA" FontSize="11" Margin="0,0,0,2"/>
+                <Border BorderBrush="#1976D2" BorderThickness="3,0,0,0" Margin="0,0,0,0">
+                <TextBox x:Name="txtPath" IsReadOnly="True" TextWrapping="Wrap" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" Padding="8,6"
+                         Background="#1C2A38" Foreground="#90CAF9" BorderBrush="#1976D2" BorderThickness="0,0,0,0" CaretBrush="#90CAF9"/>
+                </Border>
+                <TextBlock x:Name="lblStepsHead" Text="Schritte" Foreground="#AAAAAA" FontSize="11" Margin="0,0,0,4"/>
+                <StackPanel x:Name="spSteps"/>
+                <TextBlock x:Name="lblNote" Foreground="#CCCCCC" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+                <TextBlock x:Name="lblLinksHead" Text="Quellen (Microsoft Learn)" Foreground="#AAAAAA" FontSize="11" Margin="0,12,0,4"/>
+                <StackPanel x:Name="spLinks"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
+'@
+    $theme = Get-HUXaml 'Theme'
+    $mt = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+    $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $mt.Groups[1].Value))
+    $w = $d.Window; $ctl = $d.C
+    if ($script:Window) { $w.Owner = $script:Window }
+    $w.Title = "$RuleId - So behebst du es"
+    $ctl.lblTitle.Text = "$($f.Title)"
+    $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $RuleId })[0]
+    $ctl.lblMeta.Text = "$RuleId$(if ($rule) { "  |  $($rule.Area)  |  Schweregrad $($rule.Sev)" })"
+    $bc = New-Object System.Windows.Media.BrushConverter
+    if ($f.Has) {
+        $ctl.txtPath.Text = $(if ($f.Path) { "$($f.Path)" } else { 'kein Menue im Portal - die Schritte unten laufen per PowerShell' })
+        $i = 0
+        foreach ($st in @($f.Steps)) {
+            $i++
+            $tb = New-Object System.Windows.Controls.TextBlock
+            $tb.Text = "$i.  $st"; $tb.TextWrapping = 'Wrap'; $tb.FontSize = 12; $tb.Margin = [System.Windows.Thickness]::new(0, 0, 0, 6)
+            $tb.Foreground = $bc.ConvertFromString('#E0E0E0')
+            [void]$ctl.spSteps.Children.Add($tb)
+        }
+        if ($f.Note) { $ctl.lblNote.Text = "$($f.Note)"; $ctl.lblNote.Visibility = 'Visible' }
+        foreach ($l in @($f.Learn)) {
+            $lt = New-Object System.Windows.Controls.TextBlock
+            $lt.Text = "$($l.Title)"; $lt.ToolTip = "$($l.Url)"; $lt.Cursor = 'Hand'; $lt.TextDecorations = [System.Windows.TextDecorations]::Underline
+            $lt.Foreground = $bc.ConvertFromString('#4FC3F7'); $lt.FontSize = 12; $lt.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4); $lt.Tag = "$($l.Url)"
+            $lt.Add_MouseLeftButtonUp({ param($s, $e) Open-HUUrl "$($s.Tag)" })
+            [void]$ctl.spLinks.Children.Add($lt)
+        }
+        if (-not @($f.Learn).Count) { $ctl.lblLinksHead.Visibility = 'Collapsed'; $ctl.btnLearn.Visibility = 'Collapsed' }
+        if (-not $f.PortalUrl) { $ctl.btnPortal.Visibility = 'Collapsed' } else { $ctl.btnPortal.Content = "$($f.PortalName) oeffnen"; $ctl.btnPortal.Width = [double]::NaN; $ctl.btnPortal.Padding = [System.Windows.Thickness]::new(12, 0, 12, 0) }
+        if (-not $f.Path) { $ctl.btnCopy.Visibility = 'Collapsed' }
+        $ctl.lblSrc.Text = "Geprueft am $($f.Checked) gegen Microsoft Learn  |  Stand der Anleitungen $($f.Stand)$(if ($f.Hint) { "`n$($f.Hint)" })"
+        if ($f.Old) { $ctl.lblOld.Text = 'Diese Anleitung wurde vor mehr als 6 Monaten geprueft - Menuenamen koennen sich geaendert haben, der Learn-Artikel ist massgeblich.'; $ctl.lblOld.Visibility = 'Visible' }
+    } else {
+        $ctl.txtPath.Text = '-'
+        $ctl.lblStepsHead.Text = 'Fuer diese Regel gibt es noch keine Anleitung.'
+        $ctl.lblLinksHead.Visibility = 'Collapsed'
+        $ctl.btnLearn.Content = 'Learn-Suche oeffnen'
+        $ctl.btnPortal.Visibility = 'Collapsed'; $ctl.btnCopy.Visibility = 'Collapsed'
+        $why = Get-HUSecWhy $RuleId
+        if ($why) { $ctl.lblNote.Text = $why; $ctl.lblNote.Visibility = 'Visible' }
+        $ctl.lblSrc.Text = 'Die Suche oeffnet Microsoft Learn mit dem Titel der Regel.'
+    }
+    $ctl.btnLearn.Add_Click({ if ($f.Has -and @($f.Learn).Count) { Open-HUUrl "$(@($f.Learn)[0].Url)" } else { Open-HUUrl "$($f.SearchUrl)" } })
+    $ctl.btnPortal.Add_Click({ if ($f.PortalUrl) { Open-HUUrl "$($f.PortalUrl)" } })
+    $ctl.btnCopy.Add_Click({ try { [System.Windows.Clipboard]::SetText("$($f.Path)") } catch { } })
+    [void]$w.ShowDialog()
 }
 
 function Show-HUSecExceptions {
@@ -447,7 +558,7 @@ function Show-HUSecExceptions {
             <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" IsDefault="True"/>
         </StackPanel>
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"
-                   Text="Ausnahmen sind befristet und mit Begruendung. Nach Ablauf zaehlt die Abweichung wieder. Zum Anwenden danach erneut Pruefen klicken."/>
+                   Text="Ausnahmen sind befristet und mit Begruendung. Nach Ablauf zaehlt die Abweichung wieder. Zum Anwenden danach erneut Pruefen klicken. 'wirkungslos' (orange): die Regel ist abgeschaltet oder beim letzten Pruefen nicht pruefbar - die Ausnahme kann entfernt werden; fuer nie pruefbare Regeln besser in den Sollwerten unter Katalog disabled abschalten."/>
         <DataGrid x:Name="gridEx" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Regel" Binding="{Binding Regel}" Width="60"/>
@@ -455,8 +566,16 @@ function Show-HUSecExceptions {
                 <DataGridTextColumn Header="Begruendung" Binding="{Binding Begruendung}" Width="2*"/>
                 <DataGridTextColumn Header="Verantwortlich" Binding="{Binding Verantwortlich}" Width="130"/>
                 <DataGridTextColumn Header="Gueltig bis" Binding="{Binding Bis}" Width="95"/>
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="80"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="210"/>
             </DataGrid.Columns>
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Wirkungslos}" Value="ja"><Setter Property="Foreground" Value="#FFB74D"/></DataTrigger>
+                        <DataTrigger Binding="{Binding Status}" Value="abgelaufen"><Setter Property="Foreground" Value="#888888"/></DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
         </DataGrid>
     </DockPanel>
 </Window>
@@ -470,7 +589,8 @@ function Show-HUSecExceptions {
         $now = Get-Date
         $ctl.gridEx.ItemsSource = @(foreach ($e in @(Get-HUSecExceptions)) {
                 $until = [datetime]$e.validUntil
-                [pscustomobject]@{ Id = "$($e.id)"; Regel = "$($e.ruleId)"; Tenant = (Get-HUAnaTenantName "$($e.tenant)"); Begruendung = "$($e.reason)"; Verantwortlich = "$($e.responsible)"; Bis = $until.ToLocalTime().ToString('yyyy-MM-dd'); Status = $(if ($until -gt $now) { 'aktiv' } else { 'abgelaufen' }) }
+                $es = Get-HUSecExceptionState -Exception $e -Results @($script:SecResults) -Now $now
+                [pscustomobject]@{ Id = "$($e.id)"; Regel = "$($e.ruleId)"; Tenant = (Get-HUAnaTenantName "$($e.tenant)"); Begruendung = "$($e.reason)"; Verantwortlich = "$($e.responsible)"; Bis = $until.ToLocalTime().ToString('yyyy-MM-dd'); Status = $es; Wirkungslos = $(if ($es -like 'wirkungslos*') { 'ja' } else { 'nein' }) }
             })
     }
     & $load
@@ -500,8 +620,13 @@ function Show-HUSecExceptionDialog {
     </Window.Resources>
     <StackPanel Margin="18">
         <TextBlock x:Name="lblHint" Style="{StaticResource HintText}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
-        <TextBlock Text="Tenant" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
-        <ComboBox x:Name="cmbTenant" Style="{StaticResource DarkComboBox}" ToolTip="Die Ausnahme gilt nur fuer diesen Tenant"/>
+        <DockPanel Margin="0,0,0,3">
+            <Button x:Name="btnAllT" DockPanel.Dock="Right" Content="alle" Padding="8,1" FontSize="11" Background="#3E3E42" Style="{StaticResource DarkButton}" ToolTip="Alle Tenants anhaken"/>
+            <TextBlock Text="Tenants (je Tenant eine eigene Ausnahme)" Style="{StaticResource FieldLabel}" VerticalAlignment="Center"/>
+        </DockPanel>
+        <WrapPanel x:Name="wpTenants" Margin="0,2,0,0"/>
+        <TextBlock x:Name="lblNoDev" Foreground="#FFB74D" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"
+                   Text="Hinweis: Ausnahmen wirken nur auf Abweichungen. Ist die Regel nicht pruefbar (z. B. '? Lizenz'), bitte in den Sollwerten unter 'Katalog disabled' abschalten."/>
         <TextBlock Text="Begruendung (mindestens 20 Zeichen)" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
         <TextBox x:Name="txtReason" Style="{StaticResource DarkTextBox}" FontSize="12" TextWrapping="Wrap" AcceptsReturn="False" MaxLength="400" Height="60"
                  ToolTip="Warum ist die Abweichung gewollt? Erscheint in der Ausnahmenliste"/>
@@ -511,7 +636,7 @@ function Show-HUSecExceptionDialog {
         <TextBox x:Name="txtUntil" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Nach Ablauf zaehlt die Abweichung wieder. Hoechstens 12 Monate, bei Kritisch 3 Monate"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button x:Name="btnRemove" Content="Ausnahme entfernen" Width="150" Background="#C62828" Style="{StaticResource DarkButton}" Margin="0,0,8,0" Visibility="Collapsed"
-                    ToolTip="Die bestehende Ausnahme dieses Tenants fuer diese Regel loeschen"/>
+                    ToolTip="Die bestehenden Ausnahmen der angehakten Tenants fuer diese Regel loeschen"/>
             <Button x:Name="btnOk" Content="Speichern" Width="100" Background="#4CAF50" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
             <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
         </StackPanel>
@@ -525,23 +650,33 @@ function Show-HUSecExceptionDialog {
     $w.Title = "Ausnahme - $($Row.RuleId)"
     $ctl.lblHint.Text = "$($Row.RuleId) [$($Row.Sev)] $($Row.Title)`nEine Ausnahme ist befristet und mit Begruendung. Nach Ablauf gilt die Abweichung wieder."
     $excs = @(Get-HUSecExceptions)
-    foreach ($k in $Keys) { $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = (Get-HUAnaTenantName $k); $it.Tag = $k; [void]$ctl.cmbTenant.Items.Add($it) }
-    $first = $null
-    foreach ($it in @($ctl.cmbTenant.Items)) { if (-not $first -and $Row.Cells[$it.Tag] -and $Row.Cells[$it.Tag].Status -in 'Abweichung', 'Ausnahme') { $first = $it } }
-    if (-not $first -and $ctl.cmbTenant.Items.Count) { $first = $ctl.cmbTenant.Items[0] }
-    $ctl.cmbTenant.SelectedItem = $first
+    # Tenants als Haken; vorbelegt sind die mit Abweichung oder Ausnahme, sonst der erste
+    $fg = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#CCCCCC')
+    $anyDev = [bool]@($Keys | Where-Object { $Row.Cells[$_] -and $Row.Cells[$_].Status -in 'Abweichung', 'Ausnahme' }).Count
+    foreach ($k in $Keys) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Content = (Get-HUAnaTenantName $k); $cb.Tag = $k; $cb.Foreground = $fg; $cb.Margin = [System.Windows.Thickness]::new(0, 2, 14, 2)
+        $cb.IsChecked = $(if ($anyDev) { [bool]($Row.Cells[$k] -and $Row.Cells[$k].Status -in 'Abweichung', 'Ausnahme') } else { $k -eq $Keys[0] })
+        [void]$ctl.wpTenants.Children.Add($cb)
+    }
+    $picked = { @($ctl.wpTenants.Children | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" }) }
     $ctl.txtWho.Text = 'Systembetreuung'
     $maxMonths = if ("$($Row.Sev)" -eq 'Kritisch') { 3 } else { 12 }
     $ctl.txtUntil.Text = (Get-Date).AddMonths([Math]::Min(3, $maxMonths)).ToString('yyyy-MM-dd')
     $sync = {
-        $tk = "$($ctl.cmbTenant.SelectedItem.Tag)"
-        $has = @($excs | Where-Object { $_.ruleId -eq $Row.RuleId -and $_.tenant -eq $tk }).Count -gt 0
+        $tks = @(& $picked)
+        $has = @($excs | Where-Object { $_.ruleId -eq $Row.RuleId -and $tks -contains $_.tenant }).Count -gt 0
         $ctl.btnRemove.Visibility = $(if ($has) { 'Visible' } else { 'Collapsed' })
+        # Hinweis, wenn bei einem angehakten Tenant gar keine Abweichung vorliegt (nicht pruefbar)
+        $np = @($tks | Where-Object { $Row.Cells[$_] -and "$($Row.Cells[$_].Status)" -eq 'NichtPruefbar' }).Count
+        $ctl.lblNoDev.Visibility = $(if ($np) { 'Visible' } else { 'Collapsed' })
     }
-    $ctl.cmbTenant.Add_SelectionChanged($sync)
+    foreach ($cb in @($ctl.wpTenants.Children)) { $cb.Add_Click($sync) }
+    $ctl.btnAllT.Add_Click({ foreach ($cb in @($ctl.wpTenants.Children)) { $cb.IsChecked = $true }; & $sync })
     & $sync
     $state = @{ Action = '' }
     $ctl.btnOk.Add_Click({
+            if (-not @(& $picked).Count) { Show-HUMessage 'Bitte mindestens einen Tenant anhaken.' -Icon Warning -Owner $w; return }
             $until = [datetime]::MinValue
             if (-not [datetime]::TryParseExact($ctl.txtUntil.Text.Trim(), 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$until)) { Show-HUMessage 'Datum bitte als JJJJ-MM-TT eingeben.' -Icon Warning -Owner $w; return }
             if (-not $ctl.txtWho.Text.Trim()) { Show-HUMessage 'Bitte eine verantwortliche Rolle eintragen.' -Icon Warning -Owner $w; return }
@@ -549,12 +684,12 @@ function Show-HUSecExceptionDialog {
             if ($err) { Show-HUMessage $err -Icon Warning -Owner $w; return }
             $state.Action = 'add'; $w.Close()
         })
-    $ctl.btnRemove.Add_Click({ $state.Action = 'remove'; $w.Close() })
+    $ctl.btnRemove.Add_Click({ if (-not @(& $picked).Count) { return }; $state.Action = 'remove'; $w.Close() })
     $w.Add_ContentRendered({ $ctl.txtReason.Focus() })
     [void]$w.ShowDialog()
     if (-not $state.Action) { return $null }
     $until2 = [datetime]::ParseExact($ctl.txtUntil.Text.Trim(), 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
-    return [pscustomobject]@{ Action = $state.Action; Tenant = "$($ctl.cmbTenant.SelectedItem.Tag)"; Reason = $ctl.txtReason.Text.Trim(); Who = $ctl.txtWho.Text.Trim(); Until = $until2.Date.AddDays(1).AddSeconds(-1) }
+    return [pscustomobject]@{ Action = $state.Action; Tenants = @(& $picked); Reason = $ctl.txtReason.Text.Trim(); Who = $ctl.txtWho.Text.Trim(); Until = $until2.Date.AddDays(1).AddSeconds(-1) }
 }
 
 function Start-HUSecException {
@@ -568,17 +703,20 @@ function Start-HUSecException {
     if (-not $script:SecKeys.Count) { return }
     $res = Show-HUSecExceptionDialog -Row $m -Keys @($script:SecKeys)
     if (-not $res) { return }
-    try {
-        if ($res.Action -eq 'remove') {
-            $old = @(Get-HUSecExceptions | Where-Object { $_.ruleId -eq $m.RuleId -and $_.tenant -eq $res.Tenant })
-            foreach ($o in $old) { Remove-HUSecException -Id "$($o.id)" }
-            Add-HURtbLine $script:Controls['rtbAna'] "Ausnahme entfernt: $($m.RuleId) / $(Get-HUAnaTenantName $res.Tenant)" '#FFB74D'
-        } else {
-            [void](Add-HUSecException -RuleId $m.RuleId -TenantKey $res.Tenant -Reason $res.Reason -ValidUntil $res.Until -Responsible $res.Who -Sev "$($m.Sev)")
-            Add-HURtbLine $script:Controls['rtbAna'] "Ausnahme eingetragen: $($m.RuleId) / $(Get-HUAnaTenantName $res.Tenant) bis $($res.Until.ToString('yyyy-MM-dd'))" '#81C784'
-        }
-        Write-HULog -Message "Katalog-Ausnahme $($res.Action): $($m.RuleId)" -Level 'INFO' -Tenant $res.Tenant
-    } catch { Show-HUMessage "$($_.Exception.Message)" -Icon Warning; return }
+    # je angehaktem Tenant eine eigene Ausnahme (Ablauf und Begruendung gleich)
+    foreach ($tk in @($res.Tenants)) {
+        try {
+            if ($res.Action -eq 'remove') {
+                $old = @(Get-HUSecExceptions | Where-Object { $_.ruleId -eq $m.RuleId -and $_.tenant -eq $tk })
+                foreach ($o in $old) { Remove-HUSecException -Id "$($o.id)" }
+                if ($old.Count) { Add-HURtbLine $script:Controls['rtbAna'] "Ausnahme entfernt: $($m.RuleId) / $(Get-HUAnaTenantName $tk)" '#FFB74D' }
+            } else {
+                [void](Add-HUSecException -RuleId $m.RuleId -TenantKey $tk -Reason $res.Reason -ValidUntil $res.Until -Responsible $res.Who -Sev "$($m.Sev)")
+                Add-HURtbLine $script:Controls['rtbAna'] "Ausnahme eingetragen: $($m.RuleId) / $(Get-HUAnaTenantName $tk) bis $($res.Until.ToString('yyyy-MM-dd'))" '#81C784'
+            }
+            Write-HULog -Message "Katalog-Ausnahme $($res.Action): $($m.RuleId)" -Level 'INFO' -Tenant $tk
+        } catch { Show-HUMessage "$(Get-HUAnaTenantName $tk): $($_.Exception.Message)" -Icon Warning; return }
+    }
     Add-HURtbLine $script:Controls['rtbAna'] 'Zum Anwenden bitte erneut Pruefen klicken.' '#90CAF9'
 }
 
@@ -620,6 +758,23 @@ function Register-HUSecHandlers {
             catch { Show-HUMessage "Soll-Stand nicht gespeichert: $($_.Exception.Message)" -Icon Warning }
         })
     $c['gridSec'].Add_MouseDoubleClick({ Show-HUSecDetail })
+    # "So behebst du es": Rechtsklick auf eine Regel oder F1 auf der markierten Zeile
+    $cmFix = New-Object System.Windows.Controls.ContextMenu
+    $miFix = New-Object System.Windows.Controls.MenuItem; $miFix.Header = 'So behebst du es ...'; $miFix.InputGestureText = 'F1'
+    $miFix.Add_Click({ $r = $script:Controls['gridSec'].SelectedItem; if ($r -and $r.Ref) { Show-HUSecFix -RuleId "$($r.Ref.RuleId)" } })
+    [void]$cmFix.Items.Add($miFix)
+    $miDet = New-Object System.Windows.Controls.MenuItem; $miDet.Header = 'Details ...'
+    $miDet.Add_Click({ Show-HUSecDetail })
+    [void]$cmFix.Items.Add($miDet)
+    $c['gridSec'].ContextMenu = $cmFix
+    $c['gridSec'].Add_PreviewMouseRightButtonDown({
+            param($s, $e)
+            # Zeile unter der Maus markieren, damit das Menue zur richtigen Regel gehoert
+            $dep = $e.OriginalSource
+            while ($dep -and -not ($dep -is [System.Windows.Controls.DataGridRow])) { $dep = [System.Windows.Media.VisualTreeHelper]::GetParent($dep) }
+            if ($dep) { $dep.IsSelected = $true }
+        })
+    # F1 auf der markierten Zeile: siehe Tastatur-Handler in Main.ps1
     $c['btnSecTable'].Add_Click({
             if (-not $script:SecRan -or -not @($script:SecMatrix).Count) { Show-HUMessage 'Noch keine Ergebnisse.' -Icon Info; return }
             $keys = @($script:SecKeys)

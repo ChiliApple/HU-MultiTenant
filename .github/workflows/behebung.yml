@@ -1,0 +1,37 @@
+# Monatliche Pruefung der Anleitungen "So behebst du es" (Docs/Behebung.json) gegen Microsoft Learn.
+# Nur lesend gegenueber Learn; bei Befunden wird ein Issue angelegt bzw. das offene Issue ergaenzt.
+name: Behebung pruefen
+
+on:
+  schedule:
+    - cron: '17 5 3 * *'   # am 3. jedes Monats, 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Learn-Links und Menuenamen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pruefen
+        id: chk
+        run: |
+          set +e
+          python3 .github/scripts/Check-Behebung.py report.md
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+      - name: Issue anlegen oder ergaenzen
+        if: steps.chk.outputs.rc == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Behebung pruefen (Microsoft Learn)"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body-file report.md
+          else gh issue create --title "$title" --body-file report.md; fi
+      - name: Datei kaputt
+        if: steps.chk.outputs.rc == '2'
+        run: exit 1

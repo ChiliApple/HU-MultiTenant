@@ -95,6 +95,7 @@ function Restore-HUWindowState {
     } catch { Write-Verbose "[UIState] Aufteilung: $_" }
 
     Set-HUUiScale ([double](Get-HUStateValue 'UiScale' 1.0)) -NoSave
+    try { Initialize-HUTabDrag } catch { Write-Verbose "[UIState] Reiter: $_" }
 }
 
 function Save-HUWindowState {
@@ -137,6 +138,91 @@ function Set-HUUiScale([double]$Scale, [switch]$NoSave) {
     $root = $script:Controls['rootPanel']
     if ($root) { $root.LayoutTransform = [System.Windows.Media.ScaleTransform]::new($Scale, $Scale) }
     if (-not $NoSave) { Set-HUStateValue 'UiScale' $Scale }
+}
+
+# ============================================================================
+# Reiter verschieben (Ziehen mit der Maus), Reihenfolge in ui-state.json (TabOrder = x:Name der Reiter)
+# ============================================================================
+$script:HUTabDefault = @()
+
+# Reine Funktion: gespeicherte Reihenfolge auf die vorhandenen Reiter anwenden.
+# Unbekannte Namen fallen weg, neue Reiter (spaetere Versionen) kommen an ihrer Standardstelle hinten dazu.
+function Get-HUTabOrder([string[]]$Saved, [string[]]$Current) {
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($n in @($Saved)) { if ($n -and $Current -contains $n -and -not $out.Contains($n)) { $out.Add($n) } }
+    foreach ($n in @($Current)) { if (-not $out.Contains($n)) { $out.Add($n) } }
+    return @($out.ToArray())
+}
+
+function Set-HUTabOrder([string[]]$Names) {
+    $tc = $script:Controls['tabMain']
+    if (-not $tc) { return }
+    $sel = $tc.SelectedItem
+    $items = @($tc.Items | Where-Object { $_ -is [System.Windows.Controls.TabItem] })
+    $order = Get-HUTabOrder -Saved $Names -Current @($items | ForEach-Object { "$($_.Name)" })
+    $i = 0
+    foreach ($n in $order) {
+        $t = @($items | Where-Object { "$($_.Name)" -eq $n })[0]
+        if (-not $t) { continue }
+        if ($tc.Items.IndexOf($t) -ne $i) { $tc.Items.Remove($t); [void]$tc.Items.Insert($i, $t) }
+        $i++
+    }
+    if ($sel) { $tc.SelectedItem = $sel }
+}
+
+function Save-HUTabOrder {
+    $names = @($script:Controls['tabMain'].Items | Where-Object { $_ -is [System.Windows.Controls.TabItem] } | ForEach-Object { "$($_.Name)" })
+    if (($names -join ',') -eq ($script:HUTabDefault -join ',')) {
+        $s = Get-HUUIState; if ($s.PSObject.Properties['TabOrder']) { $s.PSObject.Properties.Remove('TabOrder') }
+    } else { Set-HUStateValue 'TabOrder' $names }
+    Save-HUUIState
+}
+
+function Initialize-HUTabDrag {
+    $tc = $script:Controls['tabMain']
+    if (-not $tc) { return }
+    $script:HUTabDefault = @($tc.Items | Where-Object { $_ -is [System.Windows.Controls.TabItem] } | ForEach-Object { "$($_.Name)" })
+    try { $saved = @(Get-HUStateValue 'TabOrder' @()); if ($saved.Count) { Set-HUTabOrder -Names $saved } } catch { Write-Verbose "[UIState] Reiter-Reihenfolge: $_" }
+    $script:HUTabDragStart = $null; $script:HUTabDragItem = $null
+    foreach ($t in @($tc.Items | Where-Object { $_ -is [System.Windows.Controls.TabItem] })) {
+        $t.AllowDrop = $true
+        if (-not $t.ToolTip) { $t.ToolTip = 'Reiter mit der Maus an eine andere Stelle ziehen; Rechtsklick: Reihenfolge zuruecksetzen' }
+        $t.Add_PreviewMouseLeftButtonDown({
+                param($s, $e)
+                # nur auf dem Reiter-Kopf ziehen - Klicks im Inhalt (Scrollbalken, Tabellen) nicht abfangen
+                $script:HUTabDragItem = $null; $script:HUTabDragStart = $null
+                $p = $e.GetPosition($s)
+                if ($p.X -lt 0 -or $p.Y -lt 0 -or $p.X -gt $s.ActualWidth -or $p.Y -gt $s.ActualHeight) { return }
+                $script:HUTabDragStart = $e.GetPosition($null); $script:HUTabDragItem = $s
+            })
+        $t.Add_PreviewMouseLeftButtonUp({ $script:HUTabDragItem = $null; $script:HUTabDragStart = $null })
+        $t.Add_PreviewMouseMove({
+                param($s, $e)
+                if ($e.LeftButton -ne 'Pressed' -or -not $script:HUTabDragItem -or $null -eq $script:HUTabDragStart) { return }
+                $p = $e.GetPosition($null)
+                if ([Math]::Abs($p.X - $script:HUTabDragStart.X) -lt [System.Windows.SystemParameters]::MinimumHorizontalDragDistance -and
+                    [Math]::Abs($p.Y - $script:HUTabDragStart.Y) -lt [System.Windows.SystemParameters]::MinimumVerticalDragDistance) { return }
+                $src = $script:HUTabDragItem; $script:HUTabDragItem = $null; $script:HUTabDragStart = $null
+                try { [void][System.Windows.DragDrop]::DoDragDrop($src, $src, [System.Windows.DragDropEffects]::Move) } catch { Write-Verbose "[UIState] Ziehen: $_" }
+            })
+        $t.Add_Drop({
+                param($s, $e)
+                try {
+                    $src = $e.Data.GetData([System.Windows.Controls.TabItem])
+                    if (-not $src -or $src -eq $s) { return }
+                    $tcm = $script:Controls['tabMain']
+                    $idx = $tcm.Items.IndexOf($s)
+                    $tcm.Items.Remove($src); [void]$tcm.Items.Insert($idx, $src)
+                    $tcm.SelectedItem = $src
+                    Save-HUTabOrder
+                } catch { Write-Verbose "[UIState] Ablegen: $_" }
+            })
+        $cm = New-Object System.Windows.Controls.ContextMenu
+        $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = 'Reiter-Reihenfolge zuruecksetzen'
+        $mi.Add_Click({ Set-HUTabOrder -Names $script:HUTabDefault; Save-HUTabOrder })
+        [void]$cm.Items.Add($mi)
+        $t.ContextMenu = $cm
+    }
 }
 
 # Start-Reiter: Einstellung ui.startTab = QuickScript (Standard) | Extensions | Last

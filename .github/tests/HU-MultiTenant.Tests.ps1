@@ -24,6 +24,19 @@ BeforeAll {
     . (Join-Path $root 'Functions\UI-QSTable.ps1')
 }
 
+Describe 'Reiter verschieben: Reihenfolge' {
+    It 'gespeicherte Reihenfolge, unbekannte weg, neue hinten' {
+        (Get-HUTabOrder -Saved @('tabTeams', 'tabAlt', 'tabApps') -Current @('tabQuickScript', 'tabApps', 'tabTeams', 'tabNeu')) -join ',' | Should -Be 'tabTeams,tabApps,tabQuickScript,tabNeu'
+        (Get-HUTabOrder -Saved @() -Current @('a', 'b')) -join ',' | Should -Be 'a,b'
+        (Get-HUTabOrder -Saved @('b', 'b', 'a') -Current @('a', 'b')) -join ',' | Should -Be 'b,a'
+    }
+    It 'beim Start eingebunden, Kontextmenue zum Zuruecksetzen' {
+        $src = Get-Content -LiteralPath (Join-Path $script:AppRoot 'Functions\UI-State.ps1') -Raw
+        $src | Should -Match 'try \{ Initialize-HUTabDrag \}'
+        $src | Should -Match 'Reiter-Reihenfolge zuruecksetzen'
+    }
+}
+
 Describe 'Secret-Ablauf: Select-AppSecretMatch' {
     It 'erkennt das gespeicherte Secret am Hint' {
         $creds = @(

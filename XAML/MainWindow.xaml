@@ -419,7 +419,7 @@
                                 <TextBlock DockPanel.Dock="Top" Text="Apps in Intune" Style="{StaticResource SectionTitle}"/>
                                 <WrapPanel DockPanel.Dock="Top" x:Name="spIntTenants" Margin="0,0,0,4"/>
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-                                    <Button x:Name="btnIntLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
+                                    <Button x:Name="btnIntLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" Background="#1976D2" Foreground="White" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
                                     <ComboBox x:Name="cmbIntType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="86" Margin="4,0,0,0">
                                         <ComboBoxItem Content="Alle" Tag="" IsSelected="True"/>
                                         <ComboBoxItem Content="Win32" Tag="win32"/>
@@ -860,7 +860,7 @@
                                 <TextBlock DockPanel.Dock="Top" Text="Wartung in Intune" Style="{StaticResource SectionTitle}"/>
                                 <WrapPanel DockPanel.Dock="Top" x:Name="spRintTenants" Margin="0,0,0,4"/>
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-                                    <Button x:Name="btnRintLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
+                                    <Button x:Name="btnRintLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" Background="#1976D2" Foreground="White" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
                                     <ComboBox x:Name="cmbRintType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="96" Margin="4,0,0,0">
                                         <ComboBoxItem Content="Alle" Tag="" IsSelected="True"/>
                                         <ComboBoxItem Content="Eigene" Tag="own"/>
@@ -1155,87 +1155,70 @@
                                 </UniformGrid>
                                 <WrapPanel x:Name="spAnaTenants" Margin="0,0,0,6"/>
                                 <StackPanel x:Name="pnlAnaAsg">
-                                    <DockPanel>
-                                        <ComboBox x:Name="cmbAnaKind" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="110" Margin="0,0,6,0">
+                                    <WrapPanel Orientation="Horizontal">
+                                        <ComboBox x:Name="cmbAnaKind" Style="{StaticResource DarkComboBox}" Width="110" Margin="0,0,6,4">
                                             <ComboBoxItem Content="Gruppe" Tag="group" IsSelected="True"/>
                                             <ComboBoxItem Content="Geraet" Tag="device"/>
                                             <ComboBoxItem Content="Benutzer" Tag="user"/>
                                         </ComboBox>
-                                        <Button x:Name="btnAnaTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
-                                        <Button x:Name="btnAnaRun" DockPanel.Dock="Right" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0" IsDefault="False"/>
-                                        <Button x:Name="btnAnaPick" DockPanel.Dock="Right" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="6,0,0,0" ToolTip="Gruppe aus den angehakten Tenants suchen"/>
-                                        <TextBox x:Name="txtAnaName" Style="{StaticResource DarkTextBox}" FontSize="12"
+                                        <TextBox x:Name="txtAnaName" Width="260" Margin="0,0,6,4" Style="{StaticResource DarkTextBox}" FontSize="12"
                                                  ToolTip="Gruppenname, Geraetename (wie in Intune) oder Benutzer (Benutzername ohne Domain, UPN oder Anzeigename - inkl. seiner Intune-Geraete)"/>
-                                    </DockPanel>
-                                    <DockPanel Margin="0,6,0,0">
-                                        <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <CheckBox x:Name="chkAnaAll" DockPanel.Dock="Right" Content="Alle Geraete/Benutzer" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
+                                        <Button x:Name="btnAnaPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="6,0,0,4" ToolTip="Gruppe aus den angehakten Tenants suchen"/>
+                                        <Button x:Name="btnAnaRun" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4" IsDefault="False"/>
+                                        <Button x:Name="btnAnaTable" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
+                                    </WrapPanel>
+                                    <WrapPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                                            <TextBox x:Name="txtAnaFilter" Width="240" Margin="0,0,6,4" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Name, Typ, Absicht, Ueber, Status oder Tenant (mehrere Woerter: alle muessen vorkommen)"/>
+                                        </StackPanel>
+                                        <ComboBox x:Name="cmbAnaType" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,4" ToolTip="Nur eine Art anzeigen"/>
+                                        <CheckBox x:Name="chkAnaAll" Content="Alle Geraete/Benutzer" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
                                                   ToolTip="Auch Zuweisungen an Alle Geraete / Alle Benutzer zeigen (aus: nur ueber Gruppen)"/>
-                                        <ComboBox x:Name="cmbAnaType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,0" ToolTip="Nur eine Art anzeigen"/>
-                                        <TextBox x:Name="txtAnaFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Name, Typ, Absicht, Ueber, Status oder Tenant (mehrere Woerter: alle muessen vorkommen)"/>
-                                    </DockPanel>
+                                    </WrapPanel>
                                 </StackPanel>
                                 <StackPanel x:Name="pnlAnaCmp" Visibility="Collapsed">
-                                    <DockPanel>
-                                        <Button x:Name="btnCmpTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
-                                        <Button x:Name="btnCmpCopy" DockPanel.Dock="Right" Content="Fehlendes kopieren ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                    <WrapPanel Orientation="Horizontal">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                                            <TextBox x:Name="txtCmpFilter" Width="240" Margin="0,0,6,4" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Typ, Name oder Status (mehrere Woerter: alle muessen vorkommen)"/>
+                                        </StackPanel>
+                                        <ComboBox x:Name="cmbCmpType" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,4" ToolTip="Nur eine Art anzeigen"/>
+                                        <CheckBox x:Name="chkCmpDiff" Content="Nur Unterschiede" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"/>
+                                        <Button x:Name="btnCmpRun" Content="&#x25B6; Vergleichen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
+                                        <Button x:Name="btnCmpCopy" Content="Fehlendes kopieren ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
                                                 ToolTip="Markierte Eintraege in die angehakten Tenants kopieren, in denen sie fehlen - ohne Zuweisungen"/>
-                                        <Button x:Name="btnCmpRun" DockPanel.Dock="Right" Content="&#x25B6; Vergleichen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
-                                        <CheckBox x:Name="chkCmpDiff" DockPanel.Dock="Right" Content="Nur Unterschiede" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                                        <ComboBox x:Name="cmbCmpType" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,0" ToolTip="Nur eine Art anzeigen"/>
-                                        <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBox x:Name="txtCmpFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Typ, Name oder Status (mehrere Woerter: alle muessen vorkommen)"/>
-                                    </DockPanel>
+                                        <Button x:Name="btnCmpTable" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
+                                    </WrapPanel>
                                 </StackPanel>
                                 <StackPanel x:Name="pnlAnaBak" Visibility="Collapsed">
-                                    <DockPanel>
-                                        <Button x:Name="btnBakNow" DockPanel.Dock="Left" Content="&#x1F4BE; Backup jetzt" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,0"
+                                    <WrapPanel Orientation="Horizontal">
+                                        <Button x:Name="btnBakNow" Content="&#x1F4BE; Backup jetzt" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
                                                 ToolTip="Stand der angehakten Tenants sichern (Profile, Richtlinien, Skripte, Conditional Access ... mit Zuweisungen; Apps nur als Liste)"/>
-                                        <Button x:Name="btnBakFolder" DockPanel.Dock="Left" Content="Ordner" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,10,0"/>
-                                        <TextBlock x:Name="lblBakRoot" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                    </DockPanel>
-                                    <DockPanel Margin="0,6,0,0">
-                                        <TextBlock DockPanel.Dock="Left" Text="Verlauf:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <ComboBox x:Name="cmbBakTenant" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="140" Margin="0,0,6,0"/>
-                                        <ComboBox x:Name="cmbBakA" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="150" Margin="0,0,4,0" ToolTip="Aelterer Stand"/>
-                                        <TextBlock DockPanel.Dock="Left" Text="&#x2192;" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <ComboBox x:Name="cmbBakB" DockPanel.Dock="Left" Style="{StaticResource DarkComboBox}" Width="170" Margin="0,0,6,0" ToolTip="Neuerer Stand - oder nur den linken Stand anzeigen"/>
-                                        <Button x:Name="btnBakCmp" DockPanel.Dock="Left" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,0"/>
-                                        <Button x:Name="btnBakTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"/>
-                                        <Button x:Name="btnBakRestore" DockPanel.Dock="Right" Content="Wiederherstellen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                        <Button x:Name="btnBakFolder" Content="Ordner" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,10,4"/>
+                                        <TextBlock x:Name="lblBakRoot" Margin="0,0,6,4" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </WrapPanel>
+                                    <WrapPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <TextBlock Text="Verlauf:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                                        <ComboBox x:Name="cmbBakTenant" Style="{StaticResource DarkComboBox}" Width="140" Margin="0,0,6,4"/>
+                                        <ComboBox x:Name="cmbBakA" Style="{StaticResource DarkComboBox}" Width="150" Margin="0,0,4,4" ToolTip="Aelterer Stand"/>
+                                        <TextBlock Text="&#x2192;" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,4,4"/>
+                                        <ComboBox x:Name="cmbBakB" Style="{StaticResource DarkComboBox}" Width="170" Margin="0,0,6,4" ToolTip="Neuerer Stand - oder nur den linken Stand anzeigen"/>
+                                        <Button x:Name="btnBakCmp" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                        <TextBox x:Name="txtBakFilter" Width="200" Margin="0,0,6,4" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Filter: Text in Typ, Name, Aenderung, Geaendert von"/>
+                                        <CheckBox x:Name="chkBakChanges" Content="Nur Aenderungen" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,4"/>
+                                        <Button x:Name="btnBakRestore" Content="Wiederherstellen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
                                                 ToolTip="Markierte Eintraege aus dem aelteren der beiden Staende neu anlegen - mit Zusatz im Namen, ohne Zuweisungen"/>
-                                        <CheckBox x:Name="chkBakChanges" DockPanel.Dock="Right" Content="Nur Aenderungen" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                                        <TextBox x:Name="txtBakFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Filter: Text in Typ, Name, Aenderung, Geaendert von"/>
-                                    </DockPanel>
+                                        <Button x:Name="btnBakTable" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
+                                    </WrapPanel>
                                 </StackPanel>
                                 <StackPanel x:Name="pnlAnaSec" Visibility="Collapsed">
-                                    <DockPanel>
-                                        <Button x:Name="btnSecTable" DockPanel.Dock="Right" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
-                                                ToolTip="Die angezeigten Zeilen als Tabelle ansehen, kopieren oder exportieren"/>
-                                        <Button x:Name="btnSecRef" DockPanel.Dock="Right" Content="Soll speichern" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
-                                                ToolTip="Den aktuellen Pruefstand als Soll speichern. Die Meldung 'Sicherheits-Aenderung' (Reiter Teams) meldet danach jede Abweichung davon. Gespeichert werden nur Status und Zahlen."/>
-                                        <Button x:Name="btnSecBase" DockPanel.Dock="Right" Content="Sollwerte ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
-                                                ToolTip="Sollwerte fuer alle Tenants oder je Tenant eintragen, z. B. Notfallkonten (V1), Admin-Gruppen (A25), Schwellen. Werden lokal gespeichert und beim naechsten Pruefen verwendet."/>
-                                        <Button x:Name="btnSecExc" DockPanel.Dock="Right" Content="Ausnahmen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
-                                                ToolTip="Alle Ausnahmen ansehen, fuer die markierte Regel eine neue befristete Ausnahme eintragen oder eine entfernen"/>
-                                        <Button x:Name="btnSecRun" DockPanel.Dock="Right" Content="&#x25B6; Pruefen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
-                                                ToolTip="Alle Regeln gegen die angehakten Tenants pruefen. Es wird nur gelesen, nichts veraendert."/>
-                                        <CheckBox x:Name="chkSecColor" DockPanel.Dock="Right" Content="Farben" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
-                                                  ToolTip="Zeichen farbig: gruen = ok, rot = Abweichung oder Fehler, orange = Ausnahme, grau = nicht pruefbar"/>
-                                        <CheckBox x:Name="chkSecDiff" DockPanel.Dock="Right" Content="Nur Unterschiede" IsChecked="False" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
-                                                  ToolTip="Nur Regeln, bei denen sich die Tenants unterscheiden"/>
-                                        <CheckBox x:Name="chkSecDev" DockPanel.Dock="Right" Content="Nur Abweichungen" IsChecked="False" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
-                                                  ToolTip="Nur Regeln mit Abweichung oder Fehler in mindestens einem Tenant"/>
-                                        <Grid DockPanel.Dock="Right" Margin="10,0,0,0">
-                                            <Button x:Name="btnSecSev" Content="Alle Grade &#x25BE;" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" MinWidth="96"
-                                                    ToolTip="Schweregrade ein- oder ausblenden (Haken weg = ausgeblendet)"/>
-                                            <Popup x:Name="popSecSev" PlacementTarget="{Binding ElementName=btnSecSev}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
-                                                <Border Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="4" Padding="10,6">
-                                                    <StackPanel x:Name="spSecSev"/>
-                                                </Border>
-                                            </Popup>
-                                        </Grid>
-                                        <Grid DockPanel.Dock="Right" Margin="10,0,0,0">
+                                    <WrapPanel Orientation="Horizontal">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                                            <TextBox x:Name="txtSecFilter" Width="240" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,0,0,4" ToolTip="Text in Nummer, Bereich, Regel oder Schweregrad (mehrere Woerter: alle muessen vorkommen)"/>
+                                        </StackPanel>
+                                        <Grid Margin="10,0,0,4">
                                             <Button x:Name="btnSecArea" Content="Alle Bereiche &#x25BE;" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" MinWidth="110"
                                                     ToolTip="Bereiche ein- oder ausblenden (Haken weg = Bereich ausgeblendet)"/>
                                             <Popup x:Name="popSecArea" PlacementTarget="{Binding ElementName=btnSecArea}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
@@ -1244,9 +1227,32 @@
                                                 </Border>
                                             </Popup>
                                         </Grid>
-                                        <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBox x:Name="txtSecFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Nummer, Bereich, Regel oder Schweregrad (mehrere Woerter: alle muessen vorkommen)"/>
-                                    </DockPanel>
+                                        <Grid Margin="10,0,0,4">
+                                            <Button x:Name="btnSecSev" Content="Alle Grade &#x25BE;" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" MinWidth="96"
+                                                    ToolTip="Schweregrade ein- oder ausblenden (Haken weg = ausgeblendet)"/>
+                                            <Popup x:Name="popSecSev" PlacementTarget="{Binding ElementName=btnSecSev}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                                <Border Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="4" Padding="10,6">
+                                                    <StackPanel x:Name="spSecSev"/>
+                                                </Border>
+                                            </Popup>
+                                        </Grid>
+                                        <CheckBox x:Name="chkSecDev" Content="Nur Abweichungen" IsChecked="False" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
+                                                  ToolTip="Nur Regeln mit Abweichung oder Fehler in mindestens einem Tenant"/>
+                                        <CheckBox x:Name="chkSecDiff" Content="Nur Unterschiede" IsChecked="False" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
+                                                  ToolTip="Nur Regeln, bei denen sich die Tenants unterscheiden"/>
+                                        <CheckBox x:Name="chkSecColor" Content="Farben" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
+                                                  ToolTip="Zeichen farbig: gruen = ok, rot = Abweichung oder Fehler, orange = Ausnahme, grau = nicht pruefbar"/>
+                                        <Button x:Name="btnSecRun" Content="&#x25B6; Pruefen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
+                                                ToolTip="Alle Regeln gegen die angehakten Tenants pruefen. Es wird nur gelesen, nichts veraendert."/>
+                                        <Button x:Name="btnSecExc" Content="Ausnahmen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
+                                                ToolTip="Alle Ausnahmen ansehen, fuer die markierte Regel eine neue befristete Ausnahme eintragen oder eine entfernen"/>
+                                        <Button x:Name="btnSecBase" Content="Sollwerte ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
+                                                ToolTip="Sollwerte fuer alle Tenants oder je Tenant eintragen, z. B. Notfallkonten (V1), Admin-Gruppen (A25), Schwellen. Werden lokal gespeichert und beim naechsten Pruefen verwendet."/>
+                                        <Button x:Name="btnSecRef" Content="Soll speichern" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
+                                                ToolTip="Den aktuellen Pruefstand als Soll speichern. Die Meldung 'Sicherheits-Aenderung' (Reiter Teams) meldet danach jede Abweichung davon. Gespeichert werden nur Status und Zahlen."/>
+                                        <Button x:Name="btnSecTable" Content="&#x1F4CA; Tabelle / Export" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
+                                                ToolTip="Die angezeigten Zeilen als Tabelle ansehen, kopieren oder exportieren"/>
+                                    </WrapPanel>
                                 </StackPanel>
                                 <DockPanel Margin="0,6,0,0">
                                     <Ellipse x:Name="dotAnaRun" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,0,6,0" VerticalAlignment="Top" Visibility="Collapsed" ToolTip="laeuft ..."/>
@@ -1275,7 +1281,7 @@
                         </DataGrid>
                         <DataGrid x:Name="gridSec" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single"
                                   CanUserSortColumns="True" Visibility="Collapsed" AlternationCount="2"
-                                  ToolTip="Doppelklick zeigt je Tenant Ergebnis, Grund und Details">
+                                  ToolTip="Doppelklick: je Tenant Ergebnis, Grund und Details. Rechtsklick oder F1: So behebst du es (wo im Portal, Schritte, Microsoft Learn)">
                             <DataGrid.RowStyle>
                                 <Style TargetType="DataGridRow">
                                     <Style.Triggers>

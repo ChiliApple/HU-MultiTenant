@@ -468,6 +468,15 @@ Describe 'Teams-Auftraege: Sicherheits-Aenderung' {
         $s.Rows[0].Text | Should -Match 'und 2 weitere'
         $s.Facts['Heute nicht pruefbar (im Soll pruefbar)'] | Should -Be 2
     }
+    It 'Filterzeile nur, wenn statusOnly/silent etwas ausgeblendet hat' {
+        $c = Cmp 1
+        @((New-HUSecDriftCardSpec -Compare $c).Lines | Where-Object { $_ -like 'Gefiltert*' }).Count | Should -Be 0
+        $c | Add-Member HiddenCount 3 -Force; $c | Add-Member Silent @('A30') -Force
+        $l = @((New-HUSecDriftCardSpec -Compare $c).Lines | Where-Object { $_ -like 'Gefiltert*' })
+        $l.Count | Should -Be 1
+        $l[0] | Should -Match '3 Zahlenaenderungen'
+        $l[0] | Should -Match 'stumm: A30'
+    }
     It 'nur Verbesserungen: Stufe Warning' {
         $c = Cmp 1; $c.Changes[0].Worse = $false
         (New-HUSecDriftCardSpec -Compare $c).Level | Should -Be 'Warning'

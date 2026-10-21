@@ -525,10 +525,17 @@ $script:HUSecDefaults = @{
     K03 = @{ maxPercent = 95 }
     K04 = @{ maxFailed = 20 }
     K05 = @{ countries = @('AT', 'DE'); accounts = @() }
+    # Katalog-weite Einstellungen: abgeschaltete Regeln (z. B. ohne P2-Lizenz)
+    # statusOnly: nur Wechsel ok <-> Abweichung melden, nicht jede Aenderung der Anzahl (Regeln mit taeglich schwankenden Zahlen)
+    # silent: in der Teams-Meldung und beim Soll-Hinweis gar nicht melden (Matrix bleibt unveraendert)
+    Katalog = @{ disabled = @(); statusOnly = @('E03', 'E04', 'E16', 'K01', 'K04', 'K05', 'C03', 'C06'); silent = @() }
 }
 
 # Sollwerte zum Bearbeiten im Dialog (Analyse > Sicherheit > Sollwerte): Regel, Schluessel, Art, Bedeutung
 $script:HUSecBaselineInfo = @(
+    @{ Rule = 'Katalog'; Key = 'disabled';      Kind = 'rules'; Text = 'Abgeschaltete Regeln (Nummern, mit Komma getrennt, z. B. A29, A30, K06): Zelle zeigt "aus", zaehlt weder in der Ampel noch im Soll-Stand. Regeln mit Mindeststandard lassen sich nicht abschalten.' }
+    @{ Rule = 'Katalog'; Key = 'statusOnly';    Kind = 'rules'; Text = 'Teams-Meldung: bei diesen Regeln nur den Wechsel ok/Abweichung melden, nicht jede Aenderung der Anzahl (z. B. Defender-Alarme, Konten, Geraete). Regeln mit Mindeststandard werden immer voll gemeldet.' }
+    @{ Rule = 'Katalog'; Key = 'silent';        Kind = 'rules'; Text = 'Teams-Meldung: diese Regeln gar nicht melden (Matrix und Ampel bleiben). Regeln mit Mindeststandard werden immer gemeldet.' }
     @{ Rule = 'V1';  Key = 'accounts';          Kind = 'guids'; Text = 'Notfallkonten (Objekt-IDs der Benutzer, mit Komma getrennt). Jedes muss in jeder aussperrfaehigen Richtlinie ausgenommen sein; gilt auch fuer A25 und A27.' }
     @{ Rule = 'A25'; Key = 'adminGroups';       Kind = 'guids'; Text = 'Admin-Gruppen (Objekt-IDs), die bei der Adminportal-Sperre ausgenommen sein duerfen.' }
     @{ Rule = 'A25'; Key = 'maxUsers';          Kind = 'int';   Text = 'Hoechstens so viele einzelne Konten duerfen bei der Adminportal-Sperre ausgenommen sein (Notfallkonten zaehlen nicht).' }
@@ -591,6 +598,15 @@ function Save-HUSecBaselineEdit {
             if ($bad.Count) { $errs.Add("$k`: keine gueltige Objekt-ID: $($bad -join ', ')"); continue }
             $clean[$k] = @($parts | ForEach-Object { $_.ToLowerInvariant() } | Sort-Object -Unique)
         }
+        elseif ($i.Kind -in 'rules', 'rulesAny') {
+            $parts = @($t -split '[,;\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToUpperInvariant() } | Sort-Object -Unique)
+            $known = @{}; foreach ($r in @(Get-HUSecRules)) { $known["$($r.Id)"] = $r }
+            $bad = @($parts | Where-Object { -not $known.ContainsKey($_) })
+            if ($bad.Count) { $errs.Add("$k`: unbekannte Regelnummer: $($bad -join ', ')"); continue }
+            $min = @($parts | Where-Object { $i.Kind -eq 'rules' -and $known[$_].Min })
+            if ($min.Count) { $errs.Add("$k`: Mindeststandard, nicht abschaltbar (nur Ausnahme mit Ablauf): $($min -join ', ')"); continue }
+            $clean[$k] = $parts
+        }
         elseif ($i.Kind -eq 'codes') {
             $parts = @($t -split '[,;\s]+' | Where-Object { $_ })
             $bad = @($parts | Where-Object { $_ -notmatch '^[A-Za-z]{2}$' })
@@ -637,7 +653,7 @@ function Get-HUSecBaseline {
         foreach ($layer in @($j.global, $(if ($TenantKey -and $j.tenants) { $j.tenants.$TenantKey } else { $null }))) {
             if (-not $layer) { continue }
             foreach ($p in $layer.PSObject.Properties) {
-                if ($ids.Count -and $ids -notcontains $p.Name) { $errs.Add("Unbekannte Regel $($p.Name) in den Sollwerten"); continue }
+                if ($ids.Count -and $ids -notcontains $p.Name -and $p.Name -ne 'Katalog') { $errs.Add("Unbekannte Regel $($p.Name) in den Sollwerten"); continue }
                 if (-not $b.ContainsKey($p.Name)) { $b[$p.Name] = @{} }
                 foreach ($q in $p.Value.PSObject.Properties) {
                     # Zahlen-Sollwerte nur als ganze Zahl 0 bis 3650 uebernehmen, sonst Standard behalten und melden (Review 037 B15)
@@ -701,6 +717,24 @@ function Find-HUSecException($Result, [object[]]$Exceptions, [datetime]$Now = (G
         }
     }
     return $null
+}
+
+function Get-HUSecExceptionState {
+    # Zustand einer Ausnahme fuer die Liste: aktiv, abgelaufen oder wirkungslos (Regel unbekannt,
+    # abgeschaltet, Mindeststandard-frei nie pruefbar). $Results = letzte Pruefergebnisse (optional).
+    param([Parameter(Mandatory)]$Exception, [object[]]$Results = @(), [datetime]$Now = (Get-Date))
+    $until = [datetime]::Parse("$($Exception.validUntil)", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
+    if ($until -le $Now) { return 'abgelaufen' }
+    $rid = "$($Exception.ruleId)"; $tk = "$($Exception.tenant)"
+    $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $rid })[0]
+    if (-not $rule) { return 'wirkungslos: Regel unbekannt' }
+    $k = (Get-HUSecBaseline -TenantKey $tk -Rules (Get-HUSecRules)).Values['Katalog']
+    $rb = (Get-HUSecBaseline -TenantKey $tk -Rules (Get-HUSecRules)).Values[$rid]
+    if (-not $rule.Min -and ((@(@($k.disabled) | ForEach-Object { "$_".Trim().ToUpperInvariant() }) -contains $rid) -or ($rb -and $rb.ContainsKey('enabled') -and $rb.enabled -eq $false))) { return 'wirkungslos: Regel abgeschaltet' }
+    $r = @($Results | Where-Object { "$($_.RuleId)" -eq $rid -and "$($_.Tenant)" -eq $tk })[0]
+    if ($r -and $r.Status -eq 'NichtPruefbar') { return "wirkungslos: nicht pruefbar ($($r.Reason))" }
+    if ($r -and $r.Status -eq 'Info' -and $r.Reason -eq 'Aus') { return 'wirkungslos: Regel abgeschaltet' }
+    return 'aktiv'
 }
 
 # ============================================================================
@@ -1757,7 +1791,13 @@ function Invoke-HUSecCatalog {
     $bl = Get-HUSecBaseline -TenantKey $TenantKey -Rules (Get-HUSecRules)
     $exc = @(Get-HUSecExceptions)
     $out = New-Object System.Collections.Generic.List[object]
+    $off = @(@($bl.Values['Katalog'].disabled) | ForEach-Object { "$_".ToUpperInvariant() } | Where-Object { $_ })
     foreach ($r in $rules) {
+        # abgeschaltet (Sollwert Katalog disabled oder enabled = false): gar nicht lesen, Zelle "aus"; Mindeststandard bleibt immer an
+        $rb = $bl.Values[$r.Id]
+        if (-not $r.Min -and ($off -contains "$($r.Id)" -or ($rb -and $rb.ContainsKey('enabled') -and $rb.enabled -eq $false))) {
+            $out.Add((New-HUSecResult -Rule $r -Tenant $TenantKey -Status 'Info' -Reason 'Aus' -Detail 'in den Sollwerten abgeschaltet')); continue
+        }
         $facts = @{}
         $fail = $null
         foreach ($k in $r.Facts) {
@@ -1768,10 +1808,6 @@ function Invoke-HUSecCatalog {
         if ($fail) { $out.Add((New-HUSecResult -Rule $r -Tenant $TenantKey -Status 'NichtPruefbar' -Reason $fail.Reason -Detail $fail.Detail -Complete $false)); continue }
         $b = if ($bl.Values.ContainsKey($r.Id)) { @{} + $bl.Values[$r.Id] } else { @{} }
         if ($bl.Values.ContainsKey('V1')) { $b['__breakGlass'] = $bl.Values['V1'].accounts }   # Notfallkonten fuer A25/A27
-        # In den Sollwerten abgeschaltet (enabled = false): nur Info; bei Regeln mit Mindeststandard (Min) wirkt das nicht
-        if (-not $r.Min -and $b.ContainsKey('enabled') -and $b.enabled -eq $false) {
-            $out.Add((New-HUSecResult -Rule $r -Tenant $TenantKey -Status 'Info' -Detail 'in den Sollwerten abgeschaltet')); continue
-        }
         try {
             $e = & $r.Eval $facts $b
             $cnt = if ($e.ContainsKey('Count')) { $e.Count } else { $null }
@@ -1989,22 +2025,121 @@ function Get-HUSecReference {
 
 # Vergleich Ist gegen Soll. Nur Regeln, die in beiden Staenden pruefbar sind (OK/Abweichung/Ausnahme), zaehlen als Aenderung;
 # NichtPruefbar/Fehler/Info sind keine Aenderung (sonst Meldungen bei jedem Abruffehler). Gezaehlt werden nur Regeln, die im Soll pruefbar waren und jetzt nicht (Unchecked); dauerhaft nicht pruefbare zaehlen nicht.
+# ============================================================================
+# Behebung je Regel ("So behebst du es"): nur die mitgelieferte Docs/Behebung.json. Sie kommt mit dem Release und ist
+# damit ueber Pruefsummen und Signatur des Updates abgesichert (Review 040 B1: kein Nachladen aus main, weil die Schritte
+# PowerShell-Befehle enthalten). Trotzdem streng geprueft: nur Text, Learn-Links nur auf Doku-Bereiche von
+# learn.microsoft.com, Portal nur als fester Schluessel. Ungueltige Eintraege fallen weg.
+# ============================================================================
+$script:HUSecFixPortals = [ordered]@{
+    entra    = @{ Name = 'Entra admin center'; Url = 'https://entra.microsoft.com' }
+    intune   = @{ Name = 'Intune admin center'; Url = 'https://intune.microsoft.com' }
+    defender = @{ Name = 'Microsoft Defender portal'; Url = 'https://security.microsoft.com' }
+    m365     = @{ Name = 'Microsoft 365 admin center'; Url = 'https://admin.microsoft.com' }
+    teams    = @{ Name = 'Teams admin center'; Url = 'https://admin.teams.microsoft.com' }
+    purview  = @{ Name = 'Microsoft Purview portal'; Url = 'https://purview.microsoft.com' }
+}
+$script:HUSecFixData = $null
+$script:HUSecFixMaxAgeDays = 180
+
+# Learn-Links nur auf Doku-Bereiche (keine Foren/Q&A wie /answers/), immer mit Sprachteil (Review 040 B3)
+$script:HUSecFixLearnRx = '^https://learn\.microsoft\.com/[a-z]{2}-[a-z]{2}/(entra|intune|microsoft-365|sharepoint|defender-[a-z-]+|purview|microsoftteams|graph|powershell|troubleshoot|microsoft-copilot-studio|windows-server|windows)/[A-Za-z0-9/_\-.#?=%&]*$'
+
+function ConvertTo-HUSecFixText([string]$Text, [int]$Max) {
+    # Steuer- und Formatzeichen entfernen (u. a. Bidi- und Null-Breite-Zeichen; Review 040 B4), Laenge begrenzen
+    $t = ([regex]::Replace("$Text", '[\p{Cc}\p{Cf}]', ' ')).Trim()
+    $t = [regex]::Replace($t, ' {2,}', ' ')
+    if ($t.Length -gt $Max) { return $null }
+    return $t
+}
+
+function Test-HUSecFixDate([string]$Value, [datetime]$Now) {
+    # echtes Datum yyyy-MM-dd, hoechstens morgen (Review 040 B2)
+    $d = [datetime]::MinValue
+    if (-not [datetime]::TryParseExact($Value, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$d)) { return $false }
+    return ($d -le $Now.Date.AddDays(1) -and $d.Year -ge 2020)
+}
+
+function ConvertTo-HUSecFixSet($J, [datetime]$Now = (Get-Date)) {
+    # Pruefen und bereinigen; $null = Datei unbrauchbar
+    if (-not $J -or -not $J.PSObject.Properties['rules'] -or -not $J.rules) { return $null }
+    $stand = "$($J.stand)"
+    if (-not (Test-HUSecFixDate $stand $Now)) { return $null }
+    $rules = @{}
+    foreach ($p in $J.rules.PSObject.Properties) {
+        $id = "$($p.Name)"; $v = $p.Value
+        if ($id -cnotmatch '^[A-Z]\d{1,3}$' -or -not $v) { continue }
+        $steps = @(@($v.steps) | ForEach-Object { ConvertTo-HUSecFixText "$_" 600 } | Where-Object { $_ } | Select-Object -First 12)
+        $path = ConvertTo-HUSecFixText "$($v.path)" 300; if ($null -eq $path) { $path = '' }
+        if (-not $steps.Count -and -not $path) { continue }
+        $learn = @(@($v.learn) | Where-Object { $_ -and "$($_.url)" -cmatch $script:HUSecFixLearnRx -and "$($_.url)".Length -le 400 } |
+            Select-Object -First 4 | ForEach-Object { $tt = ConvertTo-HUSecFixText "$($_.title)" 150; [pscustomobject]@{ Title = $(if ($tt) { $tt } else { 'Microsoft Learn' }); Url = "$($_.url)" } })
+        $portal = "$($v.portal)"; if (-not $script:HUSecFixPortals.Contains($portal)) { $portal = '' }
+        $checked = "$($v.checked)"; if (-not (Test-HUSecFixDate $checked $Now)) { $checked = '' }
+        $note = ConvertTo-HUSecFixText "$($v.note)" 600; if ($null -eq $note) { $note = '' }
+        $rules[$id] = [pscustomobject]@{ Path = $path; Steps = $steps; Learn = $learn; Portal = $portal; Checked = $checked; Note = $note }
+    }
+    $hint = ConvertTo-HUSecFixText "$($J.hinweis)" 600; if ($null -eq $hint) { $hint = '' }
+    return [pscustomobject]@{ Stand = $stand; Hint = $hint; Rules = $rules }
+}
+
+function Get-HUSecFixData {
+    # nur die mitgelieferte Datei (kommt signiert mit dem Release); fruehere heruntergeladene Fassung im Profil wird entfernt
+    param([string]$LocalPath, [switch]$Reload)
+    if ($script:HUSecFixData -and -not $Reload) { return $script:HUSecFixData }
+    try { $old = Join-Path (Get-HUSecPath) 'behebung.json'; if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue } } catch { }
+    $set = $null
+    if ($LocalPath -and (Test-Path -LiteralPath $LocalPath)) { try { $set = ConvertTo-HUSecFixSet (Read-HUSecJson $LocalPath) } catch { $set = $null } }
+    $script:HUSecFixData = $set
+    return $set
+}
+
+function Get-HUSecFix {
+    # Anleitung einer Regel fuer Anzeige (PC und Handy). Ohne Eintrag: Has = $false und ein Link auf die Learn-Suche.
+    param([Parameter(Mandatory)][string]$RuleId, [string]$LocalPath, [datetime]$Now = (Get-Date))
+    $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $RuleId })[0]
+    $title = if ($rule) { "$($rule.Title)" } else { $RuleId }
+    $set = Get-HUSecFixData -LocalPath $LocalPath
+    $e = if ($set) { $set.Rules[$RuleId] } else { $null }
+    $search = 'https://learn.microsoft.com/en-us/search/?terms=' + [uri]::EscapeDataString(($title -replace '\(.*?\)', '').Trim())
+    if (-not $e) { return [pscustomobject]@{ RuleId = $RuleId; Title = $title; Has = $false; SearchUrl = $search; Path = ''; Steps = @(); Learn = @(); PortalName = ''; PortalUrl = ''; Checked = ''; Old = $false; Hint = ''; Note = ''; Stand = $(if ($set) { $set.Stand } else { '' }) } }
+    $old = $true
+    if ($e.Checked) { try { $old = ($Now - [datetime]::ParseExact($e.Checked, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)).TotalDays -gt $script:HUSecFixMaxAgeDays } catch { $old = $true } }
+    $po = if ($e.Portal) { $script:HUSecFixPortals[$e.Portal] } else { $null }
+    return [pscustomobject]@{
+        RuleId = $RuleId; Title = $title; Has = $true; SearchUrl = $search; Path = $e.Path; Steps = @($e.Steps); Learn = @($e.Learn)
+        PortalName = $(if ($po) { $po.Name } else { '' }); PortalUrl = $(if ($po) { $po.Url } else { '' }); Checked = $e.Checked; Old = $old; Hint = $set.Hint; Note = $e.Note; Stand = $set.Stand
+    }
+}
+
+function Get-HUSecQuiet {
+    # Sollwerte Katalog.statusOnly / Katalog.silent eines Tenants (Grossbuchstaben)
+    param([string]$TenantKey)
+    $k = (Get-HUSecBaseline -TenantKey $TenantKey -Rules (Get-HUSecRules)).Values['Katalog']
+    return @{ so = @(@($k.statusOnly) | ForEach-Object { "$_".Trim().ToUpperInvariant() } | Where-Object { $_ }); si = @(@($k.silent) | ForEach-Object { "$_".Trim().ToUpperInvariant() } | Where-Object { $_ }) }
+}
+
 function Compare-HUSecReference {
     param([Parameter(Mandatory)][object[]]$Results, [Parameter(Mandatory)]$Reference, [string[]]$Keys = @())
     $ruleOf = @{}; foreach ($r in (Get-HUSecRules)) { $ruleOf[$r.Id] = $r }
     $ref = @{}; foreach ($x in @($Reference.rows)) { $ref["$($x.tenant)|$($x.ruleId)"] = $x }
     $checkable = 'OK', 'Abweichung', 'Ausnahme'
     $changes = New-Object System.Collections.Generic.List[object]
-    $unchecked = 0
+    # Sollwerte je Tenant: Regeln nur mit Statuswechsel bzw. gar nicht melden (Mindeststandard immer)
+    $quiet = @{}
+    $q = { param($t) if (-not $quiet.ContainsKey($t)) { $quiet[$t] = Get-HUSecQuiet $t }; $quiet[$t] }
+    $unchecked = 0; $hidCount = 0; $silentRules = @{}
     foreach ($r in @($Results | Where-Object { $_.RuleId -and $_.RuleId -ne '-' })) {
         if ($Keys.Count -and $Keys -notcontains $r.Tenant) { continue }
         $o = $ref["$($r.Tenant)|$($r.RuleId)"]
         if (-not $o) { continue }
+        $qt = & $q "$($r.Tenant)"
+        if ($qt.si -contains "$($r.RuleId)" -and -not $ruleOf[$r.RuleId].Min) { $silentRules["$($r.RuleId)"] = 1; continue }
         if ($r.Status -notin $checkable -or $o.status -notin $checkable) { if ($o.status -in $checkable -and $r.Status -notin $checkable -and $r.Status -ne 'Info') { $unchecked++ }; continue }
         $rule = $ruleOf[$r.RuleId]
         $kind = $null
         if ("$($o.status)" -ne "$($r.Status)") { $kind = 'Status' }
-        elseif ($r.Status -eq 'Abweichung' -and "$($o.count)" -ne "$($r.Count)") { $kind = 'Anzahl' }
+        elseif ($r.Status -eq 'Abweichung' -and "$($o.count)" -ne "$($r.Count)") { if ($qt.so -contains "$($r.RuleId)" -and -not $ruleOf[$r.RuleId].Min) { $hidCount++ } else { $kind = 'Anzahl' } }
         if (-not $kind) { continue }
         $worse = ($r.Status -eq 'Abweichung' -and $o.status -ne 'Abweichung') -or ($kind -eq 'Anzahl' -and [int]"0$($r.Count)" -gt [int]"0$($o.count)")
         $changes.Add([pscustomobject]@{
@@ -2012,7 +2147,7 @@ function Compare-HUSecReference {
                 Was = "$($o.status)"; Is = "$($r.Status)"; WasCount = $o.count; IsCount = $r.Count
             })
     }
-    return [pscustomobject]@{ Changes = @($changes.ToArray() | Sort-Object @{ Expression = { -[int]$_.Worse } }, @{ Expression = { $script:HUSecSevRank["$($_.Sev)"] } }, Tenant, RuleId); Unchecked = $unchecked; Since = "$($Reference.time)" }
+    return [pscustomobject]@{ Changes = @($changes.ToArray() | Sort-Object @{ Expression = { -[int]$_.Worse } }, @{ Expression = { $script:HUSecSevRank["$($_.Sev)"] } }, Tenant, RuleId); Unchecked = $unchecked; Since = "$($Reference.time)"; HiddenCount = $hidCount; Silent = @($silentRules.Keys | Sort-Object) }
 }
 
 # "Pruefung verloren": eine Regel, die im Soll pruefbar war und an N Laeufen in Folge nicht pruefbar ist (Recht entzogen, Dienst weg),
@@ -2025,12 +2160,15 @@ function Update-HUSecLost {
     try { $j = Read-HUSecJson $file; if ($j) { foreach ($x in @($j.rows)) { $state["$($x.key)"] = @{ runs = [int]$x.runs; reported = [bool]$x.reported } } } } catch { }
     $ref = @{}; foreach ($x in @($Reference.rows)) { $ref["$($x.tenant)|$($x.ruleId)"] = $x }
     $ruleOf = @{}; foreach ($r in (Get-HUSecRules)) { $ruleOf[$r.Id] = $r }
+    $quiet = @{}
     $lost = New-Object System.Collections.Generic.List[object]
     foreach ($r in @($Results | Where-Object { $_.RuleId -and $_.RuleId -ne '-' })) {
         if ($Keys.Count -and $Keys -notcontains $r.Tenant) { continue }
         $key = "$($r.Tenant)|$($r.RuleId)"
         $o = $ref[$key]
         if (-not $o -or $r.Status -eq 'Info') { continue }
+        if (-not $quiet.ContainsKey("$($r.Tenant)")) { $quiet["$($r.Tenant)"] = Get-HUSecQuiet "$($r.Tenant)" }
+        if ($quiet["$($r.Tenant)"].si -contains "$($r.RuleId)" -and -not $ruleOf[$r.RuleId].Min) { continue }
         $s = if ($state.ContainsKey($key)) { $state[$key] } else { @{ runs = 0; reported = $false } }
         if ($o.status -in $checkable -and $r.Status -notin $checkable) {
             $s.runs++
@@ -2051,6 +2189,6 @@ function Update-HUSecLost {
 
 Export-ModuleMember -Function @(
     'Get-HUSecRules', 'Invoke-HUSecCatalog', 'New-HUSecContext', 'Get-HUSecFact', 'Invoke-HUSecFetch',
-    'Get-HUSecExceptions', 'Add-HUSecException', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException',
+    'Get-HUSecExceptions', 'Add-HUSecException', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException', 'Get-HUSecExceptionState', 'Get-HUSecFix', 'Get-HUSecFixData',
     'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecReferenceWorse', 'Set-HUSecReferenceWorseShown', 'Get-HUSecBaselineEdit', 'Save-HUSecBaselineEdit', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport'
 )

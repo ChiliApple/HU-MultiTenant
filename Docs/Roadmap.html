@@ -149,7 +149,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Roadmap <span class="ver">v2.2.9</span>
+      HU-MultiTenant · Roadmap <span class="ver">v2.3.0</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -180,13 +180,15 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
       </ul>
     </article>
     <article class="stage" style="--c: var(--blue)">
-      <div class="stage-head"><span class="when">Als Nächstes · 2.3.0</span><h3>Weitere Prüfpakete</h3></div>
+      <div class="stage-head"><span class="when">Fertig · 2.3.0</span><h3>Weitere Prüfpakete</h3></div>
       <ul>
-        <li>Teams und Gruppen (Besitzer, Gäste, öffentliche Teams, wer anlegen darf) – <b>in Arbeit</b>, Regeln C03 bis C08 in der Testversion.</li>
-        <li>Intune-Sicherheit im Vergleich zwischen den Tenants (Compliance-Grundeinstellung, Update-Ring, BitLocker, Defender, Firewall, LAPS, ASR, EDR, offene Alarme) – <b>in Arbeit</b>, Regeln E05 bis E16 in der Testversion.</li>
-        <li>Lizenzen und Konten-Hygiene, Anmeldeauffälligkeiten (K01 bis K06) – <b>in Arbeit</b>, in der Testversion.</li>
-        <li>Rest aus der Security Baseline: Selbstregistrierung, Cross-Tenant-Standardregeln, delegierte App-Zustimmungen für alle Benutzer, Freigabe nach außen (A43 bis A46) – <b>in Arbeit</b>, in der Testversion. Anmelderisiko nur mit P2 (K06).</li>
-        <li>Reste aus der Prüfung von 2.2.5 (Höchstwert für die Gast-Anmeldehäufigkeit, Namensauflösung bei Notfallkonten, Hinweis bei schlechterem Soll-Stand) – <b>erledigt</b> in der Testversion.</li>
+        <li>Teams und Gruppen (Besitzer, Gäste, öffentliche Teams, wer anlegen darf) – <b>erledigt</b> (C03 bis C08).</li>
+        <li>Intune-Sicherheit im Vergleich zwischen den Tenants (Compliance-Grundeinstellung, Update-Ring, BitLocker, Defender, Firewall, LAPS, ASR, EDR, offene Alarme) – <b>erledigt</b> (E05 bis E16).</li>
+        <li>Lizenzen und Konten-Hygiene, Anmeldeauffälligkeiten (K01 bis K06) – <b>erledigt</b>.</li>
+        <li>Rest aus der Security Baseline: Selbstregistrierung, Cross-Tenant-Standardregeln, delegierte App-Zustimmungen für alle Benutzer, Freigabe nach außen (A43 bis A46) – <b>erledigt</b>. Anmelderisiko nur mit P2 (K06).</li>
+        <li>Reste aus der Prüfung von 2.2.5 (Höchstwert für die Gast-Anmeldehäufigkeit, Namensauflösung bei Notfallkonten, Hinweis bei schlechterem Soll-Stand) – <b>erledigt</b>.</li>
+        <li>Bedienung: Ausnahmen für mehrere Tenants auf einmal, Regeln abschalten (z. B. ohne P2), Regelliste schon beim Öffnen, ruhigere Teams-Meldung (nur Statuswechsel bzw. stumm je Regel, mit Hinweis in der Meldung), wirkungslose Ausnahmen markiert – <b>erledigt</b>.</li>
+        <li>„So behebst du es“ je Regel: Portal-Pfad, Schritte und Microsoft-Learn-Link, monatlich automatisch gegen Learn geprüft – <b>erledigt</b>, Anleitungen für alle 68 Regeln.</li>
       </ul>
     </article>
     <article class="stage" style="--c: var(--mauve)">
@@ -220,6 +222,8 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     <article class="stage" style="--c: var(--peach)">
       <div class="stage-head"><span class="when">Ideen</span><h3>Auf der Liste</h3></div>
       <ul>
+        <li><b>2.3.x:</b> Sicherheitsabfrage am Handy schneller – Zwischenspeicher je Fakt, damit nur Geändertes neu gelesen wird.</li>
+        <li><b>2.3.x:</b> automatischer Oberflächentest für die farbigen Zeilen (Sollwerte, Ausnahmen).</li>
         <li>Schuljahreswechsel-Assistent: alte, doppelte und ausgeschiedene Geräte aufräumen, mit Probelauf.</li>
         <li>Teams: Freigaben direkt aus der Meldung.</li>
         <li>Sandbox-Tests mit mehreren Fällen und Vorbereitungsskript.</li>
@@ -232,7 +236,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 </section>
 
 <footer>
-  <span>Stand 21.10.2026 · Version 2.2.9</span>
+  <span>Stand 21.10.2026 · Version 2.3.0</span>
   <a href="Einstieg.html">Einstieg</a>
   <a href="Funktionen.html">Funktionen</a>
   <a href="Anleitung.html">Anleitung</a>
