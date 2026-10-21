@@ -1,4 +1,4 @@
-<!doctype html>
+<!d<!doctype html>
 <html lang="de">
 <head>
 <meta charset="utf-8">
@@ -149,7 +149,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Roadmap <span class="ver">v2.2.5</span>
+      HU-MultiTenant · Roadmap <span class="ver">v2.2.6</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -160,7 +160,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     </nav>
   </div>
   <h1>Wohin es <em>geht</em>.</h1>
-  <p class="lead">Der Schwerpunkt der nächsten Versionen: eine Sicherheitsanalyse über alle Tenants – nicht nur Intune, sondern auch Entra, Teams, SharePoint und Mail. Die Prüfungen lesen nur; Änderungen kommen erst mit „Angleichen“ – bewusst freigegeben und mit Vorschau.</p>
+  <p class="lead">Der Schwerpunkt der nächsten Versionen: eine Sicherheitsanalyse über alle Tenants – nicht nur Intune, sondern auch Entra, Teams, SharePoint und Mail. Die Prüfungen lesen nur; Schreiben kommt erst mit „Sichern und Wiederherstellen“ und „Angleichen“ – bewusst freigegeben, mit Vorschau und Backup.</p>
 </header>
 
 <section class="sec" aria-labelledby="t-road">
@@ -180,35 +180,45 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
       </ul>
     </article>
     <article class="stage" style="--c: var(--blue)">
-      <div class="stage-head"><span class="when">Als Nächstes · 2.3</span><h3>Weitere Prüfpakete</h3></div>
+      <div class="stage-head"><span class="when">Als Nächstes · 2.3.0</span><h3>Weitere Prüfpakete</h3></div>
       <ul>
-        <li>Teams und Gruppen (Besitzer, Gäste, öffentliche Teams).</li>
+        <li>Teams und Gruppen (Besitzer, Gäste, öffentliche Teams, wer anlegen darf) – <b>in Arbeit</b>, Regeln C03 bis C08 in der Testversion.</li>
         <li>Intune-Einstellungen im Vergleich zwischen den Tenants.</li>
         <li>Lizenzen und Konten-Hygiene, Anmeldeauffälligkeiten, Secure-Score-Empfehlungen im Detail.</li>
-        <li>Noch offen aus der Security Baseline: SharePoint-Freigaben mit Ablaufdatum (anonyme Links werden schon geprüft) und wer mit wem teilen darf, Tenant-Standardeinstellungen für Gäste, Cross-Tenant-Zugriff im Detail (Standardregeln statt nur Partnerliste), riskante delegierte OAuth-Freigaben (Anwendungsrechte werden schon geprüft), Anmelderisiko-Auswertung (mit P2).</li>
-      </ul>
-    </article>
-    <article class="stage" style="--c: var(--teal)">
-      <div class="stage-head"><span class="when">Dann</span><h3>Angleichen</h3></div>
-      <ul>
-        <li><b>Von Tenant X übernehmen:</b> abweichende Einstellungen direkt aus der Matrix auf andere Tenants übertragen.</li>
-        <li>Mit Vorschau „vorher → nachher“, doppelter Rückfrage und Backup vor jeder Änderung.</li>
-        <li>Gruppen und Orte werden über den Namen zugeordnet; bedingter Zugriff kommt zuerst nur im Berichtsmodus an, Notfallkonten bleiben ausgenommen.</li>
-        <li>Schreibrechte als eigene Stufe, nur wenn man sie bewusst freigibt.</li>
-        <li><b>Baseline-Einstellungen auf andere Tenants übertragen:</b> was in einem Tenant nach der Security Baseline eingestellt ist (z. B. Geoblock, Adminportale gesperrt, Gäste-Sitzungsdauer, Benutzerrechte, MSOL blockiert, Kennwortschutz), lässt sich später auf die anderen Tenants übernehmen – ebenfalls mit Vorschau und Backup.</li>
+        <li>Noch offen aus der Security Baseline: wer mit wem teilen darf, Tenant-Standardeinstellungen für Gäste, Cross-Tenant-Zugriff im Detail (Standardregeln statt nur Partnerliste), delegierte App-Zustimmungen für alle Benutzer, Anmelderisiko-Auswertung (mit P2).</li>
+        <li>Reste aus der Prüfung von 2.2.5 (Höchstwert für die Gast-Anmeldehäufigkeit, Namensauflösung bei Notfallkonten, Hinweis bei schlechterem Soll-Stand) – <b>erledigt</b> in der Testversion.</li>
       </ul>
     </article>
     <article class="stage" style="--c: var(--mauve)">
-      <div class="stage-head"><span class="when">Danach</span><h3>Mail, Teams, Backup</h3></div>
+      <div class="stage-head"><span class="when">Dann · 2.4.0</span><h3>Sichern und Wiederherstellen</h3></div>
+      <ul>
+        <li>Konfigurations-Backup für alle Tenant-Einstellungen, nicht nur Intune und bedingten Zugriff – <b>inklusive der Baseline-Einstellungen</b> (Autorisierungsrichtlinie, Kennwortregeln, Cross-Tenant-Zugriff, benannte Orte).</li>
+        <li><b>Wiederherstellen</b> aus dem Backup in denselben Tenant, mit Testlauf „vorher → nachher“ und Rückfrage; bedingter Zugriff kommt zuerst nur im Berichtsmodus zurück.</li>
+        <li>Einen Mustertenant als Soll-Stand festhalten (vollständige Einstellungen, nicht nur Ergebnisse).</li>
+        <li>Gruppen, Orte, Apps und Notfallkonten je Tenant über den Namen zuordnen – Grundlage für das Übertragen.</li>
+        <li>Sicherungen enthalten vollständige Richtlinien und liegen deshalb nur lokal, mit Ablaufdatum. Der Katalog bleibt rein lesend; Schreiben läuft getrennt, mit eigenen Rechten.</li>
+      </ul>
+    </article>
+    <article class="stage" style="--c: var(--teal)">
+      <div class="stage-head"><span class="when">Danach · 2.5.0</span><h3>Angleichen und Übertragen</h3></div>
+      <ul>
+        <li><b>Von Tenant X übernehmen:</b> abweichende Einstellungen direkt aus der Matrix auf andere Tenants übertragen.</li>
+        <li><b>Baseline-Einstellungen übertragen:</b> was in einem Tenant nach der Security Baseline eingestellt ist (z. B. Geoblock, Adminportale gesperrt, Gäste-Sitzungsdauer, Benutzerrechte, MSOL blockiert, Kennwortschutz), lässt sich auf die anderen Tenants übernehmen.</li>
+        <li>Vor jeder Änderung ein Backup (aus 2.4.0) und „Rückgängig“; Vorschau „vorher → nachher“ und doppelte Rückfrage.</li>
+        <li>Gruppen und Orte werden über den Namen zugeordnet; bedingter Zugriff kommt zuerst nur im Berichtsmodus an, Notfallkonten bleiben ausgenommen.</li>
+        <li>Schreibrechte als eigene Stufe, nur wenn man sie bewusst freigibt.</li>
+      </ul>
+    </article>
+    <article class="stage" style="--c: var(--yellow)">
+      <div class="stage-head"><span class="when">Später · 2.6.0</span><h3>Mail und Teams</h3></div>
       <ul>
         <li>Exchange- und Teams-Richtlinien: externe Weiterleitung, Überwachungsprotokoll, Mailschutz, externe Teams-Zugriffe – nur mit Leserolle.</li>
-        <li>Konfigurations-Backup für alle Tenant-Einstellungen, nicht nur Intune und bedingten Zugriff – <b>inklusive der Baseline-Einstellungen</b> (Autorisierungsrichtlinie, Kennwortregeln, Cross-Tenant-Zugriff) mit <b>Wiederherstellen</b> aus dem Backup.</li>
-        <li><b>Wichtiges Ziel: Sichern, Wiederherstellen und Übertragen auf Basis des Katalogs</b> – in dieser Reihenfolge: (1) vollständige Einstellungen sichern (nicht nur Ergebnisse) und einen Mustertenant als Soll-Stand festhalten, (2) Gruppen, Orte, Apps und Notfallkonten je Zieltenant über den Namen zuordnen, (3) zurückspielen oder übertragen mit Testlauf „vorher → nachher“. Der Katalog selbst bleibt rein lesend; Schreiben läuft getrennt, mit eigenen Rechten, bedingter Zugriff zuerst nur im Berichtsmodus. Sicherungen enthalten vollständige Richtlinien und liegen deshalb nur lokal, mit Ablaufdatum.</li>
+        <li>Eigene Technik außerhalb von Graph (Exchange Online und Teams), mit eigenen Rechten – deshalb als eigene Stufe.</li>
         <li>On-Premises-Teile der Baseline (Delegierung bei Admin-Konten, Betriebssystemstände im AD, Kennwortlänge, LAPS bzw. Tier-Konzept) liegen nicht in der Cloud und bleiben einem eigenen Werkzeug vorbehalten.</li>
       </ul>
     </article>
     <article class="stage" style="--c: var(--peach)">
-      <div class="stage-head"><span class="when">Später · Ideen</span><h3>Auf der Liste</h3></div>
+      <div class="stage-head"><span class="when">Ideen</span><h3>Auf der Liste</h3></div>
       <ul>
         <li>Schuljahreswechsel-Assistent: alte, doppelte und ausgeschiedene Geräte aufräumen, mit Probelauf.</li>
         <li>Teams: Freigaben direkt aus der Meldung.</li>
@@ -221,7 +231,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 </section>
 
 <footer>
-  <span>Stand 21.10.2026 · Version 2.2.5</span>
+  <span>Stand 21.10.2026 · Version 2.2.6</span>
   <a href="Einstieg.html">Einstieg</a>
   <a href="Funktionen.html">Funktionen</a>
   <a href="Anleitung.html">Anleitung</a>

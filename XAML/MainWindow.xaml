@@ -1214,6 +1214,8 @@
                                                 ToolTip="Die angezeigten Zeilen als Tabelle ansehen, kopieren oder exportieren"/>
                                         <Button x:Name="btnSecRef" DockPanel.Dock="Right" Content="Soll speichern" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
                                                 ToolTip="Den aktuellen Pruefstand als Soll speichern. Die Meldung 'Sicherheits-Aenderung' (Reiter Teams) meldet danach jede Abweichung davon. Gespeichert werden nur Status und Zahlen."/>
+                                        <Button x:Name="btnSecBase" DockPanel.Dock="Right" Content="Sollwerte ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                                ToolTip="Sollwerte fuer alle Tenants oder je Tenant eintragen, z. B. Notfallkonten (V1), Admin-Gruppen (A25), Schwellen. Werden lokal gespeichert und beim naechsten Pruefen verwendet."/>
                                         <Button x:Name="btnSecExc" DockPanel.Dock="Right" Content="Ausnahmen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
                                                 ToolTip="Alle Ausnahmen ansehen, fuer die markierte Regel eine neue befristete Ausnahme eintragen oder eine entfernen"/>
                                         <Button x:Name="btnSecRun" DockPanel.Dock="Right" Content="&#x25B6; Pruefen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
@@ -1228,14 +1230,15 @@
                                             <ComboBoxItem Content="Hoch" Tag="Hoch"/>
                                             <ComboBoxItem Content="Mittel" Tag="Mittel"/>
                                         </ComboBox>
-                                        <ComboBox x:Name="cmbSecArea" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="96" Margin="10,0,0,0" ToolTip="Nur Regeln aus diesem Bereich">
-                                            <ComboBoxItem Content="Alle Bereiche" Tag="" IsSelected="True"/>
-                                            <ComboBoxItem Content="Entra" Tag="Entra"/>
-                                            <ComboBoxItem Content="Apps" Tag="Apps"/>
-                                            <ComboBoxItem Content="Intune" Tag="Intune"/>
-                                            <ComboBoxItem Content="Teams" Tag="Teams"/>
-                                            <ComboBoxItem Content="SharePoint" Tag="SharePoint"/>
-                                        </ComboBox>
+                                        <Grid DockPanel.Dock="Right" Margin="10,0,0,0">
+                                            <Button x:Name="btnSecArea" Content="Alle Bereiche &#x25BE;" Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" MinWidth="110"
+                                                    ToolTip="Bereiche ein- oder ausblenden (Haken weg = Bereich ausgeblendet)"/>
+                                            <Popup x:Name="popSecArea" PlacementTarget="{Binding ElementName=btnSecArea}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                                <Border Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="4" Padding="10,6">
+                                                    <StackPanel x:Name="spSecArea"/>
+                                                </Border>
+                                            </Popup>
+                                        </Grid>
                                         <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                         <TextBox x:Name="txtSecFilter" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Text in Nummer, Bereich, Regel oder Schweregrad (mehrere Woerter: alle muessen vorkommen)"/>
                                     </DockPanel>

@@ -853,3 +853,166 @@ Describe 'A37 auch ueber Gruppenrollen' {
     }
 }
 
+Describe 'A23 Hoechstwert Anmeldehaeufigkeit (037 B14)' {
+    BeforeAll {
+        function script:SPol($type = 'hours', $value = 12, $interval = 'timeBased', $guests = $true, $users = @('u1')) {
+            $p = Pol 'enabled' -users $users -grant @()
+            if ($guests) { $p.conditions.users | Add-Member includeGuestsOrExternalUsers ([pscustomobject]@{ guestOrExternalUserTypes = 'b2bCollaborationGuest' }) -Force }
+            $p | Add-Member sessionControls ([pscustomobject]@{ signInFrequency = [pscustomobject]@{ isEnabled = $true; type = $type; value = $value; frequencyInterval = $interval } }) -Force
+            $p | Add-Member displayName 'S' -Force
+            $p
+        }
+    }
+    BeforeEach { Base; Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    It '12 Stunden OK, 7 Tage Abweichung, jedes Mal OK, alle Benutzer zaehlt fuer Gaeste' {
+        $global:HUSecFx['conditionalAccess'] = @((SPol 'hours' 12)); (Run 'A23').Status | Should -Be 'OK'
+        $global:HUSecFx['conditionalAccess'] = @((SPol 'days' 7)); $r = Run 'A23'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -BeLike '*168 Stunden*'
+        $global:HUSecFx['conditionalAccess'] = @((SPol $null $null 'everyTime')); (Run 'A23').Status | Should -Be 'OK'
+        $global:HUSecFx['conditionalAccess'] = @((SPol 'hours' 8 'timeBased' $false @('All'))); (Run 'A23').Status | Should -Be 'OK'
+    }
+    It 'Sollwert maxHours erlaubt 7 Tage' {
+        [pscustomobject]@{ global = [pscustomobject]@{ A23 = [pscustomobject]@{ maxHours = 168 } } } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Encoding UTF8
+        $global:HUSecFx['conditionalAccess'] = @((SPol 'days' 7)); (Run 'A23').Status | Should -Be 'OK'
+    }
+}
+
+Describe 'V1-Liste: Namen gesammelt aufgeloest (037 B16)' {
+    BeforeEach { Base }
+    It 'loest ueber 40 Ausnahmen in Bloecken auf und markiert geloeschte' {
+        $ids = 1..45 | ForEach-Object { '{0:x8}-0000-0000-0000-000000000000' -f $_ }
+        $p = Pol 'enabled'; $p.conditions.users | Add-Member excludeUsers @($ids + '{0:x8}-0000-0000-0000-000000000000' -f 999) -Force; $p.conditions.users | Add-Member excludeGroups @() -Force
+        $p | Add-Member id 'p1' -Force; $p | Add-Member displayName 'P' -Force
+        $global:HUSecFx['conditionalAccess'] = @($p)
+        $global:HUSecFx['/users?$filter=id%20in'] = { $m = [regex]::Matches($global:HUSecEp, "'([0-9a-f-]{36})'"); @($m | ForEach-Object { $v = $_.Groups[1].Value; if ($v -notlike '000003e7*') { [pscustomobject]@{ id = $v; userPrincipalName = "u-$($v.Substring(0,8))@x" } } }) }
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'V1')
+        $it[0].Ausnahmen | Should -BeLike '*u-0000002d@x*'
+        $it[0].Ausnahmen | Should -BeLike '*(geloescht oder nicht gefunden)*'
+        $it[0].Ausnahmen | Should -Not -BeLike '*nicht abgefragt*'
+    }
+}
+
+Describe 'Soll schlechter als voriger (038 B7)' {
+    BeforeAll { function script:Mk3($id, $st, $cnt = 0) { [pscustomobject]@{ Tenant = 'T1'; RuleId = $id; Title = 'x'; Sev = 'Hoch'; Status = $st; Reason = ''; Count = $cnt; ExceptionId = '' } } }
+    It 'merkt beim Speichern die Zahl der Verschlechterungen und die Vorschau zeigt sie vorher' {
+        Save-HUSecReference -Results @((Mk3 'A03' 'OK'), (Mk3 'A04' 'Abweichung' 1)) | Out-Null
+        (Get-HUSecReference).worse | Should -Be 0
+        @(Get-HUSecReferenceWorse -Results @((Mk3 'A03' 'Abweichung' 1), (Mk3 'A04' 'Abweichung' 3))).Count | Should -Be 2
+        Save-HUSecReference -Results @((Mk3 'A03' 'Abweichung' 1), (Mk3 'A04' 'Abweichung' 3)) | Out-Null
+        $r = Get-HUSecReference; $r.worse | Should -Be 2; [bool]$r.worseShown | Should -BeFalse; "$($r.prevTime)" | Should -Not -BeNullOrEmpty
+        Set-HUSecReferenceWorseShown
+        [bool](Get-HUSecReference).worseShown | Should -BeTrue
+    }
+}
+
+Describe 'Sollwerte-Dialog: lesen und speichern' {
+    BeforeEach { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    It 'speichert je Tenant, behaelt andere Eintraege, prueft IDs und Zahlen, leer entfernt' {
+        # bestehende Datei mit fremdem Eintrag
+        [pscustomobject]@{ global = [pscustomobject]@{ A27 = [pscustomobject]@{ staleDays = 60; enabled = $true } }; tenants = [pscustomobject]@{ T2 = [pscustomobject]@{ A08 = [pscustomobject]@{ max = 5 } } } } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Encoding UTF8
+        @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'V1.accounts' = 'kein-guid' }).Count | Should -Be 1
+        @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'A27.staleDays' = '99999' }).Count | Should -Be 1
+        @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'V1.accounts' = 'AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE; 11111111-1111-1111-1111-111111111111'; 'A23.maxHours' = '168' }).Count | Should -Be 0
+        $rows = @(Get-HUSecBaselineEdit -Scope 'T1')
+        ($rows | Where-Object { $_.Rule -eq 'V1' }).Value | Should -Be '11111111-1111-1111-1111-111111111111, aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        ($rows | Where-Object { $_.Rule -eq 'A27' }).Global | Should -Be '60'
+        ($rows | Where-Object { $_.Rule -eq 'A27' }).Default | Should -Be '90'
+        $bl = Get-HUSecBaseline -TenantKey 'T1' -Rules (InModuleScope HU.SecCatalog { Get-HUSecRules })
+        @($bl.Values['V1'].accounts).Count | Should -Be 2
+        $bl.Values['A23'].maxHours | Should -Be 168
+        $bl.Values['A27'].staleDays | Should -Be 60
+        (Get-HUSecBaseline -TenantKey 'T2' -Rules (InModuleScope HU.SecCatalog { Get-HUSecRules })).Values['A08'].max | Should -Be 5
+        # leer = entfernen; einzelne ID bleibt eine Liste
+        @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'A23.maxHours' = ''; 'V1.accounts' = '11111111-1111-1111-1111-111111111111' }).Count | Should -Be 0
+        $j = Get-Content -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Raw | ConvertFrom-Json
+        $j.tenants.T1.PSObject.Properties['A23'] | Should -BeNullOrEmpty
+        @($j.tenants.T1.V1.accounts).Count | Should -Be 1
+        (Get-Content -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Raw) | Should -Match '"accounts":\s*\['
+        $j.global.A27.enabled | Should -BeTrue
+    }
+}
+
+
+Describe 'Teams und Gruppen (C03 bis C08)' {
+    BeforeEach {
+        Base
+        $o = { param($n) @(1..$n | ForEach-Object { [pscustomobject]@{ id = "o$_"; displayName = "Besitzer $_" } }) }
+        $global:HUSecFx['groupTypes'] = @(
+            [pscustomobject]@{ id = 'g1'; displayName = 'Klasse 1A'; visibility = 'HiddenMembership'; resourceProvisioningOptions = @('Team'); owners = (& $o 2) },
+            [pscustomobject]@{ id = 'g2'; displayName = 'Konferenz'; visibility = 'Public'; resourceProvisioningOptions = @('Team'); owners = (& $o 1) },
+            [pscustomobject]@{ id = 'g3'; displayName = 'Alt'; visibility = 'Private'; resourceProvisioningOptions = @(); owners = @() })
+    }
+    It 'C03: Gruppe ohne Besitzer ist Abweichung, Liste exportierbar' {
+        $r = Run 'C03'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1; $r.Detail | Should -Match 'davon 0 Teams'
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'C03'); $it.Count | Should -Be 1; $it[0].Gruppe | Should -Be 'Alt'; $it[0].Art | Should -Be 'Gruppe'
+        Test-HUSecItemsExport 'C03' | Should -BeTrue
+    }
+    It 'C03: ohne owners-Feld nicht pruefbar, ohne Gruppen OK' {
+        $global:HUSecFx['groupTypes'] = @([pscustomobject]@{ id = 'g1'; displayName = 'X'; visibility = 'Private' })
+        (Run 'C03').Status | Should -Be 'NichtPruefbar'
+        $global:HUSecFx['groupTypes'] = @()
+        (Run 'C03').Status | Should -Be 'OK'
+    }
+    It 'C04: ein Besitzer ist Info mit Name, Liste nicht exportierbar' {
+        $r = Run 'C04'; $r.Status | Should -Be 'Info'; $r.Count | Should -Be 1
+        @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'C04')[0].Besitzer | Should -Be 'Besitzer 1'
+        Test-HUSecItemsExport 'C04' | Should -BeFalse
+    }
+    It 'C05: oeffentliche Gruppe ist Abweichung' {
+        $r = Run 'C05'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        $global:HUSecFx['groupTypes'] = @([pscustomobject]@{ id = 'g1'; displayName = 'X'; visibility = 'Private'; owners = @() })
+        (Run 'C05').Status | Should -Be 'OK'
+    }
+    It 'C06: Gast in Team wird gefunden, nicht lesbare Gruppe macht unvollstaendig' {
+        $global:HUSecFx['userType'] = @([pscustomobject]@{ id = 'GUEST1'; displayName = 'Gast Eins'; mail = 'g@extern'; externalUserState = 'Accepted' })
+        # Mitglieder kommen gebuendelt; g3 fehlt (Fehler), g1 hat eine Folgeseite und wird einzeln nachgelesen
+        Mock -ModuleName HU.SecCatalog Invoke-HUSecBatch { @{ g1 = [pscustomobject]@{ value = @([pscustomobject]@{ id = 'x' }); '@odata.nextLink' = 'https://next' }; g2 = [pscustomobject]@{ value = @([pscustomobject]@{ id = 'guest1' }, [pscustomobject]@{ id = 'x' }) } } }
+        $global:HUSecFx['/members/'] = { $global:HUSecG1 = $true; @([pscustomobject]@{ id = 'x' }, [pscustomobject]@{ id = 'y' }) }
+        $r = Run 'C06'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1; $r.Detail | Should -Match '1 Gruppe\(n\) nicht lesbar'
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'C06'); $it[0].Gruppe | Should -Be 'Konferenz'; $it[0].Art | Should -Be 'Team'
+        $global:HUSecG1 | Should -BeTrue
+        Test-HUSecItemsExport 'C06' | Should -BeFalse
+    }
+    It 'C06: Obergrenze erscheint im Klartext' {
+        $global:HUSecFx['userType'] = @([pscustomobject]@{ id = 'GUEST1'; displayName = 'Gast' })
+        $global:HUSecFx['groupTypes'] = @(1..5001 | ForEach-Object { [pscustomobject]@{ id = "g$_"; displayName = 'x'; owners = @() } })
+        $r = Run 'C06'; $r.Status | Should -Be 'NichtPruefbar'; $r.Detail | Should -Match 'mehr als 5000'
+    }
+    It 'C06: ohne Gaeste OK ohne Gruppenabruf' {
+        $global:HUSecFx['userType'] = @()
+        $global:HUSecFx['groupTypes'] = Fail 500
+        (Run 'C06').Status | Should -Be 'OK'
+    }
+    It 'C07/C08: Standard (keine Einstellung) - alle duerfen anlegen, Gaeste keine Besitzer' {
+        $global:HUSecFx['/groupSettings'] = @()
+        $r = Run 'C07'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -Match 'Standard'
+        (Run 'C08').Status | Should -Be 'OK'
+    }
+    It 'C07/C08: Anlegen nur fuer eine Gruppe, Gaeste als Besitzer erlaubt' {
+        $global:HUSecFx['/groupSettings'] = @([pscustomobject]@{ templateId = '62375ab9-6b52-47ed-826b-58e47e0e304b'; values = @(
+                    [pscustomobject]@{ name = 'EnableGroupCreation'; value = 'False' },
+                    [pscustomobject]@{ name = 'GroupCreationAllowedGroupId'; value = '11111111-1111-1111-1111-111111111111' },
+                    [pscustomobject]@{ name = 'AllowGuestsToBeGroupOwner'; value = 'True' }) })
+        $global:HUSecFx['?$select=displayName'] = [pscustomobject]@{ displayName = 'Lehrkraefte' }
+        $r = Run 'C07'; $r.Status | Should -Be 'OK'; $r.Detail | Should -Match 'Lehrkraefte'
+        (Run 'C08').Status | Should -Be 'Abweichung'
+    }
+}
+
+Describe 'Ampel folgt der Auswahl (Grad, Bereich, Suchtext)' {
+    It 'Ampel nutzt die Auswahl ohne Status-Filter' {
+        $sec = Get-Content -LiteralPath (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Functions\UI-Security.ps1') -Raw
+        $sec | Should -Match 'Get-HUSecVisibleRows -NoStatusFilter'
+        $sec | Should -Match 'Ampel \(nur Auswahl'
+    }
+    It 'Bereiche per Haken (ausgeblendete werden gespeichert), Regel-Spalte zeigt die Anzahl' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $sec = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Security.ps1') -Raw
+        $x = Get-Content -LiteralPath (Join-Path $root 'XAML\MainWindow.xaml') -Raw
+        $x | Should -Match 'x:Name="popSecArea"'
+        $x | Should -Not -Match 'cmbSecArea'
+        # ein einzelnes Paar in @(@(...)) wird von PowerShell flachgeklopft (Startfehler 2.2.6-Test)
+        $sec | Should -Not -Match "foreach \(\`$pair in @\(@\('[^']+', '[^']+'\)\)\)"
+        $sec | Should -Match "Get-HUStateValue 'secAreaOff'"
+        $sec | Should -Match 'Regel \(\$\(@\(Get-HUSecVisibleRows\)\.Count\)\)'
+    }
+}

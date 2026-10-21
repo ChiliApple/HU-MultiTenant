@@ -94,6 +94,10 @@ $script:HUSecFacts = @{
     graphapps = @{ Custom = 'graphapps'; Perms = @('Application.Read.All'); Lic = '' }
     v1ex   = @{ Custom = 'v1ex'; Perms = @('Policy.Read.All', 'Group.Read.All'); Lic = 'P1' }
     nloc   = @{ Ep = '/identity/conditionalAccess/namedLocations'; All = $true; Perms = @('Policy.Read.All'); Lic = 'P1' }
+    # Teams und Gruppen (2.3.0): M365-Gruppen mit Besitzern ($expand liefert hoechstens 20 Besitzer je Gruppe - reicht fuer "keiner" und "nur einer")
+    m365grp = @{ Ep = "/groups?`$filter=groupTypes/any(c:c%20eq%20'Unified')&`$select=id,displayName,visibility,resourceProvisioningOptions&`$expand=owners(`$select=id,displayName)"; All = $true; Perms = @('Group.Read.All'); Lic = '' }
+    grpguest = @{ Custom = 'grpguest'; Perms = @('Group.Read.All', 'User.Read.All'); Lic = '' }
+    grpset = @{ Custom = 'grpset'; Perms = @('Group.Read.All'); Lic = '' }
 }
 
 function New-HUSecContext {
@@ -122,6 +126,18 @@ function Test-HUSecLicense($Ctx, [string]$Lic) {
 }
 
 # Abrufe aus mehreren Einzelaufrufen (nur lesend); jeder Fehler wirft und macht die Regel nicht pruefbar
+# Fehler mit Klartext fuer die Anzeige (z.B. Obergrenzen) - wird nicht durch "Abruf fehlgeschlagen" ersetzt
+function New-HUSecError([string]$Message) { $e = New-Object System.Exception($Message); $e.Data['HUSecMsg'] = $true; return $e }
+
+# Viele GET-Abfragen gebuendelt (Graph JSON-Batching, je 20); Schluessel -> Antwort-Body, fehlende Schluessel = Fehler
+function Invoke-HUSecBatch($Ctx, [hashtable]$Requests) {
+    $tok = Get-GraphToken -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -ErrorAction Stop
+    return (Invoke-GraphBatchGet -Token $tok -Requests $Requests)
+}
+
+# Team oder reine M365-Gruppe (resourceProvisioningOptions enthaelt 'Team')
+function Get-HUSecGrpKind($G) { if (@($G.resourceProvisioningOptions) -contains 'Team') { return 'Team' } return 'Gruppe' }
+
 function Get-HUSecCustomFact {
     param([Parameter(Mandatory)]$Ctx, [Parameter(Mandatory)][string]$Name)
     switch ($Name) {
@@ -141,7 +157,7 @@ function Get-HUSecCustomFact {
                 }
                 elseif ($t -like '*servicePrincipal') { if (-not $sps.Contains($prin)) { $sps.Add($prin) } }
             }
-            if ($via.Count -gt 300) { throw 'mehr als 300 Konten mit Admin-Rolle - zu viele fuer diese Pruefung' }
+            if ($via.Count -gt 300) { throw (New-HUSecError 'mehr als 300 Konten mit Admin-Rolle - zu viele fuer diese Pruefung') }
             if ($via.Count) {
                 foreach ($u in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/users?$select=id,userPrincipalName,accountEnabled,createdDateTime,signInActivity&$top=500' -All)) {
                     $id = "$($u.id)".ToLowerInvariant()
@@ -206,7 +222,7 @@ function Get-HUSecCustomFact {
                 }
             }
             $ids = @($roles.Keys | Sort-Object)
-            if ($ids.Count -gt 300) { throw 'mehr als 300 Konten mit Admin-Rolle' }
+            if ($ids.Count -gt 300) { throw (New-HUSecError 'mehr als 300 Konten mit Admin-Rolle - zu viele fuer diese Pruefung') }
             for ($i = 0; $i -lt $ids.Count; $i += 15) {
                 $chunk = @($ids[$i..([math]::Min($i + 14, $ids.Count - 1))])
                 $f = ($chunk | ForEach-Object { "'$_'" }) -join ','
@@ -214,6 +230,47 @@ function Get-HUSecCustomFact {
                     [pscustomobject]@{ id = "$($u.id)"; upn = "$($u.userPrincipalName)"; synced = ("$($u.onPremisesSyncEnabled)" -match '^(?i)true$'); roles = (@($roles["$($u.id)"]) -join ', ') }
                 }
             }
+        }
+        'grpset' {
+            # Einstellungen fuer M365-Gruppen (Vorlage Group.Unified laut Microsoft Learn); fehlt das Objekt, gelten die Microsoft-Standardwerte
+            $o = @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/groupSettings' -All | Where-Object { "$($_.templateId)" -eq '62375ab9-6b52-47ed-826b-58e47e0e304b' -or "$($_.displayName)" -eq 'Group.Unified' }) | Select-Object -First 1
+            $v = @{}; if ($o) { foreach ($x in @($o.values)) { $v["$($x.name)"] = "$($x.value)" } }
+            $gid = "$($v['GroupCreationAllowedGroupId'])".Trim(); $gname = ''
+            if ($gid -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+                try { $g = Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/groups/$($gid)?`$select=displayName"; $gname = "$($g.displayName)" } catch { $gname = '' }
+                if (-not $gname) { $gname = '(Gruppe nicht gefunden)' }
+            }
+            [pscustomobject]@{ Present = [bool]$o; Values = $v; GroupId = $gid; GroupName = $gname }
+        }
+        'grpguest' {
+            # Gaeste in M365-Gruppen und Teams: Mitglieder je Gruppe lesen und mit den Gastkonten abgleichen
+            # (memberOf je Gast braeuchte Directory.Read.All - das breite Recht fordert der Katalog nicht an)
+            $gx = Get-HUSecFact -Ctx $Ctx -Key 'guestsx'
+            if (-not $gx.Ok) { throw (New-HUSecError "Gastkonten nicht lesbar: $($gx.Detail)") }
+            $gmap = @{}; foreach ($u in @($gx.Data | Where-Object { $_ })) { $gmap["$($u.id)".ToLowerInvariant()] = $u }
+            $list = New-Object System.Collections.Generic.List[object]; $fail = 0; $groups = @()
+            if ($gmap.Count) {
+                $gr = Get-HUSecFact -Ctx $Ctx -Key 'm365grp'
+                if (-not $gr.Ok) { throw (New-HUSecError "Gruppen nicht lesbar: $($gr.Detail)") }
+                $groups = @($gr.Data | Where-Object { $_ })
+                if ($groups.Count -gt 5000) { throw (New-HUSecError 'mehr als 5000 Teams und Gruppen - zu viele fuer diese Pruefung') }
+                # Mitglieder gebuendelt (je 20 Gruppen ein Abruf); Gruppen mit mehr als 999 Mitgliedern werden einzeln nachgelesen
+                $req = @{}; foreach ($g in $groups) { $req["$($g.id)"] = "/groups/$($g.id)/members/microsoft.graph.user?`$select=id&`$top=999" }
+                $res = Invoke-HUSecBatch $Ctx $req
+                foreach ($g in $groups) {
+                    $body = $res["$($g.id)"]
+                    if ($null -eq $body) { $fail++; continue }
+                    $mem = @($body.value)
+                    if ($body.PSObject.Properties['@odata.nextLink'] -and $body.'@odata.nextLink') {
+                        try { $mem = @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint $req["$($g.id)"] -All) } catch { $fail++; continue }
+                    }
+                    foreach ($m in $mem) {
+                        $u = $gmap["$($m.id)".ToLowerInvariant()]
+                        if ($u) { $list.Add([pscustomobject]@{ Gast = "$($u.displayName)"; Mail = "$($u.mail)"; Gruppe = "$($g.displayName)"; Art = (Get-HUSecGrpKind $g); Sichtbarkeit = "$($g.visibility)" }) }
+                    }
+                }
+            }
+            [pscustomobject]@{ Guests = $gmap.Count; Groups = $groups.Count; Failed = $fail; Items = $list.ToArray() }
         }
         'syncerr' {
             # Benutzer und Gruppen mit Fehlern der Verzeichnissynchronisierung (Graph filtert die Sammlung nicht zuverlaessig - daher alle lesen, lokal filtern)
@@ -283,7 +340,7 @@ function Get-HUSecFact {
                     # kurze Fehlermeldung von Graph (ohne GUIDs, gekuerzt) - hilft bei HTTP 400 & Co.
                     $msg = ''
                     try { $msg = ("$($_.Exception.Message)" -replace '^[^:]*:\s*', '' -replace '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', '<id>' -replace '\s+', ' ').Trim(); if ($msg.Length -gt 110) { $msg = $msg.Substring(0, 110) + '...' } } catch { }
-                    $det = $(if ($code) { "HTTP $code$(if ($msg) { ": $msg" })" } else { 'Abruf fehlgeschlagen oder unvollstaendig' })
+                    $det = $(if ($code) { "HTTP $code$(if ($msg) { ": $msg" })" } elseif ($_.Exception.Data['HUSecMsg']) { "$($_.Exception.Message)" } else { 'Abruf fehlgeschlagen oder unvollstaendig' })
                     # bekannte Anmeldefehler von Microsoft in Klartext (Dienst fehlt im Tenant, meist Microsoft-seitig)
                     $why = 'Technisch'
                     if ("$($_.Exception.Message)" -match 'AADSTS500011') { $why = 'Technisch'; $det = 'Secure Score im Tenant nicht verfuegbar (Dienst nicht bereitgestellt, AADSTS500011) - Secure Score einmal im Defender-Portal oeffnen, danach erneut pruefen' }
@@ -320,8 +377,91 @@ $script:HUSecDefaults = @{
     A38 = @{ maxSyncAgeMinutes = 180 }
     V1  = @{ accounts = @() }
     A25 = @{ adminGroups = @(); maxUsers = 4 }
+    A23 = @{ maxHours = 24 }
     E03 = @{ maxPercent = 5 }
     E04 = @{ minPercent = 95 }
+}
+
+# Sollwerte zum Bearbeiten im Dialog (Analyse > Sicherheit > Sollwerte): Regel, Schluessel, Art, Bedeutung
+$script:HUSecBaselineInfo = @(
+    @{ Rule = 'V1';  Key = 'accounts';          Kind = 'guids'; Text = 'Notfallkonten (Objekt-IDs der Benutzer, mit Komma getrennt). Jedes muss in jeder aussperrfaehigen Richtlinie ausgenommen sein; gilt auch fuer A25 und A27.' }
+    @{ Rule = 'A25'; Key = 'adminGroups';       Kind = 'guids'; Text = 'Admin-Gruppen (Objekt-IDs), die bei der Adminportal-Sperre ausgenommen sein duerfen.' }
+    @{ Rule = 'A25'; Key = 'maxUsers';          Kind = 'int';   Text = 'Hoechstens so viele einzelne Konten duerfen bei der Adminportal-Sperre ausgenommen sein (Notfallkonten zaehlen nicht).' }
+    @{ Rule = 'A01'; Key = 'minEnabled';        Kind = 'int';   Text = 'Mindestens so viele aktive Richtlinien fuer bedingten Zugriff.' }
+    @{ Rule = 'A08'; Key = 'min';               Kind = 'int';   Text = 'Mindestens so viele Global Administratoren.' }
+    @{ Rule = 'A08'; Key = 'max';               Kind = 'int';   Text = 'Hoechstens so viele Global Administratoren.' }
+    @{ Rule = 'A09'; Key = 'allowedWithout';    Kind = 'int';   Text = 'So viele Administratoren duerfen ohne MFA-Registrierung sein (z. B. Notfallkonten).' }
+    @{ Rule = 'A19'; Key = 'warnDays';          Kind = 'int';   Text = 'Secrets und Zertifikate von Apps: so viele Tage vor Ablauf warnen.' }
+    @{ Rule = 'A23'; Key = 'maxHours';          Kind = 'int';   Text = 'Gaeste muessen sich spaetestens nach so vielen Stunden neu anmelden.' }
+    @{ Rule = 'A26'; Key = 'maxAgeDays';        Kind = 'int';   Text = 'Offene Gaesteinladungen gelten nach so vielen Tagen als veraltet.' }
+    @{ Rule = 'A27'; Key = 'staleDays';         Kind = 'int';   Text = 'Admin-Konten ohne erfolgreiche Anmeldung seit so vielen Tagen gelten als veraltet.' }
+    @{ Rule = 'A38'; Key = 'maxSyncAgeMinutes'; Kind = 'int';   Text = 'Der letzte Verzeichnissync darf hoechstens so viele Minuten her sein.' }
+    @{ Rule = 'E03'; Key = 'maxPercent';        Kind = 'int';   Text = 'Hoechstens so viel Prozent nicht konforme Geraete.' }
+    @{ Rule = 'E04'; Key = 'minPercent';        Kind = 'int';   Text = 'Mindestens so viel Prozent verschluesselte Windows-Geraete.' }
+)
+
+function ConvertTo-HUSecBaselineText($Value) {
+    if ($null -eq $Value) { return '' }
+    if ($Value -is [System.Array] -or $Value -is [System.Collections.IList]) { return (@($Value) -join ', ') }
+    return "$Value"
+}
+
+# Zeilen fuer den Dialog: Wert in dieser Ebene ('' = alle Tenants), Wert fuer alle Tenants, Standard
+function Get-HUSecBaselineEdit {
+    param([string]$Scope = '')
+    $j = $null; try { $j = Read-HUSecJson (Join-Path (Get-HUSecPath) 'baseline.json') } catch { }
+    $glob = if ($j -and $j.global) { $j.global } else { $null }
+    $mine = if (-not $Scope) { $glob } elseif ($j -and $j.tenants -and $j.tenants.PSObject.Properties[$Scope]) { $j.tenants.$Scope } else { $null }
+    foreach ($i in $script:HUSecBaselineInfo) {
+        $def = $script:HUSecDefaults[$i.Rule][$i.Key]
+        $g = if ($glob -and $glob.PSObject.Properties[$i.Rule] -and $glob.($i.Rule).PSObject.Properties[$i.Key]) { $glob.($i.Rule).($i.Key) } else { $null }
+        $v = if ($mine -and $mine.PSObject.Properties[$i.Rule] -and $mine.($i.Rule).PSObject.Properties[$i.Key]) { $mine.($i.Rule).($i.Key) } else { $null }
+        [pscustomobject]@{ Rule = $i.Rule; Key = $i.Key; Kind = $i.Kind; Text = $i.Text; Default = (ConvertTo-HUSecBaselineText $def); Global = (ConvertTo-HUSecBaselineText $g); Value = (ConvertTo-HUSecBaselineText $v) }
+    }
+}
+
+# Speichert die Werte einer Ebene ('' = alle Tenants). $Values: 'Regel.Schluessel' -> Text; leer = Eintrag entfernen (dann gilt Standard bzw. alle Tenants).
+# Prueft vorher alles: IDs als GUID, Zahlen 0-3650. Rueckgabe: Fehlerliste (leer = gespeichert). Andere Eintraege der Datei bleiben erhalten.
+function Save-HUSecBaselineEdit {
+    param([string]$Scope = '', [Parameter(Mandatory)][hashtable]$Values)
+    $errs = New-Object System.Collections.Generic.List[string]
+    $clean = @{}
+    foreach ($i in $script:HUSecBaselineInfo) {
+        $k = "$($i.Rule).$($i.Key)"
+        if (-not $Values.ContainsKey($k)) { continue }
+        $t = "$($Values[$k])".Trim()
+        if (-not $t) { $clean[$k] = $null; continue }
+        if ($i.Kind -eq 'guids') {
+            $parts = @($t -split '[,;\s]+' | Where-Object { $_ })
+            $g = [guid]::Empty
+            $bad = @($parts | Where-Object { -not [guid]::TryParse($_, [ref]$g) })
+            if ($bad.Count) { $errs.Add("$k`: keine gueltige Objekt-ID: $($bad -join ', ')"); continue }
+            $clean[$k] = @($parts | ForEach-Object { $_.ToLowerInvariant() } | Sort-Object -Unique)
+        }
+        else {
+            $n = 0
+            if (-not [int]::TryParse($t, [ref]$n) -or $n -lt 0 -or $n -gt 3650) { $errs.Add("$k`: ganze Zahl von 0 bis 3650 erwartet ('$t')"); continue }
+            $clean[$k] = $n
+        }
+    }
+    if ($errs.Count) { return @($errs.ToArray()) }
+    $file = Join-Path (Get-HUSecPath) 'baseline.json'
+    $j = $null; try { $j = Read-HUSecJson $file } catch { return @('Sollwerte-Datei ist nicht lesbar - bitte pruefen oder umbenennen') }
+    # in Hashtables umwandeln (bestehende, auch unbekannte Eintraege bleiben)
+    $toH = { param($o) $h = [ordered]@{}; if ($o) { foreach ($p in $o.PSObject.Properties) { $r = [ordered]@{}; foreach ($q in $p.Value.PSObject.Properties) { $r[$q.Name] = $q.Value }; $h[$p.Name] = $r } }; $h }
+    $glob = & $toH $(if ($j) { $j.global })
+    $ten = [ordered]@{}
+    if ($j -and $j.tenants) { foreach ($p in $j.tenants.PSObject.Properties) { $ten[$p.Name] = & $toH $p.Value } }
+    $layer = if ($Scope) { if (-not $ten.Contains($Scope)) { $ten[$Scope] = [ordered]@{} }; $ten[$Scope] } else { $glob }
+    foreach ($k in $clean.Keys) {
+        $rule, $key = $k -split '\.', 2
+        if ($null -eq $clean[$k]) { if ($layer.Contains($rule)) { $layer[$rule].Remove($key); if (-not $layer[$rule].Count) { $layer.Remove($rule) } }; continue }
+        if (-not $layer.Contains($rule)) { $layer[$rule] = [ordered]@{} }
+        $layer[$rule][$key] = $clean[$k]
+    }
+    if ($Scope -and -not $ten[$Scope].Count) { $ten.Remove($Scope) }
+    Write-HUSecJson $file ([ordered]@{ global = $glob; tenants = $ten })
+    return @()
 }
 
 # Regeln mit Min = true (Mindeststandard) lassen sich in den Sollwerten nicht abschalten, nur per Ausnahme mit Ablauf
@@ -544,6 +684,21 @@ function Test-HUSecCaRiskOk($P) {
     if (Test-HUSecCaBlocks $P) { return $true }
     $mfa = (@($P.grantControls.builtInControls) -contains 'mfa') -or $P.grantControls.authenticationStrength
     return [bool]($mfa -and "$($P.sessionControls.signInFrequency.frequencyInterval)" -eq 'everyTime')
+}
+
+# Richtlinie gilt fuer Gaeste: Gast-/Externen-Typen gewaehlt oder alle Benutzer
+function Test-HUSecCaGuests($P) {
+    $u = $P.conditions.users
+    return [bool]($u.includeGuestsOrExternalUsers -or (@($u.includeUsers) -contains 'All') -or (@($u.includeUsers) -contains 'GuestsOrExternalUsers'))
+}
+# Anmeldehaeufigkeit in Stunden ("jedes Mal" = 0); $null = keine bzw. ausgeschaltet
+function Get-HUSecSifHours($P) {
+    $f = $P.sessionControls.signInFrequency
+    if (-not $f -or -not [bool]$f.isEnabled) { return $null }
+    if ("$($f.frequencyInterval)" -eq 'everyTime') { return 0 }
+    $v = 0; if (-not [int]::TryParse("$($f.value)", [ref]$v) -or $v -le 0) { return $null }
+    if ("$($f.type)" -eq 'days') { return $v * 24 }
+    return $v
 }
 
 # Gueltige GUIDs aus einem Sollwert (Liste oder Einzelwert), klein geschrieben; ungueltige werden ignoriert (Review 037 B15)
@@ -982,7 +1137,71 @@ $script:HUSecRules = @(
         }
         Eval = { param($F, $B)
             $n = @($F.guestsx).Count
-            @{ Status = 'Info'; Count = $n; Detail = "$n Gastkonto/Gastkonten. Nur Anzahl - welche Teams und Gruppen sie nutzen, wird mit dem Paket Teams und Gruppen geprueft" }
+            @{ Status = 'Info'; Count = $n; Detail = "$n Gastkonto/Gastkonten. In welchen Teams und Gruppen sie Mitglied sind, zeigt C06" }
+        } }
+    @{ Id = 'C03'; Area = 'Teams'; Sev = 'Mittel'; Title = 'Teams und M365-Gruppen haben einen Besitzer'; Facts = @('m365grp'); Min = $false; ItemsLabel = 'Gruppen'; ItemsSort = 'Gruppe'; Export = $true
+        Items = { param($F, $B) foreach ($g in @($F.m365grp | Where-Object { $_ -and -not @($_.owners | Where-Object { $_ }).Count })) { [pscustomobject]@{ Gruppe = "$($g.displayName)"; Art = (Get-HUSecGrpKind $g); Sichtbarkeit = "$($g.visibility)" } } }
+        Eval = { param($F, $B)
+            $all = @($F.m365grp | Where-Object { $_ })
+            if (-not $all.Count) { return @{ Status = 'OK'; Count = 0; Detail = 'keine Teams oder M365-Gruppen' } }
+            if (-not @($all | Where-Object { $_.PSObject.Properties['owners'] }).Count) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Besitzer werden nicht geliefert'; Complete = $false } }
+            $n = @($all | Where-Object { -not @($_.owners | Where-Object { $_ }).Count }).Count
+            $t = @($all | Where-Object { (Get-HUSecGrpKind $_) -eq 'Team' }).Count
+            $nt = @($all | Where-Object { -not @($_.owners | Where-Object { $_ }).Count -and (Get-HUSecGrpKind $_) -eq 'Team' }).Count
+            if ($n) { @{ Status = 'Abweichung'; Count = $n; Detail = "$n von $($all.Count) Teams/Gruppen ohne Besitzer, davon $nt Teams (Teams insgesamt: $t)" } }
+            else { @{ Status = 'OK'; Count = 0; Detail = "alle $($all.Count) Teams/Gruppen haben einen Besitzer ($t Teams)" } }
+        } }
+    @{ Id = 'C04'; Area = 'Teams'; Sev = 'Niedrig'; Title = 'Teams und M365-Gruppen mit nur einem Besitzer (zur Kenntnis)'; Facts = @('m365grp'); Min = $false; ItemsLabel = 'Gruppen'; ItemsSort = 'Gruppe'
+        Items = { param($F, $B) foreach ($g in @($F.m365grp | Where-Object { $_ -and @($_.owners | Where-Object { $_ }).Count -eq 1 })) { [pscustomobject]@{ Gruppe = "$($g.displayName)"; Art = (Get-HUSecGrpKind $g); Besitzer = "$(@($g.owners | Where-Object { $_ })[0].displayName)" } } }
+        Eval = { param($F, $B)
+            $all = @($F.m365grp | Where-Object { $_ })
+            if ($all.Count -and -not @($all | Where-Object { $_.PSObject.Properties['owners'] }).Count) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Besitzer werden nicht geliefert'; Complete = $false } }
+            $n = @($all | Where-Object { @($_.owners | Where-Object { $_ }).Count -eq 1 }).Count
+            @{ Status = 'Info'; Count = $n; Detail = "$n von $($all.Count) Teams/Gruppen mit nur einem Besitzer" }
+        } }
+    @{ Id = 'C05'; Area = 'Teams'; Sev = 'Mittel'; Title = 'Keine oeffentlichen Teams und M365-Gruppen'; Facts = @('m365grp'); Min = $false; ItemsLabel = 'Gruppen'; ItemsSort = 'Gruppe'; Export = $true
+        Items = { param($F, $B) foreach ($g in @($F.m365grp | Where-Object { $_ -and "$($_.visibility)" -eq 'Public' })) { [pscustomobject]@{ Gruppe = "$($g.displayName)"; Art = (Get-HUSecGrpKind $g); Besitzer = @($g.owners | Where-Object { $_ }).Count } } }
+        Eval = { param($F, $B)
+            $all = @($F.m365grp | Where-Object { $_ })
+            if (-not $all.Count) { return @{ Status = 'OK'; Count = 0; Detail = 'keine Teams oder M365-Gruppen' } }
+            $n = @($all | Where-Object { "$($_.visibility)" -eq 'Public' }).Count
+            $u = @($all | Where-Object { -not "$($_.visibility)" }).Count
+            $d = "$n von $($all.Count) Teams/Gruppen oeffentlich$(if ($u) { ", bei $u fehlt die Angabe (nicht gezaehlt)" })"
+            if ($n) { @{ Status = 'Abweichung'; Count = $n; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
+        } }
+    @{ Id = 'C06'; Area = 'Teams'; Sev = 'Hoch'; Title = 'Gaeste in Teams und M365-Gruppen'; Facts = @('grpguest'); Min = $false; ItemsLabel = 'Mitgliedschaften'; ItemsSort = 'Gast'
+        Items = { param($F, $B) @($F.grpguest.Items) }
+        Eval = { param($F, $B)
+            $x = $F.grpguest
+            if (-not $x -or -not $x.Guests) { return @{ Status = 'OK'; Count = 0; Detail = 'keine Gastkonten' } }
+            $it = @($x.Items)
+            $miss = $(if ($x.Failed) { ", $($x.Failed) Gruppe(n) nicht lesbar" } else { '' })
+            if ($it.Count) {
+                $gs = @($it | ForEach-Object { $_.Mail + '|' + $_.Gast } | Sort-Object -Unique).Count
+                $gr = @($it | ForEach-Object { $_.Gruppe } | Sort-Object -Unique).Count
+                $r = @{ Status = 'Abweichung'; Count = $it.Count; Detail = "$gs Gast/Gaeste in $gr Teams/Gruppen ($($it.Count) Mitgliedschaften)$miss" }
+            }
+            else { $r = @{ Status = 'OK'; Count = 0; Detail = "$($x.Guests) Gastkonto/Gastkonten, in keinem der $($x.Groups) Teams/Gruppen Mitglied$miss" } }
+            if ($x.Failed) { $r.Complete = $false }
+            $r
+        } }
+    @{ Id = 'C07'; Area = 'Teams'; Sev = 'Mittel'; Title = 'Nicht jeder darf Teams und M365-Gruppen anlegen'; Facts = @('grpset'); Min = $false
+        Eval = { param($F, $B)
+            $v = $F.grpset.Values
+            $on = -not ($v -and $v.ContainsKey('EnableGroupCreation') -and "$($v['EnableGroupCreation'])" -eq 'False')
+            if ($on) { return @{ Status = 'Abweichung'; Count = 1; Detail = "alle Benutzer (auch Schueler) duerfen Teams und Gruppen anlegen$(if (-not $F.grpset.Present) { ' (Microsoft-Standard, nie geaendert)' })" } }
+            if ($F.grpset.GroupId) { return @{ Status = 'OK'; Count = 0; Detail = "nur Administratoren und Mitglieder der Gruppe $($F.grpset.GroupName)" } }
+            @{ Status = 'OK'; Count = 0; Detail = 'nur Administratoren' }
+        } }
+    @{ Id = 'C08'; Area = 'Teams'; Sev = 'Niedrig'; Title = 'Gaeste duerfen keine Besitzer von Teams und Gruppen sein'; Facts = @('grpset'); Min = $false
+        Eval = { param($F, $B)
+            $v = $F.grpset.Values; if (-not $v) { $v = @{} }
+            $val = { param($k, $def) if ($v.ContainsKey($k) -and "$($v[$k])") { "$($v[$k])" -eq 'True' } else { $def } }
+            $own = & $val 'AllowGuestsToBeGroupOwner' $false
+            $add = & $val 'AllowToAddGuests' $true
+            $acc = & $val 'AllowGuestsToAccessGroups' $true
+            $d = "Gaeste als Besitzer: $(if ($own) { 'erlaubt' } else { 'nein' }); Gaeste hinzufuegen: $(if ($add) { 'erlaubt' } else { 'nein' }); Gaeste sehen Gruppeninhalte: $(if ($acc) { 'ja' } else { 'nein' })$(if (-not $F.grpset.Present) { ' (Microsoft-Standard)' })"
+            if ($own) { @{ Status = 'Abweichung'; Count = 1; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
         } }
     @{ Id = 'V11'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Geraetecode-Flow ist per Richtlinie blockiert'; Facts = @('ca'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
         Items = { param($F, $B) Get-HUSecPolicyItems $F.ca { param($P) (Test-HUSecCaTargetsAll $P) -and (Test-HUSecCaBlocks $P) -and ("$($P.conditions.authenticationFlows.transferMethods)" -like '*deviceCodeFlow*') } }
@@ -1014,14 +1233,17 @@ $script:HUSecRules = @(
             @{ Status = 'OK'; Count = 0; Detail = 'alle drei Rechte fuer Benutzer aus' }
         } }
     @{ Id = 'A23'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Gaeste muessen sich regelmaessig neu anmelden (Sitzungsdauer)'; Facts = @('ca'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
-        Items = { param($F, $B) Get-HUSecPolicyItems $F.ca { param($P) $P.conditions.users.includeGuestsOrExternalUsers -and $P.sessionControls.signInFrequency -and [bool]$P.sessionControls.signInFrequency.isEnabled } }
+        Items = { param($F, $B) Get-HUSecPolicyItems $F.ca { param($P) (Test-HUSecCaGuests $P) -and ($null -ne (Get-HUSecSifHours $P)) -and (Get-HUSecSifHours $P) -le [int]$B.maxHours } }
         Eval = { param($F, $B)
-            $hit = @($F.ca | Where-Object { $_.conditions.users.includeGuestsOrExternalUsers -and $_.sessionControls.signInFrequency -and [bool]$_.sessionControls.signInFrequency.isEnabled })
-            $on = @($hit | Where-Object { "$($_.state)" -eq 'enabled' }).Count
-            $rep = @($hit | Where-Object { "$($_.state)" -eq 'enabledForReportingButNotEnforced' }).Count
-            if ($on) { @{ Status = 'OK'; Count = $on; Detail = "$on aktive Richtlinie(n) mit Anmeldehaeufigkeit fuer Gaeste" } }
-            elseif ($rep) { @{ Status = 'Abweichung'; Count = 0; Detail = 'nur im Berichtsmodus' } }
-            else { @{ Status = 'Abweichung'; Count = 0; Detail = 'keine Richtlinie mit Anmeldehaeufigkeit fuer Gaeste' } }
+            # Review 037 B14: Hoechstwert als Sollwert (Standard 24 Stunden; "jedes Mal" = 0), Einheit Tage/Stunden umgerechnet
+            $max = [int]$B.maxHours
+            $hit = @($F.ca | Where-Object { (Test-HUSecCaGuests $_) -and ($null -ne (Get-HUSecSifHours $_)) })
+            $on = @($hit | Where-Object { "$($_.state)" -eq 'enabled' })
+            $ok = @($on | Where-Object { (Get-HUSecSifHours $_) -le $max })
+            if ($ok.Count) { return @{ Status = 'OK'; Count = $ok.Count; Detail = "$($ok.Count) aktive Richtlinie(n): Gaeste melden sich spaetestens nach $(@($ok | ForEach-Object { Get-HUSecSifHours $_ } | Measure-Object -Minimum).Minimum) Stunden neu an (erlaubt: $max)" } }
+            if ($on.Count) { $h = @($on | ForEach-Object { Get-HUSecSifHours $_ } | Measure-Object -Minimum).Minimum; return @{ Status = 'Abweichung'; Count = 0; Detail = "Anmeldehaeufigkeit fuer Gaeste $h Stunden - laenger als erlaubt ($max Stunden, Sollwert A23 maxHours)" } }
+            if (@($hit | Where-Object { "$($_.state)" -eq 'enabledForReportingButNotEnforced' }).Count) { return @{ Status = 'Abweichung'; Count = 0; Detail = 'nur im Berichtsmodus' } }
+            @{ Status = 'Abweichung'; Count = 0; Detail = 'keine Richtlinie mit Anmeldehaeufigkeit fuer Gaeste' }
         } }
     @{ Id = 'A24'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Anmeldungen sind per Standort (Geoblock) eingeschraenkt'; Facts = @('ca', 'nloc'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
         Items = { param($F, $B)
@@ -1100,7 +1322,13 @@ $script:HUSecWhy = @{
     E01 = 'Ohne zugewiesene Compliance-Richtlinie gilt jedes Geraet als konform (je nach Einstellung).'
     E03 = 'Viele nicht konforme Geraete deuten auf fehlende Updates, Verschluesselung oder Schutz hin. Grenze in baseline.json aenderbar.'
     E04 = 'Unverschluesselte Notebooks gefaehrden Schuelerdaten bei Verlust. Grenze in baseline.json aenderbar.'
-    C02 = 'Gaeste in Teams mit Minderjaehrigen sind heikel. Hier zunaechst nur die Zahl der Gastkonten, damit Aenderungen auffallen.'
+    C02 = 'Gaeste in Teams mit Minderjaehrigen sind heikel. Hier nur die Zahl der Gastkonten, damit Aenderungen auffallen; die Mitgliedschaften zeigt C06.'
+    C03 = 'Ein Team ohne Besitzer verwaltet niemand: keiner nimmt Mitglieder heraus, prueft Gaeste oder raeumt auf. Besitzer koennen auch ausgeschiedene Lehrkraefte gewesen sein, deren Konto geloescht wurde.'
+    C04 = 'Nur zur Kenntnis: faellt der einzige Besitzer aus (Karenz, Abgang), ist das Team verwaist. Microsoft empfiehlt mindestens zwei Besitzer.'
+    C05 = 'Einem oeffentlichen Team kann jeder im Tenant beitreten - auch Schueler - und Dateien und Unterhaltungen lesen. Klassen-Teams sind normalerweise privat. Gewollte oeffentliche Teams als Ausnahme eintragen.'
+    C06 = 'Externe Personen in Teams mit Minderjaehrigen sehen Unterhaltungen, Dateien und Mitgliederlisten. Die Liste zeigt jeden Gast mit seinen Teams und M365-Gruppen (direkte Mitgliedschaft; Sicherheitsgruppen und Verteiler werden nicht geprueft). Gewollte Gaeste als Ausnahme eintragen.'
+    C07 = 'Duerfen alle Benutzer Teams und M365-Gruppen anlegen, entstehen schnell viele Teams von Schuelern ohne Aufsicht. Empfohlen: Anlegen nur fuer eine Gruppe (z.B. Lehrkraefte) erlauben - Einstellung EnableGroupCreation und GroupCreationAllowedGroupId (Microsoft Learn, Gruppeneinstellungen). Sicherheitsgruppen prueft A22.'
+    C08 = 'Ein Gast als Besitzer kann Mitglieder und weitere Gaeste aufnehmen. Standard bei Microsoft ist aus. Ob Gaeste ueberhaupt hinzugefuegt werden duerfen, steht zur Kenntnis dabei.'
     A25 = 'Ohne diese Sperre koennen normale Benutzer (auch Schueler) die Adminportale oeffnen und viele Verzeichnisdaten lesen. Gesucht wird eine aktive Richtlinie fuer alle Benutzer mit Blockieren und Ziel Microsoft-Adminportale. Ausgenommen sein duerfen nur Admin-Rollen, als Admin-Gruppe hinterlegte Gruppen (Sollwert A25 adminGroups) und hoechstens 4 einzelne Konten (Notfallkonten); jede andere Gruppe gilt als zu breite Ausnahme (Baseline 1.14). Hinweis laut Microsoft: die Sperre betrifft auch die Microsoft-365-Selbstinstallationsseite (Office-Installation durch Benutzer) und nicht Graph oder PowerShell.'
     A27 = 'Konten mit Admin-Rolle, die niemand mehr nutzt, sind ein leichtes Ziel. Gezaehlt werden aktive Konten mit Rolle (direkt oder ueber eine rollenzuweisbare Gruppe) ohne ERFOLGREICHE Anmeldung seit mehr als 90 Tagen (Sollwert staleDays; Baseline 1.10). Fehlversuche zaehlen nicht als Aktivitaet. Hinterlegte Notfallkonten (V1) sind ausgenommen. PIM-berechtigte Rollen (P2) und Dienstprinzipale werden nicht bewertet.'
     A28 = 'Entra Kennwortschutz verbietet bekannte schwache Kennwoerter auch im lokalen AD. Geprueft wird nur die Einstellung im Tenant (an, Modus Erzwingen); ob der Agent auf den Domaenencontrollern laeuft, sieht die App nicht (Baseline 1.1).'
@@ -1121,7 +1349,7 @@ $script:HUSecWhy = @{
     A26 = 'Gaeste, die ihre Einladung nie angenommen haben, sind totes Gewicht und koennen spaeter von Dritten uebernommen werden (Mailadresse faellt weg oder wird neu vergeben). Laut Baseline 1.12 entfernen. Sollwert: Einladungen aelter als 30 Tage, gezaehlt ab der letzten (erneut gesendeten) Einladung.'
     A21 = 'Das alte MSOL-PowerShell wird nicht mehr unterstuetzt und umgeht moderne Schutzfunktionen. Blockieren, sobald keine Skripte es mehr nutzen.'
     A22 = 'Wenn jeder Benutzer Apps, Sicherheitsgruppen oder neue Tenants anlegen darf, entstehen unkontrollierte Zugriffe und Wildwuchs.'
-    A23 = 'Gaeste bleiben sonst lange angemeldet. Eine Anmeldehaeufigkeit zwingt sie, sich regelmaessig neu zu authentifizieren.'
+    A23 = 'Gaeste bleiben sonst lange angemeldet. Eine Anmeldehaeufigkeit zwingt sie, sich regelmaessig neu zu authentifizieren. Gezaehlt wird eine aktive Richtlinie fuer Gaeste (oder alle Benutzer) mit Anmeldehaeufigkeit hoechstens 24 Stunden bzw. jedes Mal (Sollwert A23 maxHours; Baseline 1.8).'
     A24 = 'Anmeldungen aus Laendern, in denen niemand arbeitet, sind fast immer Angriffe. Gezaehlt wird eine aktive Richtlinie: Blockieren, alle Benutzer, alle Apps, keine Spezialbedingung (Geraetecode-Flow, Client-Apps, Plattform, Risiko, Benutzeraktion) und Laender-Standorte - als Sperrliste (Laender eingeschlossen) oder Erlaubnisliste (alle Orte ausser erlaubte Laender bzw. vertrauenswuerdige Orte). Reine IP-Bereiche zaehlen nicht. Welche Laender gesperrt sind, wird nicht bewertet; Ausnahmen werden genannt (Microsoft Learn, Block access by location).'
     V1  = 'Notfallkonten muessen von jeder Richtlinie ausgenommen sein, die aussperren kann, sonst sperrt eine fehlerhafte Richtlinie alle aus. Geprueft werden aktive Richtlinien fuer alle Benutzer oder Admin-Rollen, die blockieren oder etwas verlangen (MFA, Geraet, Nutzungsbedingungen ...); reine Sitzungs- und Berichtsrichtlinien brauchen keine Ausnahme (Microsoft Learn, Notfallzugriffskonten). Ausgenommene Gruppen werden aufgeloest (auch verschachtelt). Mit hinterlegten Notfallkonten (Sollwert V1 accounts, Objekt-IDs) muss jedes in jeder Richtlinie ausgenommen sein; ohne Sollwert muss mindestens ein Konto in allen Richtlinien ausgenommen sein. Rollen als Ausnahme zaehlen nicht. Ob das Konto selbst einen Passkey/FIDO2-Schluessel hat, wird nicht gelesen.'
     V11 = 'Der Geraetecode-Flow wird fuer Phishing missbraucht und selten gebraucht. Er sollte per Richtlinie blockiert sein.'
@@ -1244,27 +1472,24 @@ function Get-HUSecItems {
     }
     # Namen der ausgenommenen Benutzer/Gruppen (nur Anzeige, nicht gespeichert; je Objekt eine Abfrage, hoechstens 40)
     if (@($items | Where-Object { $_.PSObject.Properties['__ExU'] }).Count) {
-        $nameCache = @{}; $budget = 40
-        $resolve = {
-            param([string]$Kind, [string]$Id)
-            $key = "$Kind/$Id"
-            if ($nameCache.ContainsKey($key)) { return $nameCache[$key] }
-            if ($script:__secBudget -le 0) { return '(nicht abgefragt)' }
-            $script:__secBudget--
-            try {
-                if ($Kind -eq 'users') { $o = Invoke-HUSecFetch -TenantKey $TenantKey -Settings $Settings -Endpoint "/users/$Id`?`$select=userPrincipalName"; $nm = "$($o.userPrincipalName)" }
-                else { $o = Invoke-HUSecFetch -TenantKey $TenantKey -Settings $Settings -Endpoint "/groups/$Id`?`$select=displayName"; $nm = "Gruppe $($o.displayName)" }
-                if (-not $nm -or $nm -eq 'Gruppe ') { $nm = '(nicht lesbar)' }
-            } catch { $nm = '(nicht lesbar)' }
-            $nameCache[$key] = $nm
-            return $nm
+        # Namen der Ausnahmen gesammelt aufloesen (je 15 IDs ein Abruf, Review 037 B16); nicht gefunden = geloescht oder nicht lesbar
+        $g = [guid]::Empty
+        $uIds = @($items | ForEach-Object { @($_.__ExU) } | Where-Object { [guid]::TryParse("$_", [ref]$g) } | ForEach-Object { "$_".ToLowerInvariant() } | Sort-Object -Unique)
+        $gIds = @($items | ForEach-Object { @($_.__ExG) } | Where-Object { [guid]::TryParse("$_", [ref]$g) } | ForEach-Object { "$_".ToLowerInvariant() } | Sort-Object -Unique)
+        $names = @{}; $failed = $false
+        foreach ($set in @(@{ Ids = $uIds; Ep = '/users'; Sel = 'id,userPrincipalName'; Fmt = { param($o) "$($o.userPrincipalName)" } }, @{ Ids = $gIds; Ep = '/groups'; Sel = 'id,displayName'; Fmt = { param($o) "Gruppe $($o.displayName)" } })) {
+            $ids = @($set.Ids | Select-Object -First 500)
+            for ($i = 0; $i -lt $ids.Count; $i += 15) {
+                $chunk = @($ids[$i..([math]::Min($i + 14, $ids.Count - 1))])
+                $f = ($chunk | ForEach-Object { "'$_'" }) -join ','
+                try { foreach ($o in @(Invoke-HUSecFetch -TenantKey $TenantKey -Settings $Settings -Endpoint "$($set.Ep)?`$filter=id%20in%20($f)&`$select=$($set.Sel)" -All)) { $names["$($o.id)".ToLowerInvariant()] = (& $set.Fmt $o) } }
+                catch { $failed = $true }
+            }
         }
-        $script:__secBudget = $budget
-        foreach ($i in $items) {
-            $names = @()
-            foreach ($id in @($i.__ExU)) { $names += (& $resolve 'users' "$id") }
-            foreach ($id in @($i.__ExG)) { $names += (& $resolve 'groups' "$id") }
-            $i | Add-Member -NotePropertyName Ausnahmen -NotePropertyValue $(if ($names.Count) { ($names -join ', ') } else { '-' }) -Force
+        $miss = if ($failed) { '(nicht lesbar)' } else { '(geloescht oder nicht gefunden)' }
+        foreach ($it in $items) {
+            $n = @(@($it.__ExU) + @($it.__ExG) | Where-Object { $_ } | ForEach-Object { $k = "$_".ToLowerInvariant(); if ($names.ContainsKey($k)) { $names[$k] } else { $miss } })
+            $it | Add-Member -NotePropertyName Ausnahmen -NotePropertyValue $(if ($n.Count) { ($n -join ', ') } else { '-' }) -Force
         }
     }
     $sortKey = if ($rule.PSObject.Properties['ItemsSort']) { "$($rule.ItemsSort)" } else { 'Anmeldename' }
@@ -1342,11 +1567,32 @@ function Save-HUSecReference {
     $rows = @($Results | Where-Object { $_.RuleId -and $_.RuleId -ne '-' } | Sort-Object Tenant, RuleId | ForEach-Object {
             [pscustomobject]@{ ruleId = $_.RuleId; tenant = $_.Tenant; status = $_.Status; reason = $_.Reason; count = $_.Count }
         })
-    $snap = [pscustomobject]@{ version = 1; time = $Now.ToUniversalTime().ToString('o'); rows = $rows }
+    # Review 038 B7: ist der neue Stand schlechter als der bisherige Soll, wird das vermerkt (Hinweis beim Speichern und einmal in Teams)
+    $old = $null; try { $old = Get-HUSecReference } catch { }
+    $worse = 0
+    if ($old) { $worse = @((Compare-HUSecReference -Results $Results -Reference $old).Changes | Where-Object { $_.Worse }).Count }
+    $snap = [pscustomobject]@{ version = 1; time = $Now.ToUniversalTime().ToString('o'); rows = $rows; worse = $worse; prevTime = $(if ($old) { "$($old.time)" } else { '' }); worseShown = $false }
     $f = Join-Path (Get-HUSecPath) 'soll.json'
     Write-HUSecJson $f $snap
     Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'soll-verloren.json') -Force -ErrorAction SilentlyContinue   # neuer Soll-Stand: Zaehler neu
     return $f
+}
+
+# Vorschau vor dem Speichern: wie viele Regeln waeren im neuen Soll schlechter als im bisherigen (Liste der Aenderungen)
+function Get-HUSecReferenceWorse {
+    param([Parameter(Mandatory)][object[]]$Results)
+    $old = $null; try { $old = Get-HUSecReference } catch { }
+    if (-not $old) { return @() }
+    return @((Compare-HUSecReference -Results $Results -Reference $old).Changes | Where-Object { $_.Worse })
+}
+
+# Hinweis "Soll schlechter" wurde in Teams gemeldet
+function Set-HUSecReferenceWorseShown {
+    $f = Join-Path (Get-HUSecPath) 'soll.json'
+    $j = $null; try { $j = Read-HUSecJson $f } catch { }
+    if (-not $j) { return }
+    $j | Add-Member -NotePropertyName worseShown -NotePropertyValue $true -Force
+    Write-HUSecJson $f $j
 }
 
 function Get-HUSecReference {
@@ -1422,5 +1668,5 @@ function Update-HUSecLost {
 Export-ModuleMember -Function @(
     'Get-HUSecRules', 'Invoke-HUSecCatalog', 'New-HUSecContext', 'Get-HUSecFact', 'Invoke-HUSecFetch',
     'Get-HUSecExceptions', 'Add-HUSecException', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException',
-    'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport'
+    'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecReferenceWorse', 'Set-HUSecReferenceWorseShown', 'Get-HUSecBaselineEdit', 'Save-HUSecBaselineEdit', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport'
 )
