@@ -105,6 +105,10 @@ $script:HUSecFacts = @{
     mtd    = @{ Ep = '/deviceManagement/mobileThreatDefenseConnectors'; All = $true; Perms = @('DeviceManagementServiceConfig.Read.All'); Lic = '' }
     # K06: nur mit Entra ID P2 ueber Graph lesbar (Microsoft Learn; im Betrieb mit P1 bestaetigt: Graph verweigert wegen Lizenz) - ohne P2 kein Abruf
     riskyu = @{ Ep = "/identityProtection/riskyUsers?`$filter=riskState%20eq%20'atRisk'"; All = $true; Perms = @('IdentityRiskyUser.Read.All'); Lic = 'P2' }
+    # Rest der Security Baseline (2.3.0)
+    xtdef  = @{ Ep = '/policies/crossTenantAccessPolicy/default'; All = $false; Perms = @('Policy.Read.All'); Lic = '' }
+    # A45: Zustimmungen fuer alle Benutzer lesen laut Microsoft Learn nur mit Directory.Read.All (kein schmaleres Leserecht fuer Apps)
+    grants = @{ Custom = 'grants'; Perms = @('Directory.Read.All', 'Application.Read.All'); Lic = '' }
     # Konten, Lizenzen und Anmeldungen (2.3.0)
     usersx = @{ Ep = '/users?$select=id,displayName,userPrincipalName,accountEnabled,userType,createdDateTime,signInActivity,assignedLicenses,onPremisesSyncEnabled&$top=500'; All = $true; Perms = @('User.Read.All', 'AuditLog.Read.All'); Lic = 'P1' }
     k01grp = @{ Custom = 'k01grp'; Perms = @('Group.Read.All'); Lic = '' }
@@ -186,6 +190,13 @@ function Get-HUSecK05($F, $B) {
     $skip = @(@($B.accounts) | ForEach-Object { "$_".ToLowerInvariant() })
     return @($F.signok | Where-Object { $_ -and "$($_.location.countryOrRegion)" -and $ok -notcontains "$($_.location.countryOrRegion)".ToUpperInvariant() -and $skip -notcontains "$($_.userId)".ToLowerInvariant() })
 }
+
+# Delegierte Rechte, mit denen eine App im Namen JEDES Benutzers Postfaecher, Dateien oder das Verzeichnis lesen bzw. aendern kann (A45)
+$script:HUSecCriticalScopes = @('Mail.Read', 'Mail.ReadWrite', 'Mail.Send', 'Mail.Read.Shared', 'Mail.ReadWrite.Shared', 'MailboxSettings.ReadWrite', 'Calendars.ReadWrite',
+    'Files.Read.All', 'Files.ReadWrite.All', 'Sites.Read.All', 'Sites.ReadWrite.All', 'Sites.FullControl.All', 'Notes.ReadWrite.All',
+    'Directory.ReadWrite.All', 'Directory.AccessAsUser.All', 'User.ReadWrite.All', 'Group.ReadWrite.All', 'GroupMember.ReadWrite.All', 'RoleManagement.ReadWrite.Directory',
+    'Application.ReadWrite.All', 'AppRoleAssignment.ReadWrite.All', 'Policy.ReadWrite.ConditionalAccess', 'UserAuthenticationMethod.ReadWrite.All',
+    'full_access_as_user', 'EWS.AccessAsUser.All', 'EAS.AccessAsUser.All', 'IMAP.AccessAsUser.All', 'POP.AccessAsUser.All', 'SMTP.Send', 'Chat.ReadWrite', 'ChannelMessage.Read.All', 'DeviceManagementManagedDevices.PrivilegedOperations.All')
 
 # Team oder reine M365-Gruppe (resourceProvisioningOptions enthaelt 'Team')
 function Get-HUSecGrpKind($G) { if (@($G.resourceProvisioningOptions) -contains 'Team') { return 'Team' } return 'Gruppe' }
@@ -282,6 +293,18 @@ function Get-HUSecCustomFact {
                     [pscustomobject]@{ id = "$($u.id)"; upn = "$($u.userPrincipalName)"; synced = ("$($u.onPremisesSyncEnabled)" -match '^(?i)true$'); roles = (@($roles["$($u.id)"]) -join ', ') }
                 }
             }
+        }
+        'grants' {
+            # Delegierte Zustimmungen fuer alle Benutzer (consentType AllPrincipals); App- und API-Namen gebuendelt nachschlagen
+            $gr = @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/oauth2PermissionGrants?`$filter=consentType%20eq%20'AllPrincipals'" -All)
+            $ids = @($gr | ForEach-Object { "$($_.clientId)"; "$($_.resourceId)" } | Where-Object { $_ -match '^[0-9a-fA-F-]{36}$' } | Sort-Object -Unique)
+            $nm = @{}
+            if ($ids.Count) {
+                $req = @{}; foreach ($i in $ids) { $req[$i] = "/servicePrincipals/$($i)?`$select=displayName" }
+                $res = Invoke-HUSecBatch $Ctx $req
+                foreach ($i in $ids) { if ($res[$i]) { $nm[$i] = "$($res[$i].displayName)" } }
+            }
+            , @($gr | ForEach-Object { [pscustomobject]@{ client = "$($_.clientId)"; app = $(if ($nm[$_.clientId]) { $nm[$_.clientId] } else { "$($_.clientId)" }); api = $(if ($nm[$_.resourceId]) { $nm[$_.resourceId] } else { "$($_.resourceId)" }); scopes = @("$($_.scope)" -split '\s+' | Where-Object { $_ }) } })
         }
         'k01grp' {
             # K01: Mitglieder der als Sollwert hinterlegten Gruppen (auch verschachtelt); keine Gruppen = $null (alle Konten)
@@ -1394,6 +1417,49 @@ $script:HUSecRules = @(
             if ($apps.Count) { return @{ Status = 'Abweichung'; Count = $apps.Count; Detail = "$($apps.Count) App(s) mit kritischen Rechten$ownTxt - bitte pruefen, ob noetig" } }
             @{ Status = 'OK'; Count = 0; Detail = "keine weitere App mit kritischen Rechten$ownTxt" }
         } }
+    @{ Id = 'A43'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Keine Selbstregistrierung per E-Mail (Self-Service-Anmeldung und Testabos)'; Facts = @('authz'); Min = $false
+        Eval = { param($F, $B)
+            $a = $F.authz
+            if (-not $a -or -not $a.PSObject.Properties['allowEmailVerifiedUsersToJoinOrganization']) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Einstellung wird nicht geliefert'; Complete = $false } }
+            $join = ($a.allowEmailVerifiedUsersToJoinOrganization -eq $true); $sub = ($a.allowedToSignUpEmailBasedSubscriptions -eq $true)
+            $d = "Beitritt per E-Mail-Bestaetigung: $(if ($join) { 'erlaubt' } else { 'aus' }); Testabos per E-Mail: $(if ($sub) { 'erlaubt' } else { 'aus' })"
+            $n = [int]$join + [int]$sub
+            if ($n) { @{ Status = 'Abweichung'; Count = $n; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
+        } }
+    @{ Id = 'A44'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Cross-Tenant-Standard: B2B Direct Connect blockiert'; Facts = @('xtdef'); Min = $false
+        Eval = { param($F, $B)
+            $x = $F.xtdef
+            if (-not $x -or -not $x.PSObject.Properties['b2bDirectConnectInbound']) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Standardregeln werden nicht geliefert'; Complete = $false } }
+            $acc = { param($o) $t = "$($o.usersAndGroups.accessType)"; if ($t) { $t } else { 'blocked' } }
+            $in = & $acc $x.b2bDirectConnectInbound; $out = & $acc $x.b2bDirectConnectOutbound
+            $mfa = ($x.inboundTrust -and $x.inboundTrust.isMfaAccepted -eq $true)
+            $dev = ($x.inboundTrust -and ($x.inboundTrust.isCompliantDeviceAccepted -eq $true -or $x.inboundTrust.isHybridAzureADJoinedDeviceAccepted -eq $true))
+            $d = "Direct Connect eingehend: $in, ausgehend: $out; MFA fremder Tenants vertraut: $(if ($mfa) { 'ja' } else { 'nein' }); Geraete fremder Tenants vertraut: $(if ($dev) { 'ja' } else { 'nein' }) (Vertrauen zur Kenntnis; Partner-Einstellungen siehe A31)"
+            $n = @($in, $out | Where-Object { $_ -ne 'blocked' }).Count
+            if ($n) { @{ Status = 'Abweichung'; Count = $n; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
+        } }
+    @{ Id = 'A45'; Area = 'Apps'; Sev = 'Hoch'; Title = 'Apps mit kritischen delegierten Rechten fuer alle Benutzer (Admin-Zustimmung)'; Facts = @('grants'); Min = $false; ItemsLabel = 'Zustimmungen'; ItemsSort = 'App'; Export = $true
+        Items = { param($F, $B)
+            foreach ($g in @($F.grants | Where-Object { $_ })) {
+                $crit = @($g.scopes | Where-Object { $script:HUSecCriticalScopes -contains $_ })
+                [pscustomobject]@{ App = $g.app; API = $g.api; Kritisch = ($crit -join ', '); Rechte = (@($g.scopes) -join ', ') }
+            }
+        }
+        Eval = { param($F, $B)
+            $all = @($F.grants | Where-Object { $_ })
+            $bad = @($all | Where-Object { @($_.scopes | Where-Object { $script:HUSecCriticalScopes -contains $_ }).Count })
+            $apps = @($bad | ForEach-Object { $_.client } | Sort-Object -Unique)
+            $d = "$($all.Count) Zustimmung(en) fuer alle Benutzer; $($apps.Count) App(s) mit kritischen Rechten$(if ($apps.Count) { ': ' + (@($bad | ForEach-Object { $_.app } | Sort-Object -Unique | Select-Object -First 4) -join ', ') + $(if ($apps.Count -gt 4) { ' ...' }) })"
+            if ($apps.Count) { @{ Status = 'Abweichung'; Count = $apps.Count; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
+        } }
+    @{ Id = 'A46'; Area = 'SharePoint'; Sev = 'Mittel'; Title = 'SharePoint und OneDrive teilen nach aussen hoechstens mit bestehenden Gaesten'; Facts = @('spset'); Min = $false
+        Eval = { param($F, $B)
+            $c = "$($F.spset.sharingCapability)"
+            if (-not $c) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Freigabe-Einstellung wird nicht geliefert'; Complete = $false } }
+            $txt = @{ disabled = 'nur intern'; existingExternalUserSharingOnly = 'nur bestehende Gaeste'; externalUserSharingOnly = 'neue und bestehende Gaeste'; externalUserAndGuestSharing = 'jeder, auch anonyme Links' }
+            $d = "Freigabe nach aussen: $(if ($txt.ContainsKey($c)) { $txt[$c] } else { $c })"
+            if ($c -in 'disabled', 'existingExternalUserSharingOnly') { @{ Status = 'OK'; Count = 0; Detail = $d } } else { @{ Status = 'Abweichung'; Count = 1; Detail = $d } }
+        } }
     @{ Id = 'A32'; Area = 'Entra'; Sev = 'Niedrig'; Title = 'Microsoft Secure Score (Fortschritt der Sicherheitsempfehlungen)'; Facts = @('score'); Min = $false
         Eval = { param($F, $B)
             $s = $F.score
@@ -1618,6 +1684,10 @@ $script:HUSecWhy = @{
     E01 = 'Ohne zugewiesene Compliance-Richtlinie gilt jedes Geraet als konform (je nach Einstellung).'
     E03 = 'Viele nicht konforme Geraete deuten auf fehlende Updates, Verschluesselung oder Schutz hin. Grenze in baseline.json aenderbar.'
     E04 = 'Unverschluesselte Notebooks gefaehrden Schuelerdaten bei Verlust. Grenze in baseline.json aenderbar.'
+    A43 = 'Ist die Selbstregistrierung an, kann sich jede Person mit einer Mailadresse der Schuldomain selbst ein Konto anlegen bzw. Testabos (z. B. Power BI) holen - am Systembetreuer vorbei. Geprueft wird die Autorisierungsrichtlinie (Baseline 1.4).'
+    A44 = 'B2B Direct Connect erlaubt Konten fremder Tenants den Zugriff auf geteilte Teams-Kanaele ohne Gastkonto - dann fehlt jede Spur im eigenen Verzeichnis. Standard bei Microsoft ist blockiert. Ob MFA und Geraete fremder Tenants vertraut wird, steht zur Kenntnis dabei (Baseline 1.6).'
+    A45 = 'Mit einer Admin-Zustimmung fuer alle Benutzer darf eine App im Namen JEDES Benutzers handeln, z. B. alle Postfaecher oder Dateien lesen, die der jeweilige Benutzer sieht. Gezaehlt werden Apps mit kritischen delegierten Rechten (Mail, Dateien, Verzeichnis schreiben ...); die Liste zeigt alle Zustimmungen. Microsoft-eigene Apps tauchen auch auf. Braucht laut Microsoft das Leserecht Directory.Read.All.'
+    A46 = 'Wer nach aussen teilen darf, entscheidet die Gesamteinstellung fuer SharePoint und OneDrive. Empfohlen: hoechstens mit bereits eingeladenen Gaesten. Anonyme Links prueft A33, Domaenen-Einschraenkungen A36.'
     K01 = 'Konten, die niemand mehr nutzt (ausgeschiedene Lehrkraefte, Absolventen), sind ein leichtes Ziel: Kennwort-Angriffe fallen nicht auf. Gezaehlt werden aktive Konten ohne erfolgreiche Anmeldung seit mehr als 180 Tagen (Sollwert K01 staleDays); Konten, die juenger sind, zaehlen nicht. Mit Sollwert K01 groups (Objekt-IDs) nur Mitglieder dieser Gruppen, z. B. Lehrkraefte und Personal. Braucht Entra ID P1 (Anmeldedaten).'
     K02 = 'Deaktivierte Konten mit Lizenz kosten Lizenzen, die anderen fehlen. Bei Konten aus dem lokalen AD die Lizenz ueber die Gruppe bzw. Zuweisung entfernen.'
     K03 = 'Sind Lizenzen aufgebraucht, bekommen neue Schueler oder Lehrkraefte keine Office-Apps oder kein Postfach. Gemeldet wird je Lizenzart ab 95 % Belegung (Sollwert K03 maxPercent) oder wenn mehr belegt als vorhanden ist.'

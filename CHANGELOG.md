@@ -1,5 +1,12 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.9 (Testversion, 21.10.2026, Weg zu 2.3.0)
+
+- **Sicherheitskatalog, Rest der Security Baseline:** A43 keine Selbstregistrierung per E-Mail (Mittel), A44 Cross-Tenant-Standard B2B Direct Connect blockiert, Vertrauen in fremde MFA/Geraete zur Kenntnis (Mittel), A45 Apps mit kritischen delegierten Rechten fuer alle Benutzer (Hoch, Liste speicherbar; kritisch sind u. a. Mail, Dateien, Verzeichnis schreiben sowie Postfachzugriff ueber EAS, IMAP, POP und EWS; braucht laut Microsoft Directory.Read.All - ohne dieses Recht "? Recht"), A46 SharePoint/OneDrive teilen nach aussen hoechstens mit bestehenden Gaesten (Mittel). Jetzt 68 Regeln.
+- **Doku:** Anleitung und Roadmap erklaeren die Regelnummern (A, V, C, E, K).
+- **Handy, Reiter Sicherheit, schneller:** ausgeblendete Grade und Bereiche werden beim Pruefen gar nicht gelesen (vorher alle 64 Regeln, 2 bis 3 Minuten). Die Kopfzeile nennt "n von 64 Regeln geprueft" und weist auf nicht geladene Grade/Bereiche hin.
+- **Handy, Reiter Sicherheit:** Listen zu Regeln mit neuen Buchstaben (K01 bis K06) liessen sich nicht oeffnen ("Zu dieser Regel gibt es keine Liste") - die Pruefung der Regelnummer kannte nur A, C, E und V.
+
 ## v2.2.8 (Testversion, 21.10.2026, Weg zu 2.3.0)
 
 - **Sicherheitskatalog, Pruefpaket Konten, Lizenzen und Anmeldungen (alle lesend, keine neuen Rechte):** K01 aktive Konten ohne erfolgreiche Anmeldung seit mehr als 180 Tagen (Mittel; Sollwerte Tage und Gruppen, z. B. nur Lehrkraefte), K02 deaktivierte Konten mit Lizenz (Niedrig), K03 Lizenzen ab 95 % belegt oder ueberbucht (Mittel, Liste speicherbar), K04 Haeufung falscher Kennwoerter je Konto in 24 Stunden (Hoch, ab 20), K05 erfolgreiche Anmeldungen aus nicht erlaubten Laendern in 24 Stunden (Mittel; Sollwerte Laendercodes, Standard AT, DE, und ausgenommene Konten, z. B. Admin mit VPN; Liste je Konto, Land und Ort zusammengefasst mit Anzahl, Apps, Adressen, erster und letzter Zeit). Jetzt 64 Regeln.

@@ -312,7 +312,10 @@ Describe 'Fernbedienung: Sicherheit (Katalog lesen)' {
         (Req $S POST '/api/sec' @{ tenants = @($known[0], 'unbekannt') } $t).J.pending | Should -BeTrue
         $q = $S.IQueue.Dequeue()
         @($q.Keys) | Should -Be @($known[0])
-        $q.Key | Should -Be "sec|$($known[0])"
+        $q.Key | Should -Be "sec|$($known[0])|s:|a:"
+        # ausgeblendete Grade/Bereiche: eigener Schluessel, nur gueltige Werte
+        (Req $S POST '/api/sec' @{ tenants = @($known[0]); sevOff = @('Niedrig', 'Quatsch'); areaOff = @('Teams', 'a b') } $t).J.pending | Should -BeTrue
+        $q2 = $S.IQueue.Dequeue(); $q2.Key | Should -Be "sec|$($known[0])|s:Niedrig|a:Teams"; @($q2.SevOff) | Should -Be @('Niedrig'); @($q2.AreaOff) | Should -Be @('Teams')
         $S.ICache[$q.Key] = @{ State = 'done'; At = (Get-Date); Data = '{"rules":[],"tenants":[],"cells":[]}'; Error = '' }
         (Req $S POST '/api/sec' @{ tenants = @($known[0]); peek = $true } $t).J.pending | Should -BeFalse
         (Req $S POST '/api/sec' @{ tenants = @($known[0]); peek = $true } $t).J.none | Should -BeNullOrEmpty
@@ -322,7 +325,7 @@ Describe 'Fernbedienung: Sicherheit (Katalog lesen)' {
         function global:Get-HUSecWhy($Id) { "warum $Id" }
         function global:Get-HUSecItemsLabel($Id) { 'Konten' }
         function global:Test-HUSecItemsExport($Id) { $false }
-        function global:Invoke-HUSecCatalog { param($TenantKey, $Settings) if ($TenantKey -eq 'b') { throw 'kein Zugriff' }; @([pscustomobject]@{ RuleId = 'A02'; Status = 'Abweichung'; Reason = ''; Count = 3; Detail = 'drei' }, [pscustomobject]@{ RuleId = '-'; Status = 'Fehler' }) }
+        function global:Invoke-HUSecCatalog { param($TenantKey, $Settings, $RuleIds) $global:HURuleIds = $RuleIds; if ($TenantKey -eq 'b') { throw 'kein Zugriff' }; @([pscustomobject]@{ RuleId = 'A02'; Status = 'Abweichung'; Reason = ''; Count = 3; Detail = 'drei' }, [pscustomobject]@{ RuleId = '-'; Status = 'Fehler' }) }
         function global:Get-HUSecLight { param($Results, $Key) [pscustomobject]@{ Color = $(if (@($Results).Count) { 'Gelb' } else { 'Grau' }); Ok = 0; Checked = @($Results).Count } }
         try {
             $S = New-TestState
@@ -335,6 +338,10 @@ Describe 'Fernbedienung: Sicherheit (Katalog lesen)' {
             @($d.cells).Count | Should -Be 1
             @($d.cells)[0].c | Should -Be 3
             (@(@($d.cells)[0].Keys) -join ',') | Should -Be 't,r,s,x,c,d'
+            $d.total | Should -Be 2
+            # ausgeblendeter Grad wird nicht geprueft
+            $d2 = Get-HURemoteSecData $S ([pscustomobject]@{}) @() @('Mittel') @()
+            @($d2.rules).Count | Should -Be 1; @($global:HURuleIds) | Should -Be @('A02'); @($d2.sevOff) | Should -Be @('Mittel')
         } finally { foreach ($f in 'Get-HUSecRules', 'Get-HUSecWhy', 'Invoke-HUSecCatalog', 'Get-HUSecLight', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport') { Remove-Item "function:global:$f" -ErrorAction SilentlyContinue } }
     }
     It 'Detailliste: Personendaten nur nach PIN (dann 5 Minuten frei), Fehlversuche sperren; Liste ohne Personendaten ohne PIN' {
@@ -364,6 +371,10 @@ Describe 'Fernbedienung: Sicherheit (Katalog lesen)' {
         (Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'a' } $t).J.pin | Should -BeTrue
         # ohne Personendaten: ohne PIN
         (Req $S POST '/api/secitems' @{ rule = 'A42'; tenant = 'b' } $t).J.pending | Should -BeTrue
+        # neue Regelbuchstaben (K, ...) sind erlaubt, sobald die Regel eine Liste hat
+        $S.SecRules['K03'] = @{ Label = 'Lizenzen'; Pii = $false }
+        (Req $S POST '/api/secitems' @{ rule = 'K03'; tenant = 'b' } $t).J.pending | Should -BeTrue
+        (Req $S POST '/api/secitems' @{ rule = 'k03'; tenant = 'b' } $t).Code | Should -Be 400
         # drei falsche PINs sperren das Handy
         1..3 | ForEach-Object { [void](Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'a'; pin = '9999' } $t) }
         $S.Devices[$dh].Locked | Should -BeTrue
