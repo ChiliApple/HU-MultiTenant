@@ -103,6 +103,13 @@ $script:HUSecFacts = @{
     devcfg = @{ Ep = '/deviceManagement/deviceConfigurations?$expand=assignments'; All = $true; Perms = @('DeviceManagementConfiguration.Read.All'); Lic = '' }
     esec   = @{ Custom = 'esec'; Perms = @('DeviceManagementConfiguration.Read.All'); Lic = '' }
     mtd    = @{ Ep = '/deviceManagement/mobileThreatDefenseConnectors'; All = $true; Perms = @('DeviceManagementServiceConfig.Read.All'); Lic = '' }
+    # K06: nur mit Entra ID P2 ueber Graph lesbar (Microsoft Learn; im Betrieb mit P1 bestaetigt: Graph verweigert wegen Lizenz) - ohne P2 kein Abruf
+    riskyu = @{ Ep = "/identityProtection/riskyUsers?`$filter=riskState%20eq%20'atRisk'"; All = $true; Perms = @('IdentityRiskyUser.Read.All'); Lic = 'P2' }
+    # Konten, Lizenzen und Anmeldungen (2.3.0)
+    usersx = @{ Ep = '/users?$select=id,displayName,userPrincipalName,accountEnabled,userType,createdDateTime,signInActivity,assignedLicenses,onPremisesSyncEnabled&$top=500'; All = $true; Perms = @('User.Read.All', 'AuditLog.Read.All'); Lic = 'P1' }
+    k01grp = @{ Custom = 'k01grp'; Perms = @('Group.Read.All'); Lic = '' }
+    signfail = @{ Custom = 'signfail'; Perms = @('AuditLog.Read.All'); Lic = 'P1' }
+    signok = @{ Custom = 'signok'; Perms = @('AuditLog.Read.All'); Lic = 'P1' }
     alerts = @{ Ep = "/security/alerts_v2?`$filter=status%20eq%20'new'%20or%20status%20eq%20'inProgress'&`$top=999"; All = $true; Perms = @('SecurityAlert.Read.All'); Lic = '' }
 }
 
@@ -151,6 +158,33 @@ function Get-HUSecEsecResult($List, [string]$Art, [string]$Label, [switch]$NoBas
     $bl = @($List | Where-Object { $_ -and $_.Art -eq 'Baseline' -and $_.Zugewiesen })
     if (-not $NoBaseline -and $bl.Count) { return @{ Status = 'OK'; Count = 0; Detail = "keine eigene $Label-Richtlinie, aber Sicherheits-Baseline zugewiesen ($($bl[0].Name)) - deren Inhalt wird nicht einzeln geprueft" } }
     return @{ Status = 'Abweichung'; Count = 0; Detail = $(if ($off) { "$off $Label-Richtlinie(n), aber keine zugewiesen" } else { "keine $Label-Richtlinie in Intune" }) }
+}
+
+# K01: aktive Mitglieds-Konten ohne erfolgreiche Anmeldung seit staleDays; Konten juenger als staleDays zaehlen nicht
+function Get-HUSecK01($F, $B, [switch]$Items) {
+    $lim = [datetime]::UtcNow.AddDays(-[int]$B.staleDays)
+    $ids = if ($F.k01grp) { $F.k01grp.Ids } else { $null }
+    $chk = @($F.usersx | Where-Object { $_ -and $_.accountEnabled -ne $false -and "$($_.userType)" -ne 'Guest' -and ($null -eq $ids -or $ids.Contains("$($_.id)".ToLowerInvariant())) })
+    $stale = New-Object System.Collections.Generic.List[object]; $never = 0
+    foreach ($u in $chk) {
+        $cr = ConvertTo-HUSecUtc $u.createdDateTime
+        if ($cr -and $cr -gt $lim) { continue }
+        $s = $u.signInActivity
+        $last = $null
+        if ($s) { $last = ConvertTo-HUSecUtc $(if ($s.PSObject.Properties['lastSuccessfulSignInDateTime'] -and $s.lastSuccessfulSignInDateTime) { $s.lastSuccessfulSignInDateTime } else { $s.lastSignInDateTime }) }
+        if ($last -and $last -gt $lim) { continue }
+        if (-not $last) { $never++ }
+        $stale.Add([pscustomobject]@{ Konto = "$($u.userPrincipalName)"; Name = "$($u.displayName)"; Erstellt = $(if ($cr) { $cr.ToString('yyyy-MM-dd') } else { '' }); LetzteAnmeldung = $(if ($last) { $last.ToString('yyyy-MM-dd') } else { 'nie' }); Lizenzen = @($u.assignedLicenses).Count; AusAD = $(if ($u.onPremisesSyncEnabled -eq $true) { 'ja' } else { 'nein' }) })
+    }
+    if ($Items) { return $stale.ToArray() }
+    return [pscustomobject]@{ Checked = $chk.Count; Stale = $stale.Count; Never = $never }
+}
+
+# K05: erfolgreiche Anmeldungen aus nicht erlaubten Laendern, ohne die als Sollwert ausgenommenen Konten (Objekt-IDs)
+function Get-HUSecK05($F, $B) {
+    $ok = @(@($B.countries) | ForEach-Object { "$_".ToUpperInvariant() })
+    $skip = @(@($B.accounts) | ForEach-Object { "$_".ToLowerInvariant() })
+    return @($F.signok | Where-Object { $_ -and "$($_.location.countryOrRegion)" -and $ok -notcontains "$($_.location.countryOrRegion)".ToUpperInvariant() -and $skip -notcontains "$($_.userId)".ToLowerInvariant() })
 }
 
 # Team oder reine M365-Gruppe (resourceProvisioningOptions enthaelt 'Team')
@@ -249,6 +283,23 @@ function Get-HUSecCustomFact {
                 }
             }
         }
+        'k01grp' {
+            # K01: Mitglieder der als Sollwert hinterlegten Gruppen (auch verschachtelt); keine Gruppen = $null (alle Konten)
+            $bl = Get-HUSecBaseline -TenantKey $Ctx.TenantKey -Rules (Get-HUSecRules)
+            $gs = @(@($bl.Values['K01'].groups) | Where-Object { "$_" })
+            if (-not $gs.Count) { return [pscustomobject]@{ Groups = 0; Ids = $null } }
+            $ids = New-Object System.Collections.Generic.HashSet[string]
+            foreach ($g in $gs) {
+                foreach ($m in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/groups/$g/transitiveMembers/microsoft.graph.user?`$select=id&`$top=999" -All)) { [void]$ids.Add("$($m.id)".ToLowerInvariant()) }
+            }
+            [pscustomobject]@{ Groups = $gs.Count; Ids = $ids }
+        }
+        { $_ -in 'signfail', 'signok' } {
+            # Anmeldeprotokoll der letzten 24 Stunden, nur falsche Kennwoerter (50126) bzw. nur erfolgreiche (0) - Graph filtert errorCode nur mit eq
+            $since = [datetime]::UtcNow.AddHours(-24).ToString('yyyy-MM-ddTHH:mm:ssZ', [cultureinfo]::InvariantCulture)
+            $code = if ($Name -eq 'signfail') { 50126 } else { 0 }
+            , @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/auditLogs/signIns?`$filter=createdDateTime%20ge%20$since%20and%20status/errorCode%20eq%20$code&`$top=1000" -All)
+        }
         'dmset' {
             # Compliance-Grundeinstellungen (deviceManagement.settings): v1.0 mit $select lieferte im Test nichts - der Reihe nach versuchen
             $got = $null
@@ -256,7 +307,7 @@ function Get-HUSecCustomFact {
                 try { $r = Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint $try.Ep -Beta:$try.Beta } catch { continue }
                 if ($r -and $r.PSObject.Properties['settings'] -and $r.settings -and $r.settings.PSObject.Properties['secureByDefault']) { $got = $r; break }
             }
-            if (-not $got) { throw (New-HUSecError 'Compliance-Grundeinstellung wird von Graph nicht geliefert - bitte im Intune Admin Center pruefen (Endpoint-Sicherheit > Geraetekompatibilitaet > Einstellungen)') }
+            if (-not $got) { return [pscustomobject]@{ Manual = $true } }
             $got
         }
         'esec' {
@@ -379,12 +430,13 @@ function Get-HUSecFact {
     else {
         $miss = @()
         if (@($Ctx.Roles).Count) { $miss = @($def.Perms | Where-Object { $Ctx.Roles -notcontains $_ }) }
-        if ($miss.Count) {
+        # Lizenz zuerst: ohne Lizenz ist die Pruefung auch mit Recht nicht moeglich (K06: sonst "? Recht" bei Tenants ohne P2)
+        if (-not $SkipLicense -and -not (Test-HUSecLicense $Ctx $def.Lic)) {
+            $res = [pscustomobject]@{ Ok = $false; Data = $null; Reason = 'Lizenz'; Detail = "Lizenz fehlt: $($def.Lic)" }
+        }
+        elseif ($miss.Count) {
             if ($def.ContainsKey('Manual')) { $res = [pscustomobject]@{ Ok = $false; Data = $null; Reason = 'Manuell'; Detail = "$($def.Manual)" } }
             else { $res = [pscustomobject]@{ Ok = $false; Data = $null; Reason = 'Recht'; Detail = "Recht fehlt: $($miss -join ', ')" } }
-        }
-        elseif (-not $SkipLicense -and -not (Test-HUSecLicense $Ctx $def.Lic)) {
-            $res = [pscustomobject]@{ Ok = $false; Data = $null; Reason = 'Lizenz'; Detail = "Lizenz fehlt: $($def.Lic)" }
         }
         else {
             try {
@@ -397,7 +449,9 @@ function Get-HUSecFact {
             catch {
                 $code = 0
                 try { $code = [int]$_.Exception.Data['StatusCode'] } catch { }
-                if ($code -in 401, 403) { $res = [pscustomobject]@{ Ok = $false; Data = $null; Reason = 'Recht'; Detail = "HTTP $code (Recht oder Rolle fehlt)" } }
+                $em = "$($_.Exception.Message)"
+                if ($code -eq 403 -and $em -match '(?i)licen|premium|P2|not.*entitled') { $res = [pscustomobject]@{ Ok = $false; Data = $null; Reason = 'Lizenz'; Detail = 'Graph verweigert den Abruf wegen fehlender Lizenz (Entra ID P2)' } }
+                elseif ($code -in 401, 403) { $res = [pscustomobject]@{ Ok = $false; Data = $null; Reason = 'Recht'; Detail = "HTTP $code (Recht oder Rolle fehlt)" } }
                 else {
                     # kurze Fehlermeldung von Graph (ohne GUIDs, gekuerzt) - hilft bei HTTP 400 & Co.
                     $msg = ''
@@ -444,6 +498,10 @@ $script:HUSecDefaults = @{
     E04 = @{ minPercent = 95 }
     E07 = @{ maxQualityDays = 7 }
     E12 = @{ staleDays = 30 }
+    K01 = @{ staleDays = 180; groups = @() }
+    K03 = @{ maxPercent = 95 }
+    K04 = @{ maxFailed = 20 }
+    K05 = @{ countries = @('AT', 'DE'); accounts = @() }
 }
 
 # Sollwerte zum Bearbeiten im Dialog (Analyse > Sicherheit > Sollwerte): Regel, Schluessel, Art, Bedeutung
@@ -464,6 +522,12 @@ $script:HUSecBaselineInfo = @(
     @{ Rule = 'E04'; Key = 'minPercent';        Kind = 'int';   Text = 'Mindestens so viel Prozent verschluesselte Windows-Geraete.' }
     @{ Rule = 'E07'; Key = 'maxQualityDays';    Kind = 'int';   Text = 'Qualitaetsupdates duerfen hoechstens so viele Tage zurueckgestellt werden.' }
     @{ Rule = 'E12'; Key = 'staleDays';         Kind = 'int';   Text = 'Geraete ohne Sync seit so vielen Tagen gelten als veraltet.' }
+    @{ Rule = 'K01'; Key = 'staleDays';         Kind = 'int';   Text = 'Aktive Konten ohne erfolgreiche Anmeldung seit so vielen Tagen gelten als veraltet.' }
+    @{ Rule = 'K01'; Key = 'groups';            Kind = 'guids'; Text = 'Nur Mitglieder dieser Gruppen pruefen (Objekt-IDs, z. B. Lehrkraefte und Personal); leer = alle Konten.' }
+    @{ Rule = 'K03'; Key = 'maxPercent';        Kind = 'int';   Text = 'Ab so viel Prozent belegter Lizenzen warnen.' }
+    @{ Rule = 'K04'; Key = 'maxFailed';         Kind = 'int';   Text = 'Ab so vielen falschen Kennwoertern je Konto in 24 Stunden melden.' }
+    @{ Rule = 'K05'; Key = 'countries';         Kind = 'codes'; Text = 'Erlaubte Laender fuer Anmeldungen (Laendercodes, mit Komma getrennt, z. B. AT, DE).' }
+    @{ Rule = 'K05'; Key = 'accounts';          Kind = 'guids'; Text = 'Konten, deren Anmeldungen aus dem Ausland nicht zaehlen (Objekt-IDs, z. B. Admin mit VPN).' }
 )
 
 function ConvertTo-HUSecBaselineText($Value) {
@@ -503,6 +567,12 @@ function Save-HUSecBaselineEdit {
             $bad = @($parts | Where-Object { -not [guid]::TryParse($_, [ref]$g) })
             if ($bad.Count) { $errs.Add("$k`: keine gueltige Objekt-ID: $($bad -join ', ')"); continue }
             $clean[$k] = @($parts | ForEach-Object { $_.ToLowerInvariant() } | Sort-Object -Unique)
+        }
+        elseif ($i.Kind -eq 'codes') {
+            $parts = @($t -split '[,;\s]+' | Where-Object { $_ })
+            $bad = @($parts | Where-Object { $_ -notmatch '^[A-Za-z]{2}$' })
+            if ($bad.Count) { $errs.Add("$k`: Laendercode aus zwei Buchstaben erwartet: $($bad -join ', ')"); continue }
+            $clean[$k] = @($parts | ForEach-Object { $_.ToUpperInvariant() } | Sort-Object -Unique)
         }
         else {
             $n = 0
@@ -1001,6 +1071,7 @@ $script:HUSecRules = @(
         } }
     @{ Id = 'E05'; Area = 'Intune'; Sev = 'Hoch'; Title = 'Geraete ohne Compliance-Richtlinie gelten als nicht konform'; Facts = @('dmset'); Min = $false
         Eval = { param($F, $B)
+            if ($F.dmset.PSObject.Properties['Manual']) { return @{ Status = 'NichtPruefbar'; Reason = 'Manuell'; Detail = 'Graph liefert diese Einstellung der App nicht (im Betrieb bestaetigt) - bitte im Intune Admin Center selbst pruefen: Endpoint-Sicherheit > Geraetekompatibilitaet > Compliancerichtlinieneinstellungen'; Complete = $false } }
             $st = $F.dmset.settings
             if (-not $st -or -not $st.PSObject.Properties['secureByDefault']) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Einstellung wird nicht geliefert'; Complete = $false } }
             $d = "Geraete ohne Richtlinie gelten als $(if ($st.secureByDefault -eq $true) { 'nicht konform' } else { 'konform (Standard)' }); Gueltigkeit des Compliance-Status: $($st.deviceComplianceCheckinThresholdDays) Tage"
@@ -1079,6 +1150,84 @@ $script:HUSecRules = @(
             $lim = [datetime]::UtcNow.AddDays(-[int]$B.staleDays)
             $n = @($all | Where-Object { $t = ConvertTo-HUSecUtc $_.lastSyncDateTime; $t -and $t -lt $lim }).Count
             @{ Status = 'Info'; Count = $n; Detail = "$n von $($all.Count) Geraeten ohne Sync seit mehr als $($B.staleDays) Tagen" }
+        } }
+    @{ Id = 'K01'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Keine aktiven Konten, die lange nicht angemeldet waren'; Facts = @('usersx', 'k01grp'); Min = $false; ItemsLabel = 'Konten'; ItemsSort = 'LetzteAnmeldung'
+        Items = { param($F, $B) Get-HUSecK01 $F $B -Items }
+        Eval = { param($F, $B)
+            $x = Get-HUSecK01 $F $B
+            $scope = if ($F.k01grp.Groups) { "Mitglieder von $($F.k01grp.Groups) Gruppe(n)" } else { 'alle Konten' }
+            $d = "$($x.Stale) von $($x.Checked) aktiven Konten ($scope) seit mehr als $($B.staleDays) Tagen nicht erfolgreich angemeldet, davon $($x.Never) nie; neuere Konten nicht gezaehlt"
+            if ($x.Stale) { @{ Status = 'Abweichung'; Count = $x.Stale; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
+        } }
+    @{ Id = 'K02'; Area = 'Entra'; Sev = 'Niedrig'; Title = 'Deaktivierte Konten belegen keine Lizenzen'; Facts = @('usersx'); Min = $false; ItemsLabel = 'Konten'; ItemsSort = 'Konto'
+        Items = { param($F, $B) foreach ($u in @($F.usersx | Where-Object { $_ -and $_.accountEnabled -eq $false -and @($_.assignedLicenses).Count })) { [pscustomobject]@{ Konto = "$($u.userPrincipalName)"; Name = "$($u.displayName)"; Lizenzen = @($u.assignedLicenses).Count; AusAD = $(if ($u.onPremisesSyncEnabled -eq $true) { 'ja' } else { 'nein' }) } } }
+        Eval = { param($F, $B)
+            $n = @($F.usersx | Where-Object { $_ -and $_.accountEnabled -eq $false -and @($_.assignedLicenses).Count }).Count
+            if ($n) { @{ Status = 'Abweichung'; Count = $n; Detail = "$n deaktivierte(s) Konto/Konten mit Lizenz" } } else { @{ Status = 'OK'; Count = 0; Detail = 'keine deaktivierten Konten mit Lizenz' } }
+        } }
+    @{ Id = 'K03'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Lizenzen sind nicht aufgebraucht oder ueberbucht'; Facts = @('skus'); Min = $false; ItemsLabel = 'Lizenzen'; ItemsSort = 'Lizenz'; Export = $true
+        Items = { param($F, $B)
+            foreach ($k in @($F.skus | Where-Object { $_ -and [int]$_.prepaidUnits.enabled -gt 0 })) {
+                $e = [int]$k.prepaidUnits.enabled; $c = [int]$k.consumedUnits
+                [pscustomobject]@{ Lizenz = "$($k.skuPartNumber)"; Belegt = $c; Vorhanden = $e; Prozent = [math]::Round(100.0 * $c / $e, 1); Status = "$($k.capabilityStatus)" }
+            }
+        }
+        Eval = { param($F, $B)
+            $all = @($F.skus | Where-Object { $_ -and [int]$_.prepaidUnits.enabled -gt 0 })
+            $max = [double]$B.maxPercent
+            $over = @($all | Where-Object { [int]$_.consumedUnits -gt [int]$_.prepaidUnits.enabled })
+            $near = @($all | Where-Object { [int]$_.consumedUnits -le [int]$_.prepaidUnits.enabled -and (100.0 * [int]$_.consumedUnits / [int]$_.prepaidUnits.enabled) -ge $max })
+            $txt = { param($l) @($l | ForEach-Object { "$($_.skuPartNumber) $([int]$_.consumedUnits)/$([int]$_.prepaidUnits.enabled)" }) -join ', ' }
+            if ($over.Count -or $near.Count) { return @{ Status = 'Abweichung'; Count = $over.Count + $near.Count; Detail = "$(if ($over.Count) { "ueberbucht: $(& $txt $over)" })$(if ($over.Count -and $near.Count) { '; ' })$(if ($near.Count) { "ab $max %: $(& $txt $near)" })" } }
+            @{ Status = 'OK'; Count = 0; Detail = "$($all.Count) Lizenzart(en), keine ueber $max %" }
+        } }
+    @{ Id = 'K04'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine Haeufung falscher Kennwoerter je Konto (letzte 24 Stunden)'; Facts = @('signfail'); Min = $false; ItemsLabel = 'Konten'; ItemsSort = 'Konto'
+        Items = { param($F, $B)
+            foreach ($g in @($F.signfail | Where-Object { $_ } | Group-Object { "$($_.userPrincipalName)".ToLowerInvariant() } | Sort-Object Count -Descending)) {
+                [pscustomobject]@{ Konto = "$($g.Group[0].userPrincipalName)"; Fehlversuche = $g.Count; Laender = (@($g.Group | ForEach-Object { "$($_.location.countryOrRegion)" } | Where-Object { $_ } | Sort-Object -Unique) -join ', '); Adressen = @($g.Group | ForEach-Object { "$($_.ipAddress)" } | Sort-Object -Unique).Count; Ueber = $(if ($g.Count -ge [int]$B.maxFailed) { 'ja' } else { '' }) }
+            }
+        }
+        Eval = { param($F, $B)
+            $all = @($F.signfail | Where-Object { $_ })
+            $grp = @($all | Group-Object { "$($_.userPrincipalName)".ToLowerInvariant() })
+            $hit = @($grp | Where-Object { $_.Count -ge [int]$B.maxFailed })
+            $d = "$($all.Count) falsche(s) Kennwort/Kennwoerter bei $($grp.Count) Konto/Konten in 24 Stunden; $($hit.Count) Konto/Konten mit mindestens $($B.maxFailed)"
+            if ($hit.Count) { @{ Status = 'Abweichung'; Count = $hit.Count; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
+        } }
+    @{ Id = 'K05'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Keine erfolgreichen Anmeldungen aus nicht erlaubten Laendern (letzte 24 Stunden)'; Facts = @('signok'); Min = $false; ItemsLabel = 'Anmeldungen'; ItemsSort = 'Konto'
+        Items = { param($F, $B)
+            # zusammengefasst: eine Zeile je Konto, Land und Ort
+            foreach ($g in @(Get-HUSecK05 $F $B | Group-Object { "$($_.userPrincipalName)|$($_.location.countryOrRegion)|$($_.location.city)".ToLowerInvariant() })) {
+                $ts = @($g.Group | ForEach-Object { ConvertTo-HUSecUtc $_.createdDateTime } | Where-Object { $_ } | Sort-Object)
+                $f = $g.Group[0]
+                [pscustomobject]@{ Konto = "$($f.userPrincipalName)"; Land = "$($f.location.countryOrRegion)"; Ort = "$($f.location.city)"; Anzahl = $g.Count
+                    Apps = (@($g.Group | ForEach-Object { "$($_.appDisplayName)" } | Where-Object { $_ } | Sort-Object -Unique) -join ', ')
+                    Adressen = (@($g.Group | ForEach-Object { "$($_.ipAddress)" } | Where-Object { $_ } | Sort-Object -Unique) -join ', ')
+                    Erste = $(if ($ts.Count) { $ts[0].ToLocalTime().ToString('yyyy-MM-dd HH:mm', [cultureinfo]::InvariantCulture) } else { '' })
+                    Letzte = $(if ($ts.Count) { $ts[-1].ToLocalTime().ToString('yyyy-MM-dd HH:mm', [cultureinfo]::InvariantCulture) } else { '' }) }
+            }
+        }
+        Eval = { param($F, $B)
+            $ok = @(@($B.countries) | ForEach-Object { "$_".ToUpperInvariant() })
+            $all = @($F.signok | Where-Object { $_ })
+            $out = @(Get-HUSecK05 $F $B)
+            $skip = @(@($B.accounts) | Where-Object { "$_" }).Count
+            $acc = @($out | ForEach-Object { "$($_.userPrincipalName)".ToLowerInvariant() } | Sort-Object -Unique).Count
+            $d = "$($all.Count) erfolgreiche Anmeldung(en) in 24 Stunden, $($out.Count) aus anderen Laendern als $($ok -join ', ') ($acc Konto/Konten$(if ($out.Count) { ": $(@($out | ForEach-Object { "$($_.location.countryOrRegion)" } | Sort-Object -Unique) -join ', ')" }))$(if ($skip) { "; $skip Konto/Konten ausgenommen (Sollwert)" })"
+            if ($out.Count) { @{ Status = 'Abweichung'; Count = $acc; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
+        } }
+    @{ Id = 'K06'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine gefaehrdeten Benutzer (ID Protection)'; Facts = @('riskyu'); Min = $false; ItemsLabel = 'Benutzer'; ItemsSort = 'Benutzer'
+        Items = { param($F, $B)
+            foreach ($u in @($F.riskyu | Where-Object { $_ })) {
+                $t = ConvertTo-HUSecUtc $u.riskLastUpdatedDateTime
+                [pscustomobject]@{ Name = "$($u.userDisplayName)"; Benutzer = "$($u.userPrincipalName)"; Risikostufe = "$($u.riskLevel)"; Zustand = "$($u.riskState)"; Aktualisiert = $(if ($t) { $t.ToLocalTime().ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture) } else { '' }) }
+            }
+        }
+        Eval = { param($F, $B)
+            $all = @($F.riskyu | Where-Object { $_ })
+            $hm = @($all | Where-Object { "$($_.riskLevel)" -in 'high', 'medium' }).Count
+            if ($all.Count) { @{ Status = 'Abweichung'; Count = $all.Count; Detail = "$($all.Count) gefaehrdete(r) Benutzer, davon $hm mit Risiko hoch oder mittel (Risikostufe 'hidden' oder 'none' = ohne P2 nicht sichtbar)" } }
+            else { @{ Status = 'OK'; Count = 0; Detail = 'keine gefaehrdeten Benutzer' } }
         } }
     @{ Id = 'A25'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Normale Benutzer sind von den Microsoft-Adminportalen ausgesperrt (Conditional Access)'; Facts = @('ca'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
         Items = { param($F, $B)
@@ -1469,6 +1618,12 @@ $script:HUSecWhy = @{
     E01 = 'Ohne zugewiesene Compliance-Richtlinie gilt jedes Geraet als konform (je nach Einstellung).'
     E03 = 'Viele nicht konforme Geraete deuten auf fehlende Updates, Verschluesselung oder Schutz hin. Grenze in baseline.json aenderbar.'
     E04 = 'Unverschluesselte Notebooks gefaehrden Schuelerdaten bei Verlust. Grenze in baseline.json aenderbar.'
+    K01 = 'Konten, die niemand mehr nutzt (ausgeschiedene Lehrkraefte, Absolventen), sind ein leichtes Ziel: Kennwort-Angriffe fallen nicht auf. Gezaehlt werden aktive Konten ohne erfolgreiche Anmeldung seit mehr als 180 Tagen (Sollwert K01 staleDays); Konten, die juenger sind, zaehlen nicht. Mit Sollwert K01 groups (Objekt-IDs) nur Mitglieder dieser Gruppen, z. B. Lehrkraefte und Personal. Braucht Entra ID P1 (Anmeldedaten).'
+    K02 = 'Deaktivierte Konten mit Lizenz kosten Lizenzen, die anderen fehlen. Bei Konten aus dem lokalen AD die Lizenz ueber die Gruppe bzw. Zuweisung entfernen.'
+    K03 = 'Sind Lizenzen aufgebraucht, bekommen neue Schueler oder Lehrkraefte keine Office-Apps oder kein Postfach. Gemeldet wird je Lizenzart ab 95 % Belegung (Sollwert K03 maxPercent) oder wenn mehr belegt als vorhanden ist.'
+    K04 = 'Viele falsche Kennwoerter fuer ein Konto in kurzer Zeit deuten auf einen Rateangriff hin (Kennwort-Spray). Gezaehlt werden Anmeldungen mit Fehler 50126 (falscher Benutzername oder falsches Kennwort) der letzten 24 Stunden, ab 20 je Konto (Sollwert K04 maxFailed). Braucht Entra ID P1.'
+    K05 = 'Erfolgreiche Anmeldungen aus Laendern, in denen niemand arbeitet, sind oft uebernommene Konten - oder Ausnahmen vom Geoblock (A24). Gezaehlt werden die letzten 24 Stunden; erlaubt sind die Laender im Sollwert K05 countries (Standard AT, DE). Konten mit eigenem VPN lassen sich ueber den Sollwert K05 accounts (Objekt-IDs) ausnehmen; eine Ausnahme wuerde die ganze Regel ausblenden. Die Liste fasst je Konto, Land und Ort zusammen. Bei grossen Tenants kann das Lesen etwas dauern. Braucht Entra ID P1.'
+    K06 = 'Gefaehrdete Benutzer laut Entra ID Protection (z. B. Kennwort in einem Datenleck gefunden, Anmeldung von verdaechtiger Adresse). Im Portal sieht man mit P1 eine eingeschraenkte Liste; ueber Graph gibt es die Daten nur mit Entra ID P2 (mit P1 verweigert Graph den Abruf) - ohne P2 steht hier "? Lizenz". Mit P2 braucht es das Recht IdentityRiskyUser.Read.All. Behebung: Kennwort zuruecksetzen lassen, danach im Portal "Risiko verwerfen".'
     E05 = 'Standard bei Microsoft: Geraete ohne zugewiesene Compliance-Richtlinie gelten als konform. Mit bedingtem Zugriff "konformes Geraet" kommt so jedes nicht erfasste Geraet durch. Empfohlen: als nicht konform markieren (Intune > Endpoint-Sicherheit > Geraetekompatibilitaet > Einstellungen).'
     E06 = 'Ohne Mindestversion gelten auch alte, nicht mehr unterstuetzte Windows-Staende als konform. Die Zelle nennt die gesetzte Version, damit die Tenants vergleichbar sind.'
     E07 = 'Ohne Update-Ring entscheidet jedes Geraet selbst, wann es Sicherheitsupdates installiert. Qualitaetsupdates (monatliche Sicherheitsupdates) sollen hoechstens 7 Tage zurueckgestellt sein (Sollwert E07 maxQualityDays). Gezaehlt werden Update-Ringe (Windows Update for Business) mit Zuweisung.'
