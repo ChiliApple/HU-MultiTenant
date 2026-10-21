@@ -221,7 +221,7 @@
       "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Device.Read.All > Administratorzustimmung erteilen"
     },
     "RoleManagement.Read.Directory": {
-      "description": "Rollendefinitionen lesen (Analyse: Rollennamen im Tenant-Vergleich)",
+      "description": "Rollendefinitionen und -zuweisungen lesen (Analyse: Rollennamen im Tenant-Vergleich; Sicherheitskatalog: Admin-Rollen)",
       "risk": "Low",
       "category": "Directory",
       "usedBy": [],

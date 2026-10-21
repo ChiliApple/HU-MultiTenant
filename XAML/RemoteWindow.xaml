@@ -130,6 +130,8 @@
                                   ToolTip="Aus: solange die App am PC gesperrt ist, startet vom Handy nichts (ansehen geht weiter)"/>
                         <CheckBox x:Name="chkRemAwake" Content="PC wach halten, solange die Fernbedienung an ist (sonst nur waehrend eines Laufs)" Foreground="#CCCCCC" Margin="0,2"/>
                         <CheckBox x:Name="chkRemIntune" Content="Apps und Wartung (Intune) am Handy: Stand ansehen, Zuweisungen setzen und aufheben (immer mit Kuerzel und PIN)" Foreground="#CCCCCC" Margin="0,2"/>
+                        <CheckBox x:Name="chkRemSec" Content="Sicherheit am Handy: Sicherheitskatalog pruefen und ansehen (nur lesen; Listen mit Personendaten nur mit PIN; Reiter ab Tablet- bzw. Querformat-Breite)" Foreground="#CCCCCC" Margin="0,2"
+                                  ToolTip="Die Pruefung laeuft am PC mit den Rechten des Programms. Listen mit Personendaten (Konten, Geraete, Gaeste) nur nach PIN, nur zur Anzeige."/>
 
                         <TextBlock Text="Netz" Style="{StaticResource SectionTitle}" Margin="0,16,0,0"/>
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,2">

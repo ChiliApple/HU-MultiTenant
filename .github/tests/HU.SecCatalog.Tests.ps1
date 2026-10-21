@@ -19,6 +19,7 @@ BeforeAll {
     Mock -ModuleName HU.SecCatalog Invoke-HUSecFetch {
         param($TenantKey, $Settings, $Endpoint, [switch]$All, [switch]$Beta)
         $global:HUSecBeta = [bool]$Beta
+        $global:HUSecEp = "$Endpoint"
         $hit = $null
         foreach ($k in $global:HUSecFx.Keys) { if ($Endpoint -like "*$k*") { $hit = $global:HUSecFx[$k]; break } }
         if ($null -eq $hit) { throw 'nicht vorbereitet' }
@@ -477,6 +478,11 @@ Describe 'Soll-Stand: speichern und vergleichen' {
         @($c.Changes).Count | Should -Be 0
         $c.Unchecked | Should -Be 1
     }
+    It 'dauerhaft nicht pruefbar (schon im Soll) wird nicht gezaehlt' {
+        Save-HUSecReference -Results @((Mk 'T9' 'A03' 'NichtPruefbar'), (Mk 'T9' 'A04' 'OK')) | Out-Null
+        $c = Compare-HUSecReference -Results @((Mk 'T9' 'A03' 'NichtPruefbar'), (Mk 'T9' 'A04' 'NichtPruefbar')) -Reference (Get-HUSecReference)
+        $c.Unchecked | Should -Be 1
+    }
     It 'Regeln ohne Eintrag im Soll und nicht gewaehlte Tenants werden uebergangen' {
         $c = Compare-HUSecReference -Results @((Mk 'T1' 'A99' 'Abweichung'), (Mk 'T2' 'A03' 'Abweichung')) -Reference (Get-HUSecReference) -Keys @('T1')
         @($c.Changes).Count | Should -Be 0
@@ -535,3 +541,315 @@ Describe 'Pruefung verloren (3 Laeufe in Folge nicht pruefbar)' {
         Test-Path (Join-Path (Get-HUSecPath) 'soll-verloren.json') | Should -BeFalse
     }
 }
+
+Describe 'A34 bis A36 SharePoint-Zusatzfelder' {
+    BeforeEach { Base }
+    It 'A34: Legacy-Auth erlaubt = Abweichung, aus = OK, Feld fehlt = nicht pruefbar' {
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ isLegacyAuthProtocolsEnabled = $true }; (Run 'A34').Status | Should -Be 'Abweichung'
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ isLegacyAuthProtocolsEnabled = $false }; (Run 'A34').Status | Should -Be 'OK'
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ x = 1 }; (Run 'A34').Status | Should -Be 'NichtPruefbar'
+    }
+    It 'A35: Weitergabe erlaubt = Abweichung, aus = OK, Feld fehlt = nicht pruefbar' {
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ isResharingByExternalUsersEnabled = $true }; (Run 'A35').Status | Should -Be 'Abweichung'
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ isResharingByExternalUsersEnabled = $false }; (Run 'A35').Status | Should -Be 'OK'
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ x = 1 }; (Run 'A35').Status | Should -Be 'NichtPruefbar'
+    }
+    It 'A36: nur Info, mit Klartext; Felder fehlen = nicht pruefbar' {
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ sharingDomainRestrictionMode = 'allowList'; idleSessionSignOut = [pscustomobject]@{ isEnabled = $true; signOutAfterInSeconds = 3600 } }
+        $r = Run 'A36'; $r.Status | Should -Be 'Info'; $r.Detail | Should -BeLike '*nur erlaubte Domaenen*'; $r.Detail | Should -BeLike '*60 Min*'
+        $global:HUSecFx['sharepoint/settings'] = [pscustomobject]@{ x = 1 }; (Run 'A36').Status | Should -Be 'NichtPruefbar'
+    }
+}
+
+Describe 'A37 bis A42 neue Regeln' {
+    BeforeEach { Base }
+    It 'A37: synchronisiertes Admin-Konto ist Abweichung, Cloud-Konto OK' {
+        $global:HUSecFx['roleDefinitions'] = @([pscustomobject]@{ id = 'r1'; displayName = 'Global Administrator' })
+        $global:HUSecFx['roleAssignments'] = @([pscustomobject]@{ principalId = 'u1'; roleDefinitionId = 'r1'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.user' } },
+                                               [pscustomobject]@{ principalId = 'u2'; roleDefinitionId = 'r1'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.user' } })
+        $global:HUSecFx['id%20in'] = @([pscustomobject]@{ id = 'u1'; userPrincipalName = 'a@x'; onPremisesSyncEnabled = $true }, [pscustomobject]@{ id = 'u2'; userPrincipalName = 'b@x'; onPremisesSyncEnabled = $null })
+        $r = Run 'A37'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        $global:HUSecFx['id%20in'] = @([pscustomobject]@{ id = 'u1'; userPrincipalName = 'a@x'; onPremisesSyncEnabled = $null }, [pscustomobject]@{ id = 'u2'; userPrincipalName = 'b@x'; onPremisesSyncEnabled = $false })
+        (Run 'A37').Status | Should -Be 'OK'
+    }
+    It 'A38: Sync aelter als 3 Stunden ist Abweichung, frisch OK, ohne Sync nicht anwendbar' {
+        $global:HUSecFx['/organization'] = [pscustomobject]@{ onPremisesSyncEnabled = $true; onPremisesLastSyncDateTime = [datetime]::UtcNow.AddHours(-5).ToString('o') }
+        (Run 'A38').Status | Should -Be 'Abweichung'
+        $global:HUSecFx['/organization'] = [pscustomobject]@{ onPremisesSyncEnabled = $true; onPremisesLastSyncDateTime = [datetime]::UtcNow.AddMinutes(-10).ToString('o') }
+        (Run 'A38').Status | Should -Be 'OK'
+        $global:HUSecFx['/organization'] = [pscustomobject]@{ onPremisesSyncEnabled = $null }
+        $r = Run 'A38'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'NichtAnwendbar'
+    }
+    It 'A39: Sync-Fehler werden gezaehlt und gelistet' {
+        $global:HUSecFx['onPremisesProvisioningErrors'] = { if ($global:HUSecEp -like '/users*') { @([pscustomobject]@{ userPrincipalName = 'a@x'; onPremisesProvisioningErrors = @([pscustomobject]@{ propertyCausingError = 'ProxyAddress'; value = 'smtp:a@x'; occurredDateTime = '2026-10-01T00:00:00Z' }) }, [pscustomobject]@{ userPrincipalName = 'b@x'; onPremisesProvisioningErrors = @() }) } else { @() } }
+        $r = Run 'A39'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        $global:HUSecFx['onPremisesProvisioningErrors'] = { @() }
+        (Run 'A39').Status | Should -Be 'OK'
+    }
+    It 'A40: SMS an ist Abweichung, E-Mail allein zaehlt nicht' {
+        $global:HUSecFx['authenticationMethodsPolicy'] = [pscustomobject]@{ authenticationMethodConfigurations = @([pscustomobject]@{ id = 'Sms'; state = 'enabled' }, [pscustomobject]@{ id = 'Voice'; state = 'disabled' }, [pscustomobject]@{ id = 'Email'; state = 'enabled' }) }
+        $r = Run 'A40'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        $global:HUSecFx['authenticationMethodsPolicy'] = [pscustomobject]@{ authenticationMethodConfigurations = @([pscustomobject]@{ id = 'Sms'; state = 'disabled' }, [pscustomobject]@{ id = 'Email'; state = 'enabled' }) }
+        (Run 'A40').Status | Should -Be 'OK'
+        $global:HUSecFx['authenticationMethodsPolicy'] = [pscustomobject]@{ x = 1 }
+        (Run 'A40').Status | Should -Be 'NichtPruefbar'
+    }
+    It 'A41: Workflow aus ist Abweichung, an ist OK' {
+        $global:HUSecFx['adminConsentRequestPolicy'] = [pscustomobject]@{ isEnabled = $false }; (Run 'A41').Status | Should -Be 'Abweichung'
+        $global:HUSecFx['adminConsentRequestPolicy'] = [pscustomobject]@{ isEnabled = $true }; (Run 'A41').Status | Should -Be 'OK'
+    }
+    It 'A42: kritische Rechte fremder Apps zaehlen, die eigene App nicht' {
+        $global:HUSecFx['servicePrincipals'] = {
+            if ($global:HUSecEp -like '*appRoleAssignedTo*') {
+                @([pscustomobject]@{ principalId = 'sp1'; principalDisplayName = 'Fremd'; appRoleId = 'r1' }, [pscustomobject]@{ principalId = 'sp1'; principalDisplayName = 'Fremd'; appRoleId = 'r2' },
+                  [pscustomobject]@{ principalId = 'own'; principalDisplayName = 'Eigen'; appRoleId = 'r1' }, [pscustomobject]@{ principalId = 'sp2'; principalDisplayName = 'Harmlos'; appRoleId = 'r2' })
+            }
+            elseif ($global:HUSecEp -like '*00000003*') { [pscustomobject]@{ id = 'g'; appRoles = @([pscustomobject]@{ id = 'r1'; value = 'Directory.ReadWrite.All' }, [pscustomobject]@{ id = 'r2'; value = 'User.Read.All' }) } }
+            else { [pscustomobject]@{ id = 'own' } }
+        }
+        $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; appId = 'my-app' }) }
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
+        $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        $r.Detail | Should -BeLike '*nicht mitgezaehlt*'
+    }
+}
+
+Describe 'V1 (037 B4): gemeinsames bzw. hinterlegtes Notfallkonto' {
+    BeforeAll {
+        function script:VPol([string[]]$exU = @(), [string[]]$exG = @(), [string[]]$exR = @(), $state = 'enabled', $users = @('All')) {
+            $p = Pol $state -users $users
+            $p.conditions.users | Add-Member excludeUsers $exU -Force
+            $p.conditions.users | Add-Member excludeGroups $exG -Force
+            $p.conditions.users | Add-Member excludeRoles $exR -Force
+            $p | Add-Member id ([guid]::NewGuid().ToString()) -Force; $p | Add-Member displayName 'P' -Force
+            $p
+        }
+        $script:BG1 = '11111111-1111-1111-1111-111111111111'; $script:BG2 = '22222222-2222-2222-2222-222222222222'
+    }
+    BeforeEach {
+        Base
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue
+        $global:HUSecFx['transitiveMembers'] = { if ($global:HUSecEp -like '*/groups/aaaaaaaa-0000-0000-0000-000000000001/*') { @([pscustomobject]@{ id = $script:BG1 }) } elseif ($global:HUSecEp -like '*/groups/aaaaaaaa-0000-0000-0000-000000000002/*') { @() } else { $ex = New-Object System.Exception('x'); $ex.Data['StatusCode'] = 500; throw $ex } }
+    }
+    It 'dasselbe Konto direkt in allen: OK' {
+        $global:HUSecFx['conditionalAccess'] = @((VPol @($BG1)), (VPol @($BG1, $BG2)))
+        (Run 'V1').Status | Should -Be 'OK'
+    }
+    It 'direkt und ueber Gruppe: OK; GUID in Grossbuchstaben zaehlt gleich' {
+        $global:HUSecFx['conditionalAccess'] = @((VPol @($BG1.ToUpper())), (VPol @() @('aaaaaaaa-0000-0000-0000-000000000001')))
+        (Run 'V1').Status | Should -Be 'OK'
+    }
+    It 'verschiedene Konten je Richtlinie: Abweichung' {
+        $global:HUSecFx['conditionalAccess'] = @((VPol @($BG1)), (VPol @($BG2)))
+        $r = Run 'V1'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -BeLike '*kein Konto ist in allen*'
+    }
+    It 'eine Richtlinie ohne Ausnahme, nur Rollen, nur Platzhalter oder leere Gruppe: Abweichung' {
+        foreach ($second in @((VPol), (VPol @() @() @('r1')), (VPol @('GuestsOrExternalUsers')), (VPol @() @('aaaaaaaa-0000-0000-0000-000000000002')))) {
+            $global:HUSecFx['conditionalAccess'] = @((VPol @($BG1)), $second)
+            $r = Run 'V1'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        }
+    }
+    It 'Gruppe nicht lesbar: nicht pruefbar, nie OK' {
+        $global:HUSecFx['conditionalAccess'] = @((VPol @($BG1) @('bbbbbbbb-0000-0000-0000-000000000009')))
+        $r = Run 'V1'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Technisch'
+    }
+    It 'Berichtsmodus und reine Gruppenrichtlinie zaehlen nicht: Info' {
+        $global:HUSecFx['conditionalAccess'] = @((VPol @() @() @() 'enabledForReportingButNotEnforced'), (VPol @() @() @() 'enabled' @('u1')))
+        (Run 'V1').Status | Should -Be 'Info'
+    }
+    It 'mehr als 4 gemeinsame Ausnahmen: OK mit Hinweis' {
+        $many = 1..5 | ForEach-Object { "0000000$_-0000-0000-0000-000000000000" }
+        $global:HUSecFx['conditionalAccess'] = @((VPol $many), (VPol $many))
+        $r = Run 'V1'; $r.Status | Should -Be 'OK'; $r.Detail | Should -BeLike '*mehr als ueblich*'
+    }
+    It 'hinterlegte Notfallkonten: fehlt eines in einer Richtlinie = Abweichung, sonst OK; ungueltige ID wird ignoriert' {
+        $j = [pscustomobject]@{ global = [pscustomobject]@{ V1 = [pscustomobject]@{ accounts = @($BG1, $BG2, 'kein-guid') } } }
+        $j | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Encoding UTF8
+        $global:HUSecFx['conditionalAccess'] = @((VPol @($BG1, $BG2)), (VPol @($BG1)))
+        $r = Run 'V1'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        $global:HUSecFx['conditionalAccess'] = @((VPol @($BG1, $BG2)), (VPol @($BG2) @('aaaaaaaa-0000-0000-0000-000000000001')))
+        (Run 'V1').Status | Should -Be 'OK'
+    }
+}
+
+Describe 'A24 Geoblock (037 B5)' {
+    BeforeAll {
+        function script:GPol($inc = @('c1'), $exc = @(), $users = @('All'), [hashtable]$More = @{}) {
+            $p = Pol 'enabled' -users $users -grant @('block')
+            $p.conditions | Add-Member locations ([pscustomobject]@{ includeLocations = $inc; excludeLocations = $exc }) -Force
+            foreach ($k in $More.Keys) { $p.conditions | Add-Member $k $More[$k] -Force }
+            $p | Add-Member displayName 'G' -Force
+            $p
+        }
+    }
+    BeforeEach {
+        Base
+        $script:Locs = @([pscustomobject]@{ id = 'c1'; '@odata.type' = '#microsoft.graph.countryNamedLocation' }, [pscustomobject]@{ id = 'ip1'; '@odata.type' = '#microsoft.graph.ipNamedLocation' })
+        $script:GP = @()
+        # ein Schluessel fuer beide Adressen (namedLocations enthaelt auch 'conditionalAccess'): nach Adresse unterscheiden
+        $global:HUSecFx['conditionalAccess'] = { if ($global:HUSecEp -like '*namedLocations*') { $script:Locs } else { $script:GP } }
+    }
+    It 'Laender-Sperrliste und Erlaubnisliste (alle ausser Laender bzw. vertrauenswuerdige) zaehlen' {
+        $script:GP = @((GPol @('c1'))); (Run 'A24').Status | Should -Be 'OK'
+        $script:GP = @((GPol @('All') @('c1'))); (Run 'A24').Status | Should -Be 'OK'
+        $script:GP = @((GPol @('All') @('AllTrusted'))); (Run 'A24').Status | Should -Be 'OK'
+    }
+    It 'reine IP-Orte, Einzelbenutzer, Benutzeraktion, Geraetecode-Flow, Client-Apps, Plattform zaehlen nicht' {
+        $cases = @(
+            (GPol @('ip1')),
+            (GPol @('c1') @() @('u1')),
+            (GPol @('c1') @() @('All') @{ authenticationFlows = [pscustomobject]@{ transferMethods = 'deviceCodeFlow' } }),
+            (GPol @('c1') @() @('All') @{ clientAppTypes = @('exchangeActiveSync') }),
+            (GPol @('c1') @() @('All') @{ platforms = [pscustomobject]@{ includePlatforms = @('android') } })
+        )
+        $ua = GPol @('c1'); $ua.conditions.applications | Add-Member includeUserActions @('urn:user:registersecurityinfo') -Force; $cases += $ua
+        $ex = GPol @('c1'); $ex.conditions.applications | Add-Member excludeApplications @('app1') -Force; $cases += $ex
+        foreach ($c in $cases) { $script:GP = @($c); (Run 'A24').Status | Should -Be 'Abweichung' }
+    }
+    It 'Berichtsmodus: Abweichung mit Hinweis; Ausnahmen werden genannt' {
+        $p = GPol @('c1'); $p.state = 'enabledForReportingButNotEnforced'
+        $script:GP = @($p); (Run 'A24').Detail | Should -BeLike '*Berichtsmodus*'
+        $q = GPol @('c1'); $q.conditions.users | Add-Member excludeGroups @('g1') -Force
+        $script:GP = @($q); $r = Run 'A24'; $r.Status | Should -Be 'OK'; $r.Detail | Should -BeLike '*Ausnahmen pruefen*'
+    }
+}
+
+Describe 'A25 Adminportale (037 B6)' {
+    BeforeAll {
+        function script:APol($exR = @('r1'), $exG = @(), $exU = @(), $state = 'enabled') {
+            $p = Pol $state -apps @('MicrosoftAdminPortals') -grant @('block')
+            $p.conditions.users | Add-Member excludeRoles $exR -Force
+            $p.conditions.users | Add-Member excludeGroups $exG -Force
+            $p.conditions.users | Add-Member excludeUsers $exU -Force
+            $p | Add-Member displayName 'AP' -Force
+            $p
+        }
+    }
+    BeforeEach { Base; Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    It 'nur Admin-Rollen ausgenommen: OK; bis 4 Einzelkonten erlaubt' {
+        $global:HUSecFx['conditionalAccess'] = @((APol @('r1') @() @('a', 'b'))); (Run 'A25').Status | Should -Be 'OK'
+    }
+    It 'fremde Gruppe oder mehr als 4 Konten: Abweichung (zu breite Ausnahme); keine Admin-Ausnahme: Abweichung' {
+        $global:HUSecFx['conditionalAccess'] = @((APol @('r1') @('99999999-0000-0000-0000-000000000000')))
+        $r = Run 'A25'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -BeLike '*zu breite Ausnahme*'
+        $global:HUSecFx['conditionalAccess'] = @((APol @('r1') @() @('a', 'b', 'c', 'd', 'e'))); (Run 'A25').Status | Should -Be 'Abweichung'
+        $global:HUSecFx['conditionalAccess'] = @((APol @() @() @('a'))); (Run 'A25').Status | Should -Be 'Abweichung'
+    }
+    It 'hinterlegte Admin-Gruppe zaehlt als Admin-Ausnahme' {
+        $gid = '99999999-0000-0000-0000-000000000000'
+        [pscustomobject]@{ global = [pscustomobject]@{ A25 = [pscustomobject]@{ adminGroups = @($gid) } } } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Encoding UTF8
+        $global:HUSecFx['conditionalAccess'] = @((APol @() @($gid.ToUpper()))); (Run 'A25').Status | Should -Be 'OK'
+    }
+}
+
+Describe 'A27 veraltete Admin-Konten (037 B7/B8/B9/B19)' {
+    BeforeAll {
+        function script:Asg($id, $type = 'user') { [pscustomobject]@{ principalId = $id; principal = [pscustomobject]@{ '@odata.type' = "#microsoft.graph.$type"; displayName = "N$id" } } }
+        function script:Usr($id, $ok = $null, $any = $null, $created = '2020-01-01T00:00:00Z', $enabled = $true) {
+            $o = [pscustomobject]@{ id = $id; userPrincipalName = "$id@x"; createdDateTime = $created; signInActivity = $(if ($ok -or $any) { [pscustomobject]@{ lastSuccessfulSignInDateTime = $ok; lastSignInDateTime = $any } } else { $null }) }
+            if ($null -ne $enabled) { $o | Add-Member accountEnabled $enabled }
+            $o
+        }
+        $script:Rec = [datetime]::UtcNow.AddDays(-10).ToString('o'); $script:Old = [datetime]::UtcNow.AddDays(-120).ToString('o')
+    }
+    BeforeEach { Base; Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    It 'erfolgreich vor 10 Tagen OK, vor 120 Tagen Abweichung; nur Fehlversuch zaehlt nicht als Aktivitaet' {
+        $global:HUSecFx['roleAssignments'] = @((Asg 'u1'), (Asg 'u2'), (Asg 'u3'))
+        $global:HUSecFx['/users?'] = @((Usr 'u1' $Rec), (Usr 'u2' $Old), (Usr 'u3' $null $Rec), (Usr 'x9' $Old))
+        $r = Run 'A27'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 2
+        $r.Detail | Should -BeLike '*unbekannt*'
+    }
+    It 'nie angemeldet: altes Konto Abweichung, neues Konto OK; accountEnabled fehlt = aktiv, false = ignoriert' {
+        $global:HUSecFx['roleAssignments'] = @((Asg 'u1'), (Asg 'u2'), (Asg 'u3'), (Asg 'u4'))
+        $global:HUSecFx['/users?'] = @((Usr 'u1' $null $null '2020-01-01T00:00:00Z'), (Usr 'u2' $null $null ([datetime]::UtcNow.AddDays(-5).ToString('o'))), (Usr 'u3' $Old $null '2020-01-01T00:00:00Z' $null), (Usr 'u4' $Old $null '2020-01-01T00:00:00Z' $false))
+        $r = Run 'A27'; $r.Count | Should -Be 2; $r.Detail | Should -BeLike '*nie angemeldet*'
+    }
+    It 'Rolle ueber Gruppe wird aufgeloest, Dienstprinzipal gezaehlt, Notfallkonto ausgenommen' {
+        $global:HUSecFx['roleAssignments'] = @((Asg 'g1' 'group'), (Asg 'sp1' 'servicePrincipal'), (Asg '11111111-1111-1111-1111-111111111111'))
+        $global:HUSecFx['/members/'] = @([pscustomobject]@{ id = 'u5' })
+        $global:HUSecFx['/users?'] = @((Usr 'u5' $Old), (Usr '11111111-1111-1111-1111-111111111111' $Old))
+        [pscustomobject]@{ global = [pscustomobject]@{ V1 = [pscustomobject]@{ accounts = @('11111111-1111-1111-1111-111111111111') } } } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Encoding UTF8
+        $r = Run 'A27'; $r.Count | Should -Be 1; $r.Detail | Should -BeLike '*1 ueber Gruppe*'; $r.Detail | Should -BeLike '*1 Dienstprinzipal*'
+    }
+    It 'Ersatz lastSignInDateTime nur vor dem 1.12.2023' {
+        $global:HUSecFx['roleAssignments'] = @((Asg 'u1'))
+        $global:HUSecFx['/users?'] = @((Usr 'u1' $null '2023-06-01T00:00:00Z'))
+        $r = Run 'A27'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -Not -BeLike '*unbekannt*'
+    }
+}
+
+Describe 'Datum kulturunabhaengig (037 B9)' {
+    It 'String mit Z, mit Offset und DateTime ergeben denselben UTC-Zeitpunkt, auch in deutscher Kultur' {
+        $old = [Threading.Thread]::CurrentThread.CurrentCulture
+        try {
+            [Threading.Thread]::CurrentThread.CurrentCulture = 'de-AT'
+            InModuleScope HU.SecCatalog {
+                $a = ConvertTo-HUSecUtc '2026-01-31T22:00:00Z'
+                $b = ConvertTo-HUSecUtc '2026-02-01T00:00:00+02:00'
+                $c = ConvertTo-HUSecUtc ([datetime]::new(2026, 1, 31, 22, 0, 0, [DateTimeKind]::Utc))
+                $a | Should -Be $b; $a | Should -Be $c; $a.Kind | Should -Be 'Utc'
+                ConvertTo-HUSecUtc 'kein Datum' | Should -BeNullOrEmpty
+            }
+        } finally { [Threading.Thread]::CurrentThread.CurrentCulture = $old }
+    }
+}
+
+Describe 'A30 Anmelderisiko und A29 Lizenz (037 B11/B18)' {
+    BeforeAll {
+        function script:SkuP2($status = 'Success', $cap = 'Enabled') { , @([pscustomobject]@{ capabilityStatus = $cap; servicePlans = @([pscustomobject]@{ servicePlanId = 'eec0eb4f-6444-4f95-aba0-50c24d67f998'; servicePlanName = 'X'; provisioningStatus = $status }, [pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) }) }
+        function script:RPol($levels = @('high'), $grant = @('block'), $freq = $null) {
+            $p = Pol 'enabled' -grant $grant
+            $p.conditions | Add-Member signInRiskLevels $levels -Force
+            if ($freq) { $p | Add-Member sessionControls ([pscustomobject]@{ signInFrequency = [pscustomobject]@{ frequencyInterval = $freq } }) -Force }
+            $p | Add-Member displayName 'R' -Force
+            $p
+        }
+    }
+    BeforeEach { Base }
+    It 'ohne P2 bzw. P2 gesperrt: nicht pruefbar (Lizenz) mit P1-Ersatz' {
+        (Run 'A30').Reason | Should -Be 'Lizenz'
+        $global:HUSecFx['subscribedSkus'] = (SkuP2 'Success' 'Suspended'); (Run 'A30').Reason | Should -Be 'Lizenz'
+        (Run 'A30').Detail | Should -BeLike '*Ersatz mit P1*'
+    }
+    It 'P2 per Plan-ID erkannt; Block bei hoch OK, MFA nur mit "jedes Mal" OK, nur niedrig Abweichung' {
+        $global:HUSecFx['subscribedSkus'] = (SkuP2)
+        $global:HUSecFx['conditionalAccess'] = @((RPol @('high'))); (Run 'A30').Status | Should -Be 'OK'
+        $global:HUSecFx['conditionalAccess'] = @((RPol @('medium') @('mfa') 'everyTime')); (Run 'A30').Status | Should -Be 'OK'
+        $global:HUSecFx['conditionalAccess'] = @((RPol @('medium') @('mfa'))); (Run 'A30').Status | Should -Be 'Abweichung'
+        $global:HUSecFx['conditionalAccess'] = @((RPol @('low'))); (Run 'A30').Status | Should -Be 'Abweichung'
+        (Run 'A29').Status | Should -Be 'Info'
+    }
+}
+
+Describe 'A28 Vorlage, A26 Einladungsalter, Sollwerte pruefen (037 B12/B13/B15)' {
+    BeforeEach { Base; Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    It 'A28 waehlt nach templateId, auch bei anderem Anzeigenamen' {
+        $global:HUSecFx['groupSettings'] = @([pscustomobject]@{ displayName = 'Anders'; templateId = '5cf42378-d67d-4f36-ba46-e8b86229381d'; values = @([pscustomobject]@{ name = 'EnableBannedPasswordCheckOnPremises'; value = 'true' }, [pscustomobject]@{ name = 'BannedPasswordCheckOnPremisesMode'; value = 'Enforce' }) })
+        (Run 'A28').Status | Should -Be 'OK'
+    }
+    It 'A26 rechnet ab der letzten Einladung (externalUserStateChangeDateTime)' {
+        $global:HUSecFx["userType%20eq%20'Guest'"] = @([pscustomobject]@{ id = 'g'; externalUserState = 'PendingAcceptance'; createdDateTime = '2020-01-01T00:00:00Z'; externalUserStateChangeDateTime = [datetime]::UtcNow.AddDays(-3).ToString('o') })
+        (Run 'A26').Status | Should -Be 'OK'
+    }
+    It 'ungueltiger Zahlen-Sollwert: Standard bleibt, Fehler wird gemeldet' {
+        [pscustomobject]@{ global = [pscustomobject]@{ A27 = [pscustomobject]@{ staleDays = 'neunzig' } } } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Encoding UTF8
+        $bl = Get-HUSecBaseline -TenantKey 'T1' -Rules (InModuleScope HU.SecCatalog { Get-HUSecRules })
+        $bl.Values['A27'].staleDays | Should -Be 90
+        @($bl.Errors) -join ' ' | Should -BeLike '*A27.staleDays ungueltig*'
+    }
+}
+
+Describe 'A37 auch ueber Gruppenrollen' {
+    BeforeEach { Base }
+    It 'Mitglied einer rollenzuweisbaren Gruppe aus dem lokalen AD zaehlt, Rolle mit Gruppenname in der Liste' {
+        $global:HUSecFx['roleDefinitions'] = @([pscustomobject]@{ id = 'r1'; displayName = 'Global Administrator' })
+        $global:HUSecFx['roleAssignments'] = @([pscustomobject]@{ principalId = 'u1'; roleDefinitionId = 'r1'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.user' } },
+                                               [pscustomobject]@{ principalId = 'g1'; roleDefinitionId = 'r1'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.group'; displayName = 'Admins' } })
+        $global:HUSecFx['/members/'] = @([pscustomobject]@{ id = 'u2' })
+        $global:HUSecFx['id%20in'] = @([pscustomobject]@{ id = 'u1'; userPrincipalName = 'a@x'; onPremisesSyncEnabled = $null }, [pscustomobject]@{ id = 'u2'; userPrincipalName = 'b@x'; onPremisesSyncEnabled = $true })
+        $r = Run 'A37'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1; $r.Detail | Should -BeLike '1 von 2*'
+        $items = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'A37')
+        $items[0].Rollen | Should -BeLike '*ueber Gruppe Admins*'
+    }
+}
+

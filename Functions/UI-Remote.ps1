@@ -33,6 +33,7 @@ function Get-HURemoteConfig {
         WhenLocked = [bool](-not $j -or $j.WhenLocked -ne $false)   # Handy startet auch bei gesperrter App (abschaltbar)
         KeepAwake  = [bool]($j -and $j.KeepAwake -eq $true)
         Intune     = [bool](-not $j -or $j.Intune -ne $false)      # Apps/Wartung am Handy (Standard an, abschaltbar)
+        Security   = [bool](-not $j -or $j.Security -ne $false)    # Sicherheitskatalog am Handy (nur lesen; Standard an, abschaltbar)
         Port       = $port
         Networks   = @($(if ($j) { @($j.Networks) } else { @() }) | Where-Object { "$_".Trim() } | ForEach-Object { "$_".Trim() })
         SetupPort  = $(if ($j -and [int]$j.SetupPort -gt 0) { [int]$j.SetupPort } else { 0 })
@@ -42,7 +43,7 @@ function Get-HURemoteConfig {
     }
 }
 function Save-HURemoteConfig($Cfg) {
-    Write-HUJsonFile -Path (Get-HURemoteConfigFile) -Object ([ordered]@{ v = 1; AutoStart = [bool]$Cfg.AutoStart; WhenLocked = [bool]$Cfg.WhenLocked; KeepAwake = [bool]$Cfg.KeepAwake; Intune = [bool]$Cfg.Intune
+    Write-HUJsonFile -Path (Get-HURemoteConfigFile) -Object ([ordered]@{ v = 1; AutoStart = [bool]$Cfg.AutoStart; WhenLocked = [bool]$Cfg.WhenLocked; KeepAwake = [bool]$Cfg.KeepAwake; Intune = [bool]$Cfg.Intune; Security = [bool]$Cfg.Security
             Port = [int]$Cfg.Port; Networks = @($Cfg.Networks); SetupPort = [int]$Cfg.SetupPort; SetupSid = "$($Cfg.SetupSid)"; SetupAt = "$($Cfg.SetupAt)"; SetupIps = @($Cfg.SetupIps) })
 }
 function Get-HURemoteMarksFile { return (Join-Path (Get-HURemoteDataDir) 'remote-marks.json') }
@@ -154,8 +155,10 @@ function Update-HURemoteCatalog([switch]$Force) {
         }
     }
     $S.Intune = $intune
+    $sec = [bool](Get-HURemoteConfig).Security
+    $S.Sec = $sec
     $tenants = @($script:Settings.tenants | Where-Object { $_ -and "$($_.key)" } | ForEach-Object { [ordered]@{ key = "$($_.key)"; name = $(if ("$($_.displayName)") { "$($_.displayName)" } else { "$($_.key)" }) } })
-    $json = ConvertTo-Json -InputObject ([ordered]@{ items = @($client); tenants = @($tenants); targets = @($targets) }) -Depth 8 -Compress
+    $json = ConvertTo-Json -InputObject ([ordered]@{ items = @($client); tenants = @($tenants); targets = @($targets); sec = $sec }) -Depth 8 -Compress
     $S.Tenants = @($tenants | ForEach-Object { [pscustomobject]$_ })
     $S.Targets = @($targets | ForEach-Object { [pscustomobject]$_ })
     $S.Items = [hashtable]::Synchronized($items)
@@ -563,6 +566,7 @@ function Show-HURemoteDialog {
     $c['chkRemLocked'].IsChecked = $cfg.WhenLocked
     $c['chkRemAwake'].IsChecked = $cfg.KeepAwake
     $c['chkRemIntune'].IsChecked = $cfg.Intune
+    $c['chkRemSec'].IsChecked = $cfg.Security
     $c['txtRemPort'].Text = "$($cfg.Port)"
     $c['txtRemNets'].Text = (@($cfg.Networks) -join ', ')
     $c['btnRemClose'].Add_Click({ $script:HURemDlg.Window.Close() })
@@ -598,7 +602,7 @@ function Show-HURemoteDialog {
             $nets = @("$($c2['txtRemNets'].Text)" -split '[,; ]+' | Where-Object { $_ })
             foreach ($n in $nets) { if ($n -notmatch '^[0-9./]+$' -or @(Get-HURemoteFirewallRemote @($n)).Count -lt 2) { Show-HUMessage "'$n' ist kein gueltiges Netz (z. B. 192.168.99.0/24)." -Icon Warning -Owner $script:HURemDlg.Window; return } }
             $netChanged = ((@($cfg.Networks) -join ',') -ne ($nets -join ',')) -or ($cfg.Port -ne $p)
-            $cfg.AutoStart = [bool]$c2['chkRemAuto'].IsChecked; $cfg.WhenLocked = [bool]$c2['chkRemLocked'].IsChecked; $cfg.KeepAwake = [bool]$c2['chkRemAwake'].IsChecked; $cfg.Intune = [bool]$c2['chkRemIntune'].IsChecked
+            $cfg.AutoStart = [bool]$c2['chkRemAuto'].IsChecked; $cfg.WhenLocked = [bool]$c2['chkRemLocked'].IsChecked; $cfg.KeepAwake = [bool]$c2['chkRemAwake'].IsChecked; $cfg.Intune = [bool]$c2['chkRemIntune'].IsChecked; $cfg.Security = [bool]$c2['chkRemSec'].IsChecked
             $cfg.Port = $p; $cfg.Networks = $nets
             Save-HURemoteConfig $cfg
             if ($script:HURem) { $script:HURem.Cfg = $null }

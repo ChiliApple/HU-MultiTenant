@@ -1,5 +1,32 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.5 (Stable, 21.10.2026)
+
+Abschluss der Roadmap-Stufe "Sicherheitsanalyse". Enthaelt alles aus den Testversionen 2.2.2 bis 2.2.4.
+
+- **Sicherheitskatalog V1 (Notfallkonten):** ausgenommene Gruppen werden aufgeloest (auch verschachtelt). Mit hinterlegten Notfallkonten (Sollwert `V1 accounts`, Objekt-IDs) muss jedes in jeder aussperrfaehigen Richtlinie ausgenommen sein; ohne Sollwert muss mindestens ein Konto in allen ausgenommen sein. Platzhalter und Rollen zaehlen nicht; nicht lesbare Gruppe = nicht pruefbar (Review 037 B4).
+- **A24 Geoblock:** zaehlt nur noch Richtlinien fuer alle Benutzer und alle Apps mit Laender-Standorten (Sperr- oder Erlaubnisliste); IP-Orte, Benutzeraktionen, Geraetecode-Flow, Client-Apps, Plattform und Risiko zaehlen nicht. Ausnahmen werden genannt (B5).
+- **A25 Adminportale:** Ausnahmen nur fuer Admin-Rollen, hinterlegte Admin-Gruppen (Sollwert `A25 adminGroups`) und hoechstens 4 einzelne Konten bzw. die Notfallkonten; sonst "zu breite Ausnahme". Hinweis auf die gesperrte Microsoft-365-Selbstinstallationsseite (B6).
+- **A27 veraltete Admin-Konten:** Rollen ueber Gruppen werden aufgeloest, Dienstprinzipale genannt; gezaehlt nur die letzte erfolgreiche Anmeldung (Fehlversuche nicht); Abruf seitenweise statt je Konto (Drosselung); Notfallkonten ausgenommen; Datumswerte kulturunabhaengig (B7, B8, B9, B19).
+- **A30 Anmelderisiko:** OK bei Blockieren oder MFA mit Anmeldehaeufigkeit "jedes Mal" fuer Risiko mittel/hoch; P2 ueber die Plan-ID erkannt; ohne P2 Hinweis auf den P1-Ersatz (B11). **A29:** auch ID Governance zaehlt (B18).
+- **A42:** auch Mail.Read, Files.Read.All und Sites.Read.All gelten als kritisch (alle Postfaecher bzw. Dateien lesbar).
+- **A37 Admin-Rollen nur Cloud-Konten:** zaehlt jetzt auch Konten mit Rolle ueber eine rollenzuweisbare Gruppe; die Liste nennt die Gruppe.
+- **A28:** Einstellung ueber die Vorlage (templateId) gefunden (B12). **A26:** Alter ab der letzten Einladung (B13). **Sollwerte:** ungueltige Zahlen werden gemeldet, der Standard bleibt (B15).
+- **Handy-Fernbedienung:** pulsierender Punkt im Reiter Sicherheit, solange geprueft oder eine Liste geladen wird.
+
+Bekannte Grenzen (nach Stable): A23 wertet jede Anmeldehaeufigkeit fuer Gaeste (kein Hoechstwert), V1 loest bis zu 40 Namen in der Liste auf und erkennt verwaiste Objekt-IDs in den Ausnahmen nicht, A42 erfasst keine delegierten Zustimmungen fuer alle Benutzer, die Teams-Meldung warnt nicht, wenn ein neuer Soll-Stand schlechter ist als der vorige. Die Ampel-Schwellen bleiben (Rot ab 10).
+
+- **Handy-Fernbedienung, Reiter Sicherheit:** Sicherheitskatalog aller Tenants am Handy - Ampel, Matrix mit Status und Zahl, Regel antippen fuer Begruendung und Kurztext je Tenant, Filter und "nur Abweichungen". Der Reiter erscheint erst ab 600 Pixel Breite (Tablet, Foldable offen, Querformat). Der PC prueft im Hintergrund nur lesend und merkt sich das Ergebnis 15 Minuten; Neu pruefen per Knopf. Wie am PC je Tenant ein Knopf fuer die Liste (z. B. "Konten anzeigen"): Listen mit Personendaten nur nach PIN, danach 5 Minuten frei; falsche PINs zaehlen wie beim Starten (3 = Handy gesperrt). Nur Anzeige, kein Kopieren, nichts am Handy gespeichert; die Matrix selbst braucht keine PIN. Abschaltbar unter Remote FB > Einstellungen (Standard an).
+- **Rechte-Beschreibungen** (Einrichtung, INSTALL): nennen jetzt auch die Verwendung im Sicherheitskatalog. `RoleManagement.Read.Directory` ist dort nicht mehr "optional" beschrieben - ohne das Recht sind A08, A27 und A37 nicht pruefbar.
+- **Analyse, Protokoll unten:** die Hoehe laesst sich am Balken darueber ziehen (60 bis 800 Pixel) und wird gemerkt. Vorher war sie fest.
+- **Sicherheitskatalog A42:** die App-Liste (nur App-Namen und Rechte, keine Personendaten) laesst sich als CSV oder Excel speichern und kopieren. Listen mit Personendaten bleiben nur zur Anzeige.
+- **Sicherheitskatalog, neue Regeln (alle lesend, keine neuen Rechte):** A37 Admin-Rollen nur fuer reine Cloud-Konten (Hoch), A38 Verzeichnissynchronisierung laeuft regelmaessig (Hoch; Sollwert hoechstens 180 Minuten seit dem letzten Sync, je Tenant in baseline.json aenderbar), A39 Sync-Fehler bei Benutzern und Gruppen mit Liste (Mittel), A40 SMS und Sprachanruf als Anmeldemethode aus (Mittel; E-Mail-Code wird wegen Gaesten nicht gewertet), A41 Admin-Zustimmungs-Workflow an (Mittel), A42 Apps mit kritischen Anwendungsrechten auf Microsoft Graph (Hoch; die App dieses Programms wird angezeigt, aber nicht mitgezaehlt). Jetzt 40 Regeln.
+- **Sicherheitskatalog A32:** bei AADSTS500011 steht jetzt der Hinweis, Secure Score einmal im Defender-Portal zu oeffnen. Danach lieferte Graph den Wert (im Betrieb beobachtet).
+- **Sicherheitskatalog, neue Regeln im Bereich SharePoint** (gleicher Abruf wie A33, kein neues Recht): A34 Legacy-Authentifizierung ausgeschaltet (Mittel), A35 Externe Benutzer duerfen Freigaben nicht weitergeben (Niedrig), A36 Domaenen-Einschraenkung und Leerlauf-Abmeldung (nur zur Kenntnis). 
+- **Teams-Meldung Sicherheits-Aenderung:** Aenderungen zeigen einen Pfeil statt der Leerstelle, z. B. "Anzahl 3 → 4" und "OK → Abweichung" (das bisherige ">" wurde von der Textbereinigung entfernt).
+- **Teams-Meldung Sicherheits-Aenderung:** die Kennzahl heisst jetzt "Heute nicht pruefbar (im Soll pruefbar)" und zaehlt nur Regeln, die beim Speichern des Solls pruefbar waren und jetzt nicht mehr; dauerhaft nicht pruefbare Regeln (manuell, Lizenz) zaehlen nicht mehr mit.
+- **Teams-Karten:** Pfade in den Hinweiszeilen (Secret-Ablauf, Sicherheits-Aenderung) nutzen › statt >, das die Textbereinigung entfernte ("Analyse Sicherheit Soll speichern" statt "Analyse › Sicherheit › Soll speichern").
+
 ## v2.2.4 (Testversion, 20.10.2026)
 
 - **Sicherheitskatalog, Konten anzeigen:** waehrend die Liste geladen wird, zeigt der Knopf "Lade ..." (gesperrt), der Mauszeiger ist eine Sanduhr und der gruene Punkt im Hauptfenster blinkt. Vorher sah es aus, als haengt das Programm. Ein Fehler oder eine leere Antwort wird jetzt immer gemeldet.

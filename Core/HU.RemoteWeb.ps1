@@ -190,6 +190,16 @@ $script:HURemoteHtml = @'
     <button class="btn primary wide big" id="oGo">Pruefen</button>
   </section>
 
+  <!-- Sicherheit: Sicherheitskatalog (nur lesen; Reiter erst ab Tablet-/Querformat-Breite) -->
+  <section class="view hidden" id="vSec">
+    <div class="row between runhead"><span class="row"><h2>Sicherheit</h2><span class="pulse hidden" id="sxDot" aria-hidden="true" style="margin-left:10px"></span></span><span class="row tools"><input id="sxFind" class="find-s" type="search" placeholder="Filter" aria-label="Regeln filtern" autocomplete="off"><button class="ibtn" id="sxDev" title="Nur Abweichungen" aria-label="Nur Abweichungen" aria-pressed="false">&#10007;</button><button class="ibtn" id="sxReload" title="Neu pruefen" aria-label="Neu pruefen">&#8635;</button></span></div>
+    <p class="muted small" id="sxAt"></p>
+    <p class="err hidden" id="sxErr" role="alert"></p>
+    <div class="card hidden" id="sxDet"></div>
+    <div class="sxwrap"><table class="sxt" id="sxTab"></table></div>
+    <p class="muted small">Nur lesen. Listen mit Personendaten (Konten, Geraete, Gaeste) nur nach PIN, nur zur Anzeige - nichts wird am Handy gespeichert.</p>
+  </section>
+
   <!-- Mehr -->
   <section class="view hidden" id="vMore">
     <h1>Dieses Geraet</h1>
@@ -214,6 +224,7 @@ $script:HURemoteHtml = @'
 <nav class="tabs hidden" id="tabs">
   <button data-tab="vList" class="on"><span class="ico">&#9776;</span>Starten</button>
   <button data-tab="vIntune" id="tIntune" class="hidden"><span class="ico">&#9638;</span>Intune</button>
+  <button data-tab="vSec" id="tSec" class="hidden"><span class="ico">&#9873;</span>Sicherheit<span class="badge hidden" id="tSecB"></span></button>
   <button data-tab="vRun"><span class="ico">&#9654;</span>Lauf<span class="badge hidden" id="tRun"></span></button>
   <button data-tab="vMore"><span class="ico">&#8942;</span>Mehr</button>
 </nav>
@@ -348,6 +359,20 @@ input.code4{font-size:24px;letter-spacing:6px;text-align:center;text-transform:u
 @media (orientation:landscape) and (max-height:500px){.console{height:60vh}.top{padding-top:6px;padding-bottom:6px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .ok-t{color:var(--green)}
+.sxwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--s0);border-radius:12px;background:var(--mantle)}
+.sxt{border-collapse:collapse;width:100%;font-size:13px}.sxt th,.sxt td{padding:6px 8px;border-bottom:1px solid var(--s0);text-align:left;vertical-align:top}
+.sxt th{position:sticky;top:0;background:var(--crust);color:var(--sub);font-weight:600;font-size:12px}.sxt td.c,.sxt th.c{text-align:center;white-space:nowrap;min-width:64px}
+.sxt tr.r{cursor:pointer}.sxt tr.r:hover td{background:rgba(137,180,250,.06)}.sxt tr.sel td{background:rgba(137,180,250,.12)}
+.sxt .g{white-space:nowrap;font-size:12px;color:var(--sub)}.sxt .id{white-space:nowrap;color:var(--sub)}
+.sxt .K{color:var(--red)}.sxt .H{color:var(--peach)}.sxt .M{color:var(--yellow)}.sxt .N{color:var(--sub)}
+.sx-ok{color:var(--green)}.sx-dev{color:var(--red);font-weight:700}.sx-exc{color:var(--teal)}.sx-na{color:var(--ov)}.sx-inf{color:var(--blue)}
+.sxl{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:var(--ov)}.sxl.Rot{background:var(--red)}.sxl.Gelb{background:var(--peach)}.sxl.Gruen{background:var(--green)}
+#sxDet h3{margin:0 0 4px;font-size:16px}#sxDet .why{color:var(--sub);font-size:13px;margin:4px 0 8px}#sxDet .tl{display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--s0);font-size:14px}#sxDet .tl b{min-width:110px}
+#tSec .ico{font-size:18px}
+#sxDet .tl{flex-wrap:wrap;align-items:baseline}#sxDet .tl .muted{flex:1;min-width:200px}.sxbtn{margin-left:auto;font-size:13px;padding:4px 10px;border-radius:8px;border:1px solid var(--s0);background:var(--crust);color:var(--blue);cursor:pointer}
+.sxlist{width:100%;margin:6px 0 4px;-webkit-user-select:none;user-select:none}.sxlist .find-s{width:100%;margin:4px 0}.sxlist .sxwrap{max-height:50vh;overflow:auto}
+.sxpin{display:flex;gap:8px;align-items:center;width:100%;margin:6px 0}.sxpin input{flex:1;min-height:36px;padding:0 10px;border-radius:10px;border:1px solid var(--s0);background:var(--crust);color:var(--tx);font-size:16px;letter-spacing:4px}
+.ibtn.on{color:var(--red);border-color:rgba(243,139,168,.5);background:rgba(243,139,168,.12)}
 .ibtn{min-width:36px;min-height:36px;padding:0 8px;border:1px solid var(--s0);border-radius:10px;background:none;color:var(--ov);font-size:16px;line-height:1;cursor:pointer}
 .gl{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;min-height:44px;padding:8px 12px;margin:4px 0;border:1px solid var(--s0);border-radius:10px;background:var(--crust);color:var(--tx);font-size:14px}.gl small{color:var(--sub)}.gl.on{border-color:var(--blue)}
 .asg{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:6px 0;border:1px solid var(--s0);border-radius:12px;background:var(--mantle)}.asg div{flex:1;min-width:0}.asg .s{color:var(--sub);font-size:13px}
@@ -404,7 +429,7 @@ $script:HURemoteJs = @'
     Array.prototype.forEach.call(document.querySelectorAll('.seg button'), function (x) { x.classList.toggle('on', x.getAttribute('data-k') === k); });
   }
   // --- Ansicht
-  var VIEWS = ['vPair', 'vList', 'vStart', 'vConfirm', 'vRun', 'vMore', 'vIntune', 'vIObj'];
+  var VIEWS = ['vPair', 'vList', 'vStart', 'vConfirm', 'vRun', 'vMore', 'vIntune', 'vIObj', 'vSec'];
   function setView(v) {
     VIEWS.forEach(function (x) { show(x, x === v); });
     show('tabs', v !== 'vPair');
@@ -416,6 +441,7 @@ $script:HURemoteJs = @'
     if (v === 'vRun' && S.follow) { var c = $('rCon'); c.scrollTop = c.scrollHeight; }
     if (v === 'vMore') { pushState(); }
     if (v === 'vIntune') { iShow(); }
+    if (v === 'vSec') { sxShow(); }
     if (v === 'vIObj' && S.iobjId) { oLoad(false); }
     if (v !== 'vConfirm') { clearInterval(S.cdTimer); }
     window.scrollTo(0, 0);
@@ -477,6 +503,7 @@ $script:HURemoteJs = @'
       show('tIntune', hasI);
       if (!hasI && (S.tab === 'vIntune' || S.tab === 'vIObj')) { setView('vList'); }
       if (S.tab === 'vIntune') { iShow(); }
+      S.secOn = j.sec === true; sxTab();
       renderList();
       if (S.restoreItem) {
         var it = (j.items || []).filter(function (x) { return x.id === S.restoreItem; })[0];
@@ -680,6 +707,166 @@ $script:HURemoteJs = @'
       }
       S.prep = null; S.seq = S.seq; setView('vRun'); schedule(300);
     }).catch(function (e) { err('cErr', failMsg(e, 'PC nicht erreichbar - Zurueck und neu pruefen.')); S.prepUntil = 0; checkGo(); });
+  }
+
+  // --- Sicherheit: Katalog lesen (ohne PIN, nichts wird geaendert). Reiter nur bei genug Breite, sonst unlesbar.
+  var SX_WIDE = window.matchMedia ? window.matchMedia('(min-width: 600px)') : null;
+  function sxWide() { return SX_WIDE ? SX_WIDE.matches : (window.innerWidth >= 600); }
+  function sxTab() {
+    var on = !!S.secOn && sxWide();
+    show('tSec', on);
+    if (!on && S.tab === 'vSec' && S.cat) { setView('vList'); }
+  }
+  // Laeuft eine Abfrage (Pruefung oder Liste), pulsiert der Punkt neben der Ueberschrift und am Reiter
+  function sxBusy(key, on) {
+    S.sxB = S.sxB || {}; if (on) { S.sxB[key] = true; } else { delete S.sxB[key]; }
+    var any = Object.keys(S.sxB).length > 0; show('sxDot', any); show('tSecB', any);
+  }
+  function sxReq(force, tries) {
+    tries = tries || 0;
+    if (!tries) { S.sxTok = (S.sxTok || 0) + 1; }
+    var tok = S.sxTok;
+    sxBusy('sec', true);
+    api('POST', '/api/sec', force && !tries ? { force: true } : {}).then(function (j) {
+      if (tok !== S.sxTok) { return; }
+      if (j.__status === 401) { needPair('Nicht mehr gekoppelt.'); return; }
+      if (j.ok && j.pending) {
+        if (tries > 400) { sxDone({ ok: false, error: 'Keine Antwort vom PC (Zeitlimit)' }); return; }
+        $('sxAt').textContent = 'Pruefung laeuft am PC (alle Tenants, dauert etwa eine Minute) ...';
+        setTimeout(function () { sxReq(false, tries + 1); }, 2000); return;
+      }
+      sxDone(j);
+    }).catch(function (e) { if (tok === S.sxTok) { sxDone({ ok: false, error: failMsg(e) }); } });
+  }
+  function sxDone(j) {
+    sxBusy('sec', false);
+    if (!j.ok || j.error || !j.data) { err('sxErr', j.error || 'Nicht lesbar'); $('sxAt').textContent = ''; return; }
+    err('sxErr', ''); S.sx = j.data; S.sxAt = j.at || '';
+    S.sxMap = {}; (S.sx.cells || []).forEach(function (c) { S.sxMap[c.t + '|' + c.r] = c; });
+    sxRender();
+  }
+  function sxShow() { if (S.sx) { sxRender(); } else { sxLoad(false); } }
+  function sxLoad(force) {
+    err('sxErr', ''); $('sxAt').textContent = force ? 'Neue Pruefung angefordert ...' : 'Lade ...';
+    if (force) { S.sx = null; clear($('sxTab')); show('sxDet', false); }
+    sxReq(force, 0);
+  }
+  function sxCell(c, rid) {
+    if (!c) { return { t: '-', k: 'sx-na', h: 'nicht geprueft' }; }
+    var n = (c.c !== null && c.c !== undefined && c.c !== 0) ? ' ' + c.c : '';
+    var why = { Recht: 'Recht', Lizenz: 'Lizenz', Technisch: 'Technik', Manuell: 'Manuell', NichtAnwendbar: 'n/a' }[c.x] || '';
+    switch (c.s) {
+      case 'OK': return { t: '✔', k: 'sx-ok', h: c.d };
+      case 'Abweichung': return { t: '✗' + n, k: 'sx-dev', h: c.d };
+      case 'Ausnahme': return { t: 'A' + n, k: 'sx-exc', h: 'Ausnahme: ' + c.d };
+      case 'NichtPruefbar': return { t: '? ' + why, k: 'sx-na', h: c.d };
+      case 'Fehler': return { t: '!', k: 'sx-dev', h: c.d };
+      case 'Info':
+        var m = rid === 'A32' ? /\(([\d.,]+ %)\)/.exec(c.d || '') : null;
+        return { t: m ? m[1] : 'i', k: 'sx-inf', h: c.d };
+    }
+    return { t: c.s, k: '', h: c.d };
+  }
+  function sxRender() {
+    var d = S.sx, tb = $('sxTab'); clear(tb);
+    if (!d) { return; }
+    var ts = d.tenants || [];
+    $('sxAt').textContent = 'Stand ' + S.sxAt + ' - ' + (d.rules || []).length + ' Regeln, ' + ts.length + ' Tenants';
+    var q = ($('sxFind').value || '').toLowerCase(), dev = $('sxDev').getAttribute('aria-pressed') === 'true';
+    var hr = el('tr'); ['Grad', 'Nr', 'Regel'].forEach(function (h) { hr.appendChild(el('th', '', h)); });
+    ts.forEach(function (t) { hr.appendChild(el('th', 'c', t.name)); });
+    var th = el('thead'); th.appendChild(hr); tb.appendChild(th);
+    var body = el('tbody');
+    var ar = el('tr'); ar.appendChild(el('td', 'g', '')); ar.appendChild(el('td', 'id', '')); ar.appendChild(el('td', '', 'Ampel'));
+    ts.forEach(function (t) {
+      var td = el('td', 'c');
+      if (t.err) { td.appendChild(el('span', 'sx-dev', '!')); td.title = t.err; }
+      else { td.appendChild(el('span', 'sxl ' + t.light)); td.appendChild(document.createTextNode(t.ok + '/' + t.checked)); }
+      ar.appendChild(td);
+    });
+    body.appendChild(ar);
+    var shown = 0;
+    (d.rules || []).forEach(function (r) {
+      var cs = ts.map(function (t) { return S.sxMap[t.key + '|' + r.id]; });
+      if (dev && !cs.some(function (c) { return c && (c.s === 'Abweichung' || c.s === 'Fehler'); })) { return; }
+      if (q && (r.id + ' ' + r.sev + ' ' + r.area + ' ' + r.title).toLowerCase().indexOf(q) < 0) { return; }
+      var tr = el('tr', 'r' + (S.sxSel === r.id ? ' sel' : ''));
+      tr.appendChild(el('td', 'g ' + r.sev.charAt(0), r.sev));
+      tr.appendChild(el('td', 'id', r.id));
+      tr.appendChild(el('td', '', r.title));
+      cs.forEach(function (c) { var v = sxCell(c, r.id), td = el('td', 'c'); td.appendChild(el('span', v.k, v.t)); tr.appendChild(td); });
+      tr.addEventListener('click', function () { sxDetail(r); });
+      body.appendChild(tr); shown++;
+    });
+    if (!shown) { var e = el('tr'), td = el('td', 'muted', dev ? 'Keine Abweichungen.' : 'Nichts gefunden.'); td.colSpan = 3 + ts.length; e.appendChild(td); body.appendChild(e); }
+    tb.appendChild(body);
+  }
+  // Detailliste (wie "Konten anzeigen" am PC): nur anzeigen, nichts speichern; Personendaten nur nach PIN (gilt am PC 5 Minuten)
+  function sxItems(r, t, slot, pin, force, tries) {
+    tries = tries || 0;
+    if (!tries) { S.sxiTok = (S.sxiTok || 0) + 1; slot.classList.remove('hidden'); clear(slot); slot.appendChild(el('div', 'muted small', 'Lade ' + r.items + ' ...')); }
+    var tok = S.sxiTok, body = { rule: r.id, tenant: t.key };
+    sxBusy('items', true);
+    var done = function () { if (tok === S.sxiTok) { sxBusy('items', false); } };
+    if (pin) { body.pin = pin; } if (force && !tries) { body.force = true; }
+    api('POST', '/api/secitems', body).then(function (j) {
+      if (tok !== S.sxiTok) { return; }
+      if (j.__status === 401) { needPair('Nicht mehr gekoppelt.'); return; }
+      if (!j.ok && j.pin) { done(); sxPin(r, t, slot, j.error); return; }
+      if (j.ok && j.pending) { if (tries > 150) { done(); clear(slot); slot.appendChild(el('div', 'err', 'Keine Antwort vom PC (Zeitlimit)')); return; } setTimeout(function () { sxItems(r, t, slot, '', false, tries + 1); }, 1500); return; }
+      done();
+      if (!j.ok || j.error || !j.data) { clear(slot); slot.appendChild(el('div', 'err', j.error || 'Nicht lesbar')); return; }
+      sxList(r, t, slot, j.data, j.at);
+    }).catch(function (e) { if (tok === S.sxiTok) { done(); clear(slot); slot.appendChild(el('div', 'err', failMsg(e))); } });
+  }
+  function sxPin(r, t, slot, msg) {
+    clear(slot);
+    slot.appendChild(el('div', 'muted small', msg || 'PIN noetig'));
+    var w = el('div', 'sxpin'), i = el('input'), b = el('button', 'sxbtn', 'Anzeigen');
+    i.type = 'password'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.maxLength = 12; i.setAttribute('aria-label', 'PIN');
+    var go = function () { var v = (i.value || '').replace(/\D/g, ''); if (v.length < 4) { i.focus(); return; } sxItems(r, t, slot, v, false); };
+    b.addEventListener('click', go); i.addEventListener('keydown', function (e) { if (e.key === 'Enter') { go(); } });
+    w.appendChild(i); w.appendChild(b); slot.appendChild(w); setTimeout(function () { i.focus(); }, 50);
+  }
+  function sxList(r, t, slot, d, at) {
+    clear(slot);
+    var head = el('div', 'row between');
+    head.appendChild(el('span', 'muted small', (d.total || 0) + ' ' + d.label + (d.total > (d.rows || []).length ? ' (erste ' + d.rows.length + ')' : '') + ' - Stand ' + (at || '') + ' - nur Anzeige'));
+    var cl = el('button', 'sxbtn', 'Schliessen'); cl.addEventListener('click', function () { clear(slot); slot.classList.add('hidden'); });
+    head.appendChild(cl); slot.appendChild(head);
+    if (!(d.rows || []).length) { slot.appendChild(el('div', 'muted small', 'Keine Eintraege.')); return; }
+    var f = el('input', 'find-s'); f.type = 'search'; f.placeholder = 'Filter ...'; f.setAttribute('aria-label', 'Liste filtern'); slot.appendChild(f);
+    var wrap = el('div', 'sxwrap'), tb = el('table', 'sxt'); wrap.appendChild(tb); slot.appendChild(wrap);
+    var draw = function () {
+      clear(tb); var q = (f.value || '').toLowerCase();
+      var hr = el('tr'); (d.cols || []).forEach(function (c) { hr.appendChild(el('th', '', c)); }); var th = el('thead'); th.appendChild(hr); tb.appendChild(th);
+      var bd = el('tbody');
+      d.rows.forEach(function (row) { if (q && row.join(' ').toLowerCase().indexOf(q) < 0) { return; } var tr = el('tr'); row.forEach(function (v) { tr.appendChild(el('td', '', v)); }); bd.appendChild(tr); });
+      tb.appendChild(bd);
+    };
+    f.addEventListener('input', draw); draw();
+  }
+  function sxDetail(r) {
+    var box = $('sxDet');
+    if (S.sxSel === r.id && !box.classList.contains('hidden')) { S.sxSel = ''; show('sxDet', false); sxRender(); return; }
+    S.sxSel = r.id; clear(box);
+    box.appendChild(el('h3', '', r.id + ' - ' + r.title));
+    box.appendChild(el('div', 'muted small', r.area + ' | Schweregrad ' + r.sev));
+    if (r.why) { box.appendChild(el('div', 'why', r.why)); }
+    (S.sx.tenants || []).forEach(function (t) {
+      var c = S.sxMap[t.key + '|' + r.id], v = sxCell(c, r.id), row = el('div', 'tl');
+      row.appendChild(el('b', '', t.name)); var sp = el('span', v.k, v.t); row.appendChild(sp);
+      row.appendChild(el('span', 'muted', c ? (c.d || '') : (t.err || 'nicht geprueft')));
+      if (r.items && c && (c.s === 'OK' || c.s === 'Abweichung' || c.s === 'Ausnahme' || c.s === 'Info')) {
+        var b = el('button', 'sxbtn', r.items + ' anzeigen' + (r.pii ? ' \uD83D\uDD12' : ''));
+        var slot = el('div', 'sxlist hidden');
+        b.addEventListener('click', function () { sxItems(r, t, slot, '', false); });
+        row.appendChild(b); row.appendChild(slot);
+      }
+      box.appendChild(row);
+    });
+    show('sxDet', true); sxRender();
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   // --- Intune: Apps und Wartung (lesen ohne PIN; Zuweisen/Aufheben ueber Pruefen + Kuerzel + PIN)
@@ -1019,6 +1206,11 @@ $script:HURemoteJs = @'
     $('rFind').addEventListener('input', applyFind);
     $('rClear').addEventListener('click', function () { clear($('rCon')); show('rLost', false); });
     $('mUnpair').addEventListener('click', unpair);
+    $('sxReload').addEventListener('click', function () { sxLoad(true); });
+    $('sxFind').addEventListener('input', sxRender);
+    $('sxDev').addEventListener('click', function () { var b = $('sxDev'), on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.classList.toggle('on', on); sxRender(); });
+    if (SX_WIDE) { if (SX_WIDE.addEventListener) { SX_WIDE.addEventListener('change', sxTab); } else if (SX_WIDE.addListener) { SX_WIDE.addListener(sxTab); } }
+    window.addEventListener('resize', sxTab);
     $('nBtn').addEventListener('click', pushToggle);
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) { b.addEventListener('click', function () { setView(b.getAttribute('data-tab')); }); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden) { schedule(50); } else { clearTimeout(S.timer); } });
@@ -1029,7 +1221,7 @@ $script:HURemoteJs = @'
       if (n.ia === 'app' || n.ia === 'rem') { S.ia = n.ia; } if (n.it) { S.iten = n.it; }
       if (v === 'vIObj') { if (n.io) { S.iobjId = n.io; } else { v = 'vIntune'; } }
       if (v === 'vStart') { S.restoreItem = n.i || null; v = 'vList'; }
-      if (['vList', 'vRun', 'vMore', 'vIntune', 'vIObj'].indexOf(v) < 0) { v = 'vList'; }
+      if (['vList', 'vRun', 'vMore', 'vIntune', 'vIObj', 'vSec'].indexOf(v) < 0) { v = 'vList'; }
       setView(v); poll();
     } else { setView('vPair'); }
   });

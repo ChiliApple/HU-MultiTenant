@@ -598,6 +598,14 @@ function Register-HUAnaHandlers {
     $c['chkAnaAll'].IsChecked = [bool](Get-HUStateValue 'anaAll' $true)
     $c['chkAnaAll'].Add_Checked({ Set-HUStateValue 'anaAll' $true; Update-HUAnaGrid })
     $c['chkAnaAll'].Add_Unchecked({ Set-HUStateValue 'anaAll' $false; Update-HUAnaGrid })
+    # Protokoll unten: Hoehe per Ziehgriff (gemerkt)
+    try { $h = [double](Get-HUStateValue 'anaLogHeight' 120); if ($h -ge 60 -and $h -le 800) { $c['rtbAna'].Height = $h } } catch { }
+    $c['thbAnaLog'].Add_DragDelta({
+            param($s, $e)
+            $h = $script:Controls['rtbAna'].Height - $e.VerticalChange
+            $script:Controls['rtbAna'].Height = [math]::Max(60, [math]::Min(800, $h))
+        })
+    $c['thbAnaLog'].Add_DragCompleted({ Set-HUStateValue 'anaLogHeight' ([int]$script:Controls['rtbAna'].Height) })
     $c['txtAnaFilter'].Add_TextChanged({ Update-HUAnaGrid })
     $c['cmbAnaType'].Add_SelectionChanged({ if (-not $script:AnaTypeBusy) { Update-HUAnaGrid } })
     Update-HUAnaTypes

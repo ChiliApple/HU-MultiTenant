@@ -53,6 +53,17 @@ function Get-HUSecTokenRoles([string]$TenantKey, $Settings) {
     return @()
 }
 
+# Anwendungsrechte auf Microsoft Graph, mit denen eine App den Tenant uebernehmen oder alle Daten lesen/aendern kann (A42)
+$script:HUSecCriticalPerms = @(
+    'RoleManagement.ReadWrite.Directory', 'AppRoleAssignment.ReadWrite.All', 'Application.ReadWrite.All', 'Directory.ReadWrite.All',
+    'Domain.ReadWrite.All', 'Policy.ReadWrite.ConditionalAccess', 'Policy.ReadWrite.Authorization', 'User.ReadWrite.All',
+    'UserAuthenticationMethod.ReadWrite.All', 'Group.ReadWrite.All', 'GroupMember.ReadWrite.All', 'Mail.ReadWrite', 'Mail.Send',
+    'Files.ReadWrite.All', 'Sites.ReadWrite.All', 'Sites.FullControl.All', 'DeviceManagementConfiguration.ReadWrite.All',
+    'DeviceManagementManagedDevices.PrivilegedOperations.All', 'DeviceManagementRBAC.ReadWrite.All',
+    # lesend, aber alle Postfaecher bzw. alle Dateien (in Schulen mit Schuelerdaten) - Review 039
+    'Mail.Read', 'Files.Read.All', 'Sites.Read.All'
+)
+
 # Abrufbare Daten: Schluessel -> Endpunkt, Recht, Lizenz
 $script:HUSecFacts = @{
     ca     = @{ Custom = 'ca'; All = $true; Perms = @('Policy.Read.All'); Lic = 'P1' }
@@ -66,7 +77,7 @@ $script:HUSecFacts = @{
     compl  = @{ Ep = "/deviceManagement/deviceCompliancePolicies?`$expand=assignments"; All = $true; Perms = @('DeviceManagementConfiguration.Read.All'); Lic = '' }
     devs   = @{ Ep = "/deviceManagement/managedDevices?`$select=id,deviceName,userPrincipalName,complianceState,isEncrypted,operatingSystem"; All = $true; Perms = @('DeviceManagementManagedDevices.Read.All'); Lic = '' }
     reg    = @{ Ep = "/reports/authenticationMethods/userRegistrationDetails?`$filter=isAdmin%20eq%20true"; All = $true; Perms = @('AuditLog.Read.All'); Lic = 'P1' }
-    guestsx = @{ Ep = "/users?`$filter=userType%20eq%20'Guest'&`$select=id,displayName,mail,createdDateTime,externalUserState"; All = $true; Perms = @('User.Read.All'); Lic = '' }
+    guestsx = @{ Ep = "/users?`$filter=userType%20eq%20'Guest'&`$select=id,displayName,mail,createdDateTime,externalUserState,externalUserStateChangeDateTime"; All = $true; Perms = @('User.Read.All'); Lic = '' }
     adminact = @{ Custom = 'adminact'; Perms = @('RoleManagement.Read.Directory', 'User.Read.All', 'AuditLog.Read.All'); Lic = 'P1' }
     pwdset = @{ Ep = '/groupSettings'; All = $true; Perms = @('Group.Read.All'); Lic = '' }
     xtpart = @{ Ep = '/policies/crossTenantAccessPolicy/partners'; All = $true; Perms = @('Policy.Read.All'); Lic = '' }
@@ -75,6 +86,14 @@ $script:HUSecFacts = @{
     repset = @{ Ep = '/admin/reportSettings'; All = $false; Perms = @('ReportSettings.Read.All'); Lic = '' }
     spset  = @{ Ep = '/admin/sharepoint/settings'; All = $false; Perms = @('SharePointTenantSettings.Read.All'); Lic = '' }
     skus   = @{ Ep = '/subscribedSkus'; All = $true; Perms = @('Organization.Read.All'); Lic = '' }
+    org    = @{ Ep = '/organization?$select=id,onPremisesSyncEnabled,onPremisesLastSyncDateTime'; All = $false; Perms = @('Organization.Read.All'); Lic = '' }
+    authm  = @{ Ep = '/policies/authenticationMethodsPolicy'; All = $false; Perms = @('Policy.Read.All'); Lic = '' }
+    acrp   = @{ Ep = '/policies/adminConsentRequestPolicy'; All = $false; Perms = @('Policy.Read.All'); Lic = '' }
+    adminsync = @{ Custom = 'adminsync'; Perms = @('RoleManagement.Read.Directory', 'User.Read.All'); Lic = '' }
+    syncerr = @{ Custom = 'syncerr'; Perms = @('User.Read.All', 'Group.Read.All'); Lic = '' }
+    graphapps = @{ Custom = 'graphapps'; Perms = @('Application.Read.All'); Lic = '' }
+    v1ex   = @{ Custom = 'v1ex'; Perms = @('Policy.Read.All', 'Group.Read.All'); Lic = 'P1' }
+    nloc   = @{ Ep = '/identity/conditionalAccess/namedLocations'; All = $true; Perms = @('Policy.Read.All'); Lic = 'P1' }
 }
 
 function New-HUSecContext {
@@ -107,16 +126,33 @@ function Get-HUSecCustomFact {
     param([Parameter(Mandatory)]$Ctx, [Parameter(Mandatory)][string]$Name)
     switch ($Name) {
         'adminact' {
-            # Benutzer mit direkter, aktiver Verzeichnisrolle (Gruppen/PIM-eligible sind nicht sichtbar) und ihre letzte Anmeldung
+            # Konten mit aktiver Verzeichnisrolle: direkt und ueber rollenzuweisbare Gruppen (eine Ebene, keine Verschachtelung moeglich).
+            # Anmeldedaten per Massenabruf (/users mit signInActivity, seitenweise) statt Einzelabfragen - signInActivity ist stark gedrosselt (Review 037 B7/B8).
             $asg = @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/roleManagement/directory/roleAssignments?$expand=principal' -All)
-            $ids = @($asg | Where-Object { "$($_.principal.'@odata.type')" -like '*user' } | ForEach-Object { "$($_.principalId)" } | Where-Object { $_ } | Sort-Object -Unique)
-            if ($ids.Count -gt 100) { throw 'mehr als 100 Admin-Konten' }
-            foreach ($id in $ids) {
-                $u = Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/users/$id`?`$select=id,userPrincipalName,accountEnabled,createdDateTime,signInActivity"
-                $s = $u.signInActivity
-                $v = if ($s -and $s.PSObject.Properties['lastSuccessfulSignInDateTime'] -and $s.lastSuccessfulSignInDateTime) { $s.lastSuccessfulSignInDateTime } elseif ($s) { $s.lastSignInDateTime } else { $null }
-                [pscustomobject]@{ id = "$($u.id)"; upn = "$($u.userPrincipalName)"; enabled = [bool]$u.accountEnabled; created = $u.createdDateTime; last = $v }
+            $via = @{}; $sps = New-Object System.Collections.Generic.List[string]
+            foreach ($x in $asg) {
+                $t = "$($x.principal.'@odata.type')"; $prin = "$($x.principalId)".ToLowerInvariant()
+                if (-not $prin) { continue }
+                if ($t -like '*user') { if (-not $via.ContainsKey($prin)) { $via[$prin] = '' } }
+                elseif ($t -like '*group') {
+                    foreach ($m in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/groups/$prin/members/microsoft.graph.user?`$select=id" -All)) {
+                        $mid = "$($m.id)".ToLowerInvariant(); if ($mid -and -not $via.ContainsKey($mid)) { $via[$mid] = "$($x.principal.displayName)" }
+                    }
+                }
+                elseif ($t -like '*servicePrincipal') { if (-not $sps.Contains($prin)) { $sps.Add($prin) } }
             }
+            if ($via.Count -gt 300) { throw 'mehr als 300 Konten mit Admin-Rolle - zu viele fuer diese Pruefung' }
+            if ($via.Count) {
+                foreach ($u in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/users?$select=id,userPrincipalName,accountEnabled,createdDateTime,signInActivity&$top=500' -All)) {
+                    $id = "$($u.id)".ToLowerInvariant()
+                    if (-not $via.ContainsKey($id)) { continue }
+                    $s = $u.signInActivity
+                    [pscustomobject]@{ kind = 'user'; id = $id; upn = "$($u.userPrincipalName)"
+                        enabled = $(if ($u.PSObject.Properties['accountEnabled'] -and $null -ne $u.accountEnabled) { [bool]$u.accountEnabled } else { $true })   # fehlt = aktiv (fail-closed)
+                        created = $u.createdDateTime; lastOk = $(if ($s) { $s.lastSuccessfulSignInDateTime }); lastAny = $(if ($s) { $s.lastSignInDateTime }); group = $via[$id] }
+                }
+            }
+            foreach ($sp in $sps) { [pscustomobject]@{ kind = 'sp'; id = $sp } }
         }
         'ca' {
             # v1.0 fuehrt; beta wird nur zum Abgleich der Ids gelesen. Fehlt eine Richtlinie in v1.0 (in einem Tenant beobachtet, Ursache unklar), kommt sie aus beta dazu und wird markiert. Schlaegt beta fehl, gilt nur v1.0.
@@ -127,6 +163,86 @@ function Get-HUSecCustomFact {
             foreach ($e in $extra) { $e | Add-Member -NotePropertyName __OnlyBeta -NotePropertyValue $true -Force }
             $v1
             $extra
+        }
+        'v1ex' {
+            # V1: je zaehlende Richtlinie die wirksam ausgenommenen Benutzer (direkt + transitiv ueber Gruppen, nur Benutzer).
+            # Platzhalter (GuestsOrExternalUsers, None, All) und Rollen zaehlen nicht; geloeschte Gruppe (404) = leer; sonstiger Fehler = nicht aufloesbar.
+            $ca = Get-HUSecFact -Ctx $Ctx -Key 'ca'
+            if (-not $ca.Ok) { $ex = New-Object System.Exception("Richtlinien nicht lesbar: $($ca.Detail)"); $ex.Data['StatusCode'] = $(if ($ca.Reason -eq 'Recht') { 403 } else { 500 }); throw $ex }
+            $grp = @{}
+            foreach ($pol in @($ca.Data | Where-Object { Test-HUSecCaHitsBreakGlass $_ })) {
+                $users = New-Object System.Collections.Generic.HashSet[string]
+                foreach ($u in @($pol.conditions.users.excludeUsers | Where-Object { $_ -and "$_" -notin 'GuestsOrExternalUsers', 'None', 'All' })) { [void]$users.Add("$u".ToLowerInvariant()) }
+                $bad = 0; $gcount = 0
+                foreach ($g in @($pol.conditions.users.excludeGroups | Where-Object { $_ })) {
+                    $gid = "$g".ToLowerInvariant(); $gcount++
+                    if (-not $grp.ContainsKey($gid)) {
+                        try { $grp[$gid] = @(@(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/groups/$gid/transitiveMembers/microsoft.graph.user?`$select=id" -All) | ForEach-Object { "$($_.id)".ToLowerInvariant() }) }
+                        catch { $code = 0; try { $code = [int]$_.Exception.Data['StatusCode'] } catch { }; $grp[$gid] = $(if ($code -eq 404) { @() } else { $null }) }
+                    }
+                    if ($null -eq $grp[$gid]) { $bad++ } else { foreach ($m in $grp[$gid]) { [void]$users.Add($m) } }
+                }
+                [pscustomobject]@{ id = "$($pol.id)"; name = "$($pol.displayName)"; all = (Test-HUSecCaTargetsAll $pol); roles = @($pol.conditions.users.includeRoles | Where-Object { $_ }).Count
+                    users = @($users); groups = $gcount; badGroups = $bad; exRoles = @($pol.conditions.users.excludeRoles | Where-Object { $_ }).Count
+                    exU = @($pol.conditions.users.excludeUsers | Where-Object { $_ -and "$_" -notin 'GuestsOrExternalUsers', 'None', 'All' }); exG = @($pol.conditions.users.excludeGroups | Where-Object { $_ }) }
+            }
+        }
+        'adminsync' {
+            # Benutzer mit aktiver Verzeichnisrolle (direkt oder ueber rollenzuweisbare Gruppe) und ob das Konto aus dem lokalen AD synchronisiert wird
+            $asg = @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/roleManagement/directory/roleAssignments?$expand=principal' -All)
+            $defs = @{}
+            foreach ($d in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/roleManagement/directory/roleDefinitions?$select=id,displayName' -All)) { $defs["$($d.id)"] = "$($d.displayName)" }
+            $roles = @{}
+            $add = { param($id, $rn) if (-not $roles.ContainsKey($id)) { $roles[$id] = New-Object System.Collections.Generic.List[string] }; if (-not $roles[$id].Contains($rn)) { $roles[$id].Add($rn) } }
+            $gm = @{}
+            foreach ($a in @($asg | Where-Object { "$($_.principalId)" })) {
+                $t = "$($a.principal.'@odata.type')"; $id = "$($a.principalId)".ToLowerInvariant()
+                $rn = if ($defs.ContainsKey("$($a.roleDefinitionId)")) { $defs["$($a.roleDefinitionId)"] } else { "$($a.roleDefinitionId)" }
+                if ($t -like '*user') { & $add $id $rn }
+                elseif ($t -like '*group') {
+                    # Rolle ueber rollenzuweisbare Gruppe (eine Ebene, nicht verschachtelbar) - Mitglieder zaehlen wie direkte Rolleninhaber
+                    if (-not $gm.ContainsKey($id)) { $gm[$id] = @(@(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/groups/$id/members/microsoft.graph.user?`$select=id" -All) | ForEach-Object { "$($_.id)".ToLowerInvariant() }) }
+                    foreach ($m in $gm[$id]) { if ($m) { & $add $m "$rn (ueber Gruppe $($a.principal.displayName))" } }
+                }
+            }
+            $ids = @($roles.Keys | Sort-Object)
+            if ($ids.Count -gt 300) { throw 'mehr als 300 Konten mit Admin-Rolle' }
+            for ($i = 0; $i -lt $ids.Count; $i += 15) {
+                $chunk = @($ids[$i..([math]::Min($i + 14, $ids.Count - 1))])
+                $f = ($chunk | ForEach-Object { "'$_'" }) -join ','
+                foreach ($u in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/users?`$filter=id%20in%20($f)&`$select=id,userPrincipalName,onPremisesSyncEnabled" -All)) {
+                    [pscustomobject]@{ id = "$($u.id)"; upn = "$($u.userPrincipalName)"; synced = ("$($u.onPremisesSyncEnabled)" -match '^(?i)true$'); roles = (@($roles["$($u.id)"]) -join ', ') }
+                }
+            }
+        }
+        'syncerr' {
+            # Benutzer und Gruppen mit Fehlern der Verzeichnissynchronisierung (Graph filtert die Sammlung nicht zuverlaessig - daher alle lesen, lokal filtern)
+            foreach ($kind in @(@{ Ep = '/users?$select=id,userPrincipalName,onPremisesSyncEnabled,onPremisesProvisioningErrors&$top=999'; Typ = 'Benutzer' }, @{ Ep = '/groups?$select=id,displayName,onPremisesSyncEnabled,onPremisesProvisioningErrors&$top=999'; Typ = 'Gruppe' })) {
+                foreach ($o in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint $kind.Ep -All)) {
+                    $errs = @($o.onPremisesProvisioningErrors | Where-Object { $_ })
+                    foreach ($e in $errs) {
+                        [pscustomobject]@{ Typ = $kind.Typ; Name = $(if ($kind.Typ -eq 'Benutzer') { "$($o.userPrincipalName)" } else { "$($o.displayName)" }); Eigenschaft = "$($e.propertyCausingError)"; Wert = "$($e.value)"; Seit = "$($e.occurredDateTime)" }
+                    }
+                }
+            }
+        }
+        'graphapps' {
+            # Anwendungsrechte auf Microsoft Graph je Dienstprinzipal; die eigene App (Client-ID aus den Einstellungen) wird markiert
+            $gsp = Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/servicePrincipals(appId='00000003-0000-0000-c000-000000000000')?`$select=id,appRoles"
+            if ($gsp -and $gsp.PSObject.Properties['value']) { $gsp = @($gsp.value) | Select-Object -First 1 }
+            $names = @{}; foreach ($r in @($gsp.appRoles)) { $names["$($r.id)"] = "$($r.value)" }
+            $own = ''
+            try {
+                $t = @($Ctx.Settings.tenants | Where-Object { "$($_.key)" -eq "$($Ctx.TenantKey)" }) | Select-Object -First 1
+                if ($t -and "$($t.appId)") {
+                    $osp = Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/servicePrincipals(appId='$($t.appId)')?`$select=id"
+                    if ($osp -and $osp.PSObject.Properties['value']) { $osp = @($osp.value) | Select-Object -First 1 }
+                    $own = "$($osp.id)"
+                }
+            } catch { $own = '' }
+            foreach ($a in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/servicePrincipals(appId='00000003-0000-0000-c000-000000000000')/appRoleAssignedTo" -All)) {
+                [pscustomobject]@{ principalId = "$($a.principalId)"; app = "$($a.principalDisplayName)"; perm = $(if ($names.ContainsKey("$($a.appRoleId)")) { $names["$($a.appRoleId)"] } else { "$($a.appRoleId)" }); own = ($own -and "$($a.principalId)" -eq $own) }
+            }
         }
         default { throw "Unbekannter Abruf $Name" }
     }
@@ -170,7 +286,7 @@ function Get-HUSecFact {
                     $det = $(if ($code) { "HTTP $code$(if ($msg) { ": $msg" })" } else { 'Abruf fehlgeschlagen oder unvollstaendig' })
                     # bekannte Anmeldefehler von Microsoft in Klartext (Dienst fehlt im Tenant, meist Microsoft-seitig)
                     $why = 'Technisch'
-                    if ("$($_.Exception.Message)" -match 'AADSTS500011') { $why = 'Technisch'; $det = 'Secure Score im Tenant nicht verfuegbar (Dienst nicht bereitgestellt, AADSTS500011) - Ursache unklar' }
+                    if ("$($_.Exception.Message)" -match 'AADSTS500011') { $why = 'Technisch'; $det = 'Secure Score im Tenant nicht verfuegbar (Dienst nicht bereitgestellt, AADSTS500011) - Secure Score einmal im Defender-Portal oeffnen, danach erneut pruefen' }
                     $res = [pscustomobject]@{ Ok = $false; Data = $null; Reason = $why; Detail = $det }
                 }
             }
@@ -201,6 +317,9 @@ $script:HUSecDefaults = @{
     A19 = @{ warnDays = 30 }
     A26 = @{ maxAgeDays = 30 }
     A27 = @{ staleDays = 90 }
+    A38 = @{ maxSyncAgeMinutes = 180 }
+    V1  = @{ accounts = @() }
+    A25 = @{ adminGroups = @(); maxUsers = 4 }
     E03 = @{ maxPercent = 5 }
     E04 = @{ minPercent = 95 }
 }
@@ -221,7 +340,16 @@ function Get-HUSecBaseline {
             foreach ($p in $layer.PSObject.Properties) {
                 if ($ids.Count -and $ids -notcontains $p.Name) { $errs.Add("Unbekannte Regel $($p.Name) in den Sollwerten"); continue }
                 if (-not $b.ContainsKey($p.Name)) { $b[$p.Name] = @{} }
-                foreach ($q in $p.Value.PSObject.Properties) { $b[$p.Name][$q.Name] = $q.Value }
+                foreach ($q in $p.Value.PSObject.Properties) {
+                    # Zahlen-Sollwerte nur als ganze Zahl 0 bis 3650 uebernehmen, sonst Standard behalten und melden (Review 037 B15)
+                    $def = if ($script:HUSecDefaults.ContainsKey($p.Name)) { $script:HUSecDefaults[$p.Name][$q.Name] } else { $null }
+                    if ($def -is [int]) {
+                        $n = 0
+                        if (-not [int]::TryParse("$($q.Value)", [ref]$n) -or $n -lt 0 -or $n -gt 3650) { $errs.Add("Sollwert $($p.Name).$($q.Name) ungueltig ('$($q.Value)') - Standard $def bleibt"); continue }
+                        $b[$p.Name][$q.Name] = $n; continue
+                    }
+                    $b[$p.Name][$q.Name] = $q.Value
+                }
             }
         }
     }
@@ -315,16 +443,27 @@ function Get-HUSecPolicyItems($Policies, [scriptblock]$Match) {
 }
 
 # Geoblock-Richtlinie: blockiert, hat eine Standortbedingung, ist keine Spezialrichtlinie (z.B. Geraetecode-Flow, nur bestimmte Client-Apps) und trifft nicht nur Gaeste
-function Test-HUSecCaGeoblock($P) {
-    if (-not (Test-HUSecCaBlocks $P)) { return $false }
-    if (-not $P.conditions.locations -or -not (@($P.conditions.locations.includeLocations | Where-Object { $_ }).Count)) { return $false }
-    if ($P.conditions.authenticationFlows -and "$($P.conditions.authenticationFlows.transferMethods)") { return $false }
-    if (@(@($P.conditions.clientAppTypes) | Where-Object { $_ -and "$_" -ne 'all' }).Count) { return $false }
-    $apps = @($P.conditions.applications.includeApplications | Where-Object { $_ })
-    if ($apps.Count -and ($apps -notcontains 'All')) { return $false }
-    $u = $P.conditions.users
-    return [bool]((Test-HUSecCaTargetsAll $P) -or @($u.includeUsers | Where-Object { $_ }).Count -or @($u.includeGroups | Where-Object { $_ }).Count -or @($u.includeRoles | Where-Object { $_ }).Count)
+# Geoblock (Review 037 B5): Grund, warum eine Richtlinie KEIN Geoblock ist ('' = ist einer). $Locs: Id -> @odata.type der benannten Orte.
+# Zaehlt nur: Blockieren, alle Benutzer, alle Apps (ohne Ausnahmen, ohne Benutzeraktionen/Authentifizierungskontext), keine Spezialbedingung,
+# und Laender-Standorte: Sperrliste (Laender eingeschlossen) oder Erlaubnisliste (alle Orte ausser Laender bzw. vertrauenswuerdige). Reine IP-Orte zaehlen nicht.
+function Get-HUSecGeoReason($P, $Locs) {
+    if (-not (Test-HUSecCaBlocks $P)) { return 'blockiert nicht' }
+    $c = $P.conditions
+    $inc = @($c.locations.includeLocations | Where-Object { $_ }); $exc = @($c.locations.excludeLocations | Where-Object { $_ })
+    if (-not $inc.Count) { return 'keine Standortbedingung' }
+    if ($c.authenticationFlows -and "$($c.authenticationFlows.transferMethods)" -match 'deviceCodeFlow|authenticationTransfer') { return 'Spezialrichtlinie (Authentifizierungsfluss)' }
+    if (@(@($c.clientAppTypes) | Where-Object { $_ -and "$_" -ne 'all' }).Count) { return 'Spezialrichtlinie (nur bestimmte Client-Apps)' }
+    if (@($c.applications.includeApplications) -notcontains 'All') { return 'nicht fuer alle Apps' }
+    if (@($c.applications.excludeApplications | Where-Object { $_ }).Count) { return 'Apps ausgenommen' }
+    if (@($c.applications.includeUserActions | Where-Object { $_ }).Count -or @($c.applications.includeAuthenticationContextClassReferences | Where-Object { $_ }).Count) { return 'Benutzeraktion oder Authentifizierungskontext' }
+    if (@($c.users.includeUsers) -notcontains 'All') { return 'nicht fuer alle Benutzer' }
+    if ($c.platforms -or $c.devices -or $c.clientApplications -or @($c.signInRiskLevels | Where-Object { $_ }).Count -or @($c.userRiskLevels | Where-Object { $_ }).Count -or @($c.servicePrincipalRiskLevels | Where-Object { $_ }).Count) { return 'Spezialrichtlinie (Plattform, Geraet, Risiko)' }
+    $isC = { param($id) "$($Locs["$id"])" -like '*countryNamedLocation' }
+    if (@($inc | Where-Object { & $isC $_ }).Count) { return '' }                                                    # Sperrliste
+    if ($inc -contains 'All' -and (@($exc | Where-Object { (& $isC $_) -or "$_" -eq 'AllTrusted' }).Count)) { return '' }   # Erlaubnisliste
+    return 'keine Laender-Standorte (nur IP-Bereiche)'
 }
+function Test-HUSecCaGeoblock($P, $Locs = @{}) { return (-not (Get-HUSecGeoReason $P $Locs)) }
 
 # Richtlinie trifft alle Benutzer oder Admin-Rollen (dort waeren Notfallkonten betroffen); reine Gruppen-/Benutzerrichtlinien nicht
 # Richtlinie blockiert oder verlangt etwas vom Konto (MFA, Authentifizierungsstaerke, Geraet, Nutzungsbedingungen ...); reine Sitzungsrichtlinien nicht
@@ -333,6 +472,92 @@ function Test-HUSecCaRestricts($P) {
     $g = $P.grantControls
     if (-not $g) { return $false }
     return [bool](@($g.builtInControls | Where-Object { $_ }).Count -or $g.authenticationStrength -or @($g.termsOfUse | Where-Object { $_ }).Count -or @($g.customAuthenticationFactors | Where-Object { $_ }).Count)
+}
+
+# A25 (Review 037 B6): Grund, warum eine Adminportal-Sperre nicht zaehlt ('' = zaehlt). Ausnahmen duerfen nur sein:
+# Admin-Rollen, hinterlegte Admin-Gruppen (Sollwert adminGroups) und hoechstens maxUsers einzelne Konten (Notfallkonten).
+function Get-HUSecA25Reason($P, $B) {
+    if (-not (Test-HUSecCaTargetsAll $P)) { return 'nicht fuer alle Benutzer' }
+    $u = $P.conditions.users
+    $roles = @($u.excludeRoles | Where-Object { $_ }).Count
+    $allowG = @(Get-HUSecGuidList $B.adminGroups)
+    $grp = @($u.excludeGroups | Where-Object { $_ } | ForEach-Object { "$_".ToLowerInvariant() })
+    $other = @($grp | Where-Object { $allowG -notcontains $_ }).Count
+    $bg = @(Get-HUSecGuidList $B.__breakGlass)
+    $usr = @($u.excludeUsers | Where-Object { $_ -and "$_" -notin 'None' -and $bg -notcontains "$_".ToLowerInvariant() }).Count
+    $max = 4; try { if ($null -ne $B.maxUsers) { $max = [int]$B.maxUsers } } catch { }
+    if (-not $roles -and -not ($grp.Count - $other)) { return 'keine Ausnahme fuer Admin-Rollen oder Admin-Gruppe' }
+    if ($other) { return "zu breite Ausnahme: $other Gruppe(n) ausgenommen, die nicht als Admin-Gruppe hinterlegt sind" }
+    if ($usr -gt $max) { return "zu breite Ausnahme: $usr einzelne Konten (mehr als $max)" }
+    return ''
+}
+
+# Datum aus Graph (unter PS 5.1 String, unter PS 7 DateTime) kulturunabhaengig nach UTC (Review 037 B9)
+function ConvertTo-HUSecUtc($Value) {
+    if ($null -eq $Value -or "$Value" -eq '') { return $null }
+    if ($Value -is [datetime]) { return $Value.ToUniversalTime() }
+    if ($Value -is [datetimeoffset]) { return $Value.UtcDateTime }
+    try { return [datetimeoffset]::Parse("$Value", [cultureinfo]::InvariantCulture).UtcDateTime } catch { return $null }
+}
+
+# A27: Bewertung je aktivem Admin-Konto (Review 037 B7/B19). Gewertet wird nur die letzte ERFOLGREICHE Anmeldung
+# (lastSignInDateTime enthaelt auch Fehlversuche). Ersatz nur, wenn lastSignInDateTime vor dem 1.12.2023 liegt (Feld seitdem gefuellt).
+# Hinterlegte Notfallkonten (Sollwert V1 accounts) sind ausgenommen.
+function Get-HUSecA27($Facts, $B, [datetime]$Now = [datetime]::UtcNow) {
+    $max = [int]$B.staleDays
+    $bg = @(Get-HUSecGuidList $B.__breakGlass)
+    $since = [datetime]::new(2023, 12, 1, 0, 0, 0, [DateTimeKind]::Utc)
+    foreach ($u in @($Facts | Where-Object { $_.kind -eq 'user' -and $_.enabled -and $bg -notcontains $_.id })) {
+        $ok = ConvertTo-HUSecUtc $u.lastOk; $any = ConvertTo-HUSecUtc $u.lastAny; $cr = ConvertTo-HUSecUtc $u.created
+        $last = $ok; $state = 'ok'; $txt = ''
+        if (-not $ok -and $any -and $any -lt $since) { $last = $any }
+        if ($last) { if (($Now - $last).TotalDays -gt $max) { $state = 'stale'; $txt = "seit $([int]($Now - $last).TotalDays) Tagen nicht angemeldet" } }
+        elseif ($any) { $state = 'unknown'; $txt = 'nur Fehlversuche bekannt (keine erfolgreiche Anmeldung)' }
+        elseif ($cr -and ($Now - $cr).TotalDays -gt $max) { $state = 'never'; $txt = 'nie angemeldet' }
+        [pscustomobject]@{ User = $u; State = $state; Last = $last; Text = $txt }
+    }
+}
+
+# Lizenz-Plaene aus subscribedSkus (Review 037 B11/B18): nur bereitgestellt (Success) und SKU aktiv (Enabled)
+$script:HUSecPlanP2  = 'eec0eb4f-6444-4f95-aba0-50c24d67f998'   # AAD_PREMIUM_P2
+function Test-HUSecPlan($Skus, [string[]]$Ids = @(), [string[]]$Names = @()) {
+    foreach ($sku in @($Skus | Where-Object { $_ -and (-not $_.PSObject.Properties['capabilityStatus'] -or "$($_.capabilityStatus)" -eq 'Enabled') })) {
+        foreach ($sp in @($sku.servicePlans | Where-Object { "$($_.provisioningStatus)" -eq 'Success' })) {
+            if ($Ids -contains "$($sp.servicePlanId)".ToLowerInvariant() -or $Names -contains "$($sp.servicePlanName)") { return $true }
+        }
+    }
+    return $false
+}
+
+# Benannte Orte: Id -> @odata.type (countryNamedLocation / ipNamedLocation)
+function Get-HUSecLocTypes($Locs) {
+    $h = @{}; foreach ($l in @($Locs | Where-Object { $_ })) { $h["$($l.id)"] = "$($l.'@odata.type')" }
+    return $h
+}
+
+# A30 (Review 037 B11): Anmelderisiko mittel oder hoch, fuer alle Benutzer oder Admin-Rollen, und Blockieren
+# oder MFA/Authentifizierungsstaerke mit Anmeldehaeufigkeit "jedes Mal" (Microsoft-Vorlage risikobasierter bedingter Zugriff)
+function Test-HUSecCaRiskOk($P) {
+    $lv = @($P.conditions.signInRiskLevels | Where-Object { $_ } | ForEach-Object { "$_".ToLowerInvariant() })
+    if (-not ($lv -contains 'medium' -or $lv -contains 'high')) { return $false }
+    if (-not ((Test-HUSecCaTargetsAll $P) -or @($P.conditions.users.includeRoles | Where-Object { $_ }).Count)) { return $false }
+    if (Test-HUSecCaBlocks $P) { return $true }
+    $mfa = (@($P.grantControls.builtInControls) -contains 'mfa') -or $P.grantControls.authenticationStrength
+    return [bool]($mfa -and "$($P.sessionControls.signInFrequency.frequencyInterval)" -eq 'everyTime')
+}
+
+# Gueltige GUIDs aus einem Sollwert (Liste oder Einzelwert), klein geschrieben; ungueltige werden ignoriert (Review 037 B15)
+function Get-HUSecGuidList($Value) {
+    $g = [guid]::Empty
+    return @(@($Value) | Where-Object { $_ -and [guid]::TryParse("$_", [ref]$g) } | ForEach-Object { "$_".ToLowerInvariant() } | Sort-Object -Unique)
+}
+# Schnittmenge der wirksam ausgenommenen Benutzer aller V1-Richtlinien
+function Get-HUSecV1Common([object[]]$Pols) {
+    $p = @($Pols | Where-Object { $_ })
+    if (-not $p.Count) { return @() }
+    $set = @($p[0].users)
+    foreach ($x in $p | Select-Object -Skip 1) { $u = @($x.users); $set = @($set | Where-Object { $u -contains $_ }) }
+    return @($set)
 }
 
 function Test-HUSecCaHitsBreakGlass($P) {
@@ -554,46 +779,48 @@ $script:HUSecRules = @(
             if ($pct -lt [double]$B.minPercent) { @{ Status = 'Abweichung'; Count = $un; Detail = $d } } else { @{ Status = 'OK'; Count = $un; Detail = $d } }
         } }
     @{ Id = 'A25'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Normale Benutzer sind von den Microsoft-Adminportalen ausgesperrt (Conditional Access)'; Facts = @('ca'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
-        Items = { param($F, $B) Get-HUSecPolicyItems $F.ca { param($P) (Test-HUSecCaBlocks $P) -and (Test-HUSecCaTargetsAll $P) -and (@($P.conditions.applications.includeApplications) -contains 'MicrosoftAdminPortals') -and (@(@($P.conditions.users.excludeRoles) + @($P.conditions.users.excludeGroups) | Where-Object { $_ }).Count -gt 0) } }
-        Eval = { param($F, $B)
-            $hit = @($F.ca | Where-Object {
-                    "$($_.state)" -eq 'enabled' -and (Test-HUSecCaBlocks $_) -and (Test-HUSecCaTargetsAll $_) -and
-                    (@($_.conditions.applications.includeApplications) -contains 'MicrosoftAdminPortals') -and
-                    (@(@($_.conditions.users.excludeRoles) + @($_.conditions.users.excludeGroups) | Where-Object { $_ }).Count -gt 0)
-                })
-            $rep = @($F.ca | Where-Object { "$($_.state)" -eq 'enabledForReportingButNotEnforced' -and (Test-HUSecCaBlocks $_) -and (@($_.conditions.applications.includeApplications) -contains 'MicrosoftAdminPortals') }).Count
-            if ($hit.Count) { @{ Status = 'OK'; Count = $hit.Count; Detail = "$($hit.Count) aktive Blockier-Richtlinie(n) fuer die Adminportale mit Ausnahme (Admins)" } }
-            elseif ($rep) { @{ Status = 'Abweichung'; Count = 0; Detail = 'Adminportale nur im Berichtsmodus blockiert' } }
-            else { @{ Status = 'Abweichung'; Count = 0; Detail = 'keine aktive Richtlinie, die Benutzer von den Adminportalen blockiert (alle Benutzer, Ausnahme fuer Admins)' } }
-        } }
-    @{ Id = 'A27'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine veralteten Administrator-Konten (lange nicht angemeldet)'; Facts = @('adminact'); Min = $false; ItemsLabel = 'Konten'; ItemsSignIn = $true
         Items = { param($F, $B)
-            $max = [int]$B.staleDays; $now = Get-Date
-            foreach ($a in @($F.adminact | Where-Object { $_.enabled })) {
-                $d = $null; try { if ($a.last) { $d = [datetime]$a.last } } catch { }
-                $c = $null; try { if ($a.created) { $c = [datetime]$a.created } } catch { }
-                $stale = if ($d) { ($now - $d).TotalDays -gt $max } else { $c -and ($now - $c).TotalDays -gt $max }
-                if ($stale) { [pscustomobject]@{ Anmeldename = "$($a.upn)"; __Id = "$($a.id)" } }
+            foreach ($pol in @($F.ca | Where-Object { (Test-HUSecCaBlocks $_) -and (@($_.conditions.applications.includeApplications) -contains 'MicrosoftAdminPortals') })) {
+                $why = Get-HUSecA25Reason $pol $B
+                $zaehlt = (-not $why -and "$($pol.state)" -eq 'enabled')
+                if (-not $why -and -not $zaehlt) { $why = "Status $($pol.state)" }
+                [pscustomobject]@{ Richtlinie = "$($pol.displayName)"; Status = "$($pol.state)"; AusgenommeneRollen = @($pol.conditions.users.excludeRoles | Where-Object { $_ }).Count
+                    AusgenommeneGruppen = @($pol.conditions.users.excludeGroups | Where-Object { $_ }).Count; AusgenommeneBenutzer = @($pol.conditions.users.excludeUsers | Where-Object { $_ }).Count
+                    ZaehltFuerRegel = $(if ($zaehlt) { 'Ja' } else { 'Nein' }); Grund = $why }
             }
         }
         Eval = { param($F, $B)
-            $max = [int]$B.staleDays; $now = Get-Date
-            $act = @($F.adminact | Where-Object { $_.enabled })
-            $stale = 0; $never = 0
-            foreach ($a in $act) {
-                $d = $null; try { if ($a.last) { $d = [datetime]$a.last } } catch { }
-                $c = $null; try { if ($a.created) { $c = [datetime]$a.created } } catch { }
-                if ($d) { if (($now - $d).TotalDays -gt $max) { $stale++ } }
-                elseif ($c -and ($now - $c).TotalDays -gt $max) { $stale++; $never++ }
+            $cand = @($F.ca | Where-Object { (Test-HUSecCaBlocks $_) -and (@($_.conditions.applications.includeApplications) -contains 'MicrosoftAdminPortals') })
+            $ok = @($cand | Where-Object { "$($_.state)" -eq 'enabled' -and -not (Get-HUSecA25Reason $_ $B) })
+            if ($ok.Count) { return @{ Status = 'OK'; Count = $ok.Count; Detail = "$($ok.Count) aktive Blockier-Richtlinie(n) fuer die Adminportale, Ausnahmen nur Admin-Rollen, Admin-Gruppe bzw. Notfallkonten" } }
+            $broad = @($cand | Where-Object { "$($_.state)" -eq 'enabled' -and (Get-HUSecA25Reason $_ $B) -like 'zu breite Ausnahme*' })
+            if ($broad.Count) { return @{ Status = 'Abweichung'; Count = $broad.Count; Detail = "$(Get-HUSecA25Reason $broad[0] $B) - Admin-Gruppen in den Sollwerten (A25 adminGroups) hinterlegen oder Ausnahme verkleinern" } }
+            if (@($cand | Where-Object { "$($_.state)" -eq 'enabledForReportingButNotEnforced' -and -not (Get-HUSecA25Reason $_ $B) }).Count) { return @{ Status = 'Abweichung'; Count = 0; Detail = 'Adminportale nur im Berichtsmodus blockiert' } }
+            @{ Status = 'Abweichung'; Count = 0; Detail = 'keine aktive Richtlinie, die Benutzer von den Adminportalen blockiert (alle Benutzer, Ausnahme nur fuer Admins)' }
+        } }
+    @{ Id = 'A27'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine veralteten Administrator-Konten (lange nicht angemeldet)'; Facts = @('adminact'); Min = $false; ItemsLabel = 'Konten'; ItemsSignIn = $true
+        Items = { param($F, $B)
+            foreach ($a in @(Get-HUSecA27 $F.adminact $B) | Where-Object { $_.State -ne 'ok' }) {
+                [pscustomobject]@{ Anmeldename = "$($a.User.upn)"; LetzteAnmeldung = $(if ($a.Last) { $a.Last.ToString('yyyy-MM-dd') } else { '' }); Befund = $a.Text; UeberGruppe = "$($a.User.group)"; __Id = "$($a.User.id)" }
             }
-            $d2 = "$($act.Count) aktive Admin-Konten (nur direkte Rollen)"
-            if ($stale) { @{ Status = 'Abweichung'; Count = $stale; Detail = "$d2, $stale ohne Anmeldung seit mehr als $max Tagen$(if ($never) { " (davon $never nie angemeldet)" })" } }
-            else { @{ Status = 'OK'; Count = 0; Detail = "$d2, alle innerhalb von $max Tagen angemeldet" } }
+        }
+        Eval = { param($F, $B)
+            $r = @(Get-HUSecA27 $F.adminact $B)
+            $max = [int]$B.staleDays
+            $bad = @($r | Where-Object { $_.State -ne 'ok' })
+            $never = @($bad | Where-Object { $_.State -eq 'never' }).Count; $unk = @($bad | Where-Object { $_.State -eq 'unknown' }).Count
+            $sp = @($F.adminact | Where-Object { $_.kind -eq 'sp' }).Count
+            $grp = @($r | Where-Object { $_.User.group }).Count
+            $d2 = "$($r.Count) aktive Admin-Konten (direkt und ueber Gruppen$(if ($grp) { ", $grp ueber Gruppe" }))$(if ($sp) { "; $sp Dienstprinzipal(e) mit Rolle (nicht bewertet)" })"
+            if ($bad.Count) { return @{ Status = 'Abweichung'; Count = $bad.Count; Detail = "$d2, $($bad.Count) ohne erfolgreiche Anmeldung seit mehr als $max Tagen$(if ($never) { " (davon $never nie angemeldet)" })$(if ($unk) { ", $unk unbekannt (nur Fehlversuche bekannt)" })" } }
+            @{ Status = 'OK'; Count = 0; Detail = "$d2, alle innerhalb von $max Tagen erfolgreich angemeldet" }
         } }
     @{ Id = 'A28'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Kennwortschutz fuer das lokale AD ist im Tenant eingeschaltet (Modus Erzwingen)'; Facts = @('pwdset'); Min = $false
         Eval = { param($F, $B)
-            $o = @($F.pwdset | Where-Object { "$($_.displayName)" -eq 'Password Rule Settings' }) | Select-Object -First 1
-            if (-not $o) { return @{ Status = 'Abweichung'; Count = 0; Detail = 'keine eigenen Kennwortregeln gesetzt (Standard: lokales AD nicht eingebunden, keine eigene Verbotsliste)' } }
+            # Auswahl nach Vorlage (templateId laut Microsoft Learn), Name nur als Rueckfall (Review 037 B12)
+            $o = @($F.pwdset | Where-Object { "$($_.templateId)" -eq '5cf42378-d67d-4f36-ba46-e8b86229381d' }) | Select-Object -First 1
+            if (-not $o) { $o = @($F.pwdset | Where-Object { "$($_.displayName)" -eq 'Password Rule Settings' }) | Select-Object -First 1 }
+            if (-not $o) { return @{ Status = 'Abweichung'; Count = 0; Detail = 'keine eigenen Kennwortregeln gesetzt - es gilt der Microsoft-Standard (nicht Modus Erzwingen)' } }
             $v = @{}; foreach ($x in @($o.values)) { $v["$($x.name)"] = "$($x.value)" }
             $on = ($v['EnableBannedPasswordCheckOnPremises'] -eq 'True')
             $mode = "$($v['BannedPasswordCheckOnPremisesMode'])"
@@ -603,22 +830,16 @@ $script:HUSecRules = @(
         } }
     @{ Id = 'A29'; Area = 'Entra'; Sev = 'Niedrig'; Title = 'Lizenz fuer Privileged Identity Management (PIM) vorhanden'; Facts = @('skus'); Min = $false
         Eval = { param($F, $B)
-            $pl = @($F.skus | ForEach-Object { @($_.servicePlans) } | Where-Object { "$($_.provisioningStatus)" -eq 'Success' } | ForEach-Object { "$($_.servicePlanName)" })
-            if ($pl -contains 'AAD_PREMIUM_P2') { @{ Status = 'Info'; Count = 1; Detail = 'Entra ID P2 vorhanden - PIM (zeitlich begrenzte Admin-Rechte) waere nutzbar' } }
-            else { @{ Status = 'NichtPruefbar'; Reason = 'Lizenz'; Detail = 'keine Entra ID P2 - PIM nicht nutzbar' } }
+            if (Test-HUSecPlan $F.skus @($script:HUSecPlanP2) @('AAD_PREMIUM_P2', 'Entra_Identity_Governance')) { @{ Status = 'Info'; Count = 1; Detail = 'Entra ID P2 bzw. ID Governance vorhanden - PIM (zeitlich begrenzte Admin-Rechte) waere nutzbar' } }
+            else { @{ Status = 'NichtPruefbar'; Reason = 'Lizenz'; Detail = 'keine Entra ID P2 bzw. ID Governance - PIM nicht nutzbar. Ersatz mit P1: dauerhafte Admin-Rollen klein halten (A08, A17, A27) und Rollen regelmaessig von Hand pruefen' } }
         } }
-    @{ Id = 'A30'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Riskante Anmeldungen von Administratoren sind per Conditional Access blockiert'; Facts = @('ca', 'skus'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
-        Items = { param($F, $B) Get-HUSecPolicyItems $F.ca { param($P) (Test-HUSecCaBlocks $P) -and (@($P.conditions.signInRiskLevels | Where-Object { $_ }).Count -gt 0) -and ((Test-HUSecCaTargetsAll $P) -or (@($P.conditions.users.includeRoles | Where-Object { $_ }).Count -gt 0)) } }
+    @{ Id = 'A30'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Riskante Anmeldungen von Administratoren sind per Conditional Access abgefangen'; Facts = @('ca', 'skus'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
+        Items = { param($F, $B) Get-HUSecPolicyItems $F.ca { param($P) Test-HUSecCaRiskOk $P } }
         Eval = { param($F, $B)
-            $pl = @($F.skus | ForEach-Object { @($_.servicePlans) } | Where-Object { "$($_.provisioningStatus)" -eq 'Success' } | ForEach-Object { "$($_.servicePlanName)" })
-            if ($pl -notcontains 'AAD_PREMIUM_P2') { return @{ Status = 'NichtPruefbar'; Reason = 'Lizenz'; Detail = 'Risikobasierte Richtlinien brauchen Entra ID P2' } }
-            $hit = @($F.ca | Where-Object {
-                    "$($_.state)" -eq 'enabled' -and (Test-HUSecCaBlocks $_) -and
-                    (@($_.conditions.signInRiskLevels | Where-Object { $_ }).Count -gt 0) -and
-                    ((Test-HUSecCaTargetsAll $_) -or (@($_.conditions.users.includeRoles | Where-Object { $_ }).Count -gt 0))
-                }).Count
-            if ($hit) { @{ Status = 'OK'; Count = $hit; Detail = "$hit aktive Blockier-Richtlinie(n) nach Anmelderisiko" } }
-            else { @{ Status = 'Abweichung'; Count = 0; Detail = 'keine aktive Richtlinie, die riskante Anmeldungen von Admins blockiert' } }
+            if (-not (Test-HUSecPlan $F.skus @($script:HUSecPlanP2) @('AAD_PREMIUM_P2'))) { return @{ Status = 'NichtPruefbar'; Reason = 'Lizenz'; Detail = 'Risikobasierte Richtlinien brauchen Entra ID P2. Ersatz mit P1: Geoblock (A24), MFA fuer alle (V5), Legacy-Auth (A04) und Geraetecode-Flow (V11) blockieren' } }
+            $hit = @($F.ca | Where-Object { "$($_.state)" -eq 'enabled' -and (Test-HUSecCaRiskOk $_) }).Count
+            if ($hit) { @{ Status = 'OK'; Count = $hit; Detail = "$hit aktive Richtlinie(n): Anmelderisiko mittel/hoch wird blockiert oder verlangt MFA bei jeder Anmeldung" } }
+            else { @{ Status = 'Abweichung'; Count = 0; Detail = 'keine aktive Richtlinie, die mittleres/hohes Anmelderisiko von Admins blockiert oder MFA bei jeder Anmeldung verlangt' } }
         } }
     @{ Id = 'A31'; Area = 'Entra'; Sev = 'Niedrig'; Title = 'Partner-Organisationen (Cross-Tenant-Zugriff) sind bekannt'; Facts = @('xtpart'); Min = $false; ItemsLabel = 'Partner'; ItemsSort = 'TenantId'
         Items = { param($F, $B)
@@ -640,6 +861,88 @@ $script:HUSecRules = @(
             if ($c -in 'disabled', 'externalUserSharingOnly', 'existingExternalUserSharingOnly') { return @{ Status = 'OK'; Count = 0; Detail = "Externe Freigabe: $c (keine anonymen Links)" } }
             return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = "unbekannter Wert fuer sharingCapability: $c"; Complete = $false }
         } }
+    @{ Id = 'A34'; Area = 'SharePoint'; Sev = 'Mittel'; Title = 'Legacy-Authentifizierung in SharePoint ist ausgeschaltet'; Facts = @('spset'); Min = $false
+        Eval = { param($F, $B)
+            $v = $F.spset.isLegacyAuthProtocolsEnabled
+            if ($null -eq $v -or "$v" -notmatch '^(?i)(true|false)$') { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Feld isLegacyAuthProtocolsEnabled nicht gefunden'; Complete = $false } }
+            if ("$v" -match '^(?i)true$') { return @{ Status = 'Abweichung'; Count = 1; Detail = 'Legacy-Authentifizierung ist fuer SharePoint erlaubt' } }
+            @{ Status = 'OK'; Count = 0; Detail = 'Legacy-Authentifizierung ist ausgeschaltet' }
+        } }
+    @{ Id = 'A35'; Area = 'SharePoint'; Sev = 'Niedrig'; Title = 'Externe Benutzer duerfen Freigaben nicht weitergeben'; Facts = @('spset'); Min = $false
+        Eval = { param($F, $B)
+            $v = $F.spset.isResharingByExternalUsersEnabled
+            if ($null -eq $v -or "$v" -notmatch '^(?i)(true|false)$') { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Feld isResharingByExternalUsersEnabled nicht gefunden'; Complete = $false } }
+            if ("$v" -match '^(?i)true$') { return @{ Status = 'Abweichung'; Count = 1; Detail = 'Externe Benutzer duerfen Freigaben weitergeben' } }
+            @{ Status = 'OK'; Count = 0; Detail = 'Weitergabe durch externe Benutzer ist ausgeschaltet' }
+        } }
+    @{ Id = 'A36'; Area = 'SharePoint'; Sev = 'Niedrig'; Title = 'SharePoint: Domaenen-Einschraenkung und Leerlauf-Abmeldung (zur Kenntnis)'; Facts = @('spset'); Min = $false
+        Eval = { param($F, $B)
+            $m = "$($F.spset.sharingDomainRestrictionMode)"
+            $idle = $F.spset.idleSessionSignOut
+            if (-not $m -and -not $idle) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Felder sharingDomainRestrictionMode und idleSessionSignOut nicht gefunden'; Complete = $false } }
+            $mt = switch ($m) { 'none' { 'keine Einschraenkung' } 'allowList' { 'nur erlaubte Domaenen' } 'blockList' { 'gesperrte Domaenen' } default { if ($m) { $m } else { 'unbekannt' } } }
+            $it = 'unbekannt'
+            if ($idle) { $it = if ("$($idle.isEnabled)" -match '^(?i)true$') { "an, Abmeldung nach $([int]([double]$idle.signOutAfterInSeconds / 60)) Min" } else { 'aus' } }
+            @{ Status = 'Info'; Count = 0; Detail = "Externe Domaenen: $mt; Leerlauf-Abmeldung: $it" }
+        } }
+    @{ Id = 'A37'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Admin-Rollen nur fuer reine Cloud-Konten (nicht aus dem lokalen AD synchronisiert)'; Facts = @('adminsync'); Min = $false; ItemsLabel = 'Konten'; ItemsSort = 'Konto'
+        Items = { param($F, $B) foreach ($u in @($F.adminsync | Where-Object { $_.synced })) { [pscustomobject]@{ Konto = $u.upn; Rollen = $u.roles } } }
+        Eval = { param($F, $B)
+            $all = @($F.adminsync)
+            $n = @($all | Where-Object { $_.synced }).Count
+            if ($n) { return @{ Status = 'Abweichung'; Count = $n; Detail = "$n von $($all.Count) Konten mit Admin-Rolle kommen aus dem lokalen AD" } }
+            @{ Status = 'OK'; Count = 0; Detail = "alle $($all.Count) Konten mit Admin-Rolle sind reine Cloud-Konten" }
+        } }
+    @{ Id = 'A38'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Verzeichnissynchronisierung (Entra Connect) laeuft regelmaessig'; Facts = @('org'); Min = $false
+        Eval = { param($F, $B)
+            $o = $F.org
+            if (-not $o) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Organisation nicht gelesen'; Complete = $false } }
+            if ("$($o.onPremisesSyncEnabled)" -notmatch '^(?i)true$') { return @{ Status = 'NichtPruefbar'; Reason = 'NichtAnwendbar'; Detail = 'keine Verzeichnissynchronisierung eingerichtet' } }
+            $t = $null; try { if ($o.onPremisesLastSyncDateTime) { $t = ([datetime]$o.onPremisesLastSyncDateTime).ToUniversalTime() } } catch { }
+            if (-not $t) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Zeitpunkt des letzten Syncs fehlt'; Complete = $false } }
+            $min = [int]([datetime]::UtcNow - $t).TotalMinutes
+            $loc = $t.ToLocalTime().ToString('dd.MM.yyyy HH:mm', [cultureinfo]::InvariantCulture)
+            if ($min -gt [int]$B.maxSyncAgeMinutes) { return @{ Status = 'Abweichung'; Count = 1; Detail = "letzter Sync vor $([math]::Round($min / 60, 1)) Stunden ($loc), erlaubt $($B.maxSyncAgeMinutes) Minuten" } }
+            @{ Status = 'OK'; Count = 0; Detail = "letzter Sync vor $min Minuten ($loc)" }
+        } }
+    @{ Id = 'A39'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Keine Fehler bei der Verzeichnissynchronisierung (Benutzer und Gruppen)'; Facts = @('syncerr'); Min = $false; ItemsLabel = 'Fehler'; ItemsSort = 'Name'
+        Items = { param($F, $B) @($F.syncerr) }
+        Eval = { param($F, $B)
+            $n = @($F.syncerr | Where-Object { $_ }).Count
+            if ($n) { return @{ Status = 'Abweichung'; Count = $n; Detail = "$n Sync-Fehler (meist doppelte UPN oder Mailadresse)" } }
+            @{ Status = 'OK'; Count = 0; Detail = 'keine Sync-Fehler' }
+        } }
+    @{ Id = 'A40'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Schwache Anmeldemethoden (SMS, Sprachanruf) sind ausgeschaltet'; Facts = @('authm'); Min = $false
+        Eval = { param($F, $B)
+            $cfg = @($F.authm.authenticationMethodConfigurations | Where-Object { $_ })
+            if (-not $cfg.Count) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Methodenliste nicht geliefert'; Complete = $false } }
+            $on = @($cfg | Where-Object { "$($_.id)" -in 'Sms', 'Voice' -and "$($_.state)" -eq 'enabled' } | ForEach-Object { if ("$($_.id)" -eq 'Sms') { 'SMS' } else { 'Sprachanruf' } })
+            $mail = @($cfg | Where-Object { "$($_.id)" -eq 'Email' -and "$($_.state)" -eq 'enabled' }).Count
+            $hint = if ($mail) { ' (E-Mail-Code ist an - wird auch fuer Gaeste genutzt, daher nicht gewertet)' } else { '' }
+            if ($on.Count) { return @{ Status = 'Abweichung'; Count = $on.Count; Detail = "eingeschaltet: $($on -join ', ')$hint" } }
+            @{ Status = 'OK'; Count = 0; Detail = "SMS und Sprachanruf sind aus$hint" }
+        } }
+    @{ Id = 'A41'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Admin-Zustimmungs-Workflow ist eingeschaltet (Benutzer koennen App-Freigabe anfragen)'; Facts = @('acrp'); Min = $false
+        Eval = { param($F, $B)
+            $v = $F.acrp.isEnabled
+            if ($null -eq $v -or "$v" -notmatch '^(?i)(true|false)$') { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Feld isEnabled nicht gefunden'; Complete = $false } }
+            if ("$v" -match '^(?i)true$') { return @{ Status = 'OK'; Count = 0; Detail = 'Workflow ist eingeschaltet' } }
+            @{ Status = 'Abweichung'; Count = 1; Detail = 'Workflow ist ausgeschaltet - Benutzer koennen keine Freigabe anfragen' }
+        } }
+    @{ Id = 'A42'; Area = 'Apps'; Sev = 'Hoch'; Title = 'Apps mit kritischen Anwendungsrechten auf Microsoft Graph'; Facts = @('graphapps'); Min = $false; ItemsLabel = 'Apps'; ItemsSort = 'App'; Export = $true
+        Items = { param($F, $B)
+            foreach ($g in (@($F.graphapps | Where-Object { $script:HUSecCriticalPerms -contains $_.perm }) | Group-Object principalId)) {
+                $a = $g.Group[0]
+                [pscustomobject]@{ App = "$($a.app)$(if ($a.own) { ' (dieses Programm)' })"; Rechte = (@($g.Group | ForEach-Object { $_.perm } | Sort-Object -Unique) -join ', ') }
+            }
+        }
+        Eval = { param($F, $B)
+            $crit = @($F.graphapps | Where-Object { $script:HUSecCriticalPerms -contains $_.perm })
+            $apps = @($crit | Where-Object { -not $_.own } | Select-Object -ExpandProperty principalId -Unique)
+            $ownTxt = if (@($crit | Where-Object { $_.own }).Count) { ' (dieses Programm nicht mitgezaehlt)' } else { '' }
+            if ($apps.Count) { return @{ Status = 'Abweichung'; Count = $apps.Count; Detail = "$($apps.Count) App(s) mit kritischen Rechten$ownTxt - bitte pruefen, ob noetig" } }
+            @{ Status = 'OK'; Count = 0; Detail = "keine weitere App mit kritischen Rechten$ownTxt" }
+        } }
     @{ Id = 'A32'; Area = 'Entra'; Sev = 'Niedrig'; Title = 'Microsoft Secure Score (Fortschritt der Sicherheitsempfehlungen)'; Facts = @('score'); Min = $false
         Eval = { param($F, $B)
             $s = $F.score
@@ -651,9 +954,9 @@ $script:HUSecRules = @(
         } }
     @{ Id = 'A26'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Keine offenen Gaesteinladungen (nie angenommen)'; Facts = @('guestsx'); Min = $false; ItemsLabel = 'Einladungen'; ItemsSort = 'Eingeladen'
         Items = { param($F, $B)
-            $now = Get-Date
+            $now = [datetime]::UtcNow
             foreach ($g in @($F.guestsx | Where-Object { "$($_.externalUserState)" -eq 'PendingAcceptance' })) {
-                $d = $null; try { if ($g.createdDateTime) { $d = [datetime]$g.createdDateTime } } catch { }
+                $d = ConvertTo-HUSecUtc $(if ($g.PSObject.Properties['externalUserStateChangeDateTime'] -and $g.externalUserStateChangeDateTime) { $g.externalUserStateChangeDateTime } else { $g.createdDateTime })
                 [pscustomobject]@{ Anzeigename = "$($g.displayName)"; Mail = "$($g.mail)"; Eingeladen = $(if ($d) { $d.ToString('yyyy-MM-dd') } else { '' }); TageOffen = $(if ($d) { [int]($now - $d).TotalDays } else { '' }) }
             }
         }
@@ -665,7 +968,8 @@ $script:HUSecRules = @(
             }
             $max = [int]$B.maxAgeDays
             $pend = @($all | Where-Object { "$($_.externalUserState)" -eq 'PendingAcceptance' })
-            $old = @($pend | Where-Object { $d = $null; try { $d = [datetime]$_.createdDateTime } catch { }; $d -and ((Get-Date) - $d).TotalDays -gt $max }).Count
+            # Alter ab letzter (erneuter) Einladung, sonst ab Anlage (Review 037 B13)
+            $old = @($pend | Where-Object { $d = ConvertTo-HUSecUtc $(if ($_.PSObject.Properties['externalUserStateChangeDateTime'] -and $_.externalUserStateChangeDateTime) { $_.externalUserStateChangeDateTime } else { $_.createdDateTime }); $d -and ([datetime]::UtcNow - $d).TotalDays -gt $max }).Count
             if ($old) { @{ Status = 'Abweichung'; Count = $old; Detail = "$($pend.Count) offene Einladung(en), davon $old aelter als $max Tage" } }
             else { @{ Status = 'OK'; Count = 0; Detail = "$($pend.Count) offene Einladung(en), keine aelter als $max Tage" } }
         } }
@@ -719,44 +1023,63 @@ $script:HUSecRules = @(
             elseif ($rep) { @{ Status = 'Abweichung'; Count = 0; Detail = 'nur im Berichtsmodus' } }
             else { @{ Status = 'Abweichung'; Count = 0; Detail = 'keine Richtlinie mit Anmeldehaeufigkeit fuer Gaeste' } }
         } }
-    @{ Id = 'A24'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Anmeldungen sind per Standort (Geoblock) eingeschraenkt'; Facts = @('ca'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
+    @{ Id = 'A24'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Anmeldungen sind per Standort (Geoblock) eingeschraenkt'; Facts = @('ca', 'nloc'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
         Items = { param($F, $B)
+            $locs = Get-HUSecLocTypes $F.nloc
             foreach ($pol in @($F.ca | Where-Object { $_.conditions.locations -and (@($_.conditions.locations.includeLocations).Count -gt 0) })) {
-                $blocks = Test-HUSecCaBlocks $pol
+                $why = Get-HUSecGeoReason $pol $locs
+                $zaehlt = (-not $why -and "$($pol.state)" -eq 'enabled')
+                if (-not $why -and -not $zaehlt) { $why = "Status $($pol.state)" }
                 $inc = @($pol.conditions.locations.includeLocations)
-                $ex = @($pol.conditions.locations.excludeLocations | Where-Object { $_ }).Count
-                $isGeo = Test-HUSecCaGeoblock $pol
-                $zaehlt = ($isGeo -and "$($pol.state)" -eq 'enabled')
-                $why = if ($zaehlt) { '' } elseif (-not $blocks) { 'blockiert nicht' } elseif (-not $isGeo) { 'Spezialrichtlinie (kein Geoblock)' } else { "Status $($pol.state)" }
-                [pscustomobject]@{ Richtlinie = "$($pol.displayName)"; Status = "$($pol.state)"; Aktion = $(if ($blocks) { 'Blockieren' } else { (@($pol.grantControls.builtInControls) -join ', ') })
-                    OrteEingeschlossen = $(if ($inc -contains 'All') { 'Alle' } else { "$($inc.Count) Orte" }); OrteAusgenommen = $ex; ZaehltFuerRegel = $(if ($zaehlt) { 'Ja' } else { 'Nein' }); Grund = $why }
+                [pscustomobject]@{ Richtlinie = "$($pol.displayName)"; Status = "$($pol.state)"; Aktion = $(if (Test-HUSecCaBlocks $pol) { 'Blockieren' } else { (@($pol.grantControls.builtInControls) -join ', ') })
+                    OrteEingeschlossen = $(if ($inc -contains 'All') { 'Alle' } else { "$($inc.Count) Orte" }); OrteAusgenommen = @($pol.conditions.locations.excludeLocations | Where-Object { $_ }).Count
+                    AusgenommeneBenutzer = @($pol.conditions.users.excludeUsers | Where-Object { $_ }).Count; AusgenommeneGruppen = @($pol.conditions.users.excludeGroups | Where-Object { $_ }).Count
+                    ZaehltFuerRegel = $(if ($zaehlt) { 'Ja' } else { 'Nein' }); Grund = $why }
             }
         }
         Eval = { param($F, $B)
-            $hit = @($F.ca | Where-Object { Test-HUSecCaGeoblock $_ })
-            $on = @($hit | Where-Object { "$($_.state)" -eq 'enabled' }).Count
+            $locs = Get-HUSecLocTypes $F.nloc
+            $hit = @($F.ca | Where-Object { Test-HUSecCaGeoblock $_ $locs })
+            $on = @($hit | Where-Object { "$($_.state)" -eq 'enabled' })
             $rep = @($hit | Where-Object { "$($_.state)" -eq 'enabledForReportingButNotEnforced' }).Count
-            if ($on) { @{ Status = 'OK'; Count = $on; Detail = "$on aktive Geoblock-Richtlinie(n) (welche Laender, wird nicht geprueft)" } }
-            elseif ($rep) { @{ Status = 'Abweichung'; Count = 0; Detail = 'Geoblock nur im Berichtsmodus' } }
-            else { @{ Status = 'Abweichung'; Count = 0; Detail = 'keine aktive Geoblock-Richtlinie' } }
+            if ($on.Count) {
+                $exG = @($on | ForEach-Object { @($_.conditions.users.excludeGroups | Where-Object { $_ }) }).Count
+                $exU = @($on | ForEach-Object { @($_.conditions.users.excludeUsers | Where-Object { $_ }) }).Count
+                $hint = if ($exG -or $exU) { " - Ausnahmen pruefen: $exU Benutzer, $exG Gruppe(n) ausgenommen" } else { '' }
+                return @{ Status = 'OK'; Count = $on.Count; Detail = "$($on.Count) aktive Geoblock-Richtlinie(n) mit Laender-Standorten (welche Laender, wird nicht bewertet)$hint" }
+            }
+            if ($rep) { return @{ Status = 'Abweichung'; Count = 0; Detail = 'Geoblock nur im Berichtsmodus' } }
+            @{ Status = 'Abweichung'; Count = 0; Detail = 'keine aktive Geoblock-Richtlinie (Blockieren, alle Benutzer, alle Apps, Laender-Standorte)' }
         } }
-    @{ Id = 'V1'; Area = 'Entra'; Sev = 'Kritisch'; Title = 'Notfallkonten sind von allen aktiven blockierenden oder einschraenkenden Conditional-Access-Richtlinien ausgenommen'; Facts = @('ca'); Min = $true; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
+    @{ Id = 'V1'; Area = 'Entra'; Sev = 'Kritisch'; Title = 'Notfallkonten sind von allen aktiven blockierenden oder einschraenkenden Conditional-Access-Richtlinien ausgenommen'; Facts = @('v1ex'); Min = $true; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
         Items = { param($F, $B)
-            foreach ($pol in @($F.ca | Where-Object { Test-HUSecCaHitsBreakGlass $_ })) {
-                $exU = @($pol.conditions.users.excludeUsers | Where-Object { $_ }).Count
-                $exG = @($pol.conditions.users.excludeGroups | Where-Object { $_ }).Count
-                $who = if (Test-HUSecCaTargetsAll $pol) { 'Alle Benutzer' } else { "$(@($pol.conditions.users.includeRoles | Where-Object { $_ }).Count) Admin-Rollen" }
-                [pscustomobject]@{ Richtlinie = "$($pol.displayName)"; GiltFuer = $who; AusgenommeneBenutzer = $exU; AusgenommeneGruppen = $exG
-                    Ergebnis = $(if ($exU + $exG) { 'hat Ausnahme' } else { 'KEINE Ausnahme' })
-                    __ExU = @($pol.conditions.users.excludeUsers | Where-Object { $_ -and "$_" -ne 'GuestsOrExternalUsers' }); __ExG = @($pol.conditions.users.excludeGroups | Where-Object { $_ }) }
+            $acc = @(Get-HUSecGuidList $B.accounts)
+            $common = Get-HUSecV1Common @($F.v1ex)
+            foreach ($pol in @($F.v1ex)) {
+                $miss = if ($acc.Count) { @($acc | Where-Object { @($pol.users) -notcontains $_ }).Count } else { -1 }
+                $erg = if ($pol.badGroups) { 'Gruppe nicht lesbar' } elseif (-not @($pol.users).Count) { 'KEINE wirksame Ausnahme' } elseif ($acc.Count) { $(if ($miss) { "$miss Notfallkonto/-konten fehlen" } else { 'Notfallkonten ausgenommen' }) } elseif (@($common).Count) { 'gemeinsame Ausnahme vorhanden' } else { 'keine gemeinsame Ausnahme' }
+                [pscustomobject]@{ Richtlinie = "$($pol.name)"; GiltFuer = $(if ($pol.all) { 'Alle Benutzer' } else { "$($pol.roles) Admin-Rollen" }); AusgenommeneBenutzer = @($pol.users).Count; AusgenommeneGruppen = $pol.groups; AusgenommeneRollen = $pol.exRoles
+                    Ergebnis = $erg; __ExU = @($pol.exU); __ExG = @($pol.exG) }
             }
         }
         Eval = { param($F, $B)
-            $pols = @($F.ca | Where-Object { Test-HUSecCaHitsBreakGlass $_ })
+            $pols = @($F.v1ex)
             if (-not $pols.Count) { return @{ Status = 'Info'; Count = 0; Detail = 'keine aktive blockierende oder einschraenkende Richtlinie fuer alle Benutzer oder Admin-Rollen' } }
-            $without = @($pols | Where-Object { -not (@(@($_.conditions.users.excludeUsers) + @($_.conditions.users.excludeGroups) | Where-Object { $_ }).Count) }).Count
-            if ($without) { @{ Status = 'Abweichung'; Count = $without; Detail = "$without von $($pols.Count) aktiven Richtlinien (alle Benutzer oder Admin-Rollen) ohne jede Ausnahme" } }
-            else { @{ Status = 'OK'; Count = 0; Detail = "alle $($pols.Count) aktiven Richtlinien (alle Benutzer oder Admin-Rollen) haben eine Ausnahme - ob es die Notfallkonten sind und in allen dieselben, bitte selbst pruefen" } }
+            $bad = @($pols | Where-Object { $_.badGroups }).Count
+            if ($bad) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = "in $bad Richtlinie(n) ist eine ausgenommene Gruppe nicht lesbar"; Complete = $false } }
+            $roleHint = if (@($pols | Where-Object { $_.exRoles }).Count) { ' Ausgenommene Rollen zaehlen nicht als Notfallkonto.' } else { '' }
+            $acc = @(Get-HUSecGuidList $B.accounts)
+            if ($acc.Count) {
+                $miss = @($pols | Where-Object { $p = $_; @($acc | Where-Object { @($p.users) -notcontains $_ }).Count })
+                if ($miss.Count) { return @{ Status = 'Abweichung'; Count = $miss.Count; Detail = "hinterlegte Notfallkonten ($($acc.Count)) fehlen in $($miss.Count) von $($pols.Count) Richtlinien als Ausnahme.$roleHint" } }
+                return @{ Status = 'OK'; Count = 0; Detail = "hinterlegte Notfallkonten ($($acc.Count)) sind in allen $($pols.Count) Richtlinien ausgenommen" }
+            }
+            $without = @($pols | Where-Object { -not @($_.users).Count }).Count
+            if ($without) { return @{ Status = 'Abweichung'; Count = $without; Detail = "$without von $($pols.Count) Richtlinien ohne wirksame Ausnahme (Benutzer oder Gruppe).$roleHint" } }
+            $common = @(Get-HUSecV1Common $pols)
+            if (-not $common.Count) { return @{ Status = 'Abweichung'; Count = $pols.Count; Detail = "alle $($pols.Count) Richtlinien haben Ausnahmen, aber kein Konto ist in allen ausgenommen - Notfallkonto fehlt mindestens in einer.$roleHint" } }
+            if ($common.Count -gt 4) { return @{ Status = 'OK'; Count = 0; Detail = "$($common.Count) Konten sind in allen $($pols.Count) Richtlinien ausgenommen - mehr als ueblich, Ausnahmen pruefen; Notfallkonten in den Sollwerten (V1 accounts) hinterlegen" } }
+            @{ Status = 'OK'; Count = 0; Detail = "$($common.Count) Konto/Konten in allen $($pols.Count) Richtlinien ausgenommen - vermutlich die Notfallkonten; bitte in den Sollwerten (V1 accounts) bestaetigen" }
         } }
 )
 
@@ -778,20 +1101,29 @@ $script:HUSecWhy = @{
     E03 = 'Viele nicht konforme Geraete deuten auf fehlende Updates, Verschluesselung oder Schutz hin. Grenze in baseline.json aenderbar.'
     E04 = 'Unverschluesselte Notebooks gefaehrden Schuelerdaten bei Verlust. Grenze in baseline.json aenderbar.'
     C02 = 'Gaeste in Teams mit Minderjaehrigen sind heikel. Hier zunaechst nur die Zahl der Gastkonten, damit Aenderungen auffallen.'
-    A25 = 'Ohne diese Sperre koennen normale Benutzer (auch Schueler) die Adminportale oeffnen und viele Verzeichnisdaten lesen. Gesucht wird eine aktive Richtlinie fuer alle Benutzer mit Blockieren, Ziel Microsoft-Adminportale und Ausnahme fuer Administratoren (Baseline 1.14).'
-    A27 = 'Konten mit Admin-Rolle, die niemand mehr nutzt, sind ein leichtes Ziel. Gezaehlt werden aktive Konten mit direkter Rolle ohne Anmeldung seit mehr als 90 Tagen (Baseline 1.10). Gruppen- und PIM-Rollen sind nicht sichtbar.'
+    A25 = 'Ohne diese Sperre koennen normale Benutzer (auch Schueler) die Adminportale oeffnen und viele Verzeichnisdaten lesen. Gesucht wird eine aktive Richtlinie fuer alle Benutzer mit Blockieren und Ziel Microsoft-Adminportale. Ausgenommen sein duerfen nur Admin-Rollen, als Admin-Gruppe hinterlegte Gruppen (Sollwert A25 adminGroups) und hoechstens 4 einzelne Konten (Notfallkonten); jede andere Gruppe gilt als zu breite Ausnahme (Baseline 1.14). Hinweis laut Microsoft: die Sperre betrifft auch die Microsoft-365-Selbstinstallationsseite (Office-Installation durch Benutzer) und nicht Graph oder PowerShell.'
+    A27 = 'Konten mit Admin-Rolle, die niemand mehr nutzt, sind ein leichtes Ziel. Gezaehlt werden aktive Konten mit Rolle (direkt oder ueber eine rollenzuweisbare Gruppe) ohne ERFOLGREICHE Anmeldung seit mehr als 90 Tagen (Sollwert staleDays; Baseline 1.10). Fehlversuche zaehlen nicht als Aktivitaet. Hinterlegte Notfallkonten (V1) sind ausgenommen. PIM-berechtigte Rollen (P2) und Dienstprinzipale werden nicht bewertet.'
     A28 = 'Entra Kennwortschutz verbietet bekannte schwache Kennwoerter auch im lokalen AD. Geprueft wird nur die Einstellung im Tenant (an, Modus Erzwingen); ob der Agent auf den Domaenencontrollern laeuft, sieht die App nicht (Baseline 1.1).'
-    A29 = 'PIM vergibt Admin-Rechte nur zeitlich begrenzt und mit Genehmigung. Die Regel zeigt nur, ob die Lizenz vorhanden ist (Baseline 1.3).'
-    A30 = 'Wird ein Admin-Konto bei riskanter Anmeldung nicht blockiert, bleibt ein gestohlenes Kennwort nutzbar. Braucht Entra ID P2 (Baseline 1.9).'
+    A29 = 'PIM vergibt Admin-Rechte nur zeitlich begrenzt und mit Genehmigung. Die Regel zeigt nur, ob die Lizenz vorhanden ist (Entra ID P2 oder ID Governance, erkannt ueber die Plan-ID; Baseline 1.3). Ersatz mit P1: dauerhafte Admin-Rollen klein halten und Rollen regelmaessig von Hand pruefen.'
+    A30 = 'Wird ein Admin-Konto bei riskanter Anmeldung nicht abgefangen, bleibt ein gestohlenes Kennwort nutzbar. OK ist eine aktive Richtlinie fuer alle Benutzer oder Admin-Rollen bei Anmelderisiko mittel oder hoch, die blockiert oder MFA bei jeder Anmeldung verlangt (Microsoft-Vorlage). Braucht Entra ID P2 (Baseline 1.9); mit P1 helfen Geoblock, MFA fuer alle und das Blockieren von Legacy-Auth und Geraetecode-Flow.'
     A31 = 'Partner-Organisationen duerfen je nach Einstellung auf den Tenant zugreifen. Die Liste zeigt die konfigurierten Partner mit ihrer Tenant-ID (Baseline 1.6). Nicht ohne Not entfernen.'
     A33 = 'Anonyme Links ohne Anmeldung lassen sich weiterleiten, der Zugriff ist dann nicht mehr nachvollziehbar. Ob Links ein Ablaufdatum haben, liefert Graph nicht und wird nicht geprueft (Baseline 3.2).'
+    A34 = 'SharePoint-Zugriff mit alten Protokollen umgeht MFA und bedingten Zugriff. Ausschalten, sobald keine alte Anwendung mehr darauf zugreift.'
+    A35 = 'Externe Benutzer, die Freigaben weitergeben, vergroessern den Kreis der Zugriffsberechtigten ohne dein Zutun.'
+    A36 = 'Nur zur Kenntnis: ob externe Freigaben auf bestimmte Domaenen beschraenkt sind und ob inaktive Sitzungen abgemeldet werden. Keine Abweichung, kein Sollwert.'
+    A37 = 'Ein Admin-Konto aus dem lokalen AD faellt mit dem lokalen AD: wer dort ein Kennwort zuruecksetzt oder einen Domaenencontroller uebernimmt, hat auch den Tenant. Microsoft empfiehlt reine Cloud-Konten fuer Admin-Rollen. Gezaehlt werden Konten mit Rolle direkt oder ueber eine rollenzuweisbare Gruppe; PIM-berechtigte Rollen (P2) werden nicht aufgeloest.'
+    A38 = 'Steht die Synchronisierung, bleiben ausgeschiedene Konten in der Cloud aktiv und neue fehlen. Bei Sync alle 30 Minuten (Standard) ist ein Abstand ueber 3 Stunden ein Ausfall. Sollwert: letzter Sync hoechstens 180 Minuten her.'
+    A39 = 'Sync-Fehler entstehen meist durch doppelte UPN oder Mailadressen; das Objekt wird dann nicht oder nur teilweise synchronisiert. Die Liste zeigt Objekt, Eigenschaft und Wert.'
+    A40 = 'SMS und Sprachanruf lassen sich per SIM-Tausch oder Weiterleitung abfangen. Microsoft empfiehlt Authenticator-App, Passkey oder FIDO2. Der E-Mail-Code wird nicht gewertet, weil Gaeste ihn zur Anmeldung brauchen koennen.'
+    A41 = 'Duerfen Benutzer Apps nicht selbst zustimmen (A17), sollen sie wenigstens eine Freigabe anfragen koennen - sonst weichen sie auf Umwege aus.'
+    A42 = 'Diese Rechte erlauben einer App ohne angemeldeten Benutzer, Rollen zu vergeben, das Verzeichnis oder Richtlinien zu aendern oder alle Postfaecher und Dateien zu lesen bzw. zu aendern. Geprueft werden nur Anwendungsrechte auf Microsoft Graph (nicht Exchange- oder SharePoint-eigene Schnittstellen und keine delegierten Zustimmungen fuer alle Benutzer). Die App dieses Programms wird angezeigt, aber nicht mitgezaehlt.'
     A32 = 'Der Secure Score von Microsoft zeigt in Prozent, wie viele Sicherheitsempfehlungen umgesetzt sind. Verlauf ueber den Katalog-Verlauf vergleichbar (Baseline 3.1).'
-    A26 = 'Gaeste, die ihre Einladung nie angenommen haben, sind totes Gewicht und koennen spaeter von Dritten uebernommen werden (Mailadresse faellt weg oder wird neu vergeben). Laut Baseline 1.12 entfernen. Sollwert: Einladungen aelter als 30 Tage.'
+    A26 = 'Gaeste, die ihre Einladung nie angenommen haben, sind totes Gewicht und koennen spaeter von Dritten uebernommen werden (Mailadresse faellt weg oder wird neu vergeben). Laut Baseline 1.12 entfernen. Sollwert: Einladungen aelter als 30 Tage, gezaehlt ab der letzten (erneut gesendeten) Einladung.'
     A21 = 'Das alte MSOL-PowerShell wird nicht mehr unterstuetzt und umgeht moderne Schutzfunktionen. Blockieren, sobald keine Skripte es mehr nutzen.'
     A22 = 'Wenn jeder Benutzer Apps, Sicherheitsgruppen oder neue Tenants anlegen darf, entstehen unkontrollierte Zugriffe und Wildwuchs.'
     A23 = 'Gaeste bleiben sonst lange angemeldet. Eine Anmeldehaeufigkeit zwingt sie, sich regelmaessig neu zu authentifizieren.'
-    A24 = 'Anmeldungen aus Laendern, in denen niemand arbeitet, sind fast immer Angriffe. Eine Geoblock-Richtlinie (Blockieren mit Standortbedingung, ohne Spezialzweck wie Geraetecode-Flow) blockiert sie. Welche Laender erlaubt sind, wird nicht geprueft.'
-    V1  = 'Notfallkonten muessen von jeder Richtlinie ausgenommen sein, sonst sperrt eine fehlerhafte Richtlinie alle aus. Geprueft werden aktive Richtlinien fuer alle Benutzer oder Admin-Rollen, die blockieren oder etwas verlangen (MFA, Geraet, Nutzungsbedingungen ...): jede braucht mindestens eine Ausnahme. Reine Sitzungs- und Berichtsrichtlinien brauchen keine (Microsoft Learn, Notfallzugriffskonten). Ob das Konto selbst einen Passkey/FIDO2-Schluessel hat, wird nicht gelesen. Ob es die Notfallkonten sind und in allen dieselben, wird nicht geprueft.'
+    A24 = 'Anmeldungen aus Laendern, in denen niemand arbeitet, sind fast immer Angriffe. Gezaehlt wird eine aktive Richtlinie: Blockieren, alle Benutzer, alle Apps, keine Spezialbedingung (Geraetecode-Flow, Client-Apps, Plattform, Risiko, Benutzeraktion) und Laender-Standorte - als Sperrliste (Laender eingeschlossen) oder Erlaubnisliste (alle Orte ausser erlaubte Laender bzw. vertrauenswuerdige Orte). Reine IP-Bereiche zaehlen nicht. Welche Laender gesperrt sind, wird nicht bewertet; Ausnahmen werden genannt (Microsoft Learn, Block access by location).'
+    V1  = 'Notfallkonten muessen von jeder Richtlinie ausgenommen sein, die aussperren kann, sonst sperrt eine fehlerhafte Richtlinie alle aus. Geprueft werden aktive Richtlinien fuer alle Benutzer oder Admin-Rollen, die blockieren oder etwas verlangen (MFA, Geraet, Nutzungsbedingungen ...); reine Sitzungs- und Berichtsrichtlinien brauchen keine Ausnahme (Microsoft Learn, Notfallzugriffskonten). Ausgenommene Gruppen werden aufgeloest (auch verschachtelt). Mit hinterlegten Notfallkonten (Sollwert V1 accounts, Objekt-IDs) muss jedes in jeder Richtlinie ausgenommen sein; ohne Sollwert muss mindestens ein Konto in allen Richtlinien ausgenommen sein. Rollen als Ausnahme zaehlen nicht. Ob das Konto selbst einen Passkey/FIDO2-Schluessel hat, wird nicht gelesen.'
     V11 = 'Der Geraetecode-Flow wird fuer Phishing missbraucht und selten gebraucht. Er sollte per Richtlinie blockiert sein.'
 }
 function Get-HUSecWhy([string]$RuleId) { if ($script:HUSecWhy.ContainsKey($RuleId)) { return $script:HUSecWhy[$RuleId] } return '' }
@@ -822,7 +1154,8 @@ function Invoke-HUSecCatalog {
             $facts[$k] = $fact.Data
         }
         if ($fail) { $out.Add((New-HUSecResult -Rule $r -Tenant $TenantKey -Status 'NichtPruefbar' -Reason $fail.Reason -Detail $fail.Detail -Complete $false)); continue }
-        $b = if ($bl.Values.ContainsKey($r.Id)) { $bl.Values[$r.Id] } else { @{} }
+        $b = if ($bl.Values.ContainsKey($r.Id)) { @{} + $bl.Values[$r.Id] } else { @{} }
+        if ($bl.Values.ContainsKey('V1')) { $b['__breakGlass'] = $bl.Values['V1'].accounts }   # Notfallkonten fuer A25/A27
         # In den Sollwerten abgeschaltet (enabled = false): nur Info; bei Regeln mit Mindeststandard (Min) wirkt das nicht
         if (-not $r.Min -and $b.ContainsKey('enabled') -and $b.enabled -eq $false) {
             $out.Add((New-HUSecResult -Rule $r -Tenant $TenantKey -Status 'Info' -Detail 'in den Sollwerten abgeschaltet')); continue
@@ -848,6 +1181,12 @@ function Invoke-HUSecCatalog {
 # ============================================================================
 # Betroffene Objekte auf Anforderung (nur Anzeige, wird nicht gespeichert und nicht in den Verlauf geschrieben)
 # ============================================================================
+# Detailliste darf gespeichert werden: nur Listen ohne Personendaten (z. B. App-Namen und Rechte), am Regel-Schluessel Export = $true
+function Test-HUSecItemsExport([string]$RuleId) {
+    $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $RuleId })[0]
+    return [bool]($rule -and $rule.PSObject.Properties['Export'] -and $rule.Export)
+}
+
 function Get-HUSecItemsLabel([string]$RuleId) {
     $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $RuleId })[0]
     if ($rule -and $rule.PSObject.Properties['ItemsLabel']) { return "$($rule.ItemsLabel)" }
@@ -867,7 +1206,8 @@ function Get-HUSecItems {
         $facts[$k] = $fact.Data
     }
     $bl = Get-HUSecBaseline -TenantKey $TenantKey -Rules (Get-HUSecRules)
-    $b = if ($bl.Values.ContainsKey($RuleId)) { $bl.Values[$RuleId] } else { @{} }
+    $b = if ($bl.Values.ContainsKey($RuleId)) { @{} + $bl.Values[$RuleId] } else { @{} }
+    if ($bl.Values.ContainsKey('V1')) { $b['__breakGlass'] = $bl.Values['V1'].accounts }
     $items = @(& $rule.Items $facts $b)
     if ($rule.PSObject.Properties['ItemsSignIn'] -and $rule.ItemsSignIn) {
         # Rollen je Konto (nur direkte, aktive Zuweisungen; keine Gruppen-/PIM-eligible-Rollen)
@@ -1018,7 +1358,7 @@ function Get-HUSecReference {
 }
 
 # Vergleich Ist gegen Soll. Nur Regeln, die in beiden Staenden pruefbar sind (OK/Abweichung/Ausnahme), zaehlen als Aenderung;
-# NichtPruefbar/Fehler/Info sind keine Aenderung (sonst Meldungen bei jedem Abruffehler), sie werden nur gezaehlt.
+# NichtPruefbar/Fehler/Info sind keine Aenderung (sonst Meldungen bei jedem Abruffehler). Gezaehlt werden nur Regeln, die im Soll pruefbar waren und jetzt nicht (Unchecked); dauerhaft nicht pruefbare zaehlen nicht.
 function Compare-HUSecReference {
     param([Parameter(Mandatory)][object[]]$Results, [Parameter(Mandatory)]$Reference, [string[]]$Keys = @())
     $ruleOf = @{}; foreach ($r in (Get-HUSecRules)) { $ruleOf[$r.Id] = $r }
@@ -1030,7 +1370,7 @@ function Compare-HUSecReference {
         if ($Keys.Count -and $Keys -notcontains $r.Tenant) { continue }
         $o = $ref["$($r.Tenant)|$($r.RuleId)"]
         if (-not $o) { continue }
-        if ($r.Status -notin $checkable -or $o.status -notin $checkable) { if ($r.Status -notin $checkable) { $unchecked++ }; continue }
+        if ($r.Status -notin $checkable -or $o.status -notin $checkable) { if ($o.status -in $checkable -and $r.Status -notin $checkable -and $r.Status -ne 'Info') { $unchecked++ }; continue }
         $rule = $ruleOf[$r.RuleId]
         $kind = $null
         if ("$($o.status)" -ne "$($r.Status)") { $kind = 'Status' }
@@ -1082,5 +1422,5 @@ function Update-HUSecLost {
 Export-ModuleMember -Function @(
     'Get-HUSecRules', 'Invoke-HUSecCatalog', 'New-HUSecContext', 'Get-HUSecFact', 'Invoke-HUSecFetch',
     'Get-HUSecExceptions', 'Add-HUSecException', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException',
-    'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel'
+    'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport'
 )

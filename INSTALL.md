@@ -35,24 +35,24 @@ Umsteigen von Secret: bestehenden Tenant einfach einrichten (wird an der Tenant-
 
 | Berechtigung | wofür |
 |---|---|
-| `Application.Read.All` | **Secret-Ablaufdatum anzeigen** (empfohlen), Enterprise-App-Inventur |
+| `Application.Read.All` | **Secret-Ablaufdatum anzeigen** (empfohlen), Enterprise-App-Inventur, Sicherheitskatalog (A19, App-Rechte A42) |
 | `DeviceManagementManagedDevices.Read.All` | Geräte-Reports, Compliance, Defender |
 | `DeviceManagementConfiguration.Read.All` | Richtlinien |
 | `DeviceManagementServiceConfig.Read.All` | Autopilot-Profile, Defender-Report |
-| `User.Read.All` | Benutzer-Reports, Lizenzen, Sync-Monitor |
+| `User.Read.All` | Benutzer-Reports, Lizenzen, Sync-Monitor, Sicherheitskatalog (Gäste, Admin-Konten, Sync-Fehler) |
 | `AuditLog.Read.All` | MFA-Status, inaktive Benutzer (signInActivity) |
-| `Organization.Read.All` | Tenant-Übersicht, Lizenzen |
+| `Organization.Read.All` | Tenant-Übersicht, Lizenzen, Sicherheitskatalog (Lizenzen, Verzeichnissync A38) |
 | `SecurityAlert.Read.All` | Teams: Defender-Alarm, Defender-Report |
 | `Directory.Read.All` | optional: ältere Extensions (Enterprise-App-Inventur: Berechtigungen) |
 | `DeviceManagementApps.ReadWrite.All` | Reiter **Apps** (hochladen, zuweisen, Status), Remote FB › Intune |
 | `DeviceManagementScripts.ReadWrite.All` | Reiter **Wartung** (Remediations), Remote FB › Intune – **weitreichend**: erlaubt Skripte als SYSTEM auf allen verwalteten Geräten |
-| `Group.Read.All` | Apps/Wartung: Zielgruppe per Name finden |
+| `Group.Read.All` | Apps/Wartung: Zielgruppe per Name finden, Sicherheitskatalog (Sync-Fehler A39) |
 | `DeviceManagementManagedDevices.PrivilegedOperations.All` | Wartung: *Jetzt auf Gerät ausführen*, Sync – **weitreichend**: erlaubt auch Löschen, Zurücksetzen und Außerbetriebnahme von Geräten |
-| `Policy.Read.All` | Analyse: Conditional Access im Vergleich und Backup, Namen benannter Orte |
+| `Policy.Read.All` | Analyse: Conditional Access im Vergleich und Backup, Namen benannter Orte; Sicherheitskatalog (Richtlinien, Anmeldemethoden, Zustimmungs-Workflow) |
 | `SharePointTenantSettings.Read.All` | Sicherheitskatalog: externe Freigabe (A33), nur lesend |
 | `Device.Read.All` | Analyse: *Was bekommt …?* für Geräte (Gerätegruppen) |
 | `DeviceManagementConfiguration.ReadWrite.All` | Analyse: fehlende Profile/Richtlinien in andere Tenants kopieren, aus Backup wiederherstellen (zum Lesen reicht `Read.All`) |
-| `RoleManagement.Read.Directory` | optional: Rollennamen statt IDs im Tenant-Vergleich |
+| `RoleManagement.Read.Directory` | Rollennamen statt IDs im Tenant-Vergleich; Sicherheitskatalog (Admin-Rollen A08, A27, A37 – ohne das Recht nicht prüfbar) |
 | `Policy.ReadWrite.ConditionalAccess` | optional: Conditional Access aus Backup wiederherstellen (wird deaktiviert angelegt) |
 
    Bei der Einrichtung im Programm sind alle Zeilen außer den *optionalen* und `DeviceManagementConfiguration.ReadWrite.All` vorausgewählt (Liste: `Config\graph-permissions.json`); die beiden *weitreichenden* werden dabei eigens bestätigt.

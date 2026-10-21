@@ -28,6 +28,7 @@ $script:HURemoteMaxBody     = 16384
 $script:HURemoteMaxLines    = 2000
 $script:HURemotePairMinutes = 10
 $script:HURemoteConfirmSec  = 120   # Einmal-Bestaetigung (Review 031 B7)
+$script:HURemoteSecGrantMin = 5     # Detaillisten mit Personendaten: PIN gilt so viele Minuten
 $script:HURemoteTokenDays   = 90    # ungenutztes Handy verliert die Kopplung nach 90 Tagen (Review 031 B15)
 $script:HURemotePinMin      = 4
 $script:HURemotePinMax      = 12
@@ -896,6 +897,10 @@ function New-HURemoteState {
         Events = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
         # Apps und Wartung (Intune): Leseanfragen vom Handy -> Warteschlange -> eigener Runspace -> Zwischenspeicher
         Intune = $true; IQueue = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue)); ICache = [hashtable]::Synchronized(@{})
+        # Sicherheitskatalog am Handy (nur lesen, nur Status und Zahlen, keine Detaillisten); laeuft ueber dieselbe Warteschlange
+        Sec = $true
+        SecRules = [hashtable]::Synchronized(@{})   # Regel-Id -> @{ Label; Pii } (vom Hintergrund-Runspace gefuellt)
+        SecGrant = [hashtable]::Synchronized(@{})   # Geraete-Hash -> gueltig bis (nach richtiger PIN, 5 Minuten)
     })
 }
 # Kopplung oeffnen (Code 6 Ziffern, 10 Minuten, 5 Fehlversuche) - nur ueber den Knopf am PC
@@ -1137,6 +1142,80 @@ function Get-HURemoteResponse($S, $Req) {
             } finally { [System.Threading.Monitor]::Exit($S.ICache.SyncRoot) }
             if ($full) { return (New-HURemoteJson 429 @{ ok = $false; error = 'Zu viele Abfragen - kurz warten' }) }
             return (New-HURemoteJson 200 $res)
+        }
+        '/api/sec' {
+            # Sicherheitskatalog lesen: alle Tenants, nur Status, Zahlen und Kurztext je Regel (keine Konten-/Objektlisten).
+            # Antwort aus dem Zwischenspeicher (15 Minuten) oder "pending" - der PC prueft im Hintergrund, das Handy fragt erneut.
+            if ($method -ne 'POST') { return (New-HURemoteJson 405 @{ ok = $false; error = 'Methode nicht erlaubt' }) }
+            if (-not $S.Sec) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Sicherheit ist fuers Handy ausgeschaltet (am PC: Remote FB > Einstellungen)' }) }
+            $key = 'sec|all'
+            $force = ($body.force -eq $true)
+            $res = $null; $full = $false
+            [System.Threading.Monitor]::Enter($S.ICache.SyncRoot)
+            try {
+                $e = $S.ICache[$key]
+                $age = if ($e) { ($now - $e.At).TotalSeconds } else { 1e9 }
+                if ($e -and $e.State -eq 'pending' -and $age -lt 900) { $res = '{"ok":true,"pending":true}' }
+                elseif ($e -and $e.State -ne 'pending' -and ($age -lt 30 -or (-not $force -and $age -lt 900))) {
+                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('dd.MM. HH:mm') + '","error":' + (ConvertTo-Json -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
+                }
+                elseif ($S.IQueue.Count -ge 20) { $full = $true }
+                else {
+                    $S.ICache[$key] = @{ State = 'pending'; At = $now; Data = ''; Error = '' }
+                    $S.IQueue.Enqueue(@{ Key = $key; Op = 'sec'; Area = 'sec'; Tenant = ''; Id = '' })
+                    $res = '{"ok":true,"pending":true}'
+                }
+            } finally { [System.Threading.Monitor]::Exit($S.ICache.SyncRoot) }
+            if ($full) { return (New-HURemoteJson 429 @{ ok = $false; error = 'Zu viele Abfragen - kurz warten' }) }
+            return (New-HURemoteJson 200 $res "$(if ($res -like '*pending":true*') { 'Sicherheit: Pruefung angefordert' })")
+        }
+        '/api/secitems' {
+            # Detailliste einer Regel fuer einen Tenant (wie "Konten anzeigen" am PC). Listen mit Personendaten nur nach PIN;
+            # die PIN gilt dann einige Minuten fuer dieses Handy. Nur Anzeige: kein Zwischenspeicher am Handy (no-store).
+            if ($method -ne 'POST') { return (New-HURemoteJson 405 @{ ok = $false; error = 'Methode nicht erlaubt' }) }
+            if (-not $S.Sec) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Sicherheit ist fuers Handy ausgeschaltet (am PC: Remote FB > Einstellungen)' }) }
+            if ($dev.Locked) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Dieses Handy ist gesperrt (zu viele falsche PINs) - am PC entsperren' }) }
+            $rid = "$($body.rule)"; $tk = "$($body.tenant)"
+            $meta = $S.SecRules[$rid]
+            if ($rid -notmatch '^[ACEV]\d{1,3}$' -or -not $meta) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Zu dieser Regel gibt es keine Liste' }) }
+            if (@($S.Tenants | ForEach-Object { "$($_.key)" }) -cnotcontains $tk) { return (New-HURemoteJson 400 @{ ok = $false; error = "Unbekannter Tenant '$tk'" }) }
+            if ($meta.Pii) {
+                $g = $S.SecGrant[$dh]
+                if (-not ($g -and $g -gt $now)) {
+                    if (-not $S.Pin) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Am PC ist keine PIN gesetzt (Remote FB > Einstellungen)'; pin = $true }) }
+                    if (-not "$($body.pin)") { return (New-HURemoteJson 403 @{ ok = $false; error = 'PIN noetig (Liste mit Personendaten)'; pin = $true }) }
+                    if (-not (Test-HURemotePin "$($body.pin)" $S.Pin)) {
+                        $dev.PinFails = [int]$dev.PinFails + 1
+                        if ($dev.PinFails -ge $script:HURemotePinFails) { $dev.Locked = $true; $S.Events.Enqueue(@{ Kind = 'DevLocked'; Name = "$($dev.Name)" }) }
+                        $S.DevDirty = $true
+                        Add-HURemoteFail $S $Req.Ip $now
+                        $msg = if ($dev.Locked) { 'Falsche PIN - Handy jetzt gesperrt (am PC entsperren)' } else { "Falsche PIN (noch $($script:HURemotePinFails - $dev.PinFails) Versuch(e))" }
+                        return (New-HURemoteJson 403 @{ ok = $false; error = $msg; pin = $true } 'Sicherheitsliste abgelehnt (PIN)')
+                    }
+                    if ($dev.PinFails) { $dev.PinFails = 0; $S.DevDirty = $true }
+                    $S.SecGrant[$dh] = $now.AddMinutes($script:HURemoteSecGrantMin)
+                }
+            }
+            $key = "secitems|$rid|$tk"
+            $force = ($body.force -eq $true)
+            $res = $null; $full = $false; $new = $false
+            [System.Threading.Monitor]::Enter($S.ICache.SyncRoot)
+            try {
+                $e = $S.ICache[$key]
+                $age = if ($e) { ($now - $e.At).TotalSeconds } else { 1e9 }
+                if ($e -and $e.State -eq 'pending' -and $age -lt 300) { $res = '{"ok":true,"pending":true}' }
+                elseif ($e -and $e.State -ne 'pending' -and ($age -lt 3 -or (-not $force -and $age -lt 120))) {
+                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('HH:mm') + '","error":' + (ConvertTo-Json -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
+                }
+                elseif ($S.IQueue.Count -ge 20) { $full = $true }
+                else {
+                    $S.ICache[$key] = @{ State = 'pending'; At = $now; Data = ''; Error = '' }
+                    $S.IQueue.Enqueue(@{ Key = $key; Op = 'secitems'; Area = 'sec'; Tenant = $tk; Id = $rid })
+                    $res = '{"ok":true,"pending":true}'; $new = $true
+                }
+            } finally { [System.Threading.Monitor]::Exit($S.ICache.SyncRoot) }
+            if ($full) { return (New-HURemoteJson 429 @{ ok = $false; error = 'Zu viele Abfragen - kurz warten' }) }
+            return (New-HURemoteJson 200 $res "$(if ($new) { "Sicherheit: Liste $rid fuer $tk angefordert$(if ($meta.Pii) { ' (mit PIN)' })" })")
         }
         '/api/cancel' {
             if ($method -ne 'POST') { return (New-HURemoteJson 405 @{ ok = $false; error = 'Methode nicht erlaubt' }) }
