@@ -295,7 +295,14 @@ Add-HUOutputMenu $script:Controls['rtbLog'] { Clear-LogBuffer -IncludeGui }
 $script:Window.Add_PreviewKeyDown({
     param($s, $e)
     $ctrl = ([System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control) -ne 0
-    if ("$($e.Key)" -eq 'F1') { $e.Handled = $true; Show-HUManual; return }
+    if ("$($e.Key)" -eq 'F1') {
+        $e.Handled = $true
+        # in der Sicherheits-Matrix: Anleitung zur markierten Regel, sonst die Programm-Anleitung
+        $g = $script:Controls['gridSec']; $r = $null
+        if ($g -and $g.IsKeyboardFocusWithin) { $r = $g.SelectedItem }
+        if ($r -and $r.Ref) { Show-HUSecFix -RuleId "$($r.Ref.RuleId)" } else { Show-HUManual }
+        return
+    }
     if ($ctrl -and "$($e.Key)" -in 'D0', 'NumPad0') { $e.Handled = $true; Set-HUUiScale 1.0; return }
     if ($ctrl -and "$($e.Key)" -eq 'L') {
         $e.Handled = $true

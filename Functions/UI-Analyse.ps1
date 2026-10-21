@@ -35,7 +35,11 @@ function Update-HUAnaTenantChecks {
     if (@($script:Settings.tenants).Count -gt 1) { Add-HUTenantAllToggle $sp { Save-HUAnaTenants } }
 }
 
-function Save-HUAnaTenants { Set-HUStateValue 'anaTenants' @(Get-HUCheckedTenants $script:Controls['spAnaTenants']) }
+function Save-HUAnaTenants {
+    Set-HUStateValue 'anaTenants' @(Get-HUCheckedTenants $script:Controls['spAnaTenants'])
+    # Sicherheit vor dem ersten Pruefen: Spalten der Regelliste folgen den Haken
+    if ($script:AnaMode -eq 'sec' -and -not $script:SecRan) { try { Show-HUSecPreview } catch { } }
+}
 
 function Get-HUAnaTenantName([string]$Key) {
     $t = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $Key }) | Select-Object -First 1
@@ -68,6 +72,7 @@ function Set-HUAnaMode([string]$Mode) {
     $c['btnAnaModeSec'].Background = Get-HUBrush $(if ($Mode -eq 'sec') { '#1976D2' } else { '#3E3E42' })
     Set-HUStateValue 'anaMode' $Mode
     if ($Mode -eq 'bak') { Update-HUBakView }
+    if ($Mode -eq 'sec') { try { Show-HUSecPreview } catch { } }
     Update-HUAnaHint
 }
 

@@ -1224,3 +1224,173 @@ Describe 'Rest der Security Baseline (A43 bis A46)' {
         $r = Run 'A46'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -Match 'neue und bestehende'
     }
 }
+
+Describe 'Regeln abschalten (Sollwert Katalog disabled)' {
+    BeforeEach { Base; Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    It 'abgeschaltete Regel wird nicht gelesen, Zelle "aus" (Info, Grund Aus); Mindeststandard nicht abschaltbar; unbekannte Nummer abgelehnt' {
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'Katalog.disabled' = 'a30, K06' }).Count | Should -Be 0
+        $global:HUSecFx['conditionalAccess'] = Fail 500
+        $r = Run 'A30'; $r.Status | Should -Be 'Info'; $r.Reason | Should -Be 'Aus'
+        (Run 'K06').Reason | Should -Be 'Aus'
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'Katalog.disabled' = 'V1' }).Count | Should -Be 1
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'Katalog.disabled' = 'X99' }).Count | Should -Be 1
+        (Get-HUSecBaseline -TenantKey 'T1' -Rules (InModuleScope HU.SecCatalog { Get-HUSecRules })).Errors.Count | Should -Be 0
+        # je Tenant abschaltbar
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force
+        @(Save-HUSecBaselineEdit -Scope 'T2' -Values @{ 'Katalog.disabled' = 'A30' }).Count | Should -Be 0
+        (Run 'A30').Reason | Should -Not -Be 'Aus'
+    }
+    It 'Ampel zaehlt abgeschaltete Regeln nicht' {
+        $res = @([pscustomobject]@{ RuleId = 'A30'; Tenant = 'T1'; Status = 'Info'; Reason = 'Aus' }, [pscustomobject]@{ RuleId = 'A01'; Tenant = 'T1'; Status = 'OK'; Reason = '' })
+        $l = Get-HUSecLight -Results $res -Key 'T1'; $l.Checked | Should -Be 1; $l.Ok | Should -Be 1
+    }
+}
+
+Describe 'Teams-Meldung: Katalog statusOnly und silent' {
+    BeforeAll {
+        function script:Mk($t, $id, $st, $cnt = 0) { [pscustomobject]@{ Tenant = $t; RuleId = $id; Title = 'x'; Sev = 'Hoch'; Status = $st; Reason = ''; Count = $cnt; ExceptionId = '' } }
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue
+        Save-HUSecReference -Results @((Mk 'T1' 'E16' 'Abweichung' 5), (Mk 'T1' 'A04' 'Abweichung' 3), (Mk 'T1' 'A03' 'OK'), (Mk 'T1' 'V1' 'OK'), (Mk 'T1' 'A30' 'OK')) | Out-Null
+    }
+    AfterAll { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'soll-verloren.json') -Force -ErrorAction SilentlyContinue }
+    It 'statusOnly (Standard E16): Anzahl-Aenderung still, Statuswechsel gemeldet' {
+        $c = Compare-HUSecReference -Results @((Mk 'T1' 'E16' 'Abweichung' 9), (Mk 'T1' 'A04' 'Abweichung' 4)) -Reference (Get-HUSecReference)
+        @($c.Changes | ForEach-Object RuleId) -join ',' | Should -Be 'A04'
+        $c = Compare-HUSecReference -Results @((Mk 'T1' 'E16' 'OK')) -Reference (Get-HUSecReference)
+        $c.Changes[0].RuleId | Should -Be 'E16'; $c.Changes[0].Kind | Should -Be 'Status'
+    }
+    It 'silent: Regel gar nicht gemeldet (auch nicht als nicht pruefbar), Mindeststandard nicht stummschaltbar' {
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'Katalog.silent' = 'a03, A30' }).Count | Should -Be 0
+        $c = Compare-HUSecReference -Results @((Mk 'T1' 'A03' 'Abweichung' 1), (Mk 'T1' 'A30' 'NichtPruefbar')) -Reference (Get-HUSecReference)
+        @($c.Changes).Count | Should -Be 0; $c.Unchecked | Should -Be 0
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'Katalog.silent' = 'V1' }).Count | Should -Be 1
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'Katalog.statusOnly' = 'V1, E03' }).Count | Should -Be 1   # Mindeststandard nicht (Review 040 B6)
+    }
+    It 'statusOnly gilt nicht fuer Mindeststandard (B6), Tenant-Wert ersetzt nur den einen Schluessel (B7)' {
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'Katalog.statusOnly' = 'V1' }).Count | Should -Be 1
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'Katalog.disabled' = 'A30'; 'Katalog.silent' = 'A03' }).Count | Should -Be 0
+        @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'Katalog.silent' = 'A04' }).Count | Should -Be 0
+        $k = (Get-HUSecBaseline -TenantKey 'T1' -Rules (InModuleScope HU.SecCatalog { Get-HUSecRules })).Values['Katalog']
+        @($k.disabled) -join ',' | Should -Be 'A30'
+        @($k.silent) -join ',' | Should -Be 'A04'
+        @($k.statusOnly).Count | Should -Be 8
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue
+    }
+    It 'silent je Tenant; verlorene Pruefbarkeit wird fuer stille Regeln nicht gemeldet' {
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue
+        @(Save-HUSecBaselineEdit -Scope 'T2' -Values @{ 'Katalog.silent' = 'A03' }).Count | Should -Be 0
+        @((Compare-HUSecReference -Results @((Mk 'T1' 'A03' 'Abweichung' 1)) -Reference (Get-HUSecReference)).Changes).Count | Should -Be 1
+        @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'Katalog.silent' = 'A30' }).Count | Should -Be 0
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'soll-verloren.json') -Force -ErrorAction SilentlyContinue
+        $lost = @(); 1..3 | ForEach-Object { $lost = @(Update-HUSecLost -Results @((Mk 'T1' 'A30' 'NichtPruefbar'), (Mk 'T1' 'A03' 'NichtPruefbar')) -Reference (Get-HUSecReference)) }
+        @($lost | ForEach-Object RuleId) -join ',' | Should -Be 'A03'
+    }
+}
+
+Describe 'Ausnahmen: wirkungslos erkennen, Filter in der Meldung zaehlen' {
+    BeforeAll { function script:Mk($t, $id, $st, $cnt = 0, $rs = '') { [pscustomobject]@{ Tenant = $t; RuleId = $id; Title = 'x'; Sev = 'Hoch'; Status = $st; Reason = $rs; Count = $cnt; ExceptionId = '' } } }
+    BeforeEach { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    It 'aktiv, abgelaufen, abgeschaltet, nicht pruefbar, unbekannt' {
+        $fut = (Get-Date).AddDays(30).ToUniversalTime().ToString('o'); $past = (Get-Date).AddDays(-1).ToUniversalTime().ToString('o')
+        $e = [pscustomobject]@{ ruleId = 'A30'; tenant = 'T1'; validUntil = $fut }
+        Get-HUSecExceptionState -Exception $e | Should -Be 'aktiv'
+        Get-HUSecExceptionState -Exception ([pscustomobject]@{ ruleId = 'A30'; tenant = 'T1'; validUntil = $past }) | Should -Be 'abgelaufen'
+        Get-HUSecExceptionState -Exception $e -Results @((Mk 'T1' 'A30' 'NichtPruefbar' 0 'Lizenz')) | Should -Be 'wirkungslos: nicht pruefbar (Lizenz)'
+        Get-HUSecExceptionState -Exception $e -Results @((Mk 'T2' 'A30' 'NichtPruefbar' 0 'Lizenz')) | Should -Be 'aktiv'
+        Get-HUSecExceptionState -Exception ([pscustomobject]@{ ruleId = 'X99'; tenant = 'T1'; validUntil = $fut }) | Should -Be 'wirkungslos: Regel unbekannt'
+        @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'Katalog.disabled' = 'A30' }).Count | Should -Be 0
+        Get-HUSecExceptionState -Exception $e | Should -Be 'wirkungslos: Regel abgeschaltet'
+    }
+    It 'Compare zaehlt ausgeblendete Zahlenaenderungen und stumme Regeln' {
+        Save-HUSecReference -Results @((Mk 'T1' 'E16' 'Abweichung' 5), (Mk 'T1' 'A30' 'OK')) | Out-Null
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'Katalog.silent' = 'A30' }).Count | Should -Be 0
+        $c = Compare-HUSecReference -Results @((Mk 'T1' 'E16' 'Abweichung' 7), (Mk 'T1' 'A30' 'Abweichung' 1)) -Reference (Get-HUSecReference)
+        @($c.Changes).Count | Should -Be 0; $c.HiddenCount | Should -Be 1; ($c.Silent -join ',') | Should -Be 'A30'
+    }
+    It 'UI: Hinweis Tenant-Wert ersetzt, Katalog-Zeilen farbig, wirkungslose Ausnahmen orange' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $sec = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Security.ps1') -Raw
+        $sec | Should -Match 'x:Name="lblReplace"'
+        $sec | Should -Match 'Binding="\{Binding Regel\}" Value="Katalog"'
+        $sec | Should -Match 'Get-HUSecExceptionState'
+    }
+}
+
+Describe 'So behebst du es (Docs/Behebung.json)' {
+    BeforeAll {
+        $script:FixRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $script:FixLocal = Join-Path $script:FixRoot 'Docs\Behebung.json'
+        $script:FixCache = Join-Path (Get-HUSecPath) 'behebung.json'
+    }
+    BeforeEach { Remove-Item -LiteralPath $script:FixCache -Force -ErrorAction SilentlyContinue; [void](Get-HUSecFixData -LocalPath $script:FixLocal -Reload) }
+    AfterAll { Remove-Item -LiteralPath $script:FixCache -Force -ErrorAction SilentlyContinue }
+    It 'mitgelieferte Datei ist gueltig: nur bekannte Regeln, Learn-Links, feste Portale, Pruefdatum' {
+        $j = Get-Content -LiteralPath $script:FixLocal -Raw -Encoding UTF8 | ConvertFrom-Json
+        $ids = @(InModuleScope HU.SecCatalog { Get-HUSecRules } | ForEach-Object { "$($_.Id)" })
+        foreach ($p in $j.rules.PSObject.Properties) {
+            $ids | Should -Contain $p.Name
+            $p.Value.portal | Should -BeIn @('entra', 'intune', 'defender', 'm365', 'teams', 'purview')
+            "$($p.Value.checked)" | Should -Match '^\d{4}-\d{2}-\d{2}$'
+            @($p.Value.steps).Count | Should -BeGreaterThan 1
+            foreach ($l in @($p.Value.learn)) { "$($l.url)" | Should -Match '^https://learn\.microsoft\.com/en-us/' }
+        }
+        $f = Get-HUSecFix -RuleId 'E11' -LocalPath $script:FixLocal
+        $f.Has | Should -BeTrue; $f.PortalUrl | Should -Be 'https://intune.microsoft.com'; @($f.Learn).Count | Should -BeGreaterThan 0
+    }
+    It 'ohne Eintrag: Learn-Suche mit dem Regeltitel' {
+        $f = Get-HUSecFix -RuleId 'A99' -LocalPath $script:FixLocal
+        $f.Has | Should -BeFalse; $f.SearchUrl | Should -Match '^https://learn\.microsoft\.com/en-us/search/\?terms='
+    }
+    It 'nur die mitgelieferte Datei, kein Nachladen (Review 040 B1)' {
+        $src = Get-Content -LiteralPath (Join-Path $script:FixRoot 'Functions\UI-Security.ps1') -Raw
+        $src | Should -Not -Match 'Behebung\.json\?ref|raw\.githubusercontent\.com/.*/Docs/Behebung'
+        Set-Content -LiteralPath $script:FixCache -Value '{"stand":"2026-10-20","rules":{"A25":{"portal":"entra","path":"fremd","steps":["a","b"],"learn":[],"checked":"2026-10-20"}}}' -Encoding UTF8
+        $f = Get-HUSecFix -RuleId 'A25' -LocalPath $script:FixLocal
+        ([void](Get-HUSecFixData -LocalPath $script:FixLocal -Reload))
+        (Get-HUSecFix -RuleId 'A25' -LocalPath $script:FixLocal).Path | Should -Not -Be 'fremd'
+        Test-Path -LiteralPath $script:FixCache | Should -BeFalse
+    }
+    It 'fremde Links, Q&A-Links und unbekannte Portale fallen weg; Steuerzeichen entfernt (B3, B4)' {
+        $j = '{"stand":"2026-01-01","hinweis":"h","rules":{"A25":{"portal":"evil","path":"x","note":"a‮b","steps":["Set-X ​-Wert 1","b"],"learn":[{"title":"t","url":"https://evil.example.com/x"},{"title":"qa","url":"https://learn.microsoft.com/en-us/answers/questions/1"},{"title":"ohne Sprache","url":"https://learn.microsoft.com/entra/x"},{"title":"ok","url":"https://learn.microsoft.com/en-us/entra/x"}],"checked":"2026-01-01"}}}' | ConvertFrom-Json
+        $set = InModuleScope HU.SecCatalog -Parameters @{ J = $j } { param($J) ConvertTo-HUSecFixSet $J }
+        $e = $set.Rules['A25']
+        $e.Portal | Should -Be ''
+        @($e.Learn).Count | Should -Be 1; $e.Learn[0].Url | Should -Be 'https://learn.microsoft.com/en-us/entra/x'
+        $e.Steps[0] | Should -Be 'Set-X -Wert 1'
+        $e.Note | Should -Be 'a b'
+    }
+    It 'stand und checked als echtes Datum, hoechstens morgen (B2)' {
+        foreach ($bad in '9999-12-31', '2026-99-99', 'kaputt') {
+            $j = ('{"stand":"' + $bad + '","rules":{"A25":{"portal":"entra","path":"p","steps":["a","b"],"learn":[]}}}') | ConvertFrom-Json
+            InModuleScope HU.SecCatalog -Parameters @{ J = $j } { param($J) ConvertTo-HUSecFixSet $J } | Should -BeNullOrEmpty
+        }
+        $j = '{"stand":"2026-01-01","rules":{"A25":{"portal":"entra","path":"p","steps":["a","b"],"learn":[],"checked":"9999-01-01"}}}' | ConvertFrom-Json
+        (InModuleScope HU.SecCatalog -Parameters @{ J = $j } { param($J) ConvertTo-HUSecFixSet $J }).Rules['A25'].Checked | Should -Be ''
+    }
+    It 'Oberflaeche: Rechtsklick, F1, Knopf im Detail, Handy-Abschnitt mit Link-Pruefung' {
+        $sec = Get-Content -LiteralPath (Join-Path $script:FixRoot 'Functions\UI-Security.ps1') -Raw
+        $sec | Should -Match "So behebst du es \.\.\."
+        $sec | Should -Match 'x:Name="btnFix"'
+        (Get-Content -LiteralPath (Join-Path $script:FixRoot 'Main.ps1') -Raw) | Should -Match 'Show-HUSecFix'
+        $web = Get-Content -LiteralPath (Join-Path $script:FixRoot 'Core\HU.RemoteWeb.ps1') -Raw
+        $web | Should -Match 'function sxFix'
+        $web.Contains('learn\.microsoft\.com|entra\.microsoft\.com') | Should -BeTrue
+    }
+}
+
+Describe 'Ausnahmen fuer mehrere Tenants, Regelliste vor dem Pruefen' {
+    It 'Ausnahme-Dialog mit Tenant-Haken und "alle"; Regelliste beim Oeffnen des Reiters' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $sec = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Security.ps1') -Raw
+        $ana = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Analyse.ps1') -Raw
+        $sec | Should -Match 'x:Name="wpTenants"'
+        $sec | Should -Match 'x:Name="btnAllT"'
+        $sec | Should -Match 'foreach \(\$tk in @\(\$res\.Tenants\)\)'
+        $sec | Should -Not -Match 'cmbTenant'
+        $sec | Should -Match 'function Show-HUSecPreview'
+        $ana | Should -Match "if \(\`$Mode -eq 'sec'\) \{ try \{ Show-HUSecPreview \}"
+    }
+}

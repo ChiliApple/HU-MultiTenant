@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Handy-Fernbedienung: Laeufe ohne Oberflaeche (Snippet, Erweiterung, Teams-Meldung) - Live-Ausgabe in den Zustand $S.
@@ -312,7 +312,7 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
         if (-not $q) { Start-Sleep -Milliseconds 200; continue }
         $data = $null; $err = ''
         try {
-            if ($q.Op -eq 'sec') { $data = Get-HURemoteSecData $S $Settings @($q.Keys) @($q.SevOff) @($q.AreaOff) }
+            if ($q.Op -eq 'sec') { $data = Get-HURemoteSecData $S $Settings @($q.Keys) @($q.SevOff) @($q.AreaOff) $AppRoot }
             elseif ($q.Op -eq 'secitems') { $data = Get-HURemoteSecItems $q $Settings }
             elseif ($q.Op -eq 'detail') { $data = Get-HURemoteIntuneData $q $Settings } else { $data = [object[]]@(Get-HURemoteIntuneData $q $Settings) }
         }
@@ -330,7 +330,7 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
     Sicherheitskatalog fuer das Handy: alle Tenants der Fernbedienung, je Regel Status, Grund, Zahl und Kurztext.
     Keine Detaillisten (Konten, Geraete, Apps) - die bleiben am PC. Fehler eines Tenants stehen nur bei diesem Tenant.
 #>
-function Get-HURemoteSecData($S, $Settings, [string[]]$Keys = @(), [string[]]$SevOff = @(), [string[]]$AreaOff = @()) {
+function Get-HURemoteSecData($S, $Settings, [string[]]$Keys = @(), [string[]]$SevOff = @(), [string[]]$AreaOff = @(), [string]$AppRoot = '') {
     $rank = @{ Kritisch = 0; Hoch = 1; Mittel = 2; Niedrig = 3 }
     $allRules = @(Get-HUSecRules)
     # am Handy ausgeblendete Grade und Bereiche nicht pruefen (spart Zeit, v. a. Anmeldeprotokolle und Teams)
@@ -357,12 +357,24 @@ function Get-HURemoteSecData($S, $Settings, [string[]]$Keys = @(), [string[]]$Se
         }
     }
     return [ordered]@{
-        rules   = @($rules | ForEach-Object { $m = $S.SecRules["$($_.Id)"]; [ordered]@{ id = "$($_.Id)"; sev = "$($_.Sev)"; area = "$($_.Area)"; title = "$($_.Title)"; why = (Get-HUSecWhy "$($_.Id)"); items = $(if ($m) { "$($m.Label)" } else { '' }); pii = [bool]($m -and $m.Pii) } })
+        rules   = @($rules | ForEach-Object { $m = $S.SecRules["$($_.Id)"]; [ordered]@{ id = "$($_.Id)"; sev = "$($_.Sev)"; area = "$($_.Area)"; title = "$($_.Title)"; why = (Get-HUSecWhy "$($_.Id)"); items = $(if ($m) { "$($m.Label)" } else { '' }); pii = [bool]($m -and $m.Pii); fix = (ConvertTo-HURemoteSecFix "$($_.Id)" $AppRoot) } })
         tenants = @($tenants.ToArray())
         cells   = @($cells.ToArray())
         total   = $allRules.Count
         sevOff  = @($SevOff)
         areaOff = @($AreaOff)
+    }
+}
+# "So behebst du es" fuers Handy: nur Text und gepruefte Microsoft-Links (Learn, festes Portal)
+function ConvertTo-HURemoteSecFix([string]$RuleId, [string]$AppRoot) {
+    $f = $null
+    try { $f = Get-HUSecFix -RuleId $RuleId -LocalPath $(if ($AppRoot) { Join-Path $AppRoot 'Docs\Behebung.json' } else { '' }) } catch { return $null }
+    if (-not $f) { return $null }
+    if (-not $f.Has) { return [ordered]@{ has = $false; search = "$($f.SearchUrl)" } }
+    return [ordered]@{
+        has = $true; path = "$($f.Path)"; steps = @($f.Steps | ForEach-Object { "$_" }); note = "$($f.Note)"
+        learn = @($f.Learn | ForEach-Object { [ordered]@{ t = "$($_.Title)"; u = "$($_.Url)" } })
+        portal = "$($f.PortalUrl)"; portalName = "$($f.PortalName)"; checked = "$($f.Checked)"; old = [bool]$f.Old
     }
 }
 # Detailliste einer Regel (wie "Konten anzeigen" am PC) als Spalten und Zeilen; hoechstens 1000 Zeilen

@@ -377,7 +377,7 @@ input.code4{font-size:24px;letter-spacing:6px;text-align:center;text-transform:u
 .sxt .K{color:var(--red)}.sxt .H{color:var(--peach)}.sxt .M{color:var(--yellow)}.sxt .N{color:var(--sub)}
 .sx-ok{color:var(--green)}.sx-dev{color:var(--red);font-weight:700}.sx-exc{color:var(--teal)}.sx-na{color:var(--ov)}.sx-inf{color:var(--blue)}
 .sxl{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:var(--ov)}.sxl.Rot{background:var(--red)}.sxl.Gelb{background:var(--peach)}.sxl.Gruen{background:var(--green)}
-#sxDet h3{margin:0 0 4px;font-size:16px}#sxDet .why{color:var(--sub);font-size:13px;margin:4px 0 8px}#sxDet .tl{display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--s0);font-size:14px}#sxDet .tl b{min-width:110px}
+#sxDet .fix{margin:4px 0 10px;padding:6px 10px;border:1px solid var(--s0);border-radius:8px}#sxDet .fix summary{cursor:pointer;font-weight:600;color:#81C784}#sxDet .fix ol{margin:6px 0;padding-left:20px;font-size:13px}#sxDet .fix li{margin:3px 0}#sxDet .fixpath{font-size:12px;color:var(--sub);margin:6px 0;word-break:break-word}#sxDet .fixlink{display:block;margin:4px 0;color:#4FC3F7;font-size:13px}#sxDet h3{margin:0 0 4px;font-size:16px}#sxDet .why{color:var(--sub);font-size:13px;margin:4px 0 8px}#sxDet .tl{display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--s0);font-size:14px}#sxDet .tl b{min-width:110px}
 #tSec .ico{font-size:18px}
 #sxDet .tl{flex-wrap:wrap;align-items:baseline}#sxDet .tl .muted{flex:1;min-width:200px}.sxbtn{margin-left:auto;font-size:13px;padding:4px 10px;border-radius:8px;border:1px solid var(--s0);background:var(--crust);color:var(--blue);cursor:pointer}
 .sxlist{width:100%;margin:6px 0 4px;-webkit-user-select:none;user-select:none}.sxlist .find-s{width:100%;margin:4px 0}.sxlist .sxwrap{max-height:50vh;overflow:auto}
@@ -826,6 +826,7 @@ $script:HURemoteJs = @'
       case 'NichtPruefbar': return { t: '? ' + why, k: 'sx-na', h: c.d };
       case 'Fehler': return { t: '!', k: 'sx-dev', h: c.d };
       case 'Info':
+        if (c.x === 'Aus') { return { t: 'aus', k: 'sx-na', h: c.d }; }
         var m = rid === 'A32' ? /\(([\d.,]+ %)\)/.exec(c.d || '') : null;
         return { t: m ? m[1] : 'i', k: 'sx-inf', h: c.d };
     }
@@ -914,6 +915,26 @@ $script:HURemoteJs = @'
     };
     f.addEventListener('input', draw); draw();
   }
+  // "So behebst du es": aufklappbar; Links nur auf Microsoft Learn bzw. die festen Admin-Portale
+  function sxLink(u, t) {
+    if (!/^https:\/\/(learn\.microsoft\.com|entra\.microsoft\.com|intune\.microsoft\.com|security\.microsoft\.com|admin\.microsoft\.com|admin\.teams\.microsoft\.com|purview\.microsoft\.com)(\/|$)/.test(u || '')) { return null; }
+    var a = el('a', 'fixlink', t); a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a;
+  }
+  function sxFix(f) {
+    var d = el('details', 'fix'), s = el('summary', '', 'So behebst du es'); d.appendChild(s);
+    if (!f.has) {
+      d.appendChild(el('div', 'muted small', 'Fuer diese Regel gibt es noch keine Anleitung.'));
+      var q = sxLink(f.search, 'In Microsoft Learn suchen'); if (q) { d.appendChild(q); }
+      return d;
+    }
+    if (f.path) { d.appendChild(el('div', 'fixpath', f.path)); }
+    var ol = el('ol'); (f.steps || []).forEach(function (x) { ol.appendChild(el('li', '', x)); }); d.appendChild(ol);
+    if (f.note) { d.appendChild(el('div', 'why', f.note)); }
+    (f.learn || []).forEach(function (l) { var a = sxLink(l.u, l.t); if (a) { d.appendChild(a); } });
+    if (f.portal) { var p = sxLink(f.portal, (f.portalName || 'Portal') + ' oeffnen'); if (p) { d.appendChild(p); } }
+    d.appendChild(el('div', 'muted small', 'Geprueft am ' + (f.checked || '?') + ' gegen Microsoft Learn' + (f.old ? ' - aelter als 6 Monate, Menuenamen koennen abweichen' : '')));
+    return d;
+  }
   function sxDetail(r) {
     var box = $('sxDet');
     if (S.sxSel === r.id && !box.classList.contains('hidden')) { S.sxSel = ''; show('sxDet', false); sxRender(); return; }
@@ -921,6 +942,7 @@ $script:HURemoteJs = @'
     box.appendChild(el('h3', '', r.id + ' - ' + r.title));
     box.appendChild(el('div', 'muted small', r.area + ' | Schweregrad ' + r.sev));
     if (r.why) { box.appendChild(el('div', 'why', r.why)); }
+    if (r.fix) { box.appendChild(sxFix(r.fix)); }
     (S.sx.tenants || []).forEach(function (t) {
       var c = S.sxMap[t.key + '|' + r.id], v = sxCell(c, r.id), row = el('div', 'tl');
       row.appendChild(el('b', '', t.name)); var sp = el('span', v.k, v.t); row.appendChild(sp);

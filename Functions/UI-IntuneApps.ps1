@@ -45,7 +45,7 @@ function Set-HUAppMode([string]$Mode) {
     $c['pnlAppUpdRight'].Visibility = & $vis $upd
     $c['btnAppModeLib'].Background = Get-HUBrush $(if ($lib) { '#1976D2' } else { '#3E3E42' })
     $c['btnAppModeInt'].Background = Get-HUBrush $(if ($int) { '#1976D2' } else { '#3E3E42' })
-    $c['btnAppModeUpd'].Background = Get-HUBrush $(if ($upd) { '#1976D2' } else { '#3E3E42' })
+    $c['btnAppModeUpd'].Background = Get-HUBrush $(if ($upd) { '#1976D2' } else { '#00695C' })   # Updates abgesetzt, damit es auffaellt
     Set-HUStateValue 'appMode' $Mode
     if ($upd) { Update-HUUpdList }
     if ($int) {
