@@ -303,6 +303,20 @@ Describe 'Fernbedienung: Sicherheit (Katalog lesen)' {
         $S = New-TestState
         (Req $S POST '/api/sec' @{}).Code | Should -Be 401
     }
+    It 'Tenant-Auswahl: nur bekannte Tenants, eigener Zwischenspeicher; peek startet keine Pruefung' {
+        $S = New-TestState; $t = Pair $S
+        $known = @(@($S.Tenants) | ForEach-Object { "$($_.key)" })
+        $r = Req $S POST '/api/sec' @{ tenants = @($known[0], 'unbekannt'); peek = $true } $t
+        $r.J.none | Should -BeTrue
+        $S.IQueue.Count | Should -Be 0
+        (Req $S POST '/api/sec' @{ tenants = @($known[0], 'unbekannt') } $t).J.pending | Should -BeTrue
+        $q = $S.IQueue.Dequeue()
+        @($q.Keys) | Should -Be @($known[0])
+        $q.Key | Should -Be "sec|$($known[0])"
+        $S.ICache[$q.Key] = @{ State = 'done'; At = (Get-Date); Data = '{"rules":[],"tenants":[],"cells":[]}'; Error = '' }
+        (Req $S POST '/api/sec' @{ tenants = @($known[0]); peek = $true } $t).J.pending | Should -BeFalse
+        (Req $S POST '/api/sec' @{ tenants = @($known[0]); peek = $true } $t).J.none | Should -BeNullOrEmpty
+    }
     It 'Daten: Regeln nach Grad sortiert, je Tenant Ampel, Zellen ohne Detaillisten; Fehler eines Tenants bleibt bei diesem' {
         function global:Get-HUSecRules { @([pscustomobject]@{ Id = 'A40'; Sev = 'Mittel'; Area = 'Entra'; Title = 'M' }, [pscustomobject]@{ Id = 'A02'; Sev = 'Kritisch'; Area = 'Entra'; Title = 'K' }) }
         function global:Get-HUSecWhy($Id) { "warum $Id" }

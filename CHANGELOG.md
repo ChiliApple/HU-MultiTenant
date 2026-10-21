@@ -1,5 +1,10 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.7 (Testversion, 21.10.2026, Weg zu 2.3.0)
+
+- **Sicherheitskatalog, Pruefpaket Intune (alle lesend, keine neuen Rechte):** E05 Geraete ohne Compliance-Richtlinie gelten als nicht konform (Hoch), E06 Windows-Mindestversion in der Compliance (Mittel), E07 Update-Ring zugewiesen und Qualitaetsupdates hoechstens 7 Tage zurueckgestellt (Hoch, Sollwert), E08 BitLocker-, E09 Antivirus-, E10 Firewall-Richtlinie (eine zugewiesene Sicherheits-Baseline zaehlt ersatzweise), E11 Windows LAPS (Hoch), E12 Geraete ohne Sync seit mehr als 30 Tagen (zur Kenntnis, Sollwert), E13 ASR-Regeln, E14 EDR-Onboarding, E15 Defender for Endpoint mit Intune verbunden (Mittel), E16 offene Defender-Alarme hoch oder mittel (Hoch). Jetzt 58 Regeln.
+- **Handy, Reiter Sicherheit:** Tenants waehlen und mit "Pruefen" starten (beim Oeffnen wird nur ein vorhandenes Ergebnis gezeigt, keine Pruefung gestartet); Grad und Bereich per Haken ein- und ausblenden, die Ampel zaehlt dann nur die angezeigten Regeln. Auswahl bleibt am Handy gespeichert.
+
 ## v2.2.6 (Testversion, 21.10.2026, Weg zu 2.3.0)
 
 - **Sicherheitskatalog, Pruefpaket Teams und Gruppen (alle lesend, keine neuen Rechte):** C03 Teams und M365-Gruppen ohne Besitzer (Mittel, Liste speicherbar), C04 nur ein Besitzer (Niedrig, zur Kenntnis), C05 oeffentliche Teams und Gruppen (Mittel, Liste speicherbar), C06 Gaeste in Teams und M365-Gruppen (Hoch, Liste je Gast und Gruppe; am Handy mit PIN), C07 wer Teams und Gruppen anlegen darf (Mittel), C08 Gaeste als Gruppenbesitzer (Niedrig). Jetzt 46 Regeln. Grenzen: Ablaufrichtlinie fuer Gruppen braeuchte Directory.Read.All und fehlt bewusst; Einstellungen aus dem Teams Admin Center liefert Graph nicht.

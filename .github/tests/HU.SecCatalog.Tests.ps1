@@ -1016,3 +1016,72 @@ Describe 'Ampel folgt der Auswahl (Grad, Bereich, Suchtext)' {
         $sec | Should -Match 'Regel \(\$\(@\(Get-HUSecVisibleRows\)\.Count\)\)'
     }
 }
+
+Describe 'Intune-Pruefpaket (E05 bis E16)' {
+    BeforeEach {
+        Base
+        $global:HUSecFx['configurationPolicies'] = @(
+            [pscustomobject]@{ name = 'AV Schueler'; isAssigned = $true; templateReference = [pscustomobject]@{ templateFamily = 'endpointSecurityAntivirus'; templateDisplayName = 'Microsoft Defender Antivirus' } },
+            [pscustomobject]@{ name = 'LAPS'; isAssigned = $true; templateReference = [pscustomobject]@{ templateFamily = 'endpointSecurityAccountProtection'; templateDisplayName = 'Local admin password solution (Windows LAPS)' } },
+            [pscustomobject]@{ name = 'ASR alt'; isAssigned = $false; templateReference = [pscustomobject]@{ templateFamily = 'endpointSecurityAttackSurfaceReduction'; templateDisplayName = 'Attack Surface Reduction Rules' } },
+            [pscustomobject]@{ name = 'Baseline'; isAssigned = $true; templateReference = [pscustomobject]@{ templateFamily = 'baseline'; templateDisplayName = 'Security Baseline for Windows' } })
+        $global:HUSecFx['/deviceManagement/templates'] = @([pscustomobject]@{ id = 't1'; displayName = 'BitLocker'; templateType = 'securityTemplate'; templateSubtype = 'diskEncryption' })
+        $global:HUSecFx['/intents'] = @([pscustomobject]@{ id = 'i1'; displayName = 'BitLocker alt'; templateId = 't1'; isAssigned = $true })
+        $global:HUSecFx['deviceConfigurations'] = @(
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windowsUpdateForBusinessConfiguration'; displayName = 'Ring'; qualityUpdatesDeferralPeriodInDays = 3; featureUpdatesDeferralPeriodInDays = 14; assignments = @([pscustomobject]@{ id = 'a' }) },
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10EndpointProtectionConfiguration'; displayName = 'EP'; bitLockerEncryptDevice = $false; firewallProfileDomain = [pscustomobject]@{ firewallEnabled = 'allowed' }; assignments = @() })
+    }
+    It 'E05: Standard (konform) ist Abweichung, nicht konform ist OK' {
+        $global:HUSecFx['select=settings'] = [pscustomobject]@{ settings = [pscustomobject]@{ secureByDefault = $false; deviceComplianceCheckinThresholdDays = 30 } }
+        (Run 'E05').Status | Should -Be 'Abweichung'
+        $global:HUSecFx['select=settings'] = [pscustomobject]@{ settings = [pscustomobject]@{ secureByDefault = $true; deviceComplianceCheckinThresholdDays = 30 } }
+        (Run 'E05').Status | Should -Be 'OK'
+        # v1.0 liefert die Einstellung nicht, beta schon
+        $global:HUSecFx['select=settings'] = { if ($global:HUSecBeta) { [pscustomobject]@{ settings = [pscustomobject]@{ secureByDefault = $true } } } else { [pscustomobject]@{ id = 'x' } } }
+        $global:HUSecFx['/deviceManagement'] = { if ($global:HUSecBeta) { [pscustomobject]@{ settings = [pscustomobject]@{ secureByDefault = $true } } } else { [pscustomobject]@{ id = 'x' } } }
+        (Run 'E05').Status | Should -Be 'OK'
+        $global:HUSecFx['select=settings'] = { [pscustomobject]@{ id = 'x' } }; $global:HUSecFx['/deviceManagement'] = { [pscustomobject]@{ id = 'x' } }
+        $r = Run 'E05'; $r.Status | Should -Be 'NichtPruefbar'; $r.Detail | Should -Match 'Intune Admin Center'
+    }
+    It 'E06: zugewiesene Windows-Richtlinie mit Mindestversion' {
+        $global:HUSecFx['deviceCompliancePolicies'] = @([pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CompliancePolicy'; displayName = 'Win'; osMinimumVersion = '10.0.19045'; assignments = @([pscustomobject]@{ id = 'a' }) })
+        $r = Run 'E06'; $r.Status | Should -Be 'OK'; $r.Detail | Should -Match '10.0.19045'
+        $global:HUSecFx['deviceCompliancePolicies'] = @([pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CompliancePolicy'; displayName = 'Win'; osMinimumVersion = $null; assignments = @([pscustomobject]@{ id = 'a' }) })
+        (Run 'E06').Status | Should -Be 'Abweichung'
+    }
+    It 'E07: Ring mit 3 Tagen OK, ueber Sollwert Abweichung, ohne Zuweisung Abweichung' {
+        (Run 'E07').Status | Should -Be 'OK'
+        $global:HUSecFx['deviceConfigurations'][0].qualityUpdatesDeferralPeriodInDays = 10
+        (Run 'E07').Status | Should -Be 'Abweichung'
+        $global:HUSecFx['deviceConfigurations'][0].assignments = @()
+        (Run 'E07').Detail | Should -Match 'keiner zugewiesen'
+    }
+    It 'E08 bis E11, E13, E14: Arten aus Endpoint-Sicherheit, alten Vorlagen und Baseline' {
+        $r = Run 'E08'; $r.Status | Should -Be 'OK'; $r.Detail | Should -Match 'BitLocker alt'
+        (Run 'E09').Status | Should -Be 'OK'
+        $r = Run 'E10'; $r.Status | Should -Be 'OK'; $r.Detail | Should -Match 'Baseline'      # Firewall-Profil ohne Zuweisung, Baseline ersatzweise
+        (Run 'E11').Status | Should -Be 'OK'
+        $r = Run 'E13'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -Match 'keine zugewiesen'
+        (Run 'E14').Status | Should -Be 'Abweichung'
+        Test-HUSecItemsExport 'E08' | Should -BeTrue
+    }
+    It 'E15: Connector aktiviert OK, fehlt Abweichung' {
+        $global:HUSecFx['mobileThreatDefense'] = @([pscustomobject]@{ id = 'fc780465-2017-40d4-a0c5-307022471b92'; partnerState = 'enabled'; lastHeartbeatDateTime = '2026-10-21T08:00:00Z' })
+        (Run 'E15').Status | Should -Be 'OK'
+        $global:HUSecFx['mobileThreatDefense'] = @()
+        (Run 'E15').Status | Should -Be 'Abweichung'
+    }
+    It 'E16: hohe und mittlere Alarme zaehlen, niedrige nicht; Liste nicht exportierbar' {
+        $global:HUSecFx['alerts_v2'] = @([pscustomobject]@{ title = 'x'; severity = 'high'; status = 'new' }, [pscustomobject]@{ title = 'y'; severity = 'low'; status = 'new' })
+        $r = Run 'E16'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'E16').Count | Should -Be 1
+        $global:HUSecFx['alerts_v2'] = @([pscustomobject]@{ title = 'y'; severity = 'low'; status = 'new' })
+        (Run 'E16').Status | Should -Be 'OK'
+        Test-HUSecItemsExport 'E16' | Should -BeFalse
+    }
+    It 'E12: Geraete ohne Sync seit mehr als 30 Tagen' {
+        $global:HUSecFx['managedDevices'] = @([pscustomobject]@{ deviceName = 'a'; lastSyncDateTime = [datetime]::UtcNow.AddDays(-40).ToString('o') }, [pscustomobject]@{ deviceName = 'b'; lastSyncDateTime = [datetime]::UtcNow.AddDays(-2).ToString('o') })
+        $r = Run 'E12'; $r.Status | Should -Be 'Info'; $r.Count | Should -Be 1
+        @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'E12').Count | Should -Be 1
+    }
+}
