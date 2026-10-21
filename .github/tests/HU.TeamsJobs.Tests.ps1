@@ -466,7 +466,7 @@ Describe 'Teams-Auftraege: Sicherheits-Aenderung' {
         $s.Level | Should -Be 'Error'
         $s.Rows[0].Name | Should -Be 'Schule A'
         $s.Rows[0].Text | Should -Match 'und 2 weitere'
-        $s.Facts['Nicht pruefbar (nicht verglichen)'] | Should -Be 2
+        $s.Facts['Heute nicht pruefbar (im Soll pruefbar)'] | Should -Be 2
     }
     It 'nur Verbesserungen: Stufe Warning' {
         $c = Cmp 1; $c.Changes[0].Worse = $false
@@ -493,3 +493,16 @@ Describe 'Teams-Auftraege: Pruefung verloren' {
         New-HUSecDriftCardSpec -Compare ([pscustomobject]@{ Changes = @(); Unchecked = 5; Since = $null }) | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Teams-Auftraege: Pfeil in der Aenderungszeile' {
+    It 'Anzahl und Status werden mit Pfeil dargestellt und ueberleben die Textbereinigung' {
+        $ch = @(
+            [pscustomobject]@{ Tenant = 'T1'; RuleId = 'A09'; Title = 'Regel'; Sev = 'Hoch'; Kind = 'Anzahl'; Worse = $true; Was = 'Abweichung'; Is = 'Abweichung'; WasCount = 3; IsCount = 4 },
+            [pscustomobject]@{ Tenant = 'T2'; RuleId = 'A01'; Title = 'Regel'; Sev = 'Hoch'; Kind = 'Status'; Worse = $true; Was = 'OK'; Is = 'Abweichung'; WasCount = 0; IsCount = 1 })
+        $s = New-HUSecDriftCardSpec -Compare ([pscustomobject]@{ Changes = $ch; Unchecked = 0; Since = $null })
+        $ar = [string][char]0x2192
+        ($s.Rows | Where-Object { $_.Text -like '*A09*' }).Text | Should -BeLike "*Anzahl 3 $ar 4*"
+        ($s.Rows | Where-Object { $_.Text -like '*A01*' }).Text | Should -BeLike "*OK $ar Abweichung*"
+    }
+}
+

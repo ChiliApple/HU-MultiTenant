@@ -1247,9 +1247,14 @@
                             </StackPanel>
                         </Border>
                         <RichTextBox x:Name="rtbAna" DockPanel.Dock="Bottom" Height="120" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
-                                     VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6" Margin="0,6,0,0">
+                                     VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6" Margin="0,0,0,0">
                             <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
                         </RichTextBox>
+                        <Thumb x:Name="thbAnaLog" DockPanel.Dock="Bottom" Height="8" Cursor="SizeNS" Margin="0,2,0,0" ToolTip="Hoehe des Protokolls anpassen (ziehen)">
+                            <Thumb.Template>
+                                <ControlTemplate TargetType="Thumb"><Border Background="#3E3E42" Opacity="0.5" Height="4" VerticalAlignment="Center"/></ControlTemplate>
+                            </Thumb.Template>
+                        </Thumb>
                         <Grid>
                         <DataGrid x:Name="gridBak" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
                                   CanUserSortColumns="True" Visibility="Collapsed">

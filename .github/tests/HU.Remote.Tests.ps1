@@ -277,6 +277,108 @@ Describe 'Fernbedienung: Apps und Wartung (Intune)' {
     }
 }
 
+Describe 'Fernbedienung: Sicherheit (Katalog lesen)' {
+    It 'erst "pending" mit einer Anfrage in der Warteschlange, danach Ergebnis aus dem Zwischenspeicher; ausgeschaltet = 403' {
+        $S = New-TestState; $t = Pair $S
+        $r = Req $S POST '/api/sec' @{} $t
+        $r.Code | Should -Be 200
+        $r.J.pending | Should -BeTrue
+        $S.IQueue.Count | Should -Be 1
+        (Req $S POST '/api/sec' @{} $t).J.pending | Should -BeTrue
+        $S.IQueue.Count | Should -Be 1
+        $q = $S.IQueue.Dequeue()
+        $q.Op | Should -Be 'sec'
+        $S.ICache[$q.Key] = @{ State = 'done'; At = (Get-Date).AddMinutes(-2); Data = '{"rules":[{"id":"A01"}],"tenants":[],"cells":[]}'; Error = '' }
+        $d = Req $S POST '/api/sec' @{} $t
+        $d.J.pending | Should -BeFalse
+        $d.J.data.rules[0].id | Should -Be 'A01'
+        # Neu pruefen (force) nach mehr als 30 Sekunden: neue Anfrage
+        (Req $S POST '/api/sec' @{ force = $true } $t).J.pending | Should -BeTrue
+        $S.IQueue.Count | Should -Be 1
+        $S.Sec = $false
+        (Req $S POST '/api/sec' @{} $t).Code | Should -Be 403
+        (Req $S GET '/api/sec' $null $t).Code | Should -Be 405
+    }
+    It 'ohne Kopplung: 401' {
+        $S = New-TestState
+        (Req $S POST '/api/sec' @{}).Code | Should -Be 401
+    }
+    It 'Daten: Regeln nach Grad sortiert, je Tenant Ampel, Zellen ohne Detaillisten; Fehler eines Tenants bleibt bei diesem' {
+        function global:Get-HUSecRules { @([pscustomobject]@{ Id = 'A40'; Sev = 'Mittel'; Area = 'Entra'; Title = 'M' }, [pscustomobject]@{ Id = 'A02'; Sev = 'Kritisch'; Area = 'Entra'; Title = 'K' }) }
+        function global:Get-HUSecWhy($Id) { "warum $Id" }
+        function global:Get-HUSecItemsLabel($Id) { 'Konten' }
+        function global:Test-HUSecItemsExport($Id) { $false }
+        function global:Invoke-HUSecCatalog { param($TenantKey, $Settings) if ($TenantKey -eq 'b') { throw 'kein Zugriff' }; @([pscustomobject]@{ RuleId = 'A02'; Status = 'Abweichung'; Reason = ''; Count = 3; Detail = 'drei' }, [pscustomobject]@{ RuleId = '-'; Status = 'Fehler' }) }
+        function global:Get-HUSecLight { param($Results, $Key) [pscustomobject]@{ Color = $(if (@($Results).Count) { 'Gelb' } else { 'Grau' }); Ok = 0; Checked = @($Results).Count } }
+        try {
+            $S = New-TestState
+            $d = Get-HURemoteSecData $S ([pscustomobject]@{})
+            @($d.rules)[0].id | Should -Be 'A02'
+            @($d.rules)[0].why | Should -Be 'warum A02'
+            @($d.tenants).Count | Should -Be 2
+            @($d.tenants)[0].light | Should -Be 'Gelb'
+            @($d.tenants)[1].err | Should -BeLike '*kein Zugriff*'
+            @($d.cells).Count | Should -Be 1
+            @($d.cells)[0].c | Should -Be 3
+            (@(@($d.cells)[0].Keys) -join ',') | Should -Be 't,r,s,x,c,d'
+        } finally { foreach ($f in 'Get-HUSecRules', 'Get-HUSecWhy', 'Invoke-HUSecCatalog', 'Get-HUSecLight', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport') { Remove-Item "function:global:$f" -ErrorAction SilentlyContinue } }
+    }
+    It 'Detailliste: Personendaten nur nach PIN (dann 5 Minuten frei), Fehlversuche sperren; Liste ohne Personendaten ohne PIN' {
+        Set-HURemotePin '4711'
+        $S = New-TestState; $S.Pin = Read-HURemotePin; $t = Pair $S
+        $dh = @($S.Devices.Keys)[0]
+        (Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'a' } $t).Code | Should -Be 400     # Regel ohne bekannte Liste
+        $S.SecRules['A37'] = @{ Label = 'Konten'; Pii = $true }
+        $S.SecRules['A42'] = @{ Label = 'Apps'; Pii = $false }
+        (Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'zz' } $t).Code | Should -Be 400
+        $r = Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'a' } $t
+        $r.Code | Should -Be 403; $r.J.pin | Should -BeTrue
+        $S.IQueue.Count | Should -Be 0
+        $w = Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'a'; pin = '0000' } $t
+        $w.Code | Should -Be 403; $w.J.error | Should -BeLike 'Falsche PIN*'
+        $S.Devices[$dh].PinFails | Should -Be 1
+        $ok = Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'a'; pin = '4711' } $t
+        $ok.J.pending | Should -BeTrue
+        $S.Devices[$dh].PinFails | Should -Be 0
+        $q = $S.IQueue.Dequeue(); $q.Op | Should -Be 'secitems'; $q.Id | Should -Be 'A37'; $q.Tenant | Should -Be 'a'
+        $S.ICache[$q.Key] = @{ State = 'done'; At = (Get-Date); Data = '{"label":"Konten","cols":["Konto"],"rows":[["x@y"]],"total":1}'; Error = '' }
+        # innerhalb der Freigabe ohne PIN
+        $d = Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'a' } $t
+        $d.J.data.rows[0][0] | Should -Be 'x@y'
+        # Freigabe abgelaufen: wieder PIN
+        $S.SecGrant[$dh] = (Get-Date).AddMinutes(-1)
+        (Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'a' } $t).J.pin | Should -BeTrue
+        # ohne Personendaten: ohne PIN
+        (Req $S POST '/api/secitems' @{ rule = 'A42'; tenant = 'b' } $t).J.pending | Should -BeTrue
+        # drei falsche PINs sperren das Handy
+        1..3 | ForEach-Object { [void](Req $S POST '/api/secitems' @{ rule = 'A37'; tenant = 'a'; pin = '9999' } $t) }
+        $S.Devices[$dh].Locked | Should -BeTrue
+        (Req $S POST '/api/secitems' @{ rule = 'A42'; tenant = 'b' } $t).Code | Should -Be 403
+    }
+    It 'Detailliste: Spalten und Zeilen, sortiert, hoechstens 1000' {
+        function global:Get-HUSecItems { param($TenantKey, $Settings, $RuleId) 1..1200 | ForEach-Object { [pscustomobject]@{ Konto = "u$($_.ToString('0000'))"; Rollen = 'GA' } } | Sort-Object Konto -Descending }
+        function global:Get-HUSecRules { @([pscustomobject]@{ Id = 'A37'; ItemsSort = 'Konto' }) }
+        function global:Get-HUSecItemsLabel($Id) { 'Konten' }
+        try {
+            $d = Get-HURemoteSecItems @{ Tenant = 'a'; Id = 'A37' } ([pscustomobject]@{})
+            $d.label | Should -Be 'Konten'
+            (@($d.cols) -join ',') | Should -Be 'Konto,Rollen'
+            @($d.rows).Count | Should -Be 1000
+            $d.total | Should -Be 1200
+            @($d.rows)[0][0] | Should -Be 'u0001'
+        } finally { foreach ($f in 'Get-HUSecItems', 'Get-HUSecRules', 'Get-HUSecItemsLabel') { Remove-Item "function:global:$f" -ErrorAction SilentlyContinue } }
+    }
+    It 'Webseite: Reiter Sicherheit ist zunaechst versteckt und haengt an Breite und Freigabe' {
+        $f = Get-HURemoteWebFiles -Version '2.2.5' -Pc 'PC1'
+        $html = [Text.Encoding]::UTF8.GetString($f['/index.html'].Bytes)
+        $html | Should -Match 'id="tSec" class="hidden"'
+        $html | Should -Match 'id="vSec"'
+        $js = [Text.Encoding]::UTF8.GetString($f['/app.js'].Bytes)
+        $js | Should -Match "min-width: 600px"
+        $js | Should -Match "S\.secOn = j\.sec === true"
+    }
+}
+
 Describe 'Fernbedienung: Webseite' {
     It 'liefert Seite, Skript, Design, Service Worker, Manifest; strenge CSP ohne Inline-Skript' {
         $f = Get-HURemoteWebFiles -Version '2.1.11' -Pc 'PC1'

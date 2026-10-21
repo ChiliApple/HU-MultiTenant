@@ -563,7 +563,7 @@ function New-HUSecretsCardSpec {
         Level = @('OK', 'Warning', 'Error')[$worst]
         Rows  = $rows
         Facts = [ordered]@{ 'Warnschwelle' = "$WarnDays Tage oder weniger"; 'Betroffen' = $rows.Count }
-        Lines = @('App-Registrierung: Entra admin center > App-Registrierungen > Zertifikate und Geheimnisse. Neues Secret danach in HU-MultiTenant unter Einstellungen > Tenants eintragen.')
+        Lines = @("App-Registrierung: Entra admin center $([char]0x203A) App-Registrierungen $([char]0x203A) Zertifikate und Geheimnisse. Neues Secret danach in HU-MultiTenant unter Einstellungen $([char]0x203A) Tenants eintragen.")
     }
 }
 
@@ -707,11 +707,12 @@ function New-HUSecDriftCardSpec {
     $Lost = @($Lost | Where-Object { $_ })
     if (-not $ch.Count -and -not $Lost.Count) { return $null }
     $rows = @()
+    $ar = ' ' + [char]0x2192 + ' '   # Pfeil (ueberlebt die Textbereinigung, anders als >)
     foreach ($g in ($ch | Group-Object Tenant | Sort-Object Name)) {
         $nm = if ($Names.ContainsKey("$($g.Name)")) { "$($Names["$($g.Name)"])" } else { "$($g.Name)" }
         $items = @($g.Group)
         $txt = (@($items | Select-Object -First $MaxPerTenant | ForEach-Object {
-                    $w = if ($_.Kind -eq 'Anzahl') { "Anzahl $($_.WasCount) > $($_.IsCount)" } else { "$($_.Was) > $($_.Is)" }
+                    $w = if ($_.Kind -eq 'Anzahl') { "Anzahl $($_.WasCount)$ar$($_.IsCount)" } else { "$($_.Was)$ar$($_.Is)" }
                     "$($_.RuleId) $($_.Title) ($w)"
                 }) -join '; ')
         if ($items.Count -gt $MaxPerTenant) { $txt += " und $($items.Count - $MaxPerTenant) weitere" }
@@ -729,7 +730,7 @@ function New-HUSecDriftCardSpec {
     if ($Lost.Count) { $pv = ("$pv$(if ($pv) { ', ' })$(Get-HUTeamsCountText $Lost.Count 'Pruefung' 'Pruefungen') verloren").Trim() }
     $facts = [ordered]@{ 'Aenderungen' = $ch.Count; 'davon schlechter' = $worse }
     if ($Lost.Count) { $facts['Pruefung verloren'] = $Lost.Count }
-    if ($Compare.Unchecked -gt 0) { $facts['Nicht pruefbar (nicht verglichen)'] = $Compare.Unchecked }
+    if ($Compare.Unchecked -gt 0) { $facts['Heute nicht pruefbar (im Soll pruefbar)'] = $Compare.Unchecked }
     $since = ''
     try { if ($Compare.Since) { $since = ([datetime]$Compare.Since).ToLocalTime().ToString('dd.MM.yyyy HH:mm', [cultureinfo]::InvariantCulture) } } catch { }
     return @{
@@ -738,7 +739,7 @@ function New-HUSecDriftCardSpec {
         Level = $(if ($worse -or $Lost.Count) { 'Error' } else { 'Warning' })
         Rows  = $rows
         Facts = $facts
-        Lines = @("Vergleich mit dem gespeicherten Soll-Stand$(if ($since) { " vom $since" }). Neuen Stand uebernehmen: Analyse > Sicherheit > Soll speichern.")
+        Lines = @("Vergleich mit dem gespeicherten Soll-Stand$(if ($since) { " vom $since" }). Neuen Stand uebernehmen: Analyse $([char]0x203A) Sicherheit $([char]0x203A) Soll speichern.")
     }
 }
 

@@ -181,6 +181,7 @@ function Start-HUSecItems {
     Set-HUSecBusy $true
     $script:SecItemsTitle = "$Title - $(Get-HUAnaTenantName $Key)"
     $script:SecItemsLabel = Get-HUSecItemsLabel $RuleId
+    $script:SecItemsExport = Test-HUSecItemsExport $RuleId
     Add-HURtbLine $script:Controls['rtbAna'] "Lade $($script:SecItemsLabel): $(Get-HUAnaTenantName $Key) ($RuleId) ..." '#90CAF9'
     $started = Start-HUJob -Name "SecItems-$RuleId-$Key" -Quiet -Output $script:Controls['rtbAna'] -Vars @{ TK = $Key; RID = $RuleId } -Code {
             $rows = @(); $err = ''
@@ -194,8 +195,8 @@ function Start-HUSecItems {
             if (-not $d) { Show-HUMessage "$($script:SecItemsLabel): keine Antwort erhalten (siehe Log)." -Icon Warning; return }
             if ($d.Err) { Show-HUMessage "$($script:SecItemsLabel) konnten nicht gelesen werden: $($d.Err)" -Icon Warning; return }
             if (-not @($d.Rows).Count) { Show-HUMessage "Keine betroffenen $($script:SecItemsLabel)." -Icon Info; return }
-            Add-HURtbLine $script:Controls['rtbAna'] "$(@($d.Rows).Count) Eintraege (nur Anzeige, nicht gespeichert)" '#81C784'
-            Show-HUQSTable -Title $script:SecItemsTitle -Objects @($d.Rows) -FilePrefix 'Katalog-Liste' -NoExport
+            Add-HURtbLine $script:Controls['rtbAna'] "$(@($d.Rows).Count) Eintraege$(if ($script:SecItemsExport) { ' (ohne Personendaten, Speichern moeglich)' } else { ' (nur Anzeige, nicht gespeichert)' })" '#81C784'
+            Show-HUQSTable -Title $script:SecItemsTitle -Objects @($d.Rows) -FilePrefix 'Katalog-Liste' -NoExport:(-not $script:SecItemsExport)
         }
     if (-not $started) { Set-HUSecBusy $false }
 }

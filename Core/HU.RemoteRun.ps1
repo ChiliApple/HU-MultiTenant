@@ -302,7 +302,7 @@ function Invoke-HURemoteRun($S, $Req, $Settings, [string]$AppRoot, [int]$LimitMi
     Nimmt Anfragen aus $S.IQueue und legt das Ergebnis als JSON in $S.ICache ab. Nur lesend.
 #>
 function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
-    foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Intune') { $p = Join-Path $AppRoot "Core\$m.psm1"; if (Test-Path $p) { Import-Module $p -Force -DisableNameChecking -ErrorAction Stop } }
+    foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Intune', 'HU.SecCatalog') { $p = Join-Path $AppRoot "Core\$m.psm1"; if (Test-Path $p) { Import-Module $p -Force -DisableNameChecking -ErrorAction Stop } }
     $logDir = Join-Path $AppRoot 'Logs\Remote'
     try { if (-not (Test-Path -LiteralPath $logDir)) { [void](New-Item -ItemType Directory -Path $logDir -Force) } } catch { }
     try { Initialize-Logging -LogFilePath (Join-Path $logDir '{date}_Intune.log') -MinLevel 'INFO' } catch { }
@@ -311,15 +311,60 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
         try { if ($S.IQueue.Count) { $q = $S.IQueue.Dequeue() } } catch { $q = $null }
         if (-not $q) { Start-Sleep -Milliseconds 200; continue }
         $data = $null; $err = ''
-        try { if ($q.Op -eq 'detail') { $data = Get-HURemoteIntuneData $q $Settings } else { $data = [object[]]@(Get-HURemoteIntuneData $q $Settings) } }
+        try {
+            if ($q.Op -eq 'sec') { $data = Get-HURemoteSecData $S $Settings }
+            elseif ($q.Op -eq 'secitems') { $data = Get-HURemoteSecItems $q $Settings }
+            elseif ($q.Op -eq 'detail') { $data = Get-HURemoteIntuneData $q $Settings } else { $data = [object[]]@(Get-HURemoteIntuneData $q $Settings) }
+        }
         catch {
             $err = "$($_.Exception.Message)"
-            if ($err -match '403|Forbidden|Authorization') { $err = 'Berechtigung fehlt (DeviceManagementApps.ReadWrite.All bzw. DeviceManagementScripts.ReadWrite.All, Group.Read.All)' }
+            if ($q.Op -notin 'sec', 'secitems' -and $err -match '403|Forbidden|Authorization') { $err = 'Berechtigung fehlt (DeviceManagementApps.ReadWrite.All bzw. DeviceManagementScripts.ReadWrite.All, Group.Read.All)' }
             if ($err.Length -gt 300) { $err = $err.Substring(0, 300) }
         }
         $json = if ($err) { '' } elseif ($data -is [array] -and -not $data.Count) { '[]' } else { ConvertTo-Json -InputObject $data -Depth 6 -Compress }
         $S.ICache[$q.Key] = @{ State = $(if ($err) { 'error' } else { 'done' }); At = (Get-Date); Data = $json; Error = $err }
     }
+}
+<#
+.SYNOPSIS
+    Sicherheitskatalog fuer das Handy: alle Tenants der Fernbedienung, je Regel Status, Grund, Zahl und Kurztext.
+    Keine Detaillisten (Konten, Geraete, Apps) - die bleiben am PC. Fehler eines Tenants stehen nur bei diesem Tenant.
+#>
+function Get-HURemoteSecData($S, $Settings) {
+    $rank = @{ Kritisch = 0; Hoch = 1; Mittel = 2; Niedrig = 3 }
+    $rules = @(Get-HUSecRules | Sort-Object @{ Expression = { if ($rank.ContainsKey("$($_.Sev)")) { $rank["$($_.Sev)"] } else { 9 } } }, @{ Expression = { "$($_.Id)" } })
+    # Regeln mit Detailliste: Bezeichnung und ob Personendaten drin sind (ohne Export-Freigabe = Personendaten, dann PIN)
+    foreach ($r in $rules) {
+        if ($r.PSObject.Properties['Items']) { $S.SecRules["$($r.Id)"] = @{ Label = (Get-HUSecItemsLabel "$($r.Id)"); Pii = (-not (Test-HUSecItemsExport "$($r.Id)")) } }
+    }
+    $tenants = New-Object System.Collections.Generic.List[object]
+    $cells = New-Object System.Collections.Generic.List[object]
+    foreach ($t in @($S.Tenants)) {
+        $k = "$($t.key)"; if (-not $k) { continue }
+        $res = @(); $terr = ''
+        try { $res = @(Invoke-HUSecCatalog -TenantKey $k -Settings $Settings) }
+        catch { $terr = "$($_.Exception.Message)"; if ($terr.Length -gt 200) { $terr = $terr.Substring(0, 200) } }
+        $l = Get-HUSecLight -Results $res -Key $k
+        $tenants.Add([ordered]@{ key = $k; name = "$($t.name)"; light = "$($l.Color)"; ok = [int]$l.Ok; checked = [int]$l.Checked; err = $terr })
+        foreach ($r in @($res | Where-Object { $_.RuleId -and $_.RuleId -ne '-' })) {
+            $d = "$($r.Detail)"; if ($d.Length -gt 240) { $d = $d.Substring(0, 240) + ' ...' }
+            $cells.Add([ordered]@{ t = $k; r = "$($r.RuleId)"; s = "$($r.Status)"; x = "$($r.Reason)"; c = $(if ($null -ne $r.Count -and "$($r.Count)" -ne '') { [int]$r.Count } else { $null }); d = $d })
+        }
+    }
+    return [ordered]@{
+        rules   = @($rules | ForEach-Object { $m = $S.SecRules["$($_.Id)"]; [ordered]@{ id = "$($_.Id)"; sev = "$($_.Sev)"; area = "$($_.Area)"; title = "$($_.Title)"; why = (Get-HUSecWhy "$($_.Id)"); items = $(if ($m) { "$($m.Label)" } else { '' }); pii = [bool]($m -and $m.Pii) } })
+        tenants = @($tenants.ToArray())
+        cells   = @($cells.ToArray())
+    }
+}
+# Detailliste einer Regel (wie "Konten anzeigen" am PC) als Spalten und Zeilen; hoechstens 1000 Zeilen
+function Get-HURemoteSecItems($Q, $Settings) {
+    $rows = @(Get-HUSecItems -TenantKey "$($Q.Tenant)" -Settings $Settings -RuleId "$($Q.Id)")
+    $rule = @(Get-HUSecRules | Where-Object { "$($_.Id)" -eq "$($Q.Id)" })[0]
+    if ($rule -and $rule.PSObject.Properties['ItemsSort'] -and "$($rule.ItemsSort)") { $rows = @($rows | Sort-Object -Property "$($rule.ItemsSort)") }
+    $cols = @(); if ($rows.Count) { $cols = @($rows[0].PSObject.Properties | ForEach-Object { "$($_.Name)" }) }
+    $out = @($rows | Select-Object -First 1000 | ForEach-Object { $o = $_; , @($cols | ForEach-Object { $v = $o.$_; if ($null -eq $v) { '' } else { "$v" } }) })
+    return [ordered]@{ label = (Get-HUSecItemsLabel "$($Q.Id)"); cols = $cols; rows = $out; total = $rows.Count }
 }
 function ConvertTo-HURemoteAsgRows($Rows) {
     return @(@($Rows) | Where-Object { $_ } | ForEach-Object {
