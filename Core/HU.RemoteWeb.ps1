@@ -738,7 +738,7 @@ $script:HURemoteJs = @'
     if (!tries) { S.sxTok = (S.sxTok || 0) + 1; }
     var tok = S.sxTok;
     sxBusy('sec', true);
-    var rq = { tenants: sxSelKeys() };
+    var pf = sxPref(), rq = { tenants: sxSelKeys(), sevOff: Object.keys(pf.sevOff).filter(function (k) { return pf.sevOff[k]; }), areaOff: Object.keys(pf.areaOff).filter(function (k) { return pf.areaOff[k]; }) };
     if (force === 'peek') { rq.peek = true; } else if (force && !tries) { rq.force = true; }
     api('POST', '/api/sec', rq).then(function (j) {
       if (tok !== S.sxTok) { return; }
@@ -835,11 +835,13 @@ $script:HURemoteJs = @'
     var d = S.sx, tb = $('sxTab'); clear(tb);
     if (!d) { return; }
     var ts = d.tenants || [];
-    $('sxAt').textContent = 'Stand ' + S.sxAt + ' - ' + (d.rules || []).length + ' Regeln, ' + ts.length + ' Tenant(s)';
+    // Grade/Bereiche, die beim Pruefen ausgeblendet waren, sind nicht geladen - dann Hinweis
+    var miss = (d.sevOff || []).filter(function (v) { return !sxPref().sevOff[v]; }).concat((d.areaOff || []).filter(function (v) { return !sxPref().areaOff[v]; }));
+    $('sxAt').textContent = 'Stand ' + S.sxAt + ' - ' + (d.rules || []).length + ' von ' + (d.total || (d.rules || []).length) + ' Regeln geprueft, ' + ts.length + ' Tenant(s)' + (miss.length ? ' - ' + miss.join(', ') + ' nicht geladen: Pruefen tippen' : '');
     var q = ($('sxFind').value || '').toLowerCase(), dev = $('sxDev').getAttribute('aria-pressed') === 'true';
     var p = sxPref();
     var sel = (d.rules || []).filter(function (r) { return !p.sevOff[r.sev] && !p.areaOff[r.area] && !(q && (r.id + ' ' + r.sev + ' ' + r.area + ' ' + r.title).toLowerCase().indexOf(q) < 0); });
-    var part = sel.length < (d.rules || []).length;
+    var part = sel.length < (d.total || (d.rules || []).length);
     var hr = el('tr'); ['Grad', 'Nr', 'Regel'].forEach(function (h) { hr.appendChild(el('th', '', h)); });
     ts.forEach(function (t) { hr.appendChild(el('th', 'c', t.name)); });
     var th = el('thead'); th.appendChild(hr); tb.appendChild(th);

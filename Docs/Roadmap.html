@@ -149,7 +149,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Roadmap <span class="ver">v2.2.8</span>
+      HU-MultiTenant · Roadmap <span class="ver">v2.2.9</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -185,7 +185,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
         <li>Teams und Gruppen (Besitzer, Gäste, öffentliche Teams, wer anlegen darf) – <b>in Arbeit</b>, Regeln C03 bis C08 in der Testversion.</li>
         <li>Intune-Sicherheit im Vergleich zwischen den Tenants (Compliance-Grundeinstellung, Update-Ring, BitLocker, Defender, Firewall, LAPS, ASR, EDR, offene Alarme) – <b>in Arbeit</b>, Regeln E05 bis E16 in der Testversion.</li>
         <li>Lizenzen und Konten-Hygiene, Anmeldeauffälligkeiten (K01 bis K06) – <b>in Arbeit</b>, in der Testversion.</li>
-        <li>Noch offen aus der Security Baseline: wer mit wem teilen darf, Tenant-Standardeinstellungen für Gäste, Cross-Tenant-Zugriff im Detail (Standardregeln statt nur Partnerliste), delegierte App-Zustimmungen für alle Benutzer, Anmelderisiko-Auswertung (mit P2).</li>
+        <li>Rest aus der Security Baseline: Selbstregistrierung, Cross-Tenant-Standardregeln, delegierte App-Zustimmungen für alle Benutzer, Freigabe nach außen (A43 bis A46) – <b>in Arbeit</b>, in der Testversion. Anmelderisiko nur mit P2 (K06).</li>
         <li>Reste aus der Prüfung von 2.2.5 (Höchstwert für die Gast-Anmeldehäufigkeit, Namensauflösung bei Notfallkonten, Hinweis bei schlechterem Soll-Stand) – <b>erledigt</b> in der Testversion.</li>
       </ul>
     </article>
@@ -227,11 +227,12 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
       </ul>
     </article>
   </div>
+  <p class="note"><b>Regelnummern im Sicherheitskatalog:</b> <b>A</b> = Einstellungen aus der Security Baseline (Entra, Apps, SharePoint) · <b>V</b> = Grundschutz-Kernregeln der ersten Fassung (Notfallkonten, MFA, Gerätecode-Flow, Berichte) · <b>C</b> = Teams und Gruppen · <b>E</b> = Intune, Geräte und Defender · <b>K</b> = Konten, Lizenzen und Anmeldungen. Die Nummer bleibt fest und wird nie neu vergeben; Lücken stammen von zusammengelegten oder gestrichenen Regeln. Zum Filtern zählt die Spalte <i>Bereich</i>, nicht der Buchstabe.</p>
   <p class="note">Ein Plan, keine Zusage – Reihenfolge und Umfang können sich ändern. Was fertig ist, steht im <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/CHANGELOG.md">Changelog</a>.</p>
 </section>
 
 <footer>
-  <span>Stand 21.10.2026 · Version 2.2.8</span>
+  <span>Stand 21.10.2026 · Version 2.2.9</span>
   <a href="Einstieg.html">Einstieg</a>
   <a href="Funktionen.html">Funktionen</a>
   <a href="Anleitung.html">Anleitung</a>

@@ -1182,3 +1182,45 @@ Describe 'Farben in der Matrix' {
         $sec | Should -Match 'listable'
     }
 }
+
+Describe 'Regelnummern passen zur Handy-Pruefung' {
+    It 'jede Regel-Id hat die Form Buchstabe + Zahl (wie in HU.Remote /api/secitems geprueft)' {
+        foreach ($r in @(InModuleScope HU.SecCatalog { Get-HUSecRules })) { "$($r.Id)" | Should -MatchExactly '^[A-Z]\d{1,3}$' }
+    }
+}
+
+Describe 'Rest der Security Baseline (A43 bis A46)' {
+    BeforeEach { Base }
+    It 'A43: Selbstregistrierung' {
+        $global:HUSecFx['authorizationPolicy'] | Add-Member -NotePropertyName allowEmailVerifiedUsersToJoinOrganization -NotePropertyValue $true -Force
+        $global:HUSecFx['authorizationPolicy'] | Add-Member -NotePropertyName allowedToSignUpEmailBasedSubscriptions -NotePropertyValue $false -Force
+        $r = Run 'A43'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        $global:HUSecFx['authorizationPolicy'].allowEmailVerifiedUsersToJoinOrganization = $false
+        (Run 'A43').Status | Should -Be 'OK'
+    }
+    It 'A44: Direct Connect erlaubt ist Abweichung, Standard (blockiert) OK' {
+        $global:HUSecFx['crossTenantAccessPolicy/default'] = [pscustomobject]@{ b2bDirectConnectInbound = [pscustomobject]@{ usersAndGroups = [pscustomobject]@{ accessType = 'blocked' } }; b2bDirectConnectOutbound = [pscustomobject]@{ usersAndGroups = [pscustomobject]@{ accessType = 'blocked' } }; inboundTrust = [pscustomobject]@{ isMfaAccepted = $true } }
+        $r = Run 'A44'; $r.Status | Should -Be 'OK'; $r.Detail | Should -Match 'MFA fremder Tenants vertraut: ja'
+        $global:HUSecFx['crossTenantAccessPolicy/default'].b2bDirectConnectInbound.usersAndGroups.accessType = 'allowed'
+        (Run 'A44').Status | Should -Be 'Abweichung'
+    }
+    It 'A45: kritische Zustimmung fuer alle Benutzer, Namen gebuendelt' {
+        Mock -ModuleName HU.SecCatalog Invoke-HUSecBatch { @{ '11111111-1111-1111-1111-111111111111' = [pscustomobject]@{ displayName = 'Fremde App' }; '22222222-2222-2222-2222-222222222222' = [pscustomobject]@{ displayName = 'Microsoft Graph' } } }
+        $global:HUSecFx['oauth2PermissionGrants'] = @(
+            [pscustomobject]@{ clientId = '11111111-1111-1111-1111-111111111111'; resourceId = '22222222-2222-2222-2222-222222222222'; scope = 'openid User.Read Mail.Read' },
+            [pscustomobject]@{ clientId = '33333333-3333-3333-3333-333333333333'; resourceId = '22222222-2222-2222-2222-222222222222'; scope = 'User.Read' })
+        $r = Run 'A45'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1; $r.Detail | Should -Match 'Fremde App'
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'A45'); $it.Count | Should -Be 2
+        ($it | Where-Object { $_.App -eq 'Fremde App' }).Kritisch | Should -Be 'Mail.Read'
+        Test-HUSecItemsExport 'A45' | Should -BeTrue
+        # Mailzugriff ueber Exchange-Protokolle zaehlt wie Mail.Read
+        $global:HUSecFx['oauth2PermissionGrants'] = @([pscustomobject]@{ clientId = '11111111-1111-1111-1111-111111111111'; resourceId = '22222222-2222-2222-2222-222222222222'; scope = 'EAS.AccessAsUser.All offline_access' })
+        (Run 'A45').Status | Should -Be 'Abweichung'
+    }
+    It 'A46: nur bestehende Gaeste OK, neue Gaeste Abweichung' {
+        $global:HUSecFx['/admin/sharepoint/settings'] = [pscustomobject]@{ sharingCapability = 'existingExternalUserSharingOnly' }
+        (Run 'A46').Status | Should -Be 'OK'
+        $global:HUSecFx['/admin/sharepoint/settings'] = [pscustomobject]@{ sharingCapability = 'externalUserSharingOnly' }
+        $r = Run 'A46'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -Match 'neue und bestehende'
+    }
+}

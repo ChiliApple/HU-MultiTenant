@@ -1152,7 +1152,10 @@ function Get-HURemoteResponse($S, $Req) {
             $known = @(@($S.Tenants) | ForEach-Object { "$($_.key)" } | Where-Object { $_ })
             $want = @(@($body.tenants) | Select-Object -First 50 | ForEach-Object { "$_" } | Where-Object { $known -contains $_ } | Sort-Object -Unique)
             if (-not $want.Count) { $want = @($known | Sort-Object) }
-            $key = 'sec|' + ($want -join ',')
+            # ausgeblendete Grade und Bereiche werden gar nicht erst geprueft (schneller); je Auswahl ein eigener Zwischenspeicher
+            $sevOff = @(@($body.sevOff) | Select-Object -First 10 | ForEach-Object { "$_" } | Where-Object { $_ -in 'Kritisch', 'Hoch', 'Mittel', 'Niedrig' } | Sort-Object -Unique)
+            $areaOff = @(@($body.areaOff) | Select-Object -First 20 | ForEach-Object { "$_" } | Where-Object { $_ -cmatch '^[A-Za-z]{1,20}$' } | Sort-Object -Unique)
+            $key = 'sec|' + ($want -join ',') + '|s:' + ($sevOff -join ',') + '|a:' + ($areaOff -join ',')
             $force = ($body.force -eq $true)
             $peek = ($body.peek -eq $true)   # nur nachsehen, keine Pruefung starten (beim Oeffnen des Reiters)
             $res = $null; $full = $false
@@ -1168,7 +1171,7 @@ function Get-HURemoteResponse($S, $Req) {
                 elseif ($S.IQueue.Count -ge 20) { $full = $true }
                 else {
                     $S.ICache[$key] = @{ State = 'pending'; At = $now; Data = ''; Error = '' }
-                    $S.IQueue.Enqueue(@{ Key = $key; Op = 'sec'; Area = 'sec'; Tenant = ''; Id = ''; Keys = $want })
+                    $S.IQueue.Enqueue(@{ Key = $key; Op = 'sec'; Area = 'sec'; Tenant = ''; Id = ''; Keys = $want; SevOff = $sevOff; AreaOff = $areaOff })
                     $res = '{"ok":true,"pending":true}'
                 }
             } finally { [System.Threading.Monitor]::Exit($S.ICache.SyncRoot) }
@@ -1183,7 +1186,7 @@ function Get-HURemoteResponse($S, $Req) {
             if ($dev.Locked) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Dieses Handy ist gesperrt (zu viele falsche PINs) - am PC entsperren' }) }
             $rid = "$($body.rule)"; $tk = "$($body.tenant)"
             $meta = $S.SecRules[$rid]
-            if ($rid -notmatch '^[ACEV]\d{1,3}$' -or -not $meta) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Zu dieser Regel gibt es keine Liste' }) }
+            if ($rid -cnotmatch '^[A-Z]\d{1,3}$' -or -not $meta) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Zu dieser Regel gibt es keine Liste' }) }
             if (@($S.Tenants | ForEach-Object { "$($_.key)" }) -cnotcontains $tk) { return (New-HURemoteJson 400 @{ ok = $false; error = "Unbekannter Tenant '$tk'" }) }
             if ($meta.Pii) {
                 $g = $S.SecGrant[$dh]

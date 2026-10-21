@@ -312,7 +312,7 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
         if (-not $q) { Start-Sleep -Milliseconds 200; continue }
         $data = $null; $err = ''
         try {
-            if ($q.Op -eq 'sec') { $data = Get-HURemoteSecData $S $Settings @($q.Keys) }
+            if ($q.Op -eq 'sec') { $data = Get-HURemoteSecData $S $Settings @($q.Keys) @($q.SevOff) @($q.AreaOff) }
             elseif ($q.Op -eq 'secitems') { $data = Get-HURemoteSecItems $q $Settings }
             elseif ($q.Op -eq 'detail') { $data = Get-HURemoteIntuneData $q $Settings } else { $data = [object[]]@(Get-HURemoteIntuneData $q $Settings) }
         }
@@ -330,9 +330,13 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
     Sicherheitskatalog fuer das Handy: alle Tenants der Fernbedienung, je Regel Status, Grund, Zahl und Kurztext.
     Keine Detaillisten (Konten, Geraete, Apps) - die bleiben am PC. Fehler eines Tenants stehen nur bei diesem Tenant.
 #>
-function Get-HURemoteSecData($S, $Settings, [string[]]$Keys = @()) {
+function Get-HURemoteSecData($S, $Settings, [string[]]$Keys = @(), [string[]]$SevOff = @(), [string[]]$AreaOff = @()) {
     $rank = @{ Kritisch = 0; Hoch = 1; Mittel = 2; Niedrig = 3 }
-    $rules = @(Get-HUSecRules | Sort-Object @{ Expression = { if ($rank.ContainsKey("$($_.Sev)")) { $rank["$($_.Sev)"] } else { 9 } } }, @{ Expression = { "$($_.Id)" } })
+    $allRules = @(Get-HUSecRules)
+    # am Handy ausgeblendete Grade und Bereiche nicht pruefen (spart Zeit, v. a. Anmeldeprotokolle und Teams)
+    $SevOff = @($SevOff | Where-Object { $_ }); $AreaOff = @($AreaOff | Where-Object { $_ })
+    $rules = @($allRules | Where-Object { $SevOff -notcontains "$($_.Sev)" -and $AreaOff -notcontains "$($_.Area)" } | Sort-Object @{ Expression = { if ($rank.ContainsKey("$($_.Sev)")) { $rank["$($_.Sev)"] } else { 9 } } }, @{ Expression = { "$($_.Id)" } })
+    $ids = @($rules | ForEach-Object { "$($_.Id)" })
     # Regeln mit Detailliste: Bezeichnung und ob Personendaten drin sind (ohne Export-Freigabe = Personendaten, dann PIN)
     foreach ($r in $rules) {
         if ($r.PSObject.Properties['Items']) { $S.SecRules["$($r.Id)"] = @{ Label = (Get-HUSecItemsLabel "$($r.Id)"); Pii = (-not (Test-HUSecItemsExport "$($r.Id)")) } }
@@ -343,7 +347,7 @@ function Get-HURemoteSecData($S, $Settings, [string[]]$Keys = @()) {
         $k = "$($t.key)"; if (-not $k) { continue }
         if (@($Keys | Where-Object { $_ }).Count -and $Keys -notcontains $k) { continue }   # nur die am Handy gewaehlten Tenants
         $res = @(); $terr = ''
-        try { $res = @(Invoke-HUSecCatalog -TenantKey $k -Settings $Settings) }
+        try { $res = @(if (-not $ids.Count) { } elseif ($ids.Count -lt $allRules.Count) { Invoke-HUSecCatalog -TenantKey $k -Settings $Settings -RuleIds $ids } else { Invoke-HUSecCatalog -TenantKey $k -Settings $Settings }) }
         catch { $terr = "$($_.Exception.Message)"; if ($terr.Length -gt 200) { $terr = $terr.Substring(0, 200) } }
         $l = Get-HUSecLight -Results $res -Key $k
         $tenants.Add([ordered]@{ key = $k; name = "$($t.name)"; light = "$($l.Color)"; ok = [int]$l.Ok; checked = [int]$l.Checked; err = $terr })
@@ -356,6 +360,9 @@ function Get-HURemoteSecData($S, $Settings, [string[]]$Keys = @()) {
         rules   = @($rules | ForEach-Object { $m = $S.SecRules["$($_.Id)"]; [ordered]@{ id = "$($_.Id)"; sev = "$($_.Sev)"; area = "$($_.Area)"; title = "$($_.Title)"; why = (Get-HUSecWhy "$($_.Id)"); items = $(if ($m) { "$($m.Label)" } else { '' }); pii = [bool]($m -and $m.Pii) } })
         tenants = @($tenants.ToArray())
         cells   = @($cells.ToArray())
+        total   = $allRules.Count
+        sevOff  = @($SevOff)
+        areaOff = @($AreaOff)
     }
 }
 # Detailliste einer Regel (wie "Konten anzeigen" am PC) als Spalten und Zeilen; hoechstens 1000 Zeilen
