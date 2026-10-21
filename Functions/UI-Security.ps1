@@ -24,6 +24,20 @@ function Get-HUSecCellText($Cell) {
     }
 }
 
+# Farbe des Zeichens je Status (Schalter "Farben"; aus = normale Schrift)
+function Get-HUSecCellColor($Cell) {
+    $def = '#CCCCCC'
+    if (-not $Cell -or -not $script:Controls['chkSecColor'] -or -not $script:Controls['chkSecColor'].IsChecked) { return $def }
+    switch ("$($Cell.Status)") {
+        'OK' { return '#81C784' }
+        'Abweichung' { return '#EF5350' }
+        'Fehler' { return '#EF5350' }
+        'Ausnahme' { return '#FFB74D' }
+        'NichtPruefbar' { return '#8A8A8A' }
+        default { return $def }
+    }
+}
+
 # Gewaehlter Filterwert (Tag) einer Auswahlbox; leer = alle
 function Get-HUSecComboTag([string]$Name) {
     $cb = $script:Controls[$Name]
@@ -31,19 +45,47 @@ function Get-HUSecComboTag([string]$Name) {
     return ''
 }
 
-# Bereiche (Mehrfachauswahl per Haken): ausgeblendete Bereiche
-function Get-HUSecAreasOff {
-    $sp = $script:Controls['spSecArea']
+# Bereiche und Grade (Mehrfachauswahl per Haken in einer aufklappenden Liste): ausgeblendete Werte
+$script:HUSecPick = @{ Area = @{ All = 'Alle Bereiche'; None = 'Kein Bereich'; Many = 'Bereiche'; State = 'secAreaOff' }; Sev = @{ All = 'Alle Grade'; None = 'Kein Grad'; Many = 'Grade'; State = 'secSevOff' } }
+function Get-HUSecPickOff([string]$Kind) {
+    $sp = $script:Controls["spSec$Kind"]
     if (-not $sp) { return @() }
     return @($sp.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and -not $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
 }
+function Get-HUSecAreasOff { return @(Get-HUSecPickOff 'Area') }
 
-function Update-HUSecAreaButton {
-    $sp = $script:Controls['spSecArea']
-    $all = @($sp.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
+function Update-HUSecPickButton([string]$Kind) {
+    $p = $script:HUSecPick[$Kind]
+    $all = @($script:Controls["spSec$Kind"].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
     $on = @($all | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
-    $txt = if ($on.Count -eq $all.Count) { 'Alle Bereiche' } elseif (-not $on.Count) { 'Kein Bereich' } elseif ($on.Count -eq 1) { $on[0] } elseif ($all.Count - $on.Count -eq 1) { "ohne $(@($all | Where-Object { -not $_.IsChecked })[0].Tag)" } else { "$($on.Count) Bereiche" }
-    $script:Controls['btnSecArea'].Content = "$txt $([char]0x25BE)"
+    $txt = if ($on.Count -eq $all.Count) { $p.All } elseif (-not $on.Count) { $p.None } elseif ($on.Count -eq 1) { $on[0] } elseif ($all.Count - $on.Count -eq 1) { "ohne $(@($all | Where-Object { -not $_.IsChecked })[0].Tag)" } else { "$($on.Count) $($p.Many)" }
+    $script:Controls["btnSec$Kind"].Content = "$txt $([char]0x25BE)"
+}
+
+# Liste mit Haken aufbauen (gespeichert werden die ausgeblendeten Werte), dazu "alle"
+function Initialize-HUSecPick([string]$Kind, [string[]]$Values) {
+    $c = $script:Controls; $p = $script:HUSecPick[$Kind]
+    $off = @("$(Get-HUStateValue $p.State '')" -split ',' | Where-Object { $_ })
+    $fg = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#CCCCCC')
+    foreach ($v in $Values) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Content = $v; $cb.IsChecked = ($off -notcontains $v); $cb.Foreground = $fg; $cb.FontSize = 12; $cb.Margin = [System.Windows.Thickness]::new(0, 3, 0, 3)
+        $cb.Tag = $v; $cb.Uid = $Kind
+        $cb.Add_Click({ $k = $this.Uid; Set-HUStateValue $script:HUSecPick[$k].State (@(Get-HUSecPickOff $k) -join ','); Update-HUSecPickButton $k; Update-HUSecGrid })
+        [void]$c["spSec$Kind"].Children.Add($cb)
+    }
+    $lnk = New-Object System.Windows.Controls.Button
+    $lnk.Content = 'alle'; $lnk.Uid = $Kind; $lnk.FontSize = 11; $lnk.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0); $lnk.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Left; $lnk.Padding = [System.Windows.Thickness]::new(8, 1, 8, 1)
+    try { $lnk.Style = $script:Window.FindResource('DarkButton'); $lnk.Background = ([System.Windows.Media.BrushConverter]::new().ConvertFromString('#3E3E42')) } catch { }
+    $lnk.Add_Click({ $k = $this.Uid; foreach ($x in @($script:Controls["spSec$k"].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $x.IsChecked = $true }; Set-HUStateValue $script:HUSecPick[$k].State ''; Update-HUSecPickButton $k; Update-HUSecGrid })
+    [void]$c["spSec$Kind"].Children.Add($lnk)
+    Update-HUSecPickButton $Kind
+    # Klick auf den Knopf bei offener Liste: das Popup schliesst schon beim Druecken - nicht gleich wieder oeffnen
+    $script:HUSecPick[$Kind].Closed = [datetime]::MinValue
+    $c["popSec$Kind"].Uid = $Kind
+    $c["popSec$Kind"].Add_Closed({ $script:HUSecPick[$this.Uid].Closed = [datetime]::Now })
+    $c["btnSec$Kind"].Uid = $Kind
+    $c["btnSec$Kind"].Add_Click({ $k = $this.Uid; if (([datetime]::Now - $script:HUSecPick[$k].Closed).TotalMilliseconds -gt 300) { $script:Controls["popSec$k"].IsOpen = $true } })
 }
 
 function Get-HUSecVisibleRows {
@@ -54,8 +96,8 @@ function Get-HUSecVisibleRows {
     if (-not $NoStatusFilter -and $script:Controls['chkSecDiff'].IsChecked) { $rows = @($rows | Where-Object { $_.Diff }) }
     $offArea = @(Get-HUSecAreasOff)
     if ($offArea.Count) { $rows = @($rows | Where-Object { $offArea -notcontains "$($_.Area)" }) }
-    $selSev = Get-HUSecComboTag 'cmbSecSev'
-    if ($selSev) { $rows = @($rows | Where-Object { "$($_.Sev)" -eq $selSev }) }
+    $offSev = @(Get-HUSecPickOff 'Sev')
+    if ($offSev.Count) { $rows = @($rows | Where-Object { $offSev -notcontains "$($_.Sev)" }) }
     foreach ($w in @("$($script:Controls['txtSecFilter'].Text)" -split '\s+' | Where-Object { $_ })) {
         $rows = @($rows | Where-Object { ("$($_.RuleId) $($_.Area) $($_.Title) $($_.Sev)").IndexOf($w, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
     }
@@ -97,7 +139,7 @@ function Update-HUSecGrid {
     & $pad 28
     # Tenant-Spalten: Text wie bisher, in der letzten Zeile (Ampel) zusaetzlich ein farbiger Punkt
     for ($i = 0; $i -lt $keys.Count; $i++) {
-        $tpl = [System.Windows.Markup.XamlReader]::Parse("<DataTemplate xmlns=`'http://schemas.microsoft.com/winfx/2006/xaml/presentation`'><StackPanel Orientation=`'Horizontal`'><Ellipse Width=`'9`' Height=`'9`' Margin=`'0,0,6,0`' VerticalAlignment=`'Center`' Fill=`'{Binding Lc$i}`' Visibility=`'{Binding Lv$i}`'/><TextBlock Text=`'{Binding T$i}`' VerticalAlignment=`'Center`'/></StackPanel></DataTemplate>")
+        $tpl = [System.Windows.Markup.XamlReader]::Parse("<DataTemplate xmlns=`'http://schemas.microsoft.com/winfx/2006/xaml/presentation`'><StackPanel Orientation=`'Horizontal`'><Ellipse Width=`'9`' Height=`'9`' Margin=`'0,0,6,0`' VerticalAlignment=`'Center`' Fill=`'{Binding Lc$i}`' Visibility=`'{Binding Lv$i}`'/><TextBlock Text=`'{Binding T$i}`' Foreground=`'{Binding Fc$i}`' VerticalAlignment=`'Center`'/></StackPanel></DataTemplate>")
         $col = New-Object System.Windows.Controls.DataGridTemplateColumn
         $col.Header = Get-HUAnaTenantName $keys[$i]; $col.CellTemplate = $tpl; $col.SortMemberPath = "T$i"; $col.MinWidth = 120
         $col.Width = New-Object System.Windows.Controls.DataGridLength(1, $cells)
@@ -105,7 +147,7 @@ function Update-HUSecGrid {
     }
     $items = foreach ($m in @(Get-HUSecVisibleRows)) {
         $o = [ordered]@{ Sev = $m.Sev; SevRank = [int]@{ Kritisch = 0; Hoch = 1; Mittel = 2; Niedrig = 3 }["$($m.Sev)"]; Area = $m.Area; Nr = "$($m.RuleId)"; Rule = "$($m.Title)" }
-        for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = Get-HUSecCellText $m.Cells[$keys[$i]] }
+        for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = Get-HUSecCellText $m.Cells[$keys[$i]]; $o["Fc$i"] = Get-HUSecCellColor $m.Cells[$keys[$i]] }
         for ($i = 0; $i -lt $keys.Count; $i++) { $o["Lc$i"] = '#000000'; $o["Lv$i"] = 'Collapsed' }
         $o.Ref = $m
         [pscustomobject]$o
@@ -125,7 +167,7 @@ function Update-HUSecGrid {
             if ($had -and -not @($rows).Count) { $f["T$i"] = '-'; $f["Lc$i"] = $col['Grau'] }
             elseif ($rows) { $l = Get-HUSecLight -Results @($rows) -Key $keys[$i]; $f["T$i"] = "$($l.Ok) von $($l.Checked)"; $f["Lc$i"] = $col[$l.Color] }
             else { $f["T$i"] = '...'; $f["Lc$i"] = $col['Grau'] }
-            $f["Lv$i"] = 'Visible'
+            $f["Lv$i"] = 'Visible'; $f["Fc$i"] = '#CCCCCC'
         }
         $f.Ref = $null
         $items += [pscustomobject]$f
@@ -368,14 +410,19 @@ function Show-HUSecDetail {
     if (-not $why) { $ctl.lblWhy.Visibility = 'Collapsed' }
     $ctl.gridD.ItemsSource = @(foreach ($k in @($script:SecKeys)) {
             $cell = $m.Cells[$k]
-            $det = if ($cell) { "$($cell.Detail)$(if ($cell.Complete -eq $false) { ' (unvollstaendig gelesen)' })" } else { '' }
+            # "unvollstaendig" nur, wenn wirklich gelesen wurde (nicht bei fehlender Lizenz, fehlendem Recht oder Handpruefung)
+            $noRead = ($cell -and "$($cell.Status)" -eq 'NichtPruefbar' -and "$($cell.Reason)" -in 'Lizenz', 'Recht', 'Manuell', 'NichtAnwendbar')
+            $det = if ($cell) { "$($cell.Detail)$(if ($cell.Complete -eq $false -and -not $noRead) { ' (unvollstaendig gelesen)' })" } else { '' }
             [pscustomobject]@{ Key = $k; Tenant = (Get-HUAnaTenantName $k); Status = (Get-HUSecStatusText $cell); Anzahl = $(if ($cell -and [int]"0$($cell.Count)" -gt 0) { "$($cell.Count)" } else { '' }); Detail = $det }
         })
-    $hasItems = [bool](@(Get-HUSecRules | Where-Object { $_.Id -eq $m.RuleId -and $_.PSObject.Properties['Items'] }).Count)
+    # Liste nur anbieten, wenn mindestens ein Tenant die Regel pruefen konnte
+    $listable = { param($cl) $cl -and "$($cl.Status)" -in 'OK', 'Abweichung', 'Ausnahme', 'Info' }
+    $hasItems = [bool](@(Get-HUSecRules | Where-Object { $_.Id -eq $m.RuleId -and $_.PSObject.Properties['Items'] }).Count) -and [bool](@(@($script:SecKeys) | Where-Object { & $listable $m.Cells[$_] }).Count)
     if (-not $hasItems) { $ctl.btnList.Visibility = 'Collapsed' } else { $ctl.btnList.Content = "$(Get-HUSecItemsLabel "$($m.RuleId)") anzeigen" }
     $ctl.btnList.Add_Click({
             $sel = $ctl.gridD.SelectedItem
             if (-not $sel) { Show-HUMessage 'Bitte zuerst einen Tenant in der Tabelle markieren.' -Icon Info -Owner $w; return }
+            if (-not (& $listable $m.Cells["$($sel.Key)"])) { Show-HUMessage "Bei $($sel.Tenant) war die Regel nicht pruefbar - keine Liste." -Icon Info -Owner $w; return }
             Start-HUSecItems -Key "$($sel.Key)" -RuleId "$($m.RuleId)" -Title "$($m.Title)" -Window $w -Button $ctl.btnList
         })
     $state = @{ Exc = $false }
@@ -539,34 +586,18 @@ function Register-HUSecHandlers {
     $c = $script:Controls
     $c['chkSecDev'].IsChecked = [bool](Get-HUStateValue 'secDev' $false)
     $c['chkSecDiff'].IsChecked = [bool](Get-HUStateValue 'secDiff' $false)
+    $c['chkSecColor'].IsChecked = [bool](Get-HUStateValue 'secColor' $true)
+    $c['chkSecColor'].Add_Checked({ Set-HUStateValue 'secColor' $true; Update-HUSecGrid })
+    $c['chkSecColor'].Add_Unchecked({ Set-HUStateValue 'secColor' $false; Update-HUSecGrid })
     $c['chkSecDev'].Add_Checked({ Set-HUStateValue 'secDev' $true; Update-HUSecGrid })
     $c['chkSecDev'].Add_Unchecked({ Set-HUStateValue 'secDev' $false; Update-HUSecGrid })
     $c['chkSecDiff'].Add_Checked({ Set-HUStateValue 'secDiff' $true; Update-HUSecGrid })
     $c['chkSecDiff'].Add_Unchecked({ Set-HUStateValue 'secDiff' $false; Update-HUSecGrid })
-    # Bereiche: Haken je Bereich (aus den Regeln), gespeichert werden die ausgeblendeten
-    $off = @("$(Get-HUStateValue 'secAreaOff' '')" -split ',' | Where-Object { $_ })
+    # Bereiche und Grade: Haken je Wert (Bereiche auch aus den Regeln)
     $areas = @('Entra', 'Apps', 'Intune', 'Teams', 'SharePoint')
     foreach ($a in @(Get-HUSecRules | ForEach-Object { "$($_.Area)" } | Sort-Object -Unique)) { if ($areas -notcontains $a) { $areas += $a } }
-    foreach ($a in $areas) {
-        $cb = New-Object System.Windows.Controls.CheckBox
-        $cb.Content = $a; $cb.Tag = $a; $cb.IsChecked = ($off -notcontains $a); $cb.Foreground = ([System.Windows.Media.BrushConverter]::new().ConvertFromString('#CCCCCC')); $cb.FontSize = 12; $cb.Margin = [System.Windows.Thickness]::new(0, 3, 0, 3)
-        $cb.Add_Click({ Set-HUStateValue 'secAreaOff' (@(Get-HUSecAreasOff) -join ','); Update-HUSecAreaButton; Update-HUSecGrid })
-        [void]$c['spSecArea'].Children.Add($cb)
-    }
-    $lnk = New-Object System.Windows.Controls.Button
-    $lnk.Content = 'alle'; $lnk.FontSize = 11; $lnk.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0); $lnk.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Left; $lnk.Padding = [System.Windows.Thickness]::new(8, 1, 8, 1)
-    try { $lnk.Style = $script:Window.FindResource('DarkButton'); $lnk.Background = ([System.Windows.Media.BrushConverter]::new().ConvertFromString('#3E3E42')) } catch { }
-    $lnk.Add_Click({ foreach ($x in @($script:Controls['spSecArea'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $x.IsChecked = $true }; Set-HUStateValue 'secAreaOff' ''; Update-HUSecAreaButton; Update-HUSecGrid })
-    [void]$c['spSecArea'].Children.Add($lnk)
-    Update-HUSecAreaButton
-    # Klick auf den Knopf bei offener Liste: das Popup schliesst schon beim Druecken - nicht gleich wieder oeffnen
-    $script:SecAreaClosed = [datetime]::MinValue
-    $c['popSecArea'].Add_Closed({ $script:SecAreaClosed = [datetime]::Now })
-    $c['btnSecArea'].Add_Click({ if (([datetime]::Now - $script:SecAreaClosed).TotalMilliseconds -gt 300) { $script:Controls['popSecArea'].IsOpen = $true } })
-    # Grad (Auswahlliste) wiederherstellen
-    $savedSev = "$(Get-HUStateValue 'secSev' '')"
-    foreach ($it in @($c['cmbSecSev'].Items)) { if ("$($it.Tag)" -eq $savedSev) { $c['cmbSecSev'].SelectedItem = $it } }
-    $c['cmbSecSev'].Add_SelectionChanged({ Set-HUStateValue 'secSev' (Get-HUSecComboTag 'cmbSecSev'); Update-HUSecGrid })
+    Initialize-HUSecPick 'Area' $areas
+    Initialize-HUSecPick 'Sev' @('Kritisch', 'Hoch', 'Mittel', 'Niedrig')
     $c['txtSecFilter'].Add_TextChanged({ Update-HUSecGrid })
     $c['btnSecRun'].Add_Click({ Start-HUSecRun })
     $c['btnSecExc'].Add_Click({ Show-HUSecExceptions })

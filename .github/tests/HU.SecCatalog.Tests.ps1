@@ -1012,7 +1012,11 @@ Describe 'Ampel folgt der Auswahl (Grad, Bereich, Suchtext)' {
         $x | Should -Not -Match 'cmbSecArea'
         # ein einzelnes Paar in @(@(...)) wird von PowerShell flachgeklopft (Startfehler 2.2.6-Test)
         $sec | Should -Not -Match "foreach \(\`$pair in @\(@\('[^']+', '[^']+'\)\)\)"
-        $sec | Should -Match "Get-HUStateValue 'secAreaOff'"
+        $sec | Should -Match "State = 'secAreaOff'"
+        $sec | Should -Match "State = 'secSevOff'"
+        $sec | Should -Match "Initialize-HUSecPick 'Sev' @\('Kritisch', 'Hoch', 'Mittel', 'Niedrig'\)"
+        $x | Should -Match 'x:Name="popSecSev"'
+        $x | Should -Not -Match 'cmbSecSev'
         $sec | Should -Match 'Regel \(\$\(@\(Get-HUSecVisibleRows\)\.Count\)\)'
     }
 }
@@ -1041,7 +1045,7 @@ Describe 'Intune-Pruefpaket (E05 bis E16)' {
         $global:HUSecFx['/deviceManagement'] = { if ($global:HUSecBeta) { [pscustomobject]@{ settings = [pscustomobject]@{ secureByDefault = $true } } } else { [pscustomobject]@{ id = 'x' } } }
         (Run 'E05').Status | Should -Be 'OK'
         $global:HUSecFx['select=settings'] = { [pscustomobject]@{ id = 'x' } }; $global:HUSecFx['/deviceManagement'] = { [pscustomobject]@{ id = 'x' } }
-        $r = Run 'E05'; $r.Status | Should -Be 'NichtPruefbar'; $r.Detail | Should -Match 'Intune Admin Center'
+        $r = Run 'E05'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Manuell'; $r.Detail | Should -Match 'Intune Admin Center'
     }
     It 'E06: zugewiesene Windows-Richtlinie mit Mindestversion' {
         $global:HUSecFx['deviceCompliancePolicies'] = @([pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CompliancePolicy'; displayName = 'Win'; osMinimumVersion = '10.0.19045'; assignments = @([pscustomobject]@{ id = 'a' }) })
@@ -1083,5 +1087,98 @@ Describe 'Intune-Pruefpaket (E05 bis E16)' {
         $global:HUSecFx['managedDevices'] = @([pscustomobject]@{ deviceName = 'a'; lastSyncDateTime = [datetime]::UtcNow.AddDays(-40).ToString('o') }, [pscustomobject]@{ deviceName = 'b'; lastSyncDateTime = [datetime]::UtcNow.AddDays(-2).ToString('o') })
         $r = Run 'E12'; $r.Status | Should -Be 'Info'; $r.Count | Should -Be 1
         @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'E12').Count | Should -Be 1
+    }
+}
+
+Describe 'K06 gefaehrdete Benutzer' {
+    BeforeEach { Base }
+    It 'ohne P2 Lizenz, ohne Abruf - auch wenn das Recht fehlt' {
+        Mock -ModuleName HU.SecCatalog Get-HUSecTokenRoles { return @('Organization.Read.All') }
+        $global:HUSecFx['riskyUsers'] = Fail 500
+        $r = Run 'K06'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Lizenz'
+    }
+    It 'Benutzer gefaehrdet ist Abweichung, leer OK, Lizenzfehler von Graph ist Lizenz' {
+        $global:HUSecFx['subscribedSkus'] = Skus @('AAD_PREMIUM', 'AAD_PREMIUM_P2')
+        $global:HUSecFx['riskyUsers'] = @([pscustomobject]@{ userDisplayName = 'A'; userPrincipalName = 'a@x'; riskLevel = 'high'; riskState = 'atRisk' })
+        $r = Run 'K06'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        $global:HUSecFx['riskyUsers'] = @()
+        (Run 'K06').Status | Should -Be 'OK'
+        $ex = New-Object System.Exception('Your tenant is not licensed for this feature (Entra ID Premium P2)'); $ex.Data['StatusCode'] = 403
+        $global:HUSecFx['riskyUsers'] = { throw $ex }.GetNewClosure()
+        $r = Run 'K06'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Lizenz'
+        $global:HUSecFx['riskyUsers'] = Fail 403
+        (Run 'K06').Reason | Should -Be 'Recht'
+        Test-HUSecItemsExport 'K06' | Should -BeFalse
+    }
+}
+
+Describe 'Konten, Lizenzen und Anmeldungen (K01 bis K05)' {
+    AfterAll { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    BeforeEach {
+        Base
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue
+        $old = [datetime]::UtcNow.AddDays(-400).ToString('o'); $new = [datetime]::UtcNow.AddDays(-5).ToString('o')
+        $global:HUSecFx['signInActivity'] = @(
+            [pscustomobject]@{ id = 'U1'; userPrincipalName = 'alt@x'; accountEnabled = $true; userType = 'Member'; createdDateTime = $old; signInActivity = [pscustomobject]@{ lastSuccessfulSignInDateTime = [datetime]::UtcNow.AddDays(-300).ToString('o') }; assignedLicenses = @(1) },
+            [pscustomobject]@{ id = 'U2'; userPrincipalName = 'nie@x'; accountEnabled = $true; userType = 'Member'; createdDateTime = $old; signInActivity = $null; assignedLicenses = @() },
+            [pscustomobject]@{ id = 'U3'; userPrincipalName = 'aktiv@x'; accountEnabled = $true; userType = 'Member'; createdDateTime = $old; signInActivity = [pscustomobject]@{ lastSuccessfulSignInDateTime = $new }; assignedLicenses = @(1) },
+            [pscustomobject]@{ id = 'U4'; userPrincipalName = 'neu@x'; accountEnabled = $true; userType = 'Member'; createdDateTime = $new; signInActivity = $null; assignedLicenses = @() },
+            [pscustomobject]@{ id = 'U5'; userPrincipalName = 'aus@x'; accountEnabled = $false; userType = 'Member'; createdDateTime = $old; signInActivity = $null; assignedLicenses = @(1, 2) })
+    }
+    It 'K01: lange nicht angemeldet und nie angemeldet, neue Konten und deaktivierte nicht' {
+        $r = Run 'K01'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 2; $r.Detail | Should -Match 'davon 1 nie'
+        @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'K01').Count | Should -Be 2
+    }
+    It 'K01: mit Gruppen-Sollwert nur deren Mitglieder' {
+        [void](Save-HUSecBaselineEdit -Scope '' -Values @{ 'K01.groups' = '11111111-1111-1111-1111-111111111111' })
+        $global:HUSecFx['transitiveMembers'] = @([pscustomobject]@{ id = 'u1' })
+        $r = Run 'K01'; $r.Count | Should -Be 1; $r.Detail | Should -Match '1 Gruppe'
+    }
+    It 'K02: deaktiviert mit Lizenz' {
+        $r = Run 'K02'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+    }
+    It 'K03: ueberbucht und fast voll, Liste exportierbar' {
+        $global:HUSecFx['subscribedSkus'] = @(
+            [pscustomobject]@{ skuPartNumber = 'A'; consumedUnits = 120; prepaidUnits = [pscustomobject]@{ enabled = 100 }; servicePlans = @([pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) },
+            [pscustomobject]@{ skuPartNumber = 'B'; consumedUnits = 97; prepaidUnits = [pscustomobject]@{ enabled = 100 }; servicePlans = @() },
+            [pscustomobject]@{ skuPartNumber = 'C'; consumedUnits = 10; prepaidUnits = [pscustomobject]@{ enabled = 100 }; servicePlans = @() })
+        $r = Run 'K03'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 2; $r.Detail | Should -Match 'ueberbucht: A 120/100'
+        Test-HUSecItemsExport 'K03' | Should -BeTrue
+    }
+    It 'K04: Konto ab 20 falschen Kennwoertern' {
+        $global:HUSecFx['errorCode%20eq%2050126'] = @(1..25 | ForEach-Object { [pscustomobject]@{ userPrincipalName = 'opfer@x'; ipAddress = "1.2.3.$_"; location = [pscustomobject]@{ countryOrRegion = 'RU' } } }) + @([pscustomobject]@{ userPrincipalName = 'tipp@x'; ipAddress = '5.5.5.5'; location = [pscustomobject]@{ countryOrRegion = 'AT' } })
+        $r = Run 'K04'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'K04'); $it.Count | Should -Be 2
+        $global:HUSecEp | Should -Match 'createdDateTime%20ge%20'
+    }
+    It 'K05: Anmeldung aus nicht erlaubtem Land, Sollwert-Laender' {
+        $global:HUSecFx['errorCode%20eq%200'] = @([pscustomobject]@{ userPrincipalName = 'a@x'; location = [pscustomobject]@{ countryOrRegion = 'AT' } }, [pscustomobject]@{ userPrincipalName = 'b@x'; location = [pscustomobject]@{ countryOrRegion = 'IT'; city = 'Rom' } })
+        $r = Run 'K05'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1; $r.Detail | Should -Match 'IT'
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'K05.countries' = 'at, it' }).Count | Should -Be 0
+        (Run 'K05').Status | Should -Be 'OK'
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'K05.countries' = 'Italien' }).Count | Should -Be 1
+    }
+    It 'K05: ausgenommene Konten zaehlen nicht, Liste je Konto und Land zusammengefasst' {
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue
+        $global:HUSecFx['errorCode%20eq%200'] = @(
+            [pscustomobject]@{ userId = '22222222-2222-2222-2222-222222222222'; userPrincipalName = 'vpn@x'; appDisplayName = 'Portal'; location = [pscustomobject]@{ countryOrRegion = 'SK'; city = 'Bratislava' } },
+            [pscustomobject]@{ userId = 'u9'; userPrincipalName = 'b@x'; appDisplayName = 'Teams'; ipAddress = '1.1.1.1'; createdDateTime = '2026-10-20T14:01:00Z'; location = [pscustomobject]@{ countryOrRegion = 'US'; city = 'Seattle' } },
+            [pscustomobject]@{ userId = 'u9'; userPrincipalName = 'b@x'; appDisplayName = 'Outlook'; ipAddress = '1.1.1.1'; createdDateTime = '2026-10-20T14:02:00Z'; location = [pscustomobject]@{ countryOrRegion = 'US'; city = 'Seattle' } })
+        (Run 'K05').Count | Should -Be 2
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'K05.accounts' = '22222222-2222-2222-2222-222222222222' }).Count | Should -Be 0
+        $r = Run 'K05'; $r.Count | Should -Be 1; $r.Detail | Should -Match '1 Konto/Konten ausgenommen'
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'K05')
+        $it.Count | Should -Be 1; $it[0].Anzahl | Should -Be 2; $it[0].Apps | Should -Be 'Outlook, Teams'
+    }
+}
+
+Describe 'Farben in der Matrix' {
+    It 'Schalter Farben vorhanden und gespeichert, Zellfarbe gebunden' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $sec = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Security.ps1') -Raw
+        (Get-Content -LiteralPath (Join-Path $root 'XAML\MainWindow.xaml') -Raw) | Should -Match 'x:Name="chkSecColor"'
+        $sec | Should -Match "Get-HUStateValue 'secColor'"
+        $sec | Should -Match 'Foreground=`.\{Binding Fc\$i\}'
+        $sec | Should -Match 'listable'
     }
 }

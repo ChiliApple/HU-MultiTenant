@@ -1,5 +1,14 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.8 (Testversion, 21.10.2026, Weg zu 2.3.0)
+
+- **Sicherheitskatalog, Pruefpaket Konten, Lizenzen und Anmeldungen (alle lesend, keine neuen Rechte):** K01 aktive Konten ohne erfolgreiche Anmeldung seit mehr als 180 Tagen (Mittel; Sollwerte Tage und Gruppen, z. B. nur Lehrkraefte), K02 deaktivierte Konten mit Lizenz (Niedrig), K03 Lizenzen ab 95 % belegt oder ueberbucht (Mittel, Liste speicherbar), K04 Haeufung falscher Kennwoerter je Konto in 24 Stunden (Hoch, ab 20), K05 erfolgreiche Anmeldungen aus nicht erlaubten Laendern in 24 Stunden (Mittel; Sollwerte Laendercodes, Standard AT, DE, und ausgenommene Konten, z. B. Admin mit VPN; Liste je Konto, Land und Ort zusammengefasst mit Anzahl, Apps, Adressen, erster und letzter Zeit). Jetzt 64 Regeln.
+- **Sicherheitskatalog, Details:** "(unvollstaendig gelesen)" nur noch, wenn wirklich gelesen wurde (nicht bei Lizenz, Recht, Handpruefung); der Listen-Knopf erscheint nur, wenn mindestens ein Tenant pruefbar war, und meldet einen nicht pruefbaren Tenant statt eines Fehlers.
+- **Sicherheitskatalog, Lizenz vor Recht:** fehlt die Lizenz, steht "? Lizenz" auch dann, wenn zusaetzlich das Recht fehlt (vorher "? Recht", z. B. K06 ohne P2).
+- **Sicherheitskatalog, Matrix:** Grade wie Bereiche per Haken (vorher Auswahlliste ohne "Niedrig"); Schalter "Farben" faerbt die Zeichen (gruen ok, rot Abweichung, orange Ausnahme, grau nicht pruefbar), Einstellung bleibt gespeichert.
+- **Sicherheitskatalog K06 gefaehrdete Benutzer (Hoch):** liest die gefaehrdeten Benutzer aus Entra ID Protection. Graph liefert die Daten nur mit Entra ID P2 (Microsoft Learn, im Betrieb mit P1 bestaetigt); ohne P2 steht "? Lizenz", ohne Abruf. Das Leserecht IdentityRiskyUser.Read.All ist deshalb nicht vorausgewaehlt und nur mit P2 noetig. Verweigert Graph trotzdem wegen der Lizenz, steht ebenfalls "? Lizenz" statt "? Recht".
+- **Sicherheitskatalog E05:** Graph liefert die Compliance-Grundeinstellung der App nicht (im Betrieb mit allen Abfragevarianten bestaetigt) - jetzt "? Manuell" mit Weg im Intune Admin Center statt "? Technik"; E16 listet nur noch Alarme mit Schweregrad hoch und mittel, die neuesten zuerst.
+
 ## v2.2.7 (Testversion, 21.10.2026, Weg zu 2.3.0)
 
 - **Sicherheitskatalog, Pruefpaket Intune (alle lesend, keine neuen Rechte):** E05 Geraete ohne Compliance-Richtlinie gelten als nicht konform (Hoch), E06 Windows-Mindestversion in der Compliance (Mittel), E07 Update-Ring zugewiesen und Qualitaetsupdates hoechstens 7 Tage zurueckgestellt (Hoch, Sollwert), E08 BitLocker-, E09 Antivirus-, E10 Firewall-Richtlinie (eine zugewiesene Sicherheits-Baseline zaehlt ersatzweise), E11 Windows LAPS (Hoch), E12 Geraete ohne Sync seit mehr als 30 Tagen (zur Kenntnis, Sollwert), E13 ASR-Regeln, E14 EDR-Onboarding, E15 Defender for Endpoint mit Intune verbunden (Mittel), E16 offene Defender-Alarme hoch oder mittel (Hoch). Jetzt 58 Regeln.

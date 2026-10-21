@@ -22,7 +22,8 @@
     { "name": "DeviceManagementConfiguration.ReadWrite.All", "default": false, "why": "Analyse: Profile/Richtlinien kopieren und aus Backup wiederherstellen" },
     { "name": "Policy.ReadWrite.ConditionalAccess", "default": false, "why": "Conditional Access aus Backup wiederherstellen" },
     { "name": "Directory.Read.All", "default": false, "why": "aeltere Extensions (Enterprise-App-Inventur: Berechtigungen)" },
-    { "name": "SecurityEvents.Read.All", "default": true, "why": "Sicherheitskatalog: Microsoft Secure Score (A32)" }
+    { "name": "SecurityEvents.Read.All", "default": true, "why": "Sicherheitskatalog: Microsoft Secure Score (A32)" },
+    { "name": "IdentityRiskyUser.Read.All", "default": false, "why": "Sicherheitskatalog: gefaehrdete Benutzer (K06) - nur mit Entra ID P2 sinnvoll, mit P1 verweigert Graph den Abruf" }
   ],
   "risky": [
     "Application.ReadWrite.All", "Application.ReadWrite.OwnedBy", "AppRoleAssignment.ReadWrite.All",
