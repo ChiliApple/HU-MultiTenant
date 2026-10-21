@@ -31,12 +31,29 @@ function Get-HUSecComboTag([string]$Name) {
     return ''
 }
 
+# Bereiche (Mehrfachauswahl per Haken): ausgeblendete Bereiche
+function Get-HUSecAreasOff {
+    $sp = $script:Controls['spSecArea']
+    if (-not $sp) { return @() }
+    return @($sp.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and -not $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+}
+
+function Update-HUSecAreaButton {
+    $sp = $script:Controls['spSecArea']
+    $all = @($sp.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })
+    $on = @($all | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+    $txt = if ($on.Count -eq $all.Count) { 'Alle Bereiche' } elseif (-not $on.Count) { 'Kein Bereich' } elseif ($on.Count -eq 1) { $on[0] } elseif ($all.Count - $on.Count -eq 1) { "ohne $(@($all | Where-Object { -not $_.IsChecked })[0].Tag)" } else { "$($on.Count) Bereiche" }
+    $script:Controls['btnSecArea'].Content = "$txt $([char]0x25BE)"
+}
+
 function Get-HUSecVisibleRows {
+    # -NoStatusFilter: nur Grad, Bereich und Suchtext (fuer die Ampel - "Nur Abweichungen" wuerde sie verfaelschen)
+    param([switch]$NoStatusFilter)
     $rows = @($script:SecMatrix)
-    if ($script:Controls['chkSecDev'].IsChecked) { $rows = @($rows | Where-Object { $_.Dev }) }
-    if ($script:Controls['chkSecDiff'].IsChecked) { $rows = @($rows | Where-Object { $_.Diff }) }
-    $selArea = Get-HUSecComboTag 'cmbSecArea'
-    if ($selArea) { $rows = @($rows | Where-Object { "$($_.Area)" -eq $selArea }) }
+    if (-not $NoStatusFilter -and $script:Controls['chkSecDev'].IsChecked) { $rows = @($rows | Where-Object { $_.Dev }) }
+    if (-not $NoStatusFilter -and $script:Controls['chkSecDiff'].IsChecked) { $rows = @($rows | Where-Object { $_.Diff }) }
+    $offArea = @(Get-HUSecAreasOff)
+    if ($offArea.Count) { $rows = @($rows | Where-Object { $offArea -notcontains "$($_.Area)" }) }
     $selSev = Get-HUSecComboTag 'cmbSecSev'
     if ($selSev) { $rows = @($rows | Where-Object { "$($_.Sev)" -eq $selSev }) }
     foreach ($w in @("$($script:Controls['txtSecFilter'].Text)" -split '\s+' | Where-Object { $_ })) {
@@ -76,7 +93,7 @@ function Update-HUSecGrid {
     & $pad 16
     & $add 'Nr' 'Nr' (New-Object System.Windows.Controls.DataGridLength(1, $cells))
     & $pad 16
-    & $add 'Regel' 'Rule' (New-Object System.Windows.Controls.DataGridLength(1, $cells))
+    & $add $(if ($script:SecRan) { "Regel ($(@(Get-HUSecVisibleRows).Count))" } else { 'Regel' }) 'Rule' (New-Object System.Windows.Controls.DataGridLength(1, $cells))
     & $pad 28
     # Tenant-Spalten: Text wie bisher, in der letzten Zeile (Ampel) zusaetzlich ein farbiger Punkt
     for ($i = 0; $i -lt $keys.Count; $i++) {
@@ -97,10 +114,16 @@ function Update-HUSecGrid {
     # letzte Zeile: Ampel je Tenant in derselben Spalte (rot = ab 10 nicht erfuellte Regeln, gelb = 1 bis 9, gruen = keine)
     if ($script:SecRan -and $keys.Count) {
         $col = @{ Rot = '#EF5350'; Gelb = '#FFB74D'; Gruen = '#66BB6A'; Grau = '#757575' }
-        $f = [ordered]@{ Sev = ''; SevRank = 9; Area = ''; Nr = ''; Rule = 'Ampel' }
+        # Ampel folgt der Auswahl (Grad, Bereich, Suchtext); "Nur Abweichungen/Unterschiede" zaehlt nicht als Auswahl
+        $selIds = @(Get-HUSecVisibleRows -NoStatusFilter | ForEach-Object { "$($_.RuleId)" })
+        $part = ($selIds.Count -lt @($script:SecMatrix).Count)
+        $f = [ordered]@{ Sev = ''; SevRank = 9; Area = ''; Nr = ''; Rule = $(if ($part) { "Ampel (nur Auswahl: $($selIds.Count) Regeln)" } else { 'Ampel' }) }
         for ($i = 0; $i -lt $keys.Count; $i++) {
             $rows = $script:SecData["$($keys[$i])"]
-            if ($rows) { $l = Get-HUSecLight -Results @($rows) -Key $keys[$i]; $f["T$i"] = "$($l.Ok) von $($l.Checked)"; $f["Lc$i"] = $col[$l.Color] }
+            $had = [bool]$rows
+            if ($rows -and $part) { $rows = @(@($rows) | Where-Object { $selIds -contains "$($_.RuleId)" }) }
+            if ($had -and -not @($rows).Count) { $f["T$i"] = '-'; $f["Lc$i"] = $col['Grau'] }
+            elseif ($rows) { $l = Get-HUSecLight -Results @($rows) -Key $keys[$i]; $f["T$i"] = "$($l.Ok) von $($l.Checked)"; $f["Lc$i"] = $col[$l.Color] }
             else { $f["T$i"] = '...'; $f["Lc$i"] = $col['Grau'] }
             $f["Lv$i"] = 'Visible'
         }
@@ -199,6 +222,106 @@ function Start-HUSecItems {
             Show-HUQSTable -Title $script:SecItemsTitle -Objects @($d.Rows) -FilePrefix 'Katalog-Liste' -NoExport:(-not $script:SecItemsExport)
         }
     if (-not $started) { Set-HUSecBusy $false }
+}
+
+# Sollwerte bearbeiten (Datei baseline.json im Katalog-Ordner): Ebene "Alle Tenants" oder ein Tenant; leeres Feld = Wert entfernen
+function Show-HUSecBaseline {
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sollwerte - Sicherheitskatalog" Width="1100" Height="560" MinWidth="760" MinHeight="380" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <DockPanel Margin="16">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock Text="Gilt fuer" Foreground="#CCCCCC" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox x:Name="cmbScope" Width="240" Style="{StaticResource DarkComboBox}"/>
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"
+                   Text="In der Spalte Wert eintragen (einfach hineinklicken). Leer = kein eigener Wert: dann gilt der Wert fuer alle Tenants bzw. der Standard. Objekt-IDs mit Komma trennen (Entra Admin Center > Benutzer bzw. Gruppen > Objekt-ID). Gespeichert wird lokal in deinem Profil; beim naechsten Pruefen gilt der neue Wert."/>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <TextBlock x:Name="lblState" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,12,0"/>
+            <Button x:Name="btnSave" Content="Speichern" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+            <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+        </StackPanel>
+        <DataGrid x:Name="gridB" Style="{StaticResource DarkDataGrid}" IsReadOnly="False" AutoGenerateColumns="False" HeadersVisibility="Column" SelectionMode="Single" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Regel" Binding="{Binding Regel}" IsReadOnly="True" Width="60"/>
+                <DataGridTextColumn Header="Sollwert" Binding="{Binding Name}" IsReadOnly="True" Width="140"/>
+                <DataGridTemplateColumn Header="Wert (hier eintragen)" Width="300">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding Wert, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Background="#2D2D30" Foreground="White" BorderBrush="#3E3E42" CaretBrush="White"
+                                     Padding="4,2" FontSize="12" TextWrapping="Wrap" VerticalContentAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn x:Name="colGlob" Header="Alle Tenants" Binding="{Binding Global}" IsReadOnly="True" Width="140"/>
+                <DataGridTextColumn Header="Standard" Binding="{Binding Standard}" IsReadOnly="True" Width="80"/>
+                <DataGridTextColumn Header="Bedeutung" Binding="{Binding Text}" IsReadOnly="True" Width="*">
+                    <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style></DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>
+'@
+    $theme = Get-HUXaml 'Theme'
+    $mt = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+    $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $mt.Groups[1].Value))
+    $w = $d.Window; $ctl = $d.C
+    if ($script:Window) { $w.Owner = $script:Window }
+    $st = @{ Scope = ''; Table = $null; Dirty = $false; Loading = $false }
+    $scopes = @([pscustomobject]@{ Key = ''; Name = 'Alle Tenants' }) + @($script:Settings.tenants | Where-Object { "$($_.key)" } | ForEach-Object { [pscustomobject]@{ Key = "$($_.key)"; Name = (Get-HUAnaTenantName "$($_.key)") } })
+    foreach ($s in $scopes) { $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = $s.Name; $it.Tag = $s.Key; [void]$ctl.cmbScope.Items.Add($it) }
+    $load = {
+        $st.Loading = $true
+        $tb = New-Object System.Data.DataTable
+        foreach ($col in 'Regel', 'Key', 'Name', 'Wert', 'Global', 'Standard', 'Text', 'Orig') { [void]$tb.Columns.Add($col) }
+        foreach ($r in @(Get-HUSecBaselineEdit -Scope $st.Scope)) {
+            [void]$tb.Rows.Add($r.Rule, "$($r.Rule).$($r.Key)", $r.Key, $r.Value, $r.Global, $r.Default, $r.Text, $r.Value)
+        }
+        $st.Table = $tb
+        $ctl.gridB.ItemsSource = $tb.DefaultView
+        $ctl.colGlob.Visibility = $(if ($st.Scope) { 'Visible' } else { 'Collapsed' })
+        $st.Dirty = $false; $ctl.lblState.Text = ''
+        $st.Loading = $false
+    }
+    $isDirty = { $st.Table -and @($st.Table.Rows | Where-Object { "$($_['Wert'])".Trim() -ne "$($_['Orig'])".Trim() }).Count -gt 0 }
+    $save = {
+        try { $ctl.gridB.CommitEdit() | Out-Null; $ctl.gridB.CommitEdit() | Out-Null } catch { }
+        $vals = @{}
+        foreach ($row in $st.Table.Rows) { if ("$($row['Wert'])".Trim() -ne "$($row['Orig'])".Trim()) { $vals["$($row['Key'])"] = "$($row['Wert'])" } }
+        if (-not $vals.Count) { $ctl.lblState.Text = 'Nichts geaendert.'; return $true }
+        $err = @(Save-HUSecBaselineEdit -Scope $st.Scope -Values $vals)
+        if ($err.Count) { Show-HUMessage ("Nicht gespeichert:`n`n" + ($err -join "`n")) -Icon Warning -Owner $w; return $false }
+        Write-HULogOK "Sicherheitskatalog: Sollwerte gespeichert ($(if ($st.Scope) { Get-HUAnaTenantName $st.Scope } else { 'alle Tenants' }): $(@($vals.Keys | Sort-Object) -join ', '))."
+        & $load
+        $ctl.lblState.Text = 'Gespeichert - gilt beim naechsten Pruefen.'
+        return $true
+    }
+    $ctl.cmbScope.Add_SelectionChanged({
+            $new = "$($ctl.cmbScope.SelectedItem.Tag)"
+            if ($st.Loading -or ($new -eq $st.Scope -and $st.Table)) { return }
+            if (& $isDirty) {
+                if (Confirm-HU 'Geaenderte Werte speichern, bevor du die Ebene wechselst?' -Owner $w) { if (-not (& $save)) { return } }
+            }
+            $st.Scope = $new
+            & $load
+        })
+    $ctl.btnSave.Add_Click({ [void](& $save) })
+    $ctl.btnClose.Add_Click({ $w.Close() })
+    $w.Add_Closing({
+            param($s, $e)
+            if (& $isDirty) {
+                if (Confirm-HU 'Geaenderte Werte speichern?' -Owner $w) { if (-not (& $save)) { $e.Cancel = $true } }
+            }
+        })
+    # Start: markierter Tenant der Matrix, sonst "Alle Tenants"
+    $start = 0
+    $ctl.cmbScope.SelectedIndex = $start
+    if (-not $st.Table) { & $load }
+    [void]$w.ShowDialog()
 }
 
 function Show-HUSecDetail {
@@ -420,22 +543,47 @@ function Register-HUSecHandlers {
     $c['chkSecDev'].Add_Unchecked({ Set-HUStateValue 'secDev' $false; Update-HUSecGrid })
     $c['chkSecDiff'].Add_Checked({ Set-HUStateValue 'secDiff' $true; Update-HUSecGrid })
     $c['chkSecDiff'].Add_Unchecked({ Set-HUStateValue 'secDiff' $false; Update-HUSecGrid })
-    foreach ($pair in @(@('cmbSecArea', 'secArea'), @('cmbSecSev', 'secSev'))) {
-        $cbx = $c[$pair[0]]; $key = $pair[1]
-        $saved = "$(Get-HUStateValue $key '')"
-        foreach ($it in @($cbx.Items)) { if ("$($it.Tag)" -eq $saved) { $cbx.SelectedItem = $it } }
+    # Bereiche: Haken je Bereich (aus den Regeln), gespeichert werden die ausgeblendeten
+    $off = @("$(Get-HUStateValue 'secAreaOff' '')" -split ',' | Where-Object { $_ })
+    $areas = @('Entra', 'Apps', 'Intune', 'Teams', 'SharePoint')
+    foreach ($a in @(Get-HUSecRules | ForEach-Object { "$($_.Area)" } | Sort-Object -Unique)) { if ($areas -notcontains $a) { $areas += $a } }
+    foreach ($a in $areas) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Content = $a; $cb.Tag = $a; $cb.IsChecked = ($off -notcontains $a); $cb.Foreground = ([System.Windows.Media.BrushConverter]::new().ConvertFromString('#CCCCCC')); $cb.FontSize = 12; $cb.Margin = [System.Windows.Thickness]::new(0, 3, 0, 3)
+        $cb.Add_Click({ Set-HUStateValue 'secAreaOff' (@(Get-HUSecAreasOff) -join ','); Update-HUSecAreaButton; Update-HUSecGrid })
+        [void]$c['spSecArea'].Children.Add($cb)
     }
-    $c['cmbSecArea'].Add_SelectionChanged({ Set-HUStateValue 'secArea' (Get-HUSecComboTag 'cmbSecArea'); Update-HUSecGrid })
+    $lnk = New-Object System.Windows.Controls.Button
+    $lnk.Content = 'alle'; $lnk.FontSize = 11; $lnk.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0); $lnk.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Left; $lnk.Padding = [System.Windows.Thickness]::new(8, 1, 8, 1)
+    try { $lnk.Style = $script:Window.FindResource('DarkButton'); $lnk.Background = ([System.Windows.Media.BrushConverter]::new().ConvertFromString('#3E3E42')) } catch { }
+    $lnk.Add_Click({ foreach ($x in @($script:Controls['spSecArea'].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $x.IsChecked = $true }; Set-HUStateValue 'secAreaOff' ''; Update-HUSecAreaButton; Update-HUSecGrid })
+    [void]$c['spSecArea'].Children.Add($lnk)
+    Update-HUSecAreaButton
+    # Klick auf den Knopf bei offener Liste: das Popup schliesst schon beim Druecken - nicht gleich wieder oeffnen
+    $script:SecAreaClosed = [datetime]::MinValue
+    $c['popSecArea'].Add_Closed({ $script:SecAreaClosed = [datetime]::Now })
+    $c['btnSecArea'].Add_Click({ if (([datetime]::Now - $script:SecAreaClosed).TotalMilliseconds -gt 300) { $script:Controls['popSecArea'].IsOpen = $true } })
+    # Grad (Auswahlliste) wiederherstellen
+    $savedSev = "$(Get-HUStateValue 'secSev' '')"
+    foreach ($it in @($c['cmbSecSev'].Items)) { if ("$($it.Tag)" -eq $savedSev) { $c['cmbSecSev'].SelectedItem = $it } }
     $c['cmbSecSev'].Add_SelectionChanged({ Set-HUStateValue 'secSev' (Get-HUSecComboTag 'cmbSecSev'); Update-HUSecGrid })
     $c['txtSecFilter'].Add_TextChanged({ Update-HUSecGrid })
     $c['btnSecRun'].Add_Click({ Start-HUSecRun })
     $c['btnSecExc'].Add_Click({ Show-HUSecExceptions })
+    $c['btnSecBase'].Add_Click({ try { Show-HUSecBaseline } catch { Show-HUMessage "Sollwerte: $($_.Exception.Message)" -Icon Warning } })
     $c['btnSecRef'].Add_Click({
             if (-not $script:SecRan -or -not @($script:SecResults).Count) { Show-HUMessage 'Noch keine Ergebnisse - zuerst pruefen.' -Icon Info; return }
             $old = $null; try { $old = Get-HUSecReference } catch { }
             $n = @($script:SecKeys).Count
             $txt = "Den aktuellen Stand ($n Tenant(s)) als Soll speichern?`n`nDie Meldung 'Sicherheits-Aenderung' (Reiter Teams) meldet danach jede Aenderung dagegen. Gespeichert werden nur Status und Zahlen."
-            if ($old) { $txt += "`n`nDer bisherige Soll-Stand wird ersetzt." }
+            if ($old) {
+                $txt += "`n`nDer bisherige Soll-Stand wird ersetzt."
+                $w = @(); try { $w = @(Get-HUSecReferenceWorse -Results $script:SecResults) } catch { }
+                if ($w.Count) {
+                    $ex = (@($w | Select-Object -First 5 | ForEach-Object { "$($_.RuleId) ($(Get-HUAnaTenantName $_.Tenant))" }) -join ', ')
+                    $txt += "`n`nACHTUNG: Der neue Stand ist bei $($w.Count) Regel(n) SCHLECHTER als der bisherige Soll, z. B. $ex$(if ($w.Count -gt 5) { ' ...' }). Diese Verschlechterungen gelten danach als normal und werden nicht mehr gemeldet. Die Teams-Meldung weist einmal darauf hin."
+                }
+            }
             if (-not (Confirm-HU $txt)) { return }
             try { [void](Save-HUSecReference -Results $script:SecResults); Show-HUMessage 'Soll-Stand gespeichert.' -Icon Info }
             catch { Show-HUMessage "Soll-Stand nicht gespeichert: $($_.Exception.Message)" -Icon Warning }

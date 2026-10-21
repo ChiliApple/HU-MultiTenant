@@ -702,10 +702,10 @@ function New-HUSecDriftCardSpec {
         Anzeigenamen je Tenant-Schluessel (sonst der Schluessel).
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$Compare, [hashtable]$Names = @{}, [string]$Title = 'Sicherheits-Aenderung', [int]$MaxPerTenant = 4, [object[]]$Lost = @())
+    param([Parameter(Mandatory)]$Compare, [hashtable]$Names = @{}, [string]$Title = 'Sicherheits-Aenderung', [int]$MaxPerTenant = 4, [object[]]$Lost = @(), [int]$SollWorse = 0, [string]$SollPrev = '')
     $ch = @($Compare.Changes)
     $Lost = @($Lost | Where-Object { $_ })
-    if (-not $ch.Count -and -not $Lost.Count) { return $null }
+    if (-not $ch.Count -and -not $Lost.Count -and $SollWorse -le 0) { return $null }
     $rows = @()
     $ar = ' ' + [char]0x2192 + ' '   # Pfeil (ueberlebt die Textbereinigung, anders als >)
     foreach ($g in ($ch | Group-Object Tenant | Sort-Object Name)) {
@@ -728,6 +728,7 @@ function New-HUSecDriftCardSpec {
     $tn = @($ch | Select-Object -ExpandProperty Tenant -Unique).Count
     $pv = if ($ch.Count) { "$(Get-HUTeamsCountText $ch.Count 'Aenderung' 'Aenderungen') in $(Get-HUTeamsCountText $tn 'Tenant' 'Tenants')$(if ($worse) { ", $worse schlechter" })" } else { '' }
     if ($Lost.Count) { $pv = ("$pv$(if ($pv) { ', ' })$(Get-HUTeamsCountText $Lost.Count 'Pruefung' 'Pruefungen') verloren").Trim() }
+    if ($SollWorse -gt 0 -and -not $pv) { $pv = "Soll-Stand geaendert: $(Get-HUTeamsCountText $SollWorse 'Regel' 'Regeln') schlechter als vorher" }
     $facts = [ordered]@{ 'Aenderungen' = $ch.Count; 'davon schlechter' = $worse }
     if ($Lost.Count) { $facts['Pruefung verloren'] = $Lost.Count }
     if ($Compare.Unchecked -gt 0) { $facts['Heute nicht pruefbar (im Soll pruefbar)'] = $Compare.Unchecked }
@@ -736,10 +737,10 @@ function New-HUSecDriftCardSpec {
     return @{
         Preview = $pv
         Title = "$Title - $(Get-HUTeamsDateLabel)"
-        Level = $(if ($worse -or $Lost.Count) { 'Error' } else { 'Warning' })
+        Level = $(if ($worse -or $Lost.Count) { 'Error' } else { 'Warning' })   # Soll schlechter allein: Warnung
         Rows  = $rows
         Facts = $facts
-        Lines = @("Vergleich mit dem gespeicherten Soll-Stand$(if ($since) { " vom $since" }). Neuen Stand uebernehmen: Analyse $([char]0x203A) Sicherheit $([char]0x203A) Soll speichern.")
+        Lines = @(@("Vergleich mit dem gespeicherten Soll-Stand$(if ($since) { " vom $since" }). Neuen Stand uebernehmen: Analyse $([char]0x203A) Sicherheit $([char]0x203A) Soll speichern.") + @(if ($SollWorse -gt 0) { "Hinweis: Der Soll-Stand$(if ($since) { " vom $since" }) ist bei $(Get-HUTeamsCountText $SollWorse 'Regel' 'Regeln') schlechter als der vorige - diese Verschlechterungen werden nicht mehr als Aenderung gemeldet." }))
     }
 }
 
@@ -850,7 +851,8 @@ function Invoke-HUTeamsJob {
                 }
                 $cmp = Compare-HUSecReference -Results $all -Reference $ref -Keys $keys
                 $lost = @(); try { $lost = @(Update-HUSecLost -Results $all -Reference $ref -Keys $keys -NoWrite:$NoSend) } catch { }
-                $spec = New-HUSecDriftCardSpec -Compare $cmp -Names $names -Title "$($Job.Name)" -Lost $lost
+                $sw = 0; try { if ($ref.PSObject.Properties['worse'] -and -not [bool]$ref.worseShown) { $sw = [int]$ref.worse } } catch { $sw = 0 }
+                $spec = New-HUSecDriftCardSpec -Compare $cmp -Names $names -Title "$($Job.Name)" -Lost $lost -SollWorse $sw
                 $detail = "$(@($cmp.Changes).Count) Aenderungen, $($cmp.Unchecked) nicht pruefbar, $($lost.Count) Pruefungen verloren"
             }
             default { $res.Message = "Unbekannte Auftragsart: $($Job.Kind)"; $res.Code = 3; return $res }
@@ -864,6 +866,8 @@ function Invoke-HUTeamsJob {
         if (-not $ids.Count) { $ids = @($Job.Targets | Where-Object { "$_" }) }
         $sent = Send-HUNotify -Category $cat -Title $spec.Title -Level $spec.Level -Rows $spec.Rows -Facts $spec.Facts -Lines $spec.Lines -Source "$([Environment]::MachineName)" -TargetIds $ids -IgnoreCategory -Preview "$($spec.Preview)"
         $res.Sent = "$($sent.Text)"
+        # Hinweis "Soll schlechter" nur einmal: nach erfolgreichem Senden vermerken
+        if ("$($Job.Kind)" -eq 'SecDrift' -and $sent.Ok -gt 0 -and [int](Get-Variable sw -ValueOnly -ErrorAction SilentlyContinue) -gt 0) { try { Set-HUSecReferenceWorseShown } catch { } }
         if ($sent.Ok -gt 0 -and $sent.Failed -eq 0) { $res.Success = $true; $res.Code = 0; $res.Message = "$($sent.Text)" }
         elseif ($sent.Ok -eq 0 -and $sent.Failed -eq 0) { $res.Code = 3; $res.Message = $(if ($ids.Count) { 'Ziel nicht gefunden oder ausgeschaltet - NICHTS gesendet. Ziele am Auftrag pruefen.' } else { 'Kein aktives Ziel - NICHTS gesendet.' }) }
         elseif ($sent.Ok -gt 0) { $res.Code = 2; $res.Message = "Teilweise gesendet: $($sent.Text)" }

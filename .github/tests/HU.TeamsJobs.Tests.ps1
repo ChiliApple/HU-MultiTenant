@@ -506,3 +506,13 @@ Describe 'Teams-Auftraege: Pfeil in der Aenderungszeile' {
     }
 }
 
+Describe 'Teams-Auftraege: Soll schlechter als voriger' {
+    It 'ohne Aenderung, aber Soll schlechter: Karte mit Hinweis (Warnung)' {
+        $s = New-HUSecDriftCardSpec -Compare ([pscustomobject]@{ Changes = @(); Unchecked = 0; Since = '2026-10-21T06:00:00Z' }) -SollWorse 3
+        $s | Should -Not -BeNullOrEmpty
+        $s.Level | Should -Be 'Warning'
+        $s.Preview | Should -BeLike '*3 Regeln schlechter*'
+        (@($s.Lines) -join ' ') | Should -BeLike '*schlechter als der vorige*'
+    }
+}
+

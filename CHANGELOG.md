@@ -1,5 +1,17 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.2.6 (Testversion, 21.10.2026, Weg zu 2.3.0)
+
+- **Sicherheitskatalog, Pruefpaket Teams und Gruppen (alle lesend, keine neuen Rechte):** C03 Teams und M365-Gruppen ohne Besitzer (Mittel, Liste speicherbar), C04 nur ein Besitzer (Niedrig, zur Kenntnis), C05 oeffentliche Teams und Gruppen (Mittel, Liste speicherbar), C06 Gaeste in Teams und M365-Gruppen (Hoch, Liste je Gast und Gruppe; am Handy mit PIN), C07 wer Teams und Gruppen anlegen darf (Mittel), C08 Gaeste als Gruppenbesitzer (Niedrig). Jetzt 46 Regeln. Grenzen: Ablaufrichtlinie fuer Gruppen braeuchte Directory.Read.All und fehlt bewusst; Einstellungen aus dem Teams Admin Center liefert Graph nicht.
+- **Sicherheitskatalog, Ampel:** folgt der Auswahl (Grad, Bereich, Suchtext) und heisst dann "Ampel (nur Auswahl: n Regeln)"; "Nur Abweichungen" aendert sie nicht.
+- **Sicherheitskatalog, Filter:** Bereiche per Haken statt Auswahlliste (einzelne Bereiche ausblenden, Auswahl bleibt gespeichert); die Spalte Regel zeigt die Anzahl der angezeigten Regeln.
+- **C06 bei vielen Teams:** Mitglieder werden gebuendelt gelesen (je 20 Gruppen ein Abruf), Obergrenze 5000 Teams/Gruppen; Obergrenzen und aehnliche Gruende stehen jetzt im Klartext statt "Abruf fehlgeschlagen".
+- **Sicherheitskatalog, Sollwerte ...:** neuer Knopf unter Analyse > Sicherheit. Sollwerte fuer alle Tenants oder je Tenant eintragen, z. B. Notfallkonten (V1 accounts), Admin-Gruppen (A25), Schwellen; Spalten Wert, Alle Tenants, Standard, Bedeutung. Objekt-IDs und Zahlen werden vor dem Speichern geprueft, leer entfernt den eigenen Wert, andere Eintraege der Datei bleiben erhalten. Vorher nur per Bearbeiten von baseline.json.
+- **Roadmap neu geordnet:** 2.3.0 weitere Pruefpakete, 2.4.0 Sichern und Wiederherstellen, 2.5.0 Angleichen und Uebertragen (baut auf der Sicherung auf), 2.6.0 Mail und Teams.
+- **Sicherheitskatalog A23 (Gaeste-Anmeldehaeufigkeit):** zaehlt nur noch, wenn Gaeste sich spaetestens nach 24 Stunden bzw. jedes Mal neu anmelden (Sollwert `A23 maxHours`); Tage werden in Stunden umgerechnet; eine Richtlinie fuer alle Benutzer zaehlt auch fuer Gaeste (Review 037 B14).
+- **V1-Liste:** die Namen der Ausnahmen werden gesammelt aufgeloest (je 15 IDs ein Abruf) statt hoechstens 40 einzeln; geloeschte Objekte werden als "geloescht oder nicht gefunden" angezeigt (B16).
+- **Soll speichern:** ist der neue Stand schlechter als der bisherige Soll, nennt die Rueckfrage die Regeln; die Teams-Meldung "Sicherheits-Aenderung" schickt einmal einen Hinweis, auch wenn sonst nichts zu melden ist (Review 038 B7).
+
 ## v2.2.5 (Stable, 21.10.2026)
 
 Abschluss der Roadmap-Stufe "Sicherheitsanalyse". Enthaelt alles aus den Testversionen 2.2.2 bis 2.2.4.
