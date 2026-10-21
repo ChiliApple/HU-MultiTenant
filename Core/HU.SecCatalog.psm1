@@ -75,7 +75,7 @@ $script:HUSecFacts = @{
     guests = @{ Ep = "/users?`$filter=userType%20eq%20'Guest'&`$select=id"; All = $true; Perms = @('User.Read.All'); Lic = '' }
     apps   = @{ Ep = "/applications?`$select=id,displayName,passwordCredentials,keyCredentials"; All = $true; Perms = @('Application.Read.All'); Lic = '' }
     compl  = @{ Ep = "/deviceManagement/deviceCompliancePolicies?`$expand=assignments"; All = $true; Perms = @('DeviceManagementConfiguration.Read.All'); Lic = '' }
-    devs   = @{ Ep = "/deviceManagement/managedDevices?`$select=id,deviceName,userPrincipalName,complianceState,isEncrypted,operatingSystem"; All = $true; Perms = @('DeviceManagementManagedDevices.Read.All'); Lic = '' }
+    devs   = @{ Ep = "/deviceManagement/managedDevices?`$select=id,deviceName,userPrincipalName,complianceState,isEncrypted,operatingSystem,lastSyncDateTime"; All = $true; Perms = @('DeviceManagementManagedDevices.Read.All'); Lic = '' }
     reg    = @{ Ep = "/reports/authenticationMethods/userRegistrationDetails?`$filter=isAdmin%20eq%20true"; All = $true; Perms = @('AuditLog.Read.All'); Lic = 'P1' }
     guestsx = @{ Ep = "/users?`$filter=userType%20eq%20'Guest'&`$select=id,displayName,mail,createdDateTime,externalUserState,externalUserStateChangeDateTime"; All = $true; Perms = @('User.Read.All'); Lic = '' }
     adminact = @{ Custom = 'adminact'; Perms = @('RoleManagement.Read.Directory', 'User.Read.All', 'AuditLog.Read.All'); Lic = 'P1' }
@@ -98,6 +98,12 @@ $script:HUSecFacts = @{
     m365grp = @{ Ep = "/groups?`$filter=groupTypes/any(c:c%20eq%20'Unified')&`$select=id,displayName,visibility,resourceProvisioningOptions&`$expand=owners(`$select=id,displayName)"; All = $true; Perms = @('Group.Read.All'); Lic = '' }
     grpguest = @{ Custom = 'grpguest'; Perms = @('Group.Read.All', 'User.Read.All'); Lic = '' }
     grpset = @{ Custom = 'grpset'; Perms = @('Group.Read.All'); Lic = '' }
+    # Intune-Pruefpaket (2.3.0)
+    dmset  = @{ Custom = 'dmset'; Perms = @('DeviceManagementConfiguration.Read.All'); Lic = '' }
+    devcfg = @{ Ep = '/deviceManagement/deviceConfigurations?$expand=assignments'; All = $true; Perms = @('DeviceManagementConfiguration.Read.All'); Lic = '' }
+    esec   = @{ Custom = 'esec'; Perms = @('DeviceManagementConfiguration.Read.All'); Lic = '' }
+    mtd    = @{ Ep = '/deviceManagement/mobileThreatDefenseConnectors'; All = $true; Perms = @('DeviceManagementServiceConfig.Read.All'); Lic = '' }
+    alerts = @{ Ep = "/security/alerts_v2?`$filter=status%20eq%20'new'%20or%20status%20eq%20'inProgress'&`$top=999"; All = $true; Perms = @('SecurityAlert.Read.All'); Lic = '' }
 }
 
 function New-HUSecContext {
@@ -133,6 +139,18 @@ function New-HUSecError([string]$Message) { $e = New-Object System.Exception($Me
 function Invoke-HUSecBatch($Ctx, [hashtable]$Requests) {
     $tok = Get-GraphToken -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -ErrorAction Stop
     return (Invoke-GraphBatchGet -Token $tok -Requests $Requests)
+}
+
+# Intune-Sicherheitsrichtlinie einer Art vorhanden und zugewiesen; eine zugewiesene Sicherheits-Baseline zaehlt ersatzweise (Inhalt nicht einzeln geprueft)
+function Get-HUSecEsecResult($List, [string]$Art, [string]$Label, [switch]$NoBaseline, [scriptblock]$Where = $null) {
+    $all = @($List | Where-Object { $_ -and $_.Art -eq $Art })
+    if ($Where) { $all = @($all | Where-Object $Where) }
+    $on = @($all | Where-Object { $_.Zugewiesen })
+    $off = $all.Count - $on.Count
+    if ($on.Count) { return @{ Status = 'OK'; Count = $on.Count; Detail = "$($on.Count) zugewiesene $Label-Richtlinie(n): $(@($on | Select-Object -First 3 | ForEach-Object { $_.Name }) -join ', ')$(if ($on.Count -gt 3) { ' ...' })$(if ($off) { "; $off ohne Zuweisung" })" } }
+    $bl = @($List | Where-Object { $_ -and $_.Art -eq 'Baseline' -and $_.Zugewiesen })
+    if (-not $NoBaseline -and $bl.Count) { return @{ Status = 'OK'; Count = 0; Detail = "keine eigene $Label-Richtlinie, aber Sicherheits-Baseline zugewiesen ($($bl[0].Name)) - deren Inhalt wird nicht einzeln geprueft" } }
+    return @{ Status = 'Abweichung'; Count = 0; Detail = $(if ($off) { "$off $Label-Richtlinie(n), aber keine zugewiesen" } else { "keine $Label-Richtlinie in Intune" }) }
 }
 
 # Team oder reine M365-Gruppe (resourceProvisioningOptions enthaelt 'Team')
@@ -230,6 +248,50 @@ function Get-HUSecCustomFact {
                     [pscustomobject]@{ id = "$($u.id)"; upn = "$($u.userPrincipalName)"; synced = ("$($u.onPremisesSyncEnabled)" -match '^(?i)true$'); roles = (@($roles["$($u.id)"]) -join ', ') }
                 }
             }
+        }
+        'dmset' {
+            # Compliance-Grundeinstellungen (deviceManagement.settings): v1.0 mit $select lieferte im Test nichts - der Reihe nach versuchen
+            $got = $null
+            foreach ($try in @(@{ Ep = '/deviceManagement?$select=settings'; Beta = $false }, @{ Ep = '/deviceManagement'; Beta = $false }, @{ Ep = '/deviceManagement?$select=settings'; Beta = $true }, @{ Ep = '/deviceManagement'; Beta = $true })) {
+                try { $r = Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint $try.Ep -Beta:$try.Beta } catch { continue }
+                if ($r -and $r.PSObject.Properties['settings'] -and $r.settings -and $r.settings.PSObject.Properties['secureByDefault']) { $got = $r; break }
+            }
+            if (-not $got) { throw (New-HUSecError 'Compliance-Grundeinstellung wird von Graph nicht geliefert - bitte im Intune Admin Center pruefen (Endpoint-Sicherheit > Geraetekompatibilitaet > Einstellungen)') }
+            $got
+        }
+        'esec' {
+            # Sicherheitsrichtlinien aus Intune je Art: Endpoint-Sicherheit (Einstellungskatalog, beta), alte Endpoint-Sicherheits-Vorlagen
+            # (intents, beta) und Konfigurationsprofile "Endpoint Protection" (v1.0). Sicherheits-Baselines werden mitgefuehrt (Art Baseline).
+            $list = New-Object System.Collections.Generic.List[object]
+            $fam = @{ endpointSecurityAntivirus = 'Antivirus'; endpointSecurityDiskEncryption = 'DiskEncryption'; endpointSecurityFirewall = 'Firewall'
+                endpointSecurityEndpointDetectionAndResponse = 'EDR'; endpointSecurityAttackSurfaceReduction = 'ASR'; endpointSecurityAccountProtection = 'AccountProtection'; baseline = 'Baseline' }
+            foreach ($p in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/deviceManagement/configurationPolicies?$select=id,name,platforms,templateReference,isAssigned' -All -Beta)) {
+                $f = "$($p.templateReference.templateFamily)"
+                if ($fam.ContainsKey($f)) { $list.Add([pscustomobject]@{ Name = "$($p.name)"; Art = $fam[$f]; Vorlage = "$($p.templateReference.templateDisplayName)"; Quelle = 'Endpoint-Sicherheit'; Zugewiesen = [bool]$p.isAssigned }) }
+            }
+            # alte Vorlagen (vor dem Einstellungskatalog): Art ueber den Untertyp der Vorlage
+            $sub = @{ antivirus = 'Antivirus'; diskEncryption = 'DiskEncryption'; firewall = 'Firewall'; endpointDetectionReponse = 'EDR'; attackSurfaceReduction = 'ASR'; accountProtection = 'AccountProtection' }
+            $tpl = @{}
+            try { foreach ($t in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/deviceManagement/templates?$select=id,displayName,templateType,templateSubtype' -All -Beta)) { $tpl["$($t.id)"] = $t } } catch { }
+            try {
+                foreach ($i in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/deviceManagement/intents?$select=id,displayName,templateId,isAssigned' -All -Beta)) {
+                    $t = $tpl["$($i.templateId)"]; if (-not $t) { continue }
+                    $a = if ($sub.ContainsKey("$($t.templateSubtype)")) { $sub["$($t.templateSubtype)"] } elseif ("$($t.templateType)" -like '*securityBaseline*' -or "$($t.templateType)" -like '*Baseline') { 'Baseline' } else { '' }
+                    if ($a) { $list.Add([pscustomobject]@{ Name = "$($i.displayName)"; Art = $a; Vorlage = "$($t.displayName)"; Quelle = 'Vorlage (alt)'; Zugewiesen = [bool]$i.isAssigned }) }
+                }
+            } catch { }
+            # Konfigurationsprofile Endpoint Protection: BitLocker und Firewall
+            $dc = Get-HUSecFact -Ctx $Ctx -Key 'devcfg'
+            if ($dc.Ok) {
+                foreach ($c in @($dc.Data | Where-Object { "$($_.'@odata.type')" -eq '#microsoft.graph.windows10EndpointProtectionConfiguration' })) {
+                    $as = [bool]@($c.assignments).Count
+                    if ($c.bitLockerEncryptDevice -eq $true) { $list.Add([pscustomobject]@{ Name = "$($c.displayName)"; Art = 'DiskEncryption'; Vorlage = 'Endpoint Protection'; Quelle = 'Konfigurationsprofil'; Zugewiesen = $as }) }
+                    if (@('firewallProfileDomain', 'firewallProfilePrivate', 'firewallProfilePublic' | Where-Object { $c.PSObject.Properties[$_] -and "$($c.$_.firewallEnabled)" -eq 'allowed' }).Count) {
+                        $list.Add([pscustomobject]@{ Name = "$($c.displayName)"; Art = 'Firewall'; Vorlage = 'Endpoint Protection'; Quelle = 'Konfigurationsprofil'; Zugewiesen = $as })
+                    }
+                }
+            }
+            , $list.ToArray()
         }
         'grpset' {
             # Einstellungen fuer M365-Gruppen (Vorlage Group.Unified laut Microsoft Learn); fehlt das Objekt, gelten die Microsoft-Standardwerte
@@ -380,6 +442,8 @@ $script:HUSecDefaults = @{
     A23 = @{ maxHours = 24 }
     E03 = @{ maxPercent = 5 }
     E04 = @{ minPercent = 95 }
+    E07 = @{ maxQualityDays = 7 }
+    E12 = @{ staleDays = 30 }
 }
 
 # Sollwerte zum Bearbeiten im Dialog (Analyse > Sicherheit > Sollwerte): Regel, Schluessel, Art, Bedeutung
@@ -398,6 +462,8 @@ $script:HUSecBaselineInfo = @(
     @{ Rule = 'A38'; Key = 'maxSyncAgeMinutes'; Kind = 'int';   Text = 'Der letzte Verzeichnissync darf hoechstens so viele Minuten her sein.' }
     @{ Rule = 'E03'; Key = 'maxPercent';        Kind = 'int';   Text = 'Hoechstens so viel Prozent nicht konforme Geraete.' }
     @{ Rule = 'E04'; Key = 'minPercent';        Kind = 'int';   Text = 'Mindestens so viel Prozent verschluesselte Windows-Geraete.' }
+    @{ Rule = 'E07'; Key = 'maxQualityDays';    Kind = 'int';   Text = 'Qualitaetsupdates duerfen hoechstens so viele Tage zurueckgestellt werden.' }
+    @{ Rule = 'E12'; Key = 'staleDays';         Kind = 'int';   Text = 'Geraete ohne Sync seit so vielen Tagen gelten als veraltet.' }
 )
 
 function ConvertTo-HUSecBaselineText($Value) {
@@ -933,6 +999,87 @@ $script:HUSecRules = @(
             $d = "$($w.Count - $un) von $($w.Count) Windows-Geraeten verschluesselt ($pct %, Soll mindestens $($B.minPercent) %)"
             if ($pct -lt [double]$B.minPercent) { @{ Status = 'Abweichung'; Count = $un; Detail = $d } } else { @{ Status = 'OK'; Count = $un; Detail = $d } }
         } }
+    @{ Id = 'E05'; Area = 'Intune'; Sev = 'Hoch'; Title = 'Geraete ohne Compliance-Richtlinie gelten als nicht konform'; Facts = @('dmset'); Min = $false
+        Eval = { param($F, $B)
+            $st = $F.dmset.settings
+            if (-not $st -or -not $st.PSObject.Properties['secureByDefault']) { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Einstellung wird nicht geliefert'; Complete = $false } }
+            $d = "Geraete ohne Richtlinie gelten als $(if ($st.secureByDefault -eq $true) { 'nicht konform' } else { 'konform (Standard)' }); Gueltigkeit des Compliance-Status: $($st.deviceComplianceCheckinThresholdDays) Tage"
+            if ($st.secureByDefault -eq $true) { @{ Status = 'OK'; Count = 0; Detail = $d } } else { @{ Status = 'Abweichung'; Count = 1; Detail = $d } }
+        } }
+    @{ Id = 'E06'; Area = 'Intune'; Sev = 'Mittel'; Title = 'Windows-Compliance verlangt eine Mindestversion des Betriebssystems'; Facts = @('compl'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'; Export = $true
+        Items = { param($F, $B) foreach ($c in @($F.compl | Where-Object { "$($_.'@odata.type')" -eq '#microsoft.graph.windows10CompliancePolicy' })) { [pscustomobject]@{ Richtlinie = "$($c.displayName)"; MindestVersion = "$($c.osMinimumVersion)"; Zuweisungen = @($c.assignments).Count } } }
+        Eval = { param($F, $B)
+            $w = @($F.compl | Where-Object { "$($_.'@odata.type')" -eq '#microsoft.graph.windows10CompliancePolicy' })
+            if (-not $w.Count) { return @{ Status = 'Abweichung'; Count = 0; Detail = 'keine Windows-Compliance-Richtlinie' } }
+            $ok = @($w | Where-Object { "$($_.osMinimumVersion)" -and @($_.assignments).Count })
+            if ($ok.Count) { return @{ Status = 'OK'; Count = 0; Detail = "Mindestversion $(@($ok | ForEach-Object { "$($_.osMinimumVersion)" } | Sort-Object -Unique) -join ', ') ($($ok.Count) zugewiesene Richtlinie(n))" } }
+            @{ Status = 'Abweichung'; Count = 0; Detail = "$($w.Count) Windows-Richtlinie(n), keine zugewiesene mit Mindestversion" }
+        } }
+    @{ Id = 'E07'; Area = 'Intune'; Sev = 'Hoch'; Title = 'Update-Ring fuer Windows zugewiesen, Qualitaetsupdates nur kurz zurueckgestellt'; Facts = @('devcfg'); Min = $false; ItemsLabel = 'Update-Ringe'; ItemsSort = 'Ring'; Export = $true
+        Items = { param($F, $B) foreach ($c in @($F.devcfg | Where-Object { "$($_.'@odata.type')" -eq '#microsoft.graph.windowsUpdateForBusinessConfiguration' })) { [pscustomobject]@{ Ring = "$($c.displayName)"; QualitaetTage = $c.qualityUpdatesDeferralPeriodInDays; FeatureTage = $c.featureUpdatesDeferralPeriodInDays; Zuweisungen = @($c.assignments).Count } } }
+        Eval = { param($F, $B)
+            $r = @($F.devcfg | Where-Object { "$($_.'@odata.type')" -eq '#microsoft.graph.windowsUpdateForBusinessConfiguration' })
+            $on = @($r | Where-Object { @($_.assignments).Count })
+            if (-not $on.Count) { return @{ Status = 'Abweichung'; Count = 0; Detail = $(if ($r.Count) { "$($r.Count) Update-Ring(e), keiner zugewiesen" } else { 'kein Update-Ring in Intune' }) } }
+            $max = [int]$B.maxQualityDays
+            $slow = @($on | Where-Object { [int]$_.qualityUpdatesDeferralPeriodInDays -gt $max })
+            $d = "$($on.Count) zugewiesene(r) Ring(e), Qualitaetsupdates zurueckgestellt: $(@($on | ForEach-Object { [int]$_.qualityUpdatesDeferralPeriodInDays } | Sort-Object -Unique) -join ', ') Tag(e) (erlaubt $max)"
+            if ($slow.Count) { @{ Status = 'Abweichung'; Count = $slow.Count; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
+        } }
+    @{ Id = 'E08'; Area = 'Intune'; Sev = 'Hoch'; Title = 'BitLocker-Richtlinie (Datentraegerverschluesselung) vorhanden und zugewiesen'; Facts = @('esec'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Name'; Export = $true
+        Items = { param($F, $B) @($F.esec | Where-Object { $_ -and $_.Art -in 'DiskEncryption', 'Baseline' }) }
+        Eval = { param($F, $B) Get-HUSecEsecResult $F.esec 'DiskEncryption' 'Verschluesselungs' } }
+    @{ Id = 'E09'; Area = 'Intune'; Sev = 'Hoch'; Title = 'Defender-Antivirus-Richtlinie vorhanden und zugewiesen'; Facts = @('esec'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Name'; Export = $true
+        Items = { param($F, $B) @($F.esec | Where-Object { $_ -and $_.Art -in 'Antivirus', 'Baseline' }) }
+        Eval = { param($F, $B) Get-HUSecEsecResult $F.esec 'Antivirus' 'Antivirus' } }
+    @{ Id = 'E10'; Area = 'Intune'; Sev = 'Mittel'; Title = 'Firewall-Richtlinie vorhanden und zugewiesen'; Facts = @('esec'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Name'; Export = $true
+        Items = { param($F, $B) @($F.esec | Where-Object { $_ -and $_.Art -in 'Firewall', 'Baseline' }) }
+        Eval = { param($F, $B) Get-HUSecEsecResult $F.esec 'Firewall' 'Firewall' } }
+    @{ Id = 'E11'; Area = 'Intune'; Sev = 'Hoch'; Title = 'Windows LAPS (wechselndes Kennwort fuer das lokale Admin-Konto) vorhanden und zugewiesen'; Facts = @('esec'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Name'; Export = $true
+        Items = { param($F, $B) @($F.esec | Where-Object { $_ -and $_.Art -eq 'AccountProtection' }) }
+        Eval = { param($F, $B) Get-HUSecEsecResult $F.esec 'AccountProtection' 'LAPS' -NoBaseline -Where { "$($_.Vorlage) $($_.Name)" -match 'LAPS|Local admin|Lokale.*Admin' } } }
+    @{ Id = 'E13'; Area = 'Intune'; Sev = 'Mittel'; Title = 'Regeln zur Verringerung der Angriffsflaeche (ASR) vorhanden und zugewiesen'; Facts = @('esec'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Name'; Export = $true
+        Items = { param($F, $B) @($F.esec | Where-Object { $_ -and $_.Art -eq 'ASR' }) }
+        Eval = { param($F, $B) Get-HUSecEsecResult $F.esec 'ASR' 'ASR' -NoBaseline } }
+    @{ Id = 'E14'; Area = 'Intune'; Sev = 'Mittel'; Title = 'Defender for Endpoint: Onboarding-Richtlinie (EDR) vorhanden und zugewiesen'; Facts = @('esec'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Name'; Export = $true
+        Items = { param($F, $B) @($F.esec | Where-Object { $_ -and $_.Art -eq 'EDR' }) }
+        Eval = { param($F, $B) Get-HUSecEsecResult $F.esec 'EDR' 'EDR' -NoBaseline } }
+    @{ Id = 'E15'; Area = 'Intune'; Sev = 'Mittel'; Title = 'Defender for Endpoint ist mit Intune verbunden'; Facts = @('mtd'); Min = $false
+        Eval = { param($F, $B)
+            # Kennung des Defender-for-Endpoint-Connectors in Intune (bekannte feste ID; Microsoft Learn nennt sie nicht ausdruecklich)
+            $c = @($F.mtd | Where-Object { "$($_.id)" -eq 'fc780465-2017-40d4-a0c5-307022471b92' }) | Select-Object -First 1
+            if (-not $c) { return @{ Status = 'Abweichung'; Count = 1; Detail = 'Connector zu Defender for Endpoint nicht eingerichtet' } }
+            $hb = ConvertTo-HUSecUtc $c.lastHeartbeatDateTime
+            $d = "Status $($c.partnerState)$(if ($hb) { ", letzter Kontakt $($hb.ToLocalTime().ToString('dd.MM.yyyy HH:mm', [cultureinfo]::InvariantCulture))" })"
+            if ("$($c.partnerState)" -in 'enabled', 'available') { @{ Status = 'OK'; Count = 0; Detail = $d } } else { @{ Status = 'Abweichung'; Count = 1; Detail = $d } }
+        } }
+    @{ Id = 'E16'; Area = 'Intune'; Sev = 'Hoch'; Title = 'Keine offenen Defender-Alarme mit Schweregrad hoch oder mittel'; Facts = @('alerts'); Min = $false; ItemsLabel = 'Alarme'
+        Items = { param($F, $B)
+            foreach ($a in @($F.alerts | Where-Object { $_ -and "$($_.severity)" -in 'high', 'medium' } | Sort-Object { "$($_.createdDateTime)" } -Descending)) {
+                $t = ConvertTo-HUSecUtc $a.createdDateTime
+                [pscustomobject]@{ Alarm = "$($a.title)"; Schweregrad = "$($a.severity)"; Status = "$($a.status)"; Erkannt = $(if ($t) { $t.ToLocalTime().ToString('yyyy-MM-dd HH:mm', [cultureinfo]::InvariantCulture) } else { '' }); Quelle = "$($a.serviceSource)" }
+            }
+        }
+        Eval = { param($F, $B)
+            $all = @($F.alerts | Where-Object { $_ })
+            $hm = @($all | Where-Object { "$($_.severity)" -in 'high', 'medium' })
+            $d = "$($all.Count) offene(r) Alarm(e), davon $(@($hm | Where-Object { "$($_.severity)" -eq 'high' }).Count) hoch und $(@($hm | Where-Object { "$($_.severity)" -eq 'medium' }).Count) mittel"
+            if ($hm.Count) { @{ Status = 'Abweichung'; Count = $hm.Count; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
+        } }
+    @{ Id = 'E12'; Area = 'Intune'; Sev = 'Niedrig'; Title = 'Geraete ohne Sync seit langer Zeit (zur Kenntnis)'; Facts = @('devs'); Min = $false; ItemsLabel = 'Geraete'; ItemsSort = 'LetzterSync'
+        Items = { param($F, $B)
+            $lim = [datetime]::UtcNow.AddDays(-[int]$B.staleDays)
+            foreach ($d in @($F.devs | Where-Object { $_ })) {
+                $t = ConvertTo-HUSecUtc $d.lastSyncDateTime
+                if ($t -and $t -lt $lim) { [pscustomobject]@{ Geraet = "$($d.deviceName)"; Benutzer = "$($d.userPrincipalName)"; System = "$($d.operatingSystem)"; LetzterSync = $t.ToLocalTime().ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture) } }
+            }
+        }
+        Eval = { param($F, $B)
+            $all = @($F.devs | Where-Object { $_ })
+            $lim = [datetime]::UtcNow.AddDays(-[int]$B.staleDays)
+            $n = @($all | Where-Object { $t = ConvertTo-HUSecUtc $_.lastSyncDateTime; $t -and $t -lt $lim }).Count
+            @{ Status = 'Info'; Count = $n; Detail = "$n von $($all.Count) Geraeten ohne Sync seit mehr als $($B.staleDays) Tagen" }
+        } }
     @{ Id = 'A25'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Normale Benutzer sind von den Microsoft-Adminportalen ausgesperrt (Conditional Access)'; Facts = @('ca'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
         Items = { param($F, $B)
             foreach ($pol in @($F.ca | Where-Object { (Test-HUSecCaBlocks $_) -and (@($_.conditions.applications.includeApplications) -contains 'MicrosoftAdminPortals') })) {
@@ -1322,6 +1469,18 @@ $script:HUSecWhy = @{
     E01 = 'Ohne zugewiesene Compliance-Richtlinie gilt jedes Geraet als konform (je nach Einstellung).'
     E03 = 'Viele nicht konforme Geraete deuten auf fehlende Updates, Verschluesselung oder Schutz hin. Grenze in baseline.json aenderbar.'
     E04 = 'Unverschluesselte Notebooks gefaehrden Schuelerdaten bei Verlust. Grenze in baseline.json aenderbar.'
+    E05 = 'Standard bei Microsoft: Geraete ohne zugewiesene Compliance-Richtlinie gelten als konform. Mit bedingtem Zugriff "konformes Geraet" kommt so jedes nicht erfasste Geraet durch. Empfohlen: als nicht konform markieren (Intune > Endpoint-Sicherheit > Geraetekompatibilitaet > Einstellungen).'
+    E06 = 'Ohne Mindestversion gelten auch alte, nicht mehr unterstuetzte Windows-Staende als konform. Die Zelle nennt die gesetzte Version, damit die Tenants vergleichbar sind.'
+    E07 = 'Ohne Update-Ring entscheidet jedes Geraet selbst, wann es Sicherheitsupdates installiert. Qualitaetsupdates (monatliche Sicherheitsupdates) sollen hoechstens 7 Tage zurueckgestellt sein (Sollwert E07 maxQualityDays). Gezaehlt werden Update-Ringe (Windows Update for Business) mit Zuweisung.'
+    E08 = 'Ohne Richtlinie entscheidet der Zufall, ob Notebooks verschluesselt sind. Gezaehlt werden Endpoint-Sicherheit > Datentraegerverschluesselung (auch alte Vorlagen) und Konfigurationsprofile Endpoint Protection mit BitLocker. Eine zugewiesene Sicherheits-Baseline zaehlt ersatzweise. Ob die Geraete wirklich verschluesselt sind, zeigt E04.'
+    E09 = 'Die Antivirus-Richtlinie legt Echtzeitschutz, Cloud-Schutz und Manipulationsschutz einheitlich fest. Gezaehlt werden Endpoint-Sicherheit > Antivirus (auch alte Vorlagen); eine zugewiesene Sicherheits-Baseline zaehlt ersatzweise. Einstellungen in Geraetebeschraenkungs-Profilen werden nicht erkannt.'
+    E10 = 'Eine einheitliche Firewall-Richtlinie verhindert, dass Benutzer oder Programme die Windows-Firewall abschalten. Gezaehlt werden Endpoint-Sicherheit > Firewall und Konfigurationsprofile Endpoint Protection mit eingeschalteter Firewall; eine zugewiesene Sicherheits-Baseline zaehlt ersatzweise.'
+    E11 = 'Ohne LAPS haben oft alle Geraete dasselbe lokale Admin-Kennwort - wer es kennt, kommt auf jedes Geraet. Gezaehlt werden Richtlinien unter Endpoint-Sicherheit > Kontoschutz mit LAPS im Namen der Vorlage oder Richtlinie. LAPS ueber eigene Einstellungskatalog-Profile wird nicht erkannt (dann als Ausnahme eintragen).'
+    E12 = 'Geraete, die sich lange nicht melden, bekommen keine Updates und Richtlinien mehr - verloren, kaputt oder ausgeschieden. Nur zur Kenntnis; Grenze Sollwert E12 staleDays (30 Tage).'
+    E13 = 'ASR-Regeln blockieren typische Angriffswege (Office-Makros starten Programme, Skripte aus Mails, Diebstahl von Anmeldedaten). Gezaehlt werden Richtlinien unter Endpoint-Sicherheit > Verringerung der Angriffsflaeche.'
+    E14 = 'Die EDR-Richtlinie meldet die Geraete bei Defender for Endpoint an; erst dann sieht das Defender-Portal Angriffe auf den Geraeten. Braucht eine Defender-for-Endpoint-Lizenz; ohne Lizenz als Ausnahme eintragen.'
+    E15 = 'Ohne Verbindung zwischen Intune und Defender for Endpoint fehlen Risikostufe der Geraete und automatisches Onboarding. Geprueft wird der Connector in Intune (Status aktiviert oder verfuegbar).'
+    E16 = 'Offene Alarme mit Schweregrad hoch oder mittel aus dem Defender-Portal (Status neu oder in Bearbeitung). Erledigte Alarme dort schliessen, dann verschwinden sie hier.'
     C02 = 'Gaeste in Teams mit Minderjaehrigen sind heikel. Hier nur die Zahl der Gastkonten, damit Aenderungen auffallen; die Mitgliedschaften zeigt C06.'
     C03 = 'Ein Team ohne Besitzer verwaltet niemand: keiner nimmt Mitglieder heraus, prueft Gaeste oder raeumt auf. Besitzer koennen auch ausgeschiedene Lehrkraefte gewesen sein, deren Konto geloescht wurde.'
     C04 = 'Nur zur Kenntnis: faellt der einzige Besitzer aus (Karenz, Abgang), ist das Team verwaist. Microsoft empfiehlt mindestens zwei Besitzer.'

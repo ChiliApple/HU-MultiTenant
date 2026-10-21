@@ -193,6 +193,13 @@ $script:HURemoteHtml = @'
   <!-- Sicherheit: Sicherheitskatalog (nur lesen; Reiter erst ab Tablet-/Querformat-Breite) -->
   <section class="view hidden" id="vSec">
     <div class="row between runhead"><span class="row"><h2>Sicherheit</h2><span class="pulse hidden" id="sxDot" aria-hidden="true" style="margin-left:10px"></span></span><span class="row tools"><input id="sxFind" class="find-s" type="search" placeholder="Filter" aria-label="Regeln filtern" autocomplete="off"><button class="ibtn" id="sxDev" title="Nur Abweichungen" aria-label="Nur Abweichungen" aria-pressed="false">&#10007;</button><button class="ibtn" id="sxReload" title="Neu pruefen" aria-label="Neu pruefen">&#8635;</button></span></div>
+    <div class="sxsel">
+      <div class="row between"><span class="lbl">Tenants</span><span class="row"><button class="lnk" id="sxTAll">alle</button><button class="lnk" id="sxTNone">keine</button></span></div>
+      <div class="chips sm" id="sxTen"></div>
+      <span class="lbl">Grad</span><div class="chips sm" id="sxSev"></div>
+      <span class="lbl">Bereich</span><div class="chips sm" id="sxArea"></div>
+      <button class="btn primary" id="sxGo">Pruefen</button>
+    </div>
     <p class="muted small" id="sxAt"></p>
     <p class="err hidden" id="sxErr" role="alert"></p>
     <div class="card hidden" id="sxDet"></div>
@@ -331,6 +338,9 @@ background:rgba(17,17,27,.92);backdrop-filter:blur(12px);border-top:1px solid va
 .chip{min-height:44px;padding:8px 14px;border-radius:99px;border:1px solid var(--s1);background:var(--crust);color:var(--sub);font-size:15px;font-weight:600}
 .chip.on{background:rgba(137,180,250,.18);border-color:var(--blue);color:var(--tx)}
 .chip.on::before{content:"\2713  "}
+.chips.sm .chip{min-height:36px;padding:4px 12px;font-size:14px}
+.sxsel{margin:4px 0 8px}.sxsel .lbl{font-size:12px;color:var(--sub);font-weight:600}
+.lnk{background:none;border:0;color:var(--blue);font-size:13px;padding:4px 8px}
 .par{margin:10px 0}.par label{display:block;font-size:13px;color:var(--sub);margin-bottom:6px}
 .par .sw{display:flex;align-items:center;gap:10px;min-height:44px;font-size:15px;color:var(--tx)}
 .par .sw input{width:22px;height:22px}
@@ -499,6 +509,7 @@ $script:HURemoteJs = @'
     api('GET', '/api/catalog').then(function (j) {
       if (!j.ok) { return; }
       S.cat = j; S.catVer = j.ver;
+      if (S.tab === 'vSec') { sxSelUi(); }   // Reiter war schon offen, bevor die Tenant-Liste da war
       var hasI = (j.items || []).some(function (x) { return x.kind === 'intune'; });
       show('tIntune', hasI);
       if (!hasI && (S.tab === 'vIntune' || S.tab === 'vIObj')) { setView('vList'); }
@@ -727,12 +738,15 @@ $script:HURemoteJs = @'
     if (!tries) { S.sxTok = (S.sxTok || 0) + 1; }
     var tok = S.sxTok;
     sxBusy('sec', true);
-    api('POST', '/api/sec', force && !tries ? { force: true } : {}).then(function (j) {
+    var rq = { tenants: sxSelKeys() };
+    if (force === 'peek') { rq.peek = true; } else if (force && !tries) { rq.force = true; }
+    api('POST', '/api/sec', rq).then(function (j) {
       if (tok !== S.sxTok) { return; }
       if (j.__status === 401) { needPair('Nicht mehr gekoppelt.'); return; }
+      if (j.ok && j.none) { sxBusy('sec', false); err('sxErr', ''); $('sxAt').textContent = 'Noch nicht geprueft - Tenants waehlen und Pruefen tippen.'; return; }
       if (j.ok && j.pending) {
         if (tries > 400) { sxDone({ ok: false, error: 'Keine Antwort vom PC (Zeitlimit)' }); return; }
-        $('sxAt').textContent = 'Pruefung laeuft am PC (alle Tenants, dauert etwa eine Minute) ...';
+        $('sxAt').textContent = 'Pruefung laeuft am PC (' + sxSelKeys().length + ' Tenant(s), dauert etwa eine Minute) ...';
         setTimeout(function () { sxReq(false, tries + 1); }, 2000); return;
       }
       sxDone(j);
@@ -741,15 +755,65 @@ $script:HURemoteJs = @'
   function sxDone(j) {
     sxBusy('sec', false);
     if (!j.ok || j.error || !j.data) { err('sxErr', j.error || 'Nicht lesbar'); $('sxAt').textContent = ''; return; }
-    err('sxErr', ''); S.sx = j.data; S.sxAt = j.at || '';
+    err('sxErr', ''); S.sx = j.data; S.sxAt = j.at || ''; sxSelUi();
     S.sxMap = {}; (S.sx.cells || []).forEach(function (c) { S.sxMap[c.t + '|' + c.r] = c; });
     sxRender();
   }
-  function sxShow() { if (S.sx) { sxRender(); } else { sxLoad(false); } }
+  // Auswahl am Handy: Tenants (fuer die Pruefung), Grad und Bereich (nur Anzeige); bleibt im Browser gespeichert
+  var SX_SEV = ['Kritisch', 'Hoch', 'Mittel', 'Niedrig'], SX_AREA = ['Entra', 'Apps', 'Intune', 'Teams', 'SharePoint'];
+  function sxPref() {
+    if (S.sxP) { return S.sxP; }
+    var p = null; try { p = JSON.parse(localStorage.getItem('hu.sx') || 'null'); } catch (e) { p = null; }
+    S.sxP = { ten: (p && p.ten) || null, sevOff: (p && p.sevOff) || {}, areaOff: (p && p.areaOff) || {} };
+    return S.sxP;
+  }
+  function sxSave() { try { localStorage.setItem('hu.sx', JSON.stringify(S.sxP)); } catch (e) { } }
+  function sxSelKeys() {
+    var p = sxPref(), all = ((S.cat && S.cat.tenants) || []).map(function (t) { return t.key; });
+    if (!p.ten) { return all; }
+    return all.filter(function (k) { return p.ten[k]; });
+  }
+  function sxChip(box, label, on, click) {
+    var c = el('button', 'chip' + (on ? ' on' : ''), label);
+    c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    c.addEventListener('click', function () { var v = click(); c.classList.toggle('on', v); c.setAttribute('aria-pressed', v ? 'true' : 'false'); });
+    box.appendChild(c);
+  }
+  function sxSelUi() {
+    var p = sxPref(), tb = $('sxTen'); clear(tb);
+    var sel = sxSelKeys();
+    ((S.cat && S.cat.tenants) || []).forEach(function (t) {
+      sxChip(tb, t.name, sel.indexOf(t.key) >= 0, function () {
+        if (!p.ten) { p.ten = {}; ((S.cat && S.cat.tenants) || []).forEach(function (x) { p.ten[x.key] = true; }); }
+        p.ten[t.key] = !p.ten[t.key]; sxSave(); return !!p.ten[t.key];
+      });
+    });
+    var sb = $('sxSev'); clear(sb);
+    SX_SEV.forEach(function (v) { sxChip(sb, v, !p.sevOff[v], function () { p.sevOff[v] = !p.sevOff[v]; sxSave(); sxRender(); return !p.sevOff[v]; }); });
+    var areas = SX_AREA.slice(); ((S.sx && S.sx.rules) || []).forEach(function (r) { if (areas.indexOf(r.area) < 0) { areas.push(r.area); } });
+    var ab = $('sxArea'); clear(ab);
+    areas.forEach(function (v) { sxChip(ab, v, !p.areaOff[v], function () { p.areaOff[v] = !p.areaOff[v]; sxSave(); sxRender(); return !p.areaOff[v]; }); });
+  }
+  function sxSetAll(on) {
+    var p = sxPref(); p.ten = {}; ((S.cat && S.cat.tenants) || []).forEach(function (t) { p.ten[t.key] = on; }); sxSave(); sxSelUi();
+  }
+  function sxShow() { sxSelUi(); if (S.sx) { sxRender(); } else { sxLoad('peek'); } }
   function sxLoad(force) {
-    err('sxErr', ''); $('sxAt').textContent = force ? 'Neue Pruefung angefordert ...' : 'Lade ...';
-    if (force) { S.sx = null; clear($('sxTab')); show('sxDet', false); }
+    if (force && force !== 'peek' && !(S.cat && S.cat.tenants)) { err('sxErr', 'Tenant-Liste wird noch geladen - gleich nochmal tippen.'); return; }
+    if (force && force !== 'peek' && !sxSelKeys().length) { err('sxErr', 'Bitte mindestens einen Tenant waehlen.'); return; }
+    err('sxErr', ''); $('sxAt').textContent = force === 'peek' ? 'Lade ...' : (force ? 'Neue Pruefung angefordert ...' : 'Lade ...');
+    if (force && force !== 'peek') { S.sx = null; clear($('sxTab')); show('sxDet', false); }
     sxReq(force, 0);
+  }
+  // Ampel wie am PC (rot ab 10 nicht erfuellten Regeln), hier fuer die angezeigte Auswahl
+  function sxLight(key, rules) {
+    var ok = 0, chk = 0, dev = 0;
+    rules.forEach(function (r) {
+      var c = S.sxMap[key + '|' + r.id]; if (!c) { return; }
+      if (c.s === 'OK' || c.s === 'Ausnahme') { ok++; chk++; } else if (c.s === 'Abweichung') { chk++; dev++; } else if (c.s === 'Fehler') { dev++; }
+    });
+    var col = (!chk && !dev) ? 'Grau' : (dev >= 10 ? 'Rot' : (dev > 0 ? 'Gelb' : 'Gruen'));
+    return { light: col, ok: ok, checked: chk };
   }
   function sxCell(c, rid) {
     if (!c) { return { t: '-', k: 'sx-na', h: 'nicht geprueft' }; }
@@ -771,25 +835,27 @@ $script:HURemoteJs = @'
     var d = S.sx, tb = $('sxTab'); clear(tb);
     if (!d) { return; }
     var ts = d.tenants || [];
-    $('sxAt').textContent = 'Stand ' + S.sxAt + ' - ' + (d.rules || []).length + ' Regeln, ' + ts.length + ' Tenants';
+    $('sxAt').textContent = 'Stand ' + S.sxAt + ' - ' + (d.rules || []).length + ' Regeln, ' + ts.length + ' Tenant(s)';
     var q = ($('sxFind').value || '').toLowerCase(), dev = $('sxDev').getAttribute('aria-pressed') === 'true';
+    var p = sxPref();
+    var sel = (d.rules || []).filter(function (r) { return !p.sevOff[r.sev] && !p.areaOff[r.area] && !(q && (r.id + ' ' + r.sev + ' ' + r.area + ' ' + r.title).toLowerCase().indexOf(q) < 0); });
+    var part = sel.length < (d.rules || []).length;
     var hr = el('tr'); ['Grad', 'Nr', 'Regel'].forEach(function (h) { hr.appendChild(el('th', '', h)); });
     ts.forEach(function (t) { hr.appendChild(el('th', 'c', t.name)); });
     var th = el('thead'); th.appendChild(hr); tb.appendChild(th);
     var body = el('tbody');
-    var ar = el('tr'); ar.appendChild(el('td', 'g', '')); ar.appendChild(el('td', 'id', '')); ar.appendChild(el('td', '', 'Ampel'));
+    var ar = el('tr'); ar.appendChild(el('td', 'g', '')); ar.appendChild(el('td', 'id', '')); ar.appendChild(el('td', '', part ? 'Ampel (Auswahl: ' + sel.length + ' Regeln)' : 'Ampel'));
     ts.forEach(function (t) {
       var td = el('td', 'c');
       if (t.err) { td.appendChild(el('span', 'sx-dev', '!')); td.title = t.err; }
-      else { td.appendChild(el('span', 'sxl ' + t.light)); td.appendChild(document.createTextNode(t.ok + '/' + t.checked)); }
+      else { var l = part ? sxLight(t.key, sel) : t; td.appendChild(el('span', 'sxl ' + l.light)); td.appendChild(document.createTextNode(l.ok + '/' + l.checked)); }
       ar.appendChild(td);
     });
     body.appendChild(ar);
     var shown = 0;
-    (d.rules || []).forEach(function (r) {
+    sel.forEach(function (r) {
       var cs = ts.map(function (t) { return S.sxMap[t.key + '|' + r.id]; });
       if (dev && !cs.some(function (c) { return c && (c.s === 'Abweichung' || c.s === 'Fehler'); })) { return; }
-      if (q && (r.id + ' ' + r.sev + ' ' + r.area + ' ' + r.title).toLowerCase().indexOf(q) < 0) { return; }
       var tr = el('tr', 'r' + (S.sxSel === r.id ? ' sel' : ''));
       tr.appendChild(el('td', 'g ' + r.sev.charAt(0), r.sev));
       tr.appendChild(el('td', 'id', r.id));
@@ -1207,6 +1273,9 @@ $script:HURemoteJs = @'
     $('rClear').addEventListener('click', function () { clear($('rCon')); show('rLost', false); });
     $('mUnpair').addEventListener('click', unpair);
     $('sxReload').addEventListener('click', function () { sxLoad(true); });
+    $('sxGo').addEventListener('click', function () { sxLoad(true); });
+    $('sxTAll').addEventListener('click', function () { sxSetAll(true); });
+    $('sxTNone').addEventListener('click', function () { sxSetAll(false); });
     $('sxFind').addEventListener('input', sxRender);
     $('sxDev').addEventListener('click', function () { var b = $('sxDev'), on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.classList.toggle('on', on); sxRender(); });
     if (SX_WIDE) { if (SX_WIDE.addEventListener) { SX_WIDE.addEventListener('change', sxTab); } else if (SX_WIDE.addListener) { SX_WIDE.addListener(sxTab); } }

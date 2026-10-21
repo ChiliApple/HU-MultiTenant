@@ -312,7 +312,7 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
         if (-not $q) { Start-Sleep -Milliseconds 200; continue }
         $data = $null; $err = ''
         try {
-            if ($q.Op -eq 'sec') { $data = Get-HURemoteSecData $S $Settings }
+            if ($q.Op -eq 'sec') { $data = Get-HURemoteSecData $S $Settings @($q.Keys) }
             elseif ($q.Op -eq 'secitems') { $data = Get-HURemoteSecItems $q $Settings }
             elseif ($q.Op -eq 'detail') { $data = Get-HURemoteIntuneData $q $Settings } else { $data = [object[]]@(Get-HURemoteIntuneData $q $Settings) }
         }
@@ -330,7 +330,7 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
     Sicherheitskatalog fuer das Handy: alle Tenants der Fernbedienung, je Regel Status, Grund, Zahl und Kurztext.
     Keine Detaillisten (Konten, Geraete, Apps) - die bleiben am PC. Fehler eines Tenants stehen nur bei diesem Tenant.
 #>
-function Get-HURemoteSecData($S, $Settings) {
+function Get-HURemoteSecData($S, $Settings, [string[]]$Keys = @()) {
     $rank = @{ Kritisch = 0; Hoch = 1; Mittel = 2; Niedrig = 3 }
     $rules = @(Get-HUSecRules | Sort-Object @{ Expression = { if ($rank.ContainsKey("$($_.Sev)")) { $rank["$($_.Sev)"] } else { 9 } } }, @{ Expression = { "$($_.Id)" } })
     # Regeln mit Detailliste: Bezeichnung und ob Personendaten drin sind (ohne Export-Freigabe = Personendaten, dann PIN)
@@ -341,6 +341,7 @@ function Get-HURemoteSecData($S, $Settings) {
     $cells = New-Object System.Collections.Generic.List[object]
     foreach ($t in @($S.Tenants)) {
         $k = "$($t.key)"; if (-not $k) { continue }
+        if (@($Keys | Where-Object { $_ }).Count -and $Keys -notcontains $k) { continue }   # nur die am Handy gewaehlten Tenants
         $res = @(); $terr = ''
         try { $res = @(Invoke-HUSecCatalog -TenantKey $k -Settings $Settings) }
         catch { $terr = "$($_.Exception.Message)"; if ($terr.Length -gt 200) { $terr = $terr.Substring(0, 200) } }

@@ -1148,8 +1148,13 @@ function Get-HURemoteResponse($S, $Req) {
             # Antwort aus dem Zwischenspeicher (15 Minuten) oder "pending" - der PC prueft im Hintergrund, das Handy fragt erneut.
             if ($method -ne 'POST') { return (New-HURemoteJson 405 @{ ok = $false; error = 'Methode nicht erlaubt' }) }
             if (-not $S.Sec) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Sicherheit ist fuers Handy ausgeschaltet (am PC: Remote FB > Einstellungen)' }) }
-            $key = 'sec|all'
+            # Auswahl der Tenants vom Handy (nur bekannte Schluessel); leer = alle. Je Auswahl ein eigener Zwischenspeicher.
+            $known = @(@($S.Tenants) | ForEach-Object { "$($_.key)" } | Where-Object { $_ })
+            $want = @(@($body.tenants) | Select-Object -First 50 | ForEach-Object { "$_" } | Where-Object { $known -contains $_ } | Sort-Object -Unique)
+            if (-not $want.Count) { $want = @($known | Sort-Object) }
+            $key = 'sec|' + ($want -join ',')
             $force = ($body.force -eq $true)
+            $peek = ($body.peek -eq $true)   # nur nachsehen, keine Pruefung starten (beim Oeffnen des Reiters)
             $res = $null; $full = $false
             [System.Threading.Monitor]::Enter($S.ICache.SyncRoot)
             try {
@@ -1159,10 +1164,11 @@ function Get-HURemoteResponse($S, $Req) {
                 elseif ($e -and $e.State -ne 'pending' -and ($age -lt 30 -or (-not $force -and $age -lt 900))) {
                     $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('dd.MM. HH:mm') + '","error":' + (ConvertTo-Json -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
                 }
+                elseif ($peek) { $res = '{"ok":true,"pending":false,"none":true}' }
                 elseif ($S.IQueue.Count -ge 20) { $full = $true }
                 else {
                     $S.ICache[$key] = @{ State = 'pending'; At = $now; Data = ''; Error = '' }
-                    $S.IQueue.Enqueue(@{ Key = $key; Op = 'sec'; Area = 'sec'; Tenant = ''; Id = '' })
+                    $S.IQueue.Enqueue(@{ Key = $key; Op = 'sec'; Area = 'sec'; Tenant = ''; Id = ''; Keys = $want })
                     $res = '{"ok":true,"pending":true}'
                 }
             } finally { [System.Threading.Monitor]::Exit($S.ICache.SyncRoot) }
