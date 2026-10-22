@@ -721,9 +721,9 @@
                                                   SelectionMode="Extended" MinHeight="40" MaxHeight="190">
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="2*"/>
-                                                <DataGridTextColumn Header="Absicht" Binding="{Binding Absicht}" Width="120"/>
-                                                <DataGridTextColumn Header="Hinweise" Binding="{Binding Hinweise}" Width="110"/>
-                                                <DataGridTextColumn Header="Frist" Binding="{Binding Frist}" Width="110"/>
+                                                <DataGridTextColumn Header="Absicht" Binding="{Binding Absicht}" Width="Auto" MinWidth="120"/>
+                                                <DataGridTextColumn Header="Hinweise" Binding="{Binding Hinweise}" Width="Auto" MinWidth="110"/>
+                                                <DataGridTextColumn Header="Frist" Binding="{Binding Frist}" Width="Auto" MinWidth="110"/>
                                                 <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
                                             </DataGrid.Columns>
                                         </DataGrid>
@@ -757,9 +757,9 @@
                                             <DataGrid x:Name="gridIntRel" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
                                                       SelectionMode="Extended" MinHeight="40" MaxHeight="160">
                                                 <DataGrid.Columns>
-                                                    <DataGridTextColumn Header="Art" Binding="{Binding Art}" Width="110"/>
+                                                    <DataGridTextColumn Header="Art" Binding="{Binding Art}" Width="Auto" MinWidth="110"/>
                                                     <DataGridTextColumn Header="App" Binding="{Binding App}" Width="2*"/>
-                                                    <DataGridTextColumn Header="Verhalten" Binding="{Binding Typ}" Width="170"/>
+                                                    <DataGridTextColumn Header="Verhalten" Binding="{Binding Typ}" Width="Auto" MinWidth="170"/>
                                                     <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
                                                 </DataGrid.Columns>
                                             </DataGrid>
@@ -816,10 +816,10 @@
                                 <DataGrid x:Name="gridUpd" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" CanUserSortColumns="True">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="App" Binding="{Binding App}" Width="2*"/>
-                                        <DataGridTextColumn Header="Bibliothek" Binding="{Binding Version}" Width="90"/>
-                                        <DataGridTextColumn Header="Neueste" Binding="{Binding Latest}" Width="90"/>
+                                        <DataGridTextColumn Header="Bibliothek" Binding="{Binding Version}" Width="Auto" MinWidth="90"/>
+                                        <DataGridTextColumn Header="Neueste" Binding="{Binding Latest}" Width="Auto" MinWidth="90"/>
                                         <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="2*"/>
-                                        <DataGridTextColumn Header="winget-ID" Binding="{Binding WingetId}" Width="150"/>
+                                        <DataGridTextColumn Header="winget-ID" Binding="{Binding WingetId}" Width="Auto" MinWidth="150"/>
                                         <DataGridTextColumn Header="In Intune" Binding="{Binding Intune}" Width="3*"/>
                                     </DataGrid.Columns>
                                 </DataGrid>
@@ -943,8 +943,8 @@
                                                   SelectionMode="Extended" MinHeight="40" MaxHeight="190">
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="2*"/>
-                                                <DataGridTextColumn Header="Zeitplan" Binding="{Binding Zeitplan}" Width="170"/>
-                                                <DataGridTextColumn Header="Reparatur" Binding="{Binding Reparatur}" Width="75"/>
+                                                <DataGridTextColumn Header="Zeitplan" Binding="{Binding Zeitplan}" Width="Auto" MinWidth="170"/>
+                                                <DataGridTextColumn Header="Reparatur" Binding="{Binding Reparatur}" Width="Auto" MinWidth="75"/>
                                                 <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
                                             </DataGrid.Columns>
                                         </DataGrid>
@@ -1273,7 +1273,7 @@
                         <DataGrid x:Name="gridBak" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
                                   CanUserSortColumns="True" Visibility="Collapsed">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Typ" Binding="{Binding Typ}" Width="150"/>
+                                <DataGridTextColumn Header="Typ" Binding="{Binding Typ}" Width="Auto" MinWidth="150"/>
                                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*"/>
                                 <DataGridTextColumn Header="Aenderung" Binding="{Binding Aenderung}" Width="2*"/>
                                 <DataGridTextColumn Header="Geaendert von (Intune-Protokoll)" Binding="{Binding Wer}" Width="2*"/>
@@ -1309,13 +1309,13 @@
                         <DataGrid x:Name="gridAna" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
                                   CanUserSortColumns="True">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Tenant" Binding="{Binding Tenant}" Width="120"/>
-                                <DataGridTextColumn Header="Typ" Binding="{Binding Typ}" Width="150"/>
+                                <DataGridTextColumn Header="Tenant" Binding="{Binding Tenant}" Width="Auto" MinWidth="120"/>
+                                <DataGridTextColumn Header="Typ" Binding="{Binding Typ}" Width="Auto" MinWidth="150"/>
                                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*"/>
-                                <DataGridTextColumn Header="Absicht" Binding="{Binding Absicht}" Width="110"/>
+                                <DataGridTextColumn Header="Absicht" Binding="{Binding Absicht}" Width="Auto" MinWidth="110"/>
                                 <DataGridTextColumn Header="Ueber" Binding="{Binding Ueber}" Width="2*"/>
                                 <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
-                                <DataGridTextColumn Header="Filter" Binding="{Binding Filter}" Width="50"/>
+                                <DataGridTextColumn Header="Filter" Binding="{Binding Filter}" Width="Auto" MinWidth="50"/>
                             </DataGrid.Columns>
                         </DataGrid>
                         </Grid>
@@ -1477,9 +1477,9 @@
                                 </DockPanel>
                                 <DataGrid x:Name="gridTeamsHist" ToolTip="Letzte 200 Sendungen - ohne Adressen, nur Kurzkennung des Ziels" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" CanUserSortColumns="True">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Zeit" Binding="{Binding Zeit}" Width="120"/>
-                                        <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="130"/>
-                                        <DataGridTextColumn Header="Meldung" Binding="{Binding Kategorie}" Width="120"/>
+                                        <DataGridTextColumn Header="Zeit" Binding="{Binding Zeit}" Width="Auto" MinWidth="120"/>
+                                        <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="Auto" MinWidth="130"/>
+                                        <DataGridTextColumn Header="Meldung" Binding="{Binding Kategorie}" Width="Auto" MinWidth="120"/>
                                         <DataGridTextColumn Header="Titel" Binding="{Binding Titel}" Width="2*"/>
                                         <DataGridTextColumn Header="Ergebnis" Binding="{Binding Ergebnis}" Width="2*"/>
                                     </DataGrid.Columns>

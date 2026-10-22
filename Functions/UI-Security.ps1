@@ -306,8 +306,8 @@ function Show-HUSecBaseline {
                 </Style>
             </DataGrid.RowStyle>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Regel" Binding="{Binding Regel}" IsReadOnly="True" Width="60"/>
-                <DataGridTextColumn Header="Sollwert" Binding="{Binding Name}" IsReadOnly="True" Width="140"/>
+                <DataGridTextColumn Header="Regel" Binding="{Binding Regel}" IsReadOnly="True" Width="Auto" MinWidth="60"/>
+                <DataGridTextColumn Header="Sollwert" Binding="{Binding Name}" IsReadOnly="True" Width="Auto" MinWidth="140"/>
                 <DataGridTemplateColumn Header="Wert (hier eintragen)" Width="300">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
@@ -316,8 +316,8 @@ function Show-HUSecBaseline {
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn x:Name="colGlob" Header="Alle Tenants" Binding="{Binding Global}" IsReadOnly="True" Width="140"/>
-                <DataGridTextColumn Header="Standard" Binding="{Binding Standard}" IsReadOnly="True" Width="80"/>
+                <DataGridTextColumn x:Name="colGlob" Header="Alle Tenants" Binding="{Binding Global}" IsReadOnly="True" Width="Auto" MinWidth="140"/>
+                <DataGridTextColumn Header="Standard" Binding="{Binding Standard}" IsReadOnly="True" Width="Auto" MinWidth="80"/>
                 <DataGridTextColumn Header="Bedeutung" Binding="{Binding Text}" IsReadOnly="True" Width="*">
                     <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style></DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
@@ -410,9 +410,9 @@ function Show-HUSecDetail {
         <TextBlock x:Name="lblWhy" DockPanel.Dock="Top" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
         <DataGrid x:Name="gridD" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Tenant" Binding="{Binding Tenant}" Width="130"/>
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="170"/>
-                <DataGridTextColumn Header="Anzahl" Binding="{Binding Anzahl}" Width="60"/>
+                <DataGridTextColumn Header="Tenant" Binding="{Binding Tenant}" Width="Auto" MinWidth="130"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto" MinWidth="170"/>
+                <DataGridTextColumn Header="Anzahl" Binding="{Binding Anzahl}" Width="Auto" MinWidth="60"/>
                 <DataGridTextColumn Header="Details" Binding="{Binding Detail}" Width="*"/>
             </DataGrid.Columns>
         </DataGrid>
@@ -561,12 +561,12 @@ function Show-HUSecExceptions {
                    Text="Ausnahmen sind befristet und mit Begruendung. Nach Ablauf zaehlt die Abweichung wieder. Zum Anwenden danach erneut Pruefen klicken. 'wirkungslos' (orange): die Regel ist abgeschaltet oder beim letzten Pruefen nicht pruefbar - die Ausnahme kann entfernt werden; fuer nie pruefbare Regeln besser in den Sollwerten unter Katalog disabled abschalten."/>
         <DataGrid x:Name="gridEx" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Regel" Binding="{Binding Regel}" Width="60"/>
-                <DataGridTextColumn Header="Tenant" Binding="{Binding Tenant}" Width="120"/>
+                <DataGridTextColumn Header="Regel" Binding="{Binding Regel}" Width="Auto" MinWidth="60"/>
+                <DataGridTextColumn Header="Tenant" Binding="{Binding Tenant}" Width="Auto" MinWidth="120"/>
                 <DataGridTextColumn Header="Begruendung" Binding="{Binding Begruendung}" Width="2*"/>
-                <DataGridTextColumn Header="Verantwortlich" Binding="{Binding Verantwortlich}" Width="130"/>
-                <DataGridTextColumn Header="Gueltig bis" Binding="{Binding Bis}" Width="95"/>
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="210"/>
+                <DataGridTextColumn Header="Verantwortlich" Binding="{Binding Verantwortlich}" Width="Auto" MinWidth="130"/>
+                <DataGridTextColumn Header="Gueltig bis" Binding="{Binding Bis}" Width="Auto" MinWidth="95"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto" MinWidth="210"/>
             </DataGrid.Columns>
             <DataGrid.RowStyle>
                 <Style TargetType="DataGridRow">

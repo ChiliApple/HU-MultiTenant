@@ -101,7 +101,7 @@ function New-HUSupportZip {
         foreach ($d in @(Get-ChildItem -LiteralPath $sb -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3)) {
             $app = Get-HUAppById $d.Name
             $label = if ($app) { ($app.Name -replace '[\\/:*?"<>|]', '_') } else { $d.Name.Substring(0, 8) }
-            foreach ($f in @(Get-ChildItem -LiteralPath $d.FullName -Recurse -File -Include *.json, *.log, *.txt -ErrorAction SilentlyContinue | Where-Object { $_.Length -lt 5MB })) {
+            foreach ($f in @(Get-ChildItem -LiteralPath $d.FullName -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.json', '.log', '.txt' -and $_.Length -lt 5MB })) {
                 try { & $put ("Testinstallation\$label\" + $f.FullName.Substring($d.FullName.Length + 1)) (& $tail $f.FullName) } catch { }
             }
         }

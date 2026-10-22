@@ -92,6 +92,7 @@ function Update-HUTsuPermList {
         $cb.Content = $sp
         if ($granted) { $cb.IsChecked = $true; $cb.IsEnabled = $false }
         elseif ($u.Checked.ContainsKey($n)) { $cb.IsChecked = [bool]$u.Checked[$n] }
+        elseif ($u.NurVorauswahl) { $cb.IsChecked = $false }   # Aufruf mit -Preselect (z. B. Zusatzmodul): nur genau diese Rechte
         else {
             # Vorauswahl: Standard-Rechte; beim Erteilen zusaetzlich alles, was eine Extension braucht
             $cb.IsChecked = (($cat -and $cat.default -eq $true) -or ($u.Mode -eq 'Grant' -and $usage[$n] -and -not $risky) -or ($u.Extra -contains $n))
@@ -277,9 +278,12 @@ function Complete-HUTsuWork($Out) {
         $added = @($Out.Added)
         if ($added.Count) { Add-HUTsuLog "Erteilt: $($added -join ', ')" 'OK' } else { Add-HUTsuLog 'Alle gewaehlten Rechte waren schon erteilt.' 'OK' }
         Add-HUTsuLog 'Neue Rechte erscheinen nach etwa 1 Minute im Token - dann im Fenster Berechtigungen "Neu lesen".' 'Info'
+        Add-HUTsuLog 'Fertig - Fenster schliessen. (Weitere Rechte nur, wenn du noch welche anhakst.)' 'OK'
         try { Clear-TokenCache -TenantKey "$($u.Tenant.key)" } catch { }
         if ($script:PermCache) { $script:PermCache.Remove("$($u.Tenant.key)") }
-        foreach ($p in $added) { if ($u.Granted -notcontains $p) { $u.Granted += $p } }
+        # alles Gewaehlte ist jetzt erteilt (neu oder schon vorher) - sonst bleibt es ausgewaehlt und 'Weitere Rechte erteilen' fragt dieselben Rechte immer wieder an
+        foreach ($p in @($added) + @($u.Sel)) { if ("$p" -and $u.Granted -notcontains "$p") { $u.Granted += "$p" } }
+        $u.Sel = @()
         $u.Result = $added
         $u.Phase = 'Idle'
         Update-HUTsuPermList
@@ -321,7 +325,7 @@ function Show-HUTenantSetupDialog {
     $script:TSU = @{
         Window = $w; C = $c; Catalog = $catalog; Mode = $(if ($tenant) { 'Grant' } else { 'Setup' }); Tenant = $tenant
         Granted = $granted; GrantedKnown = $known; Extra = @(); Checked = @{}; Phase = 'Idle'; LoginCtx = $null; Login = $null; Worker = $null
-        Key = ''; WorkStarted = $null; Result = $null; Done = @(); Sel = @()
+        Key = ''; WorkStarted = $null; Result = $null; Done = @(); Sel = @(); NurVorauswahl = (@($Preselect | Where-Object { "$_" }).Count -gt 0)
     }
     foreach ($p in $Preselect) { if ("$p") { $script:TSU.Checked["$p"] = $true; if (-not @($catalog.permissions | Where-Object { "$($_.name)" -eq "$p" }).Count) { $script:TSU.Extra += "$p" } } }
 

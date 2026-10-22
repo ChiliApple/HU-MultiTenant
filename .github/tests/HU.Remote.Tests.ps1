@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Pester-Tests: Handy-Fernbedienung (Core\HU.Remote.ps1, Core\HU.RemoteRun.ps1, Core\HU.RemoteWeb.ps1) ohne Webserver.
@@ -401,6 +401,145 @@ Describe 'Fernbedienung: Sicherheit (Katalog lesen)' {
         $js = [Text.Encoding]::UTF8.GetString($f['/app.js'].Bytes)
         $js | Should -Match "min-width: 600px"
         $js | Should -Match "S\.secOn = j\.sec === true"
+    }
+}
+
+Describe 'Fernbedienung: Zusatzmodule (eigene Seiten)' {
+    BeforeAll {
+        $script:AdDir = Join-Path $script:TestRoot 'Addons\Test'
+        New-Item -Path $script:AdDir -ItemType Directory -Force | Out-Null
+        $script:AdCore = Join-Path $script:AdDir 'Test.Core.ps1'
+        Set-Content -LiteralPath $script:AdCore -Encoding UTF8 -Value @'
+$script:TestAdGeladen = 'ja'
+function Invoke-HUAddonRemoteTest([string]$Op, [string]$Tenant, [string]$Arg, $Settings) {
+    $S.Run = $false   # Test: Arbeiter nach dieser Abfrage beenden ($S aus dem Arbeiter)
+    if ($Op -eq 'laps') { return @{ title = 'LAPS'; lines = @(, [string[]]@('Konto', 'CCCSAdmin')); secret = 'geheim' } }
+    return @{ summary = "$Op|$Tenant|$Arg|$($script:TestAdGeladen)"; rows = @(@{ t = 'Zeile'; s = 'ok'; lines = @(, [string[]]@('A', 'B')); acts = @() }) }
+}
+'@
+        function script:New-AdDef { @{ Title = 'Testmodul'; Short = 'TM'; Icon = 'X'; Core = $script:AdCore; Function = 'Invoke-HUAddonRemoteTest'
+                Pages = @(@{ Op = 'overview'; Title = 'Uebersicht' }, @{ Op = 'devices'; Title = 'Geraete'; Input = 'search'; Prefix = 'q:'; Hint = 'Name'; Alt = @{ Label = 'Gruppe'; Prefix = 'grp:'; Values = @{ a = 'MDM-Gruppe' } } })
+                Ops = @{ overview = @{ Ttl = 600 }; devices = @{ Ttl = 5; Pii = $true }; laps = @{ Once = $true } } } }
+        function script:New-AdState {
+            $S = New-TestState
+            $p = ConvertTo-HURemoteAddonPages ([pscustomobject]@{ Id = 'Test'; Title = 'Test'; Dir = $script:AdDir }) (New-AdDef)
+            $S.Addons[$p.Id] = $p.Server
+            return $S
+        }
+    }
+    # der Arbeiter laedt Module aus der Programmordner-Attrappe - danach wieder entladen (andere Testdateien laden die echten)
+    AfterAll { Get-Module | Where-Object { "$($_.Path)" -like "$script:App*" } | Remove-Module -Force -ErrorAction SilentlyContinue }
+    It 'Katalog: Angaben werden geprueft; Code-Pfad und Funktion bleiben am PC' {
+        $ad = [pscustomobject]@{ Id = 'Test'; Title = 'Test'; Dir = $script:AdDir }
+        $p = ConvertTo-HURemoteAddonPages $ad (New-AdDef)
+        $p.Id | Should -Be 'Test'
+        $p.Client.short | Should -Be 'TM'
+        @($p.Client.pages).Count | Should -Be 2
+        @($p.Client.pages)[1].alt.values['a'] | Should -Be 'MDM-Gruppe'
+        @($p.Client.once) | Should -Be @('laps')
+        @($p.Client.pii) | Should -Be @('devices')
+        $p.Server.Ops['devices'].Ttl | Should -Be 10          # untere Grenze
+        $p.Server.Ops['laps'].Pii | Should -BeTrue             # Einmal-Anzeige zaehlt als Personendaten
+        $json = ConvertTo-Json -InputObject $p.Client -Depth 10 -Compress
+        $json | Should -Not -Match 'Core\.ps1'
+        $json | Should -Not -Match 'Invoke-HUAddonRemote'
+        # Core ausserhalb des Modulordners, falsche Funktion, Seite mit Einmal-Abfrage, fremde Eingabeart
+        $d = New-AdDef; $d.Core = Join-Path $script:TestRoot 'Fremd.ps1'
+        { ConvertTo-HURemoteAddonPages $ad $d } | Should -Throw '*Modulordner*'
+        $d = New-AdDef; $d.Core = Join-Path (Join-Path $script:AdDir '..') 'x.ps1'
+        { ConvertTo-HURemoteAddonPages $ad $d } | Should -Throw '*Modulordner*'
+        $d = New-AdDef; $d.Function = 'Remove-Item'
+        { ConvertTo-HURemoteAddonPages $ad $d } | Should -Throw '*Funktion*'
+        $d = New-AdDef; $d.Pages = @(@{ Op = 'laps'; Title = 'X' })
+        { ConvertTo-HURemoteAddonPages $ad $d } | Should -Throw '*Aktionen*'
+        $d = New-AdDef; $d.Pages = @(@{ Op = 'overview'; Input = 'html' })
+        { ConvertTo-HURemoteAddonPages $ad $d } | Should -Throw '*Input*'
+        $d = New-AdDef; $d.Ops = @{ 'Bad-Op' = @{} }
+        { ConvertTo-HURemoteAddonPages $ad $d } | Should -Throw '*ungueltig*'
+        { ConvertTo-HURemoteAddonPages ([pscustomobject]@{ Id = '../x'; Title = 'x'; Dir = $script:AdDir }) (New-AdDef) } | Should -Throw '*Kennung*'
+    }
+    It 'Abfrage: Pruefung der Anfrage, Warteschlange, Zwischenspeicher, Schalter aus' {
+        $S = New-AdState; $t = Pair $S
+        (Req $S POST '/api/addon' @{ addon = 'Fremd'; op = 'overview'; tenant = 'a' } $t).Code | Should -Be 400
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'delete'; tenant = 'a' } $t).Code | Should -Be 400
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'overview'; tenant = 'zz' } $t).Code | Should -Be 400
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'overview'; tenant = 'a'; arg = "x`ny" } $t).Code | Should -Be 400
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'overview'; tenant = 'a'; arg = ('x' * 201) } $t).Code | Should -Be 400
+        $r = Req $S POST '/api/addon' @{ addon = 'Test'; op = 'overview'; tenant = 'a' } $t
+        $r.J.pending | Should -BeTrue
+        $S.IQueue.Count | Should -Be 1
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'overview'; tenant = 'a' } $t).J.pending | Should -BeTrue
+        $S.IQueue.Count | Should -Be 1                          # laeuft schon: nicht doppelt
+        $q = $S.IQueue.Dequeue()
+        $q.Op | Should -Be 'addon'; $q.AOp | Should -Be 'overview'; $q.Tenant | Should -Be 'a'; $q.Core | Should -Be $script:AdCore; $q.Fn | Should -Be 'Invoke-HUAddonRemoteTest'
+        $S.ICache[$q.Key] = @{ State = 'done'; At = (Get-Date); Data = '{"summary":"s","rows":[]}'; Error = ''; Once = $false }
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'overview'; tenant = 'a' } $t).J.data.summary | Should -Be 's'
+        $S.Addon = $false
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'overview'; tenant = 'a' } $t).Code | Should -Be 403
+    }
+    It 'Personendaten nur nach PIN (Freigabe wie Sicherheitslisten); falsche PIN zaehlt' {
+        Set-HURemotePin '4711'
+        $S = New-AdState; $S.Pin = Read-HURemotePin; $t = Pair $S
+        $dh = @($S.Devices.Keys)[0]
+        $r = Req $S POST '/api/addon' @{ addon = 'Test'; op = 'devices'; tenant = 'a'; arg = 'q:max' } $t
+        $r.Code | Should -Be 403; $r.J.pin | Should -BeTrue; $S.IQueue.Count | Should -Be 0
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'devices'; tenant = 'a'; arg = 'q:max'; pin = '0000' } $t).Code | Should -Be 403
+        $S.Devices[$dh].PinFails | Should -Be 1
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'devices'; tenant = 'a'; arg = 'q:max'; pin = '4711' } $t).J.pending | Should -BeTrue
+        $S.Devices[$dh].PinFails | Should -Be 0
+        # Freigabe gilt: weitere Suche ohne PIN
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'devices'; tenant = 'a'; arg = 'grp:MDM-Gruppe' } $t).J.pending | Should -BeTrue
+        $S.IQueue.Count | Should -Be 2
+    }
+    It 'Einmal-Anzeige (Kennwort): immer PIN, Nachfragen ohne PIN, nur einmal ausgeliefert, nur fuer dieses Handy' {
+        Set-HURemotePin '4711'
+        $S = New-AdState; $S.Pin = Read-HURemotePin; $t = Pair $S
+        $dh = @($S.Devices.Keys)[0]
+        $S.SecGrant[$dh] = (Get-Date).AddMinutes(5)            # Freigabe fuer Listen reicht hier nicht
+        $g = '11111111-2222-3333-4444-555555555555'
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'laps'; tenant = 'a'; arg = $g } $t).J.pin | Should -BeTrue
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'laps'; tenant = 'a'; arg = $g; pin = '4711' } $t).J.pending | Should -BeTrue
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'laps'; tenant = 'a'; arg = $g } $t).J.pending | Should -BeTrue   # nachfragen ohne PIN
+        $q = $S.IQueue.Dequeue(); $q.Once | Should -BeTrue
+        $q.Key | Should -BeLike "*|$dh"
+        # anderes Handy kommt nicht an das Ergebnis
+        $S.Pair = @{ Code = '123456'; Until = (Get-Date).AddMinutes(5); Fails = 0; Locked = $false }; $t2 = Pair $S
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'laps'; tenant = 'a'; arg = $g } $t2).J.pin | Should -BeTrue
+        $S.ICache[$q.Key] = @{ State = 'done'; At = (Get-Date); Data = '{"title":"LAPS","secret":"geheim"}'; Error = ''; Once = $true }
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'laps'; tenant = 'a'; arg = $g } $t).J.data.secret | Should -Be 'geheim'
+        $S.ICache.ContainsKey($q.Key) | Should -BeFalse
+        (Req $S POST '/api/addon' @{ addon = 'Test'; op = 'laps'; tenant = 'a'; arg = $g } $t).J.pin | Should -BeTrue   # neu: wieder PIN
+        # nicht abgeholt: nach einer Minute weg
+        $S.ICache['addon|Test|laps|a|x|old'] = @{ State = 'done'; At = (Get-Date).AddMinutes(-2); Data = '{"secret":"alt"}'; Error = ''; Once = $true }
+        [void](Req $S POST '/api/addon' @{ addon = 'Test'; op = 'overview'; tenant = 'a' } $t)
+        $S.ICache.ContainsKey('addon|Test|laps|a|x|old') | Should -BeFalse
+    }
+    It 'Arbeiter: laedt die Core-Datei, ruft die Funktion und legt das Ergebnis ab (Einmal-Kennzeichen bleibt)' {
+        $S = New-AdState
+        $S.IQueue.Enqueue(@{ Key = 'k1'; Op = 'addon'; Area = 'addon'; Tenant = 'a'; Id = ''; Addon = 'Test'; AOp = 'devices'; Arg = 'q:max'; Core = $script:AdCore; Fn = 'Invoke-HUAddonRemoteTest'; Once = $false })
+        Start-HURemoteIntuneWorker $S ([pscustomobject]@{}) $script:App
+        $e = $S.ICache['k1']
+        $e.State | Should -Be 'done'
+        ($e.Data | ConvertFrom-Json).summary | Should -Be 'devices|a|q:max|ja'
+        (($e.Data | ConvertFrom-Json).rows[0].lines[0] -join '=') | Should -Be 'A=B'
+        $S.Run = $true
+        $S.IQueue.Enqueue(@{ Key = 'k2'; Op = 'addon'; Area = 'addon'; Tenant = 'a'; Id = ''; Addon = 'Test'; AOp = 'laps'; Arg = 'g'; Core = $script:AdCore; Fn = 'Invoke-HUAddonRemoteTest'; Once = $true })
+        Start-HURemoteIntuneWorker $S ([pscustomobject]@{}) $script:App
+        $S.ICache['k2'].Once | Should -BeTrue
+        ($S.ICache['k2'].Data | ConvertFrom-Json).secret | Should -Be 'geheim'
+    }
+    It 'Webseite: Reiter fuer Zusatzmodule zunaechst versteckt; nur Text, kein HTML' {
+        $f = Get-HURemoteWebFiles -Version '2.3.1' -Pc 'PC1'
+        $html = [Text.Encoding]::UTF8.GetString($f['/index.html'].Bytes)
+        $html | Should -Match 'id="tAddon" class="hidden"'
+        $html | Should -Match 'id="vAddon"'
+        $html | Should -Not -Match 'style="'
+        $js = [Text.Encoding]::UTF8.GetString($f['/app.js'].Bytes)
+        $js | Should -Match "/api/addon"
+        $js | Should -Not -Match 'innerHTML'
+        # Bedienung angebunden (Review 042 B1): Suche, Gruppe, Tenant, Neu laden, Filter, PIN, Kopieren, Schliessen
+        foreach ($id in 'aTen', 'aReload', 'aGo', 'aArg', 'aAlt', 'aFind', 'aMClose', 'aMC', 'aMGo', 'aMP') { $js | Should -Match ([regex]::Escape("`$('$id').addEventListener(")) }
+        $js | Should -Match 'S\.amGo\(v\)'
     }
 }
 

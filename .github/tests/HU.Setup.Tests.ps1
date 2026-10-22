@@ -333,3 +333,27 @@ Describe 'Alte Secrets nach Umstellung loeschen (Remove-HUObsoleteSecret)' {
         Should -Invoke Remove-StoredCredential -Times 0 -Exactly
     }
 }
+
+Describe 'Rechte erteilen: nach dem Erteilen nicht dieselben Rechte wieder anbieten' {
+    BeforeAll {
+        function Write-HULogInfo { param($Message, $Tenant) }
+        function Write-HULogWarn { param($Message, $Tenant) }
+        . (Join-Path $script:AppRoot 'Functions\UI-TenantSetup.ps1')
+    }
+    It 'gewaehlte, schon vorhandene Rechte gelten danach als erteilt; Auswahl ist leer' {
+        Set-StrictMode -Version 1.0
+        Mock Add-HUTsuLog { }
+        Mock Update-HUTsuPermList { }
+        Mock Clear-TokenCache { }
+        $script:PermCache = @{}
+        $script:TSU = @{ Mode = 'Grant'; Tenant = [pscustomobject]@{ key = 'T1' }; Granted = @('User.Read.All'); Sel = @('Group.Read.All', 'DeviceLocalCredential.Read.All')
+            Result = $null; Phase = 'Work'; C = @{ btnStart = [pscustomobject]@{ Content = '' }; lstLog = [pscustomobject]@{ Items = @() } } }
+        Complete-HUTsuWork ([pscustomobject]@{ Added = @('DeviceLocalCredential.Read.All') })
+        $script:TSU.Granted | Should -Contain 'Group.Read.All'
+        $script:TSU.Granted | Should -Contain 'DeviceLocalCredential.Read.All'
+        @($script:TSU.Sel).Count | Should -Be 0
+        $script:TSU.Phase | Should -Be 'Idle'
+        @($script:TSU.Result) | Should -Be @('DeviceLocalCredential.Read.All')
+        Set-StrictMode -Off
+    }
+}
