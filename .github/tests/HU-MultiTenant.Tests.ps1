@@ -953,6 +953,152 @@ Describe 'Backup und Verlauf' {
     }
 }
 
+Describe 'Backup: Entra-Einstellungen (Baseline)' {
+    BeforeAll {
+        Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+        $script:entraRoot = Join-Path ([IO.Path]::GetTempPath()) ("hu-entra-" + [guid]::NewGuid().ToString('N').Substring(0, 6))
+    }
+    AfterAll { Remove-Item -LiteralPath $script:entraRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    It 'sichert Einzel-Einstellungen und Listen; fehlendes Recht = nicht gesichert, Stand bleibt vollstaendig; Aenderung im Verlauf' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
+            param($Root)
+            $script:guest = 'none'
+            $f403 = { $ex = New-Object System.Exception('Graph GET /domains: Insufficient privileges'); $ex.Data['StatusCode'] = 403; throw $ex }
+            Mock Get-HUIntuneGraphAll {
+                switch -Wildcard ($Endpoint) {
+                    '/identity/conditionalAccess/namedLocations' { return @([pscustomobject]@{ id = 'n1'; displayName = 'Schule'; isTrusted = $true; ipRanges = @([pscustomobject]@{ cidrAddress = '192.0.2.0/24' }) }) }
+                    '/groupSettings' { return @([pscustomobject]@{ id = 's1'; displayName = 'Password Rule Settings'; values = @([pscustomobject]@{ name = 'LockoutThreshold'; value = '10' }) }) }
+                    '/policies/crossTenantAccessPolicy/partners' { return @([pscustomobject]@{ tenantId = '11111111-2222-3333-4444-555555555555'; isServiceProvider = $false }) }
+                    '/domains' { & $f403 }
+                    default { return @() }
+                }
+            }
+            Mock Invoke-HUIntuneGraph {
+                switch ($Endpoint) {
+                    '/policies/authorizationPolicy' { [pscustomobject]@{ id = 'authorizationPolicy'; allowInvitesFrom = $script:guest; defaultUserRolePermissions = [pscustomobject]@{ allowedToCreateApps = $false } } }
+                    '/policies/crossTenantAccessPolicy/default' { [pscustomobject]@{ isServiceDefault = $true; b2bCollaborationInbound = [pscustomobject]@{ applications = [pscustomobject]@{ accessType = 'allowed' } } } }
+                    default { [pscustomobject]@{ id = 'x'; isEnabled = $false } }
+                }
+            }
+            $b1 = Save-HUTenantBackup -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Root $Root
+            $b1.Complete | Should -BeTrue
+            @($b1.MissingPerms) | Should -Be @('Domain.Read.All')
+            $ix = Read-HUBackupJson (Join-Path $b1.Folder 'index.json')
+            @($ix.FailedTypes) | Should -Contain 'Domain'
+            $e = @($ix.Items | Where-Object Typ -eq 'Entra-Einstellung')
+            @($e).Count | Should -Be 6
+            (@($e | ForEach-Object Id) | Sort-Object) -join ',' | Should -Be 'adminConsentRequestPolicy,authenticationMethodsPolicy,authorizationPolicy,crossTenantAccessDefault,deviceRegistrationPolicy,securityDefaults'
+            ($e | Where-Object Id -eq 'crossTenantAccessDefault').Name | Should -Be 'Cross-Tenant-Zugriff (Standard)'
+            ($ix.Items | Where-Object Typ -eq 'Benannter Ort').Name | Should -Be 'Schule'
+            ($ix.Items | Where-Object Typ -eq 'Verzeichniseinstellung').Name | Should -Be 'Password Rule Settings'
+            ($ix.Items | Where-Object Typ -eq 'Cross-Tenant-Partner').Id | Should -Be '11111111-2222-3333-4444-555555555555'
+            Test-Path -LiteralPath (Join-Path $b1.Folder ($e | Where-Object Id -eq 'authorizationPolicy').File) | Should -BeTrue
+            Start-Sleep -Milliseconds 1100
+            $script:guest = 'everyone'
+            $b2 = Save-HUTenantBackup -TenantKey 'T1' -Settings ([pscustomobject]@{}) -Root $Root
+            $rows = @(Compare-HUBackups -FolderA $b1.Folder -FolderB $b2.Folder)
+            ($rows | Where-Object Id -eq 'authorizationPolicy').Aenderung | Should -Be 'Einstellungen geaendert'
+            ($rows | Where-Object Id -eq 'n1').Aenderung | Should -Be 'gleich'
+            $r = $rows | Where-Object Id -eq 'authorizationPolicy'
+            (@(Get-HUBackupItemDiff $r.FileA $r.FileB) | Where-Object Einstellung -eq 'allowInvitesFrom').T1 | Should -Be 'everyone'
+        }
+    }
+    It 'aelterer Stand ohne Entra-Arten: "erstmals gesichert" statt "neu"; Listen ueber Name bzw. sprechende Kennung' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
+            param($Root)
+            $a = Join-Path $Root 'alt'; $b = Join-Path $Root 'neu'
+            New-Item -ItemType Directory -Path $a, $b -Force | Out-Null
+            Write-HUBackupJson (Join-Path $a 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Items = @([pscustomobject]@{ Typ = 'Compliance'; Name = 'Win'; Id = 'c1'; File = ''; Hash = 'h'; AHash = '' }) })
+            Write-HUBackupJson (Join-Path $b 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Types = @('Compliance', 'Entra-Einstellung'); Items = @(
+                        [pscustomobject]@{ Typ = 'Compliance'; Name = 'Win'; Id = 'c1'; File = ''; Hash = 'h'; AHash = '' }
+                        [pscustomobject]@{ Typ = 'Compliance'; Name = 'iOS'; Id = 'c2'; File = ''; Hash = 'h'; AHash = '' }
+                        [pscustomobject]@{ Typ = 'Entra-Einstellung'; Name = 'Autorisierungsrichtlinie'; Id = 'authorizationPolicy'; File = ''; Hash = 'h'; AHash = '' }) })
+            $rows = @(Compare-HUBackups -FolderA $a -FolderB $b)
+            ($rows | Where-Object Id -eq 'authorizationPolicy').Aenderung | Should -Be 'erstmals gesichert'
+            ($rows | Where-Object Id -eq 'c2').Aenderung | Should -Be 'neu'
+            # umgekehrt: Art im neueren Stand nicht mehr gesichert
+            ((@(Compare-HUBackups -FolderA $b -FolderB $a)) | Where-Object Id -eq 'authorizationPolicy').Aenderung | Should -Be 'nicht mehr gesichert'
+            $m = ConvertTo-HUFlatMap ([pscustomobject]@{ values = @([pscustomobject]@{ name = 'LockoutThreshold'; value = '10' }); authenticationMethodConfigurations = @([pscustomobject]@{ id = 'Fido2'; state = 'enabled' }, [pscustomobject]@{ id = '0e1d6a7b-1111-2222-3333-444444444444'; state = 'x' }) })
+            $m['values[LockoutThreshold].value'] | Should -Be '10'
+            $m['authenticationMethodConfigurations[Fido2].state'] | Should -Be 'enabled'
+            $m['authenticationMethodConfigurations[1].state'] | Should -Be 'x'
+        }
+    }
+    It 'weitere Intune-Arten: Zuweisungen per expand bzw. je Eintrag, Teil-Listen, eingebaute ausgelassen, nicht verfuegbar = kein Fehler' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
+            param($Root)
+            $g = { param($id) [pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = $id } } }
+            Mock Get-HUIntuneGraphAll {
+                switch -Wildcard ($Endpoint) {
+                    '/deviceAppManagement/iosManagedAppProtections*' { return @([pscustomobject]@{ id = 'p1'; displayName = 'iOS MAM'; apps = @([pscustomobject]@{ id = 'a' }); assignments = @(& $g 'g1') }) }
+                    '/deviceAppManagement/windowsManagedAppProtections*' { $ex = New-Object System.Exception('Graph GET: 400 Bad Request'); $ex.Data['StatusCode'] = 400; throw $ex }
+                    '/deviceManagement/intents' { return @([pscustomobject]@{ id = 'i1'; displayName = 'BitLocker alt' }) }
+                    '/deviceManagement/intents/i1/settings' { return @([pscustomobject]@{ definitionId = 'd1'; valueJson = 'true' }) }
+                    '/deviceManagement/intents/i1/assignments' { return @(& $g 'g2') }
+                    '/deviceManagement/roleScopeTags' { return @([pscustomobject]@{ id = '0'; displayName = 'Default'; isBuiltIn = $true }, [pscustomobject]@{ id = '1'; displayName = 'Schule A'; isBuiltIn = $false }) }
+                    '/deviceManagement/roleScopeTags/1/assignments' { return @() }
+                    '/deviceManagement/roleDefinitions' { return @([pscustomobject]@{ id = 'r0'; displayName = 'Help Desk Operator'; isBuiltIn = $true }) }
+                    default { return @() }
+                }
+            }
+            Mock Invoke-HUIntuneGraph { [pscustomobject]@{ id = 'x' } }
+            $b = Save-HUTenantBackup -TenantKey 'T3' -Settings ([pscustomobject]@{}) -Root $Root -Types @('App-Schutz', 'Endpunktsicherheit (alt)', 'Bereichsmarkierung', 'Intune-Rolle')
+            $b.Complete | Should -BeTrue
+            $ix = Read-HUBackupJson (Join-Path $b.Folder 'index.json')
+            $p = $ix.Items | Where-Object Id -eq 'p1'
+            $p.Typ | Should -Be 'App-Schutz'; $p.AHash | Should -Match 'g1'
+            $i = $ix.Items | Where-Object Id -eq 'i1'
+            $i.AHash | Should -Match 'g2'
+            (Read-HUBackupJson (Join-Path $b.Folder $i.File)).settings[0].definitionId | Should -Be 'd1'
+            @($ix.Items | Where-Object Typ -eq 'Bereichsmarkierung').Name | Should -Be @('Schule A')
+            @($ix.Items | Where-Object Typ -eq 'Intune-Rolle').Count | Should -Be 0
+            @($ix.Types) | Should -Contain 'Intune-Rolle'
+            @($ix.FailedTypes).Count | Should -Be 0
+        }
+    }
+    It 'Entra-Rest: eingebaute ausgelassen, Rollenzuweisung mit Rollen- und Mitgliedsname, optionales Recht ohne Warnung' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
+            param($Root)
+            $script:warn = @()
+            Mock Write-HULog { if ($Level -eq 'WARN') { $script:warn += $Message } }
+            Mock Get-HUIntuneGraphAll {
+                switch -Wildcard ($Endpoint) {
+                    '/policies/authenticationStrengthPolicies' { return @([pscustomobject]@{ id = 'b'; displayName = 'MFA'; policyType = 'builtIn' }, [pscustomobject]@{ id = 'c'; displayName = 'Lehrer-MFA'; policyType = 'custom' }) }
+                    '/policies/permissionGrantPolicies' { return @([pscustomobject]@{ id = 'microsoft-user-default-low'; displayName = 'Standard' }, [pscustomobject]@{ id = 'eigen'; displayName = 'Eigene' }) }
+                    '/roleManagement/directory/roleDefinitions?*' { return @([pscustomobject]@{ id = '62e9'; displayName = 'Global Administrator' }) }
+                    '/roleManagement/directory/roleAssignments*' { return @([pscustomobject]@{ id = 'ra1'; roleDefinitionId = '62e9'; directoryScopeId = '/'; principal = [pscustomobject]@{ userPrincipalName = 'admin@schule.example' } }) }
+                    '/groupLifecyclePolicies' { $ex = New-Object System.Exception('Graph GET: 403'); $ex.Data['StatusCode'] = 403; throw $ex }
+                    default { return @() }
+                }
+            }
+            Mock Invoke-HUIntuneGraph { [pscustomobject]@{ id = 'x' } }
+            $b = Save-HUTenantBackup -TenantKey 'T4' -Settings ([pscustomobject]@{}) -Root $Root -Types @('Authentifizierungsstaerke', 'Zustimmungsrichtlinie', 'Entra-Rollenzuweisung', 'Gruppen-Ablauf', 'Dienst-Einstellung')
+            $ix = Read-HUBackupJson (Join-Path $b.Folder 'index.json')
+            @($ix.Items | Where-Object Typ -eq 'Authentifizierungsstaerke').Name | Should -Be @('Lehrer-MFA')
+            @($ix.Items | Where-Object Typ -eq 'Zustimmungsrichtlinie').Name | Should -Be @('Eigene')
+            ($ix.Items | Where-Object Typ -eq 'Entra-Rollenzuweisung').Name | Should -Be 'Global Administrator - admin@schule.example'
+            @($ix.Items | Where-Object Typ -eq 'Dienst-Einstellung').Count | Should -Be 2
+            @($ix.FailedTypes) | Should -Contain 'Gruppen-Ablauf'
+            @($b.MissingPerms).Count | Should -Be 0
+            @($script:warn).Count | Should -Be 0
+            $b.Complete | Should -BeTrue
+        }
+    }
+    It 'anderer Lesefehler zaehlt als Fehler (Stand unvollstaendig), 403 erkannt auch am Text' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
+            param($Root)
+            Mock Get-HUIntuneGraphAll { if ($Endpoint -eq '/identity/conditionalAccess/namedLocations') { throw 'Graph GET: 500 Serverfehler' }; return @() }
+            Mock Invoke-HUIntuneGraph { [pscustomobject]@{ id = 'x' } }
+            $b = Save-HUTenantBackup -TenantKey 'T2' -Settings ([pscustomobject]@{}) -Root $Root
+            $b.Complete | Should -BeFalse
+            $b.Errors | Should -Be 1
+            Test-HUGraphForbidden (New-Object System.Exception('Authorization_RequestDenied')) | Should -BeTrue
+            Test-HUGraphForbidden (New-Object System.Exception('Graph GET: 404 nicht gefunden')) | Should -BeFalse
+        }
+    }
+}
+
 Describe 'Backup: Administrative Vorlagen' {
     BeforeAll { Import-Module (Join-Path $script:AppRoot 'Core\HU.Intune.psm1') -Force -DisableNameChecking }
     It 'liest Einstellungen getrennt (expand hoechstens 1 Ebene)' {

@@ -14,7 +14,7 @@
 .NOTES
     Zielmaschine: der PC, auf dem HU-MultiTenant laeuft (Windows 10/11, Windows PowerShell 5.1).
 #>
-param([switch]$ShowConsole, [string]$SmokeTest = '', [switch]$Headless, [string]$Job = '')
+param([switch]$ShowConsole, [string]$SmokeTest = '', [switch]$Headless, [string]$Job = '', [int]$WaitForPid = 0)
 
 # Konsolenfenster ausblenden (nur die WPF-Oberflaeche ist sichtbar)
 if (-not $ShowConsole) {
@@ -60,6 +60,29 @@ function Show-HUFatal([string]$Text, [int]$Code = 1) {
     if (Get-Command Close-HUSplash -ErrorAction SilentlyContinue) { Close-HUSplash }
     [void][System.Windows.MessageBox]::Show($Text, 'HU-MultiTenant - Fehler', 'OK', 'Error')
     exit 1
+}
+
+# Neustart aus der App (z. B. nach einem Zusatzmodul): die alte Instanz schliesst noch (Fernbedienung, Hintergrundauftraege) -
+# kleines Fenster zeigen und warten (hoechstens 90 s), dann wie gewohnt weiter
+if ($WaitForPid -gt 0 -and -not $SmokeTest -and -not $Headless) {
+    $old = $null; try { $old = Get-Process -Id $WaitForPid -ErrorAction Stop } catch { }
+    if ($old) {
+        $rw = $null
+        try {
+            $rw = [System.Windows.Markup.XamlReader]::Parse('<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" Width="360" Height="90" WindowStartupLocation="CenterScreen" Topmost="True" ShowInTaskbar="False" Title="HU-MultiTenant"><Border Background="#FF1E1E1E" CornerRadius="10" BorderBrush="#FFB9A88A" BorderThickness="2"><TextBlock Text="HU-MultiTenant wird neu gestartet ..." Foreground="#FFEDEDED" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></Window>')
+            $rw.Show()
+        } catch { $rw = $null }
+        $until = (Get-Date).AddSeconds(90)
+        while (-not $old.HasExited -and (Get-Date) -lt $until) {
+            if ($rw) {
+                $fr = New-Object System.Windows.Threading.DispatcherFrame
+                [void][System.Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [System.Windows.Threading.DispatcherOperationCallback] { param($f) $f.Continue = $false; $null }, $fr)
+                [System.Windows.Threading.Dispatcher]::PushFrame($fr)
+            }
+            [void]$old.WaitForExit(200)
+        }
+        if ($rw) { try { $rw.Close() } catch { } }
+    }
 }
 
 # nur eine Instanz je Programmordner (zwei Instanzen wuerden sich Bibliothek und Einstellungen gegenseitig ueberschreiben)
@@ -299,6 +322,11 @@ $script:Controls['btnRemote'].Add_Click({ Show-HURemoteDialog })
 $script:Controls['btnPanic'].Add_Click({ Invoke-HUPanic })
 # Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
 $script:Controls['tabMain'].Add_SelectionChanged({ param($s, $e) if ($e.OriginalSource -eq $script:Controls['tabMain']) { Update-HULeftPanel } })
+# Reiterleiste bleibt an derselben Stelle: Abstaende von Tenant-Leiste und Extension-Liste bei Groessenaenderungen nachziehen
+# (Splitter, Fenstergroesse, Reiterleiste bricht um)
+foreach ($__n in 'pnlLeft', 'pnlTenantBar', 'tabMain') { $script:Controls[$__n].Add_SizeChanged({ Update-HUMainOverlay }) }
+$script:Controls['tabMain'].Add_Loaded({ Update-HUMainOverlay })
+Remove-Variable __n -ErrorAction SilentlyContinue
 # Rechtsklick in den Ausgaben: Kopieren / Alles kopieren / Ausgabe leeren
 Add-HUOutputMenu $script:Controls['rtbQSOutput'] { $script:Controls['rtbQSOutput'].Document.Blocks.Clear() }
 Add-HUOutputMenu $script:Controls['rtbLog'] { Clear-LogBuffer -IncludeGui }

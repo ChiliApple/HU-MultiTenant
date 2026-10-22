@@ -58,26 +58,6 @@
             </DockPanel>
         </Border>
 
-        <!-- ========== TENANT-AUSWAHL (nur im Reiter Extensions) ========== -->
-        <Border x:Name="pnlTenantBar" DockPanel.Dock="Top" Background="#252526" Padding="14,8">
-            <DockPanel>
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
-                    <TextBlock Text="Tenant:" Foreground="White" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <ComboBox x:Name="cmbTenant" Width="300" FontSize="12"/>
-                    <TextBlock x:Name="txtTenantStatus" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="12"/>
-                    <TextBlock x:Name="txtSecretExpiry" VerticalAlignment="Center" Margin="14,0,0,0" FontSize="11" Foreground="#858585"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <CheckBox x:Name="chkPersistCred" Content="Secret speichern"
-                              Foreground="#CCCCCC" VerticalAlignment="Center" Margin="0,0,12,0"
-                              FontSize="11" IsChecked="True" IsEnabled="False"
-                              ToolTip="Aus: Secret wird beim Beenden geloescht"/>
-                    <Button x:Name="btnValidate" Content="Verbinden" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,6,0"/>
-                    <Button x:Name="btnDisconnect" Content="Trennen" Background="#D32F2F" Style="{StaticResource DarkButton}"/>
-                </StackPanel>
-            </DockPanel>
-        </Border>
-
         <!-- ========== HAUPTBEREICH (links Extensions, rechts Reiter) ========== -->
         <Grid x:Name="gridMain" Margin="10,8,10,10">
             <Grid.ColumnDefinitions>
@@ -86,54 +66,10 @@
                 <ColumnDefinition Width="*" MinWidth="380"/>
             </Grid.ColumnDefinitions>
 
-            <!-- LINKS: EXTENSIONS -->
-            <Border Grid.Column="0" x:Name="pnlLeft" Background="#2D2D2D" CornerRadius="4" Padding="10">
-                <DockPanel>
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                        <TextBlock x:Name="btnReloadExt" DockPanel.Dock="Right" Text="&#x21BB;" Foreground="#858585"
-                                   FontSize="15" Cursor="Hand" VerticalAlignment="Center" Margin="6,0,0,0"
-                                   ToolTip="Extensions neu laden"/>
-                        <TextBlock Text="Extensions" FontWeight="Bold" Foreground="White" FontSize="13"/>
-                    </DockPanel>
-                    <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
-                        <TextBox x:Name="txtExtSearch" Style="{StaticResource DarkTextBox}" FontSize="11"/>
-                        <TextBlock Text="Suchen ..." Foreground="#666666" FontSize="11" Margin="9,0,0,0" VerticalAlignment="Center"
-                                   IsHitTestVisible="False" x:Name="txtExtSearchHint"/>
-                    </Grid>
-                    <ListBox x:Name="lstExtensions" Background="#1E1E1E" Foreground="White" BorderThickness="0"
-                             FontSize="11" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Padding="6,5" BorderThickness="0,0,0,1" BorderBrush="#3E3E42">
-                                    <StackPanel>
-                                        <DockPanel>
-                                            <TextBlock Text="{Binding Category}" FontSize="9" Foreground="#1976D2"
-                                                       FontWeight="Bold" DockPanel.Dock="Left" Margin="0,0,6,0"/>
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#4CAF50"/>
-                                        </DockPanel>
-                                        <TextBlock Text="{Binding Synopsis}" FontSize="9" Foreground="#858585"
-                                                   TextWrapping="Wrap" Margin="0,2,0,0"/>
-                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                            <TextBlock Text="DRY-RUN" FontSize="8" Foreground="#FF9800" Margin="0,0,8,0"
-                                                       Visibility="{Binding DryRunVisible}"/>
-                                            <TextBlock Text="BATCH" FontSize="8" Foreground="#2196F3" Margin="0,0,8,0"
-                                                       Visibility="{Binding BatchVisible}"/>
-                                            <TextBlock Text="SCHREIBT" FontSize="8" Foreground="#E6820E"
-                                                       Visibility="{Binding WriteVisible}"/>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
-            </Border>
-
-            <GridSplitter Grid.Column="1" x:Name="splLeft" Width="4" Background="#3E3E42" Opacity="0.5" HorizontalAlignment="Center"
-                          VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext" Cursor="SizeWE"/>
-
             <!-- RECHTS: Reiter Quick Script | Extensions | Apps | Wartung -->
-            <TabControl Grid.Column="2" x:Name="tabMain" Style="{StaticResource DarkTabControl}" Background="#1E1E1E">
+            <!-- Reiter ueber die ganze Breite: die Reiterleiste steht immer an derselben Stelle. Extension-Liste und Tenant-Leiste
+                 liegen darueber im Inhaltsbereich (Abstand setzt Update-HUMainOverlay) -->
+            <TabControl Grid.Column="0" Grid.ColumnSpan="3" x:Name="tabMain" Style="{StaticResource DarkTabControl}" Background="#1E1E1E">
 
                 <!-- ===== REITER: QUICK SCRIPT ===== -->
                 <TabItem Header="&#x26A1; Quick Script" x:Name="tabQuickScript" Style="{StaticResource DarkTabItem}">
@@ -1205,6 +1141,7 @@
                                         <TextBlock Text="&#x2192;" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,4,4"/>
                                         <ComboBox x:Name="cmbBakB" Style="{StaticResource DarkComboBox}" Width="170" Margin="0,0,6,4" ToolTip="Neuerer Stand - oder nur den linken Stand anzeigen"/>
                                         <Button x:Name="btnBakCmp" Content="&#x25B6; Anzeigen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                        <ComboBox x:Name="cmbBakTyp" Style="{StaticResource DarkComboBox}" Width="190" Margin="0,0,6,4" ToolTip="Nur eine Art zeigen (z. B. Entra-Rollenzuweisung) - wirkt zusaetzlich zum Textfilter"/>
                                         <TextBox x:Name="txtBakFilter" Width="200" Margin="0,0,6,4" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Filter: Text in Typ, Name, Aenderung, Geaendert von"/>
                                         <CheckBox x:Name="chkBakChanges" Content="Nur Aenderungen" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,4"/>
                                         <Button x:Name="btnBakRestore" Content="Wiederherstellen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
@@ -1490,6 +1427,72 @@
                     </DockPanel>
                 </TabItem>
             </TabControl>
+
+            <!-- LINKS: EXTENSIONS -->
+            <Border Grid.Column="0" x:Name="pnlLeft" Background="#2D2D2D" CornerRadius="4" Padding="10" VerticalAlignment="Stretch">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock x:Name="btnReloadExt" DockPanel.Dock="Right" Text="&#x21BB;" Foreground="#858585"
+                                   FontSize="15" Cursor="Hand" VerticalAlignment="Center" Margin="6,0,0,0"
+                                   ToolTip="Extensions neu laden"/>
+                        <TextBlock Text="Extensions" FontWeight="Bold" Foreground="White" FontSize="13"/>
+                    </DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBox x:Name="txtExtSearch" Style="{StaticResource DarkTextBox}" FontSize="11"/>
+                        <TextBlock Text="Suchen ..." Foreground="#666666" FontSize="11" Margin="9,0,0,0" VerticalAlignment="Center"
+                                   IsHitTestVisible="False" x:Name="txtExtSearchHint"/>
+                    </Grid>
+                    <ListBox x:Name="lstExtensions" Background="#1E1E1E" Foreground="White" BorderThickness="0"
+                             FontSize="11" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="6,5" BorderThickness="0,0,0,1" BorderBrush="#3E3E42">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <TextBlock Text="{Binding Category}" FontSize="9" Foreground="#1976D2"
+                                                       FontWeight="Bold" DockPanel.Dock="Left" Margin="0,0,6,0"/>
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#4CAF50"/>
+                                        </DockPanel>
+                                        <TextBlock Text="{Binding Synopsis}" FontSize="9" Foreground="#858585"
+                                                   TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                            <TextBlock Text="DRY-RUN" FontSize="8" Foreground="#FF9800" Margin="0,0,8,0"
+                                                       Visibility="{Binding DryRunVisible}"/>
+                                            <TextBlock Text="BATCH" FontSize="8" Foreground="#2196F3" Margin="0,0,8,0"
+                                                       Visibility="{Binding BatchVisible}"/>
+                                            <TextBlock Text="SCHREIBT" FontSize="8" Foreground="#E6820E"
+                                                       Visibility="{Binding WriteVisible}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="1" x:Name="splLeft" Width="4" Background="#3E3E42" Opacity="0.5" HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext" Cursor="SizeWE"/>
+
+            <!-- ========== TENANT-AUSWAHL (nur im Reiter Extensions) ========== -->
+            <Border x:Name="pnlTenantBar" Grid.Column="0" Grid.ColumnSpan="3" VerticalAlignment="Top" Background="#252526" CornerRadius="4" Padding="14,8">
+                <DockPanel>
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                        <TextBlock Text="Tenant:" Foreground="White" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox x:Name="cmbTenant" Width="300" FontSize="12"/>
+                        <TextBlock x:Name="txtTenantStatus" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="12"/>
+                        <TextBlock x:Name="txtSecretExpiry" VerticalAlignment="Center" Margin="14,0,0,0" FontSize="11" Foreground="#858585"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <CheckBox x:Name="chkPersistCred" Content="Secret speichern"
+                                  Foreground="#CCCCCC" VerticalAlignment="Center" Margin="0,0,12,0"
+                                  FontSize="11" IsChecked="True" IsEnabled="False"
+                                  ToolTip="Aus: Secret wird beim Beenden geloescht"/>
+                        <Button x:Name="btnValidate" Content="Verbinden" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,6,0"/>
+                        <Button x:Name="btnDisconnect" Content="Trennen" Background="#D32F2F" Style="{StaticResource DarkButton}"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
         </Grid>
     </DockPanel>
 </Window>
