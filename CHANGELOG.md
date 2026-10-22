@@ -1,5 +1,27 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.3.1 (Stable, 22.10.2026)
+
+### 🧩 Zusatzmodule
+- **Neu:** Zusatzmodule aus privaten Repositories – mit eigenem Reiter.
+- **Hinterlegen:** Rechtsklick auf *Update* › *Zusatzmodule …*: Repository und Nur-Lese-Token eintragen. Der Token wird verschlüsselt nur für den eigenen Windows-Benutzer gespeichert.
+- **Aktuell halten:** Beim Start wird im Hintergrund die neueste signierte Fassung geholt; sie wirkt nach dem nächsten Neustart.
+- **Sicherheit:** Geladen wird nur, was mit dem Zertifikat des Herausgebers signiert ist. Jede Datei wird bei jedem Start gegen die signierte Prüfsummen-Liste geprüft; fremde oder veränderte Dateien verhindern das Laden.
+- **Mindestversion:** Ein Modul gibt an, welche Version von HU-MultiTenant es braucht.
+
+### 📱 Handy: Seiten für Zusatzmodule
+- **Eigener Reiter:** Ein Zusatzmodul kann eigene Seiten mitbringen; sie erscheinen als zusätzlicher Reiter mit kurzem Namen und Symbol (bei mehreren Modulen als Auswahl oben).
+- **Nur lesen, am PC:** Was abgefragt werden darf, legt das Modul fest und wird am PC geprüft (Datei im Modulordner, fester Funktionsname, bekannte Abfragen). Der Code läuft nur am PC im Hintergrund – das Handy bekommt nur Text.
+- **Personendaten mit PIN:** Listen mit Namen nur nach PIN (gilt wie bei Sicherheit einige Minuten). Kennwörter immer mit PIN, nur für dieses Handy, einmal ausgeliefert und danach gelöscht; am Handy nach einer Minute ausgeblendet.
+- **Abschaltbar:** *Remote FB › Einstellungen › Zusatzmodule am Handy*.
+- **Auswahlfelder:** Tenant- und andere Auswahlfelder am Handy sehen jetzt wie Eingabefelder aus (mit Pfeil).
+
+### 🔧 Verbesserungen
+- **Rechte erteilen:** Nach dem Erteilen gelten alle gewählten Rechte als erteilt – *Weitere Rechte erteilen* fragt nicht mehr dieselben Rechte im selben Tenant erneut an.
+- **Vorauswahl:** Wird das Fenster mit bestimmten Rechten geöffnet (z. B. aus einem Zusatzmodul), sind nur genau diese angehakt.
+- **Tabellen überall:** Zellen und Spaltenköpfe haben Abstand nach rechts; Spalten sind mindestens so breit wie ihr Inhalt (bisher feste Breiten bleiben als Mindestbreite).
+- **Zusatzmodul in Entwicklung:** Reiter ohne Zusatz „(Dev)“ – das Laden aus AddonsDev steht weiterhin im Protokoll.
+
 ## v2.3.0 (Stable, 21.10.2026)
 
 - **Sicherheitskatalog, Ausnahmen fuer mehrere Tenants:** im Ausnahme-Fenster Tenants per Haken waehlen (mit "alle"); je Tenant entsteht eine eigene Ausnahme mit gleicher Begruendung und Ablauf. Hinweis, wenn ein angehakter Tenant die Regel gar nicht pruefen kann.

@@ -192,7 +192,7 @@ $script:HURemoteHtml = @'
 
   <!-- Sicherheit: Sicherheitskatalog (nur lesen; Reiter erst ab Tablet-/Querformat-Breite) -->
   <section class="view hidden" id="vSec">
-    <div class="row between runhead"><span class="row"><h2>Sicherheit</h2><span class="pulse hidden" id="sxDot" aria-hidden="true" style="margin-left:10px"></span></span><span class="row tools"><input id="sxFind" class="find-s" type="search" placeholder="Filter" aria-label="Regeln filtern" autocomplete="off"><button class="ibtn" id="sxDev" title="Nur Abweichungen" aria-label="Nur Abweichungen" aria-pressed="false">&#10007;</button><button class="ibtn" id="sxReload" title="Neu pruefen" aria-label="Neu pruefen">&#8635;</button></span></div>
+    <div class="row between runhead"><span class="row"><h2>Sicherheit</h2><span class="pulse hidden" id="sxDot" aria-hidden="true"></span></span><span class="row tools"><input id="sxFind" class="find-s" type="search" placeholder="Filter" aria-label="Regeln filtern" autocomplete="off"><button class="ibtn" id="sxDev" title="Nur Abweichungen" aria-label="Nur Abweichungen" aria-pressed="false">&#10007;</button><button class="ibtn" id="sxReload" title="Neu pruefen" aria-label="Neu pruefen">&#8635;</button></span></div>
     <div class="sxsel">
       <div class="row between"><span class="lbl">Tenants</span><span class="row"><button class="lnk" id="sxTAll">alle</button><button class="lnk" id="sxTNone">keine</button></span></div>
       <div class="chips sm" id="sxTen"></div>
@@ -205,6 +205,26 @@ $script:HURemoteHtml = @'
     <div class="card hidden" id="sxDet"></div>
     <div class="sxwrap"><table class="sxt" id="sxTab"></table></div>
     <p class="muted small">Nur lesen. Listen mit Personendaten (Konten, Geraete, Gaeste) nur nach PIN, nur zur Anzeige - nichts wird am Handy gespeichert.</p>
+  </section>
+
+  <!-- Zusatzmodule (z.B. Kinderschutz): Seiten nach Angaben des Moduls; nur lesen, Personendaten nach PIN -->
+  <section class="view hidden" id="vAddon">
+    <div class="seg hidden" id="aMod" role="tablist"></div>
+    <div class="row between runhead"><span class="row"><h2 id="aTitle">Zusatzmodul</h2><span class="pulse hidden" id="aDot" aria-hidden="true"></span></span><span class="row tools"><button class="ibtn" id="aReload" title="Neu laden" aria-label="Neu laden">&#8635;</button></span></div>
+    <label class="lbl" for="aTen">Tenant</label>
+    <select id="aTen" class="txt"></select>
+    <div class="seg" id="aSeg" role="tablist"></div>
+    <div id="aIn" class="hidden">
+      <div class="row"><input id="aArg" class="txt" type="search" maxlength="80" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Suchen"><button class="btn primary" id="aGo">Suchen</button></div>
+      <button class="lnk hidden" id="aAlt"></button>
+    </div>
+    <p class="muted small" id="aAt"></p>
+    <p class="err hidden" id="aErr" role="alert"></p>
+    <div class="hidden" id="aPin"></div>
+    <p class="asum" id="aSum"></p>
+    <input id="aFind" class="txt find hidden" type="search" placeholder="Filtern ..." aria-label="Ergebnis filtern" autocomplete="off">
+    <div id="aBody"></div>
+    <p class="muted small">Nur lesen. Personendaten nur nach PIN, Kennwoerter immer mit PIN - nur zur Anzeige, am Handy wird nichts gespeichert.</p>
   </section>
 
   <!-- Mehr -->
@@ -232,9 +252,22 @@ $script:HURemoteHtml = @'
   <button data-tab="vList" class="on"><span class="ico">&#9776;</span>Starten</button>
   <button data-tab="vIntune" id="tIntune" class="hidden"><span class="ico">&#9638;</span>Intune</button>
   <button data-tab="vSec" id="tSec" class="hidden"><span class="ico">&#9873;</span>Sicherheit<span class="badge hidden" id="tSecB"></span></button>
+  <button data-tab="vAddon" id="tAddon" class="hidden"><span class="ico" id="tAddonI">&#10022;</span><span id="tAddonL">Modul</span><span class="badge hidden" id="tAddonB"></span></button>
   <button data-tab="vRun"><span class="ico">&#9654;</span>Lauf<span class="badge hidden" id="tRun"></span></button>
   <button data-tab="vMore"><span class="ico">&#8942;</span>Mehr</button>
 </nav>
+
+<div class="modal hidden" id="aM">
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="aMT">
+    <h2 id="aMT"></h2>
+    <p class="muted small" id="aMX"></p>
+    <div class="sxpin hidden" id="aMPin"><input id="aMP" type="password" inputmode="numeric" maxlength="12" autocomplete="off" aria-label="PIN"><button class="sxbtn" id="aMGo">Anzeigen</button></div>
+    <p class="err hidden" id="aME" role="alert"></p>
+    <div id="aML"></div>
+    <div class="asec hidden" id="aMS"></div>
+    <div class="row end"><button class="btn hidden" id="aMC">Kopieren</button><button class="btn primary" id="aMClose">Schliessen</button></div>
+  </div>
+</div>
 
 <div class="modal hidden" id="modal">
   <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="mTitle">
@@ -345,7 +378,7 @@ background:rgba(17,17,27,.92);backdrop-filter:blur(12px);border-top:1px solid va
 .par .sw{display:flex;align-items:center;gap:10px;min-height:44px;font-size:15px;color:var(--tx)}
 .par .sw input{width:22px;height:22px}
 .par.dry .sw{color:var(--peach);font-weight:600}
-select.txt{appearance:none;-webkit-appearance:none;font-size:16px}
+select.txt{appearance:none;-webkit-appearance:none;width:100%;padding:12px 40px 12px 14px;border-radius:12px;border:1px solid var(--s1);color:var(--tx);font-size:16px;outline:none;background:var(--crust) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23a6adc8' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center}select.txt:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(137,180,250,.25)}
 .btn.big{min-height:52px;font-size:16px}.btn.back{margin:4px 0 0}
 .row.two{gap:12px;margin-top:14px}.row.two .btn{flex:1}
 .warnbox,.okbox{display:flex;gap:12px;align-items:center;border-radius:16px;padding:16px;margin:8px 0;font-weight:700;font-size:17px}
@@ -390,6 +423,11 @@ input.code4{font-size:24px;letter-spacing:6px;text-align:center;text-transform:u
 .runhead{margin:14px 0 8px}.runhead h2{margin:0}.tools{gap:6px;flex-wrap:nowrap}
 .find-s{width:110px;min-height:36px;padding:0 10px;border-radius:10px;border:1px solid var(--s0);background:var(--crust);color:var(--tx);font-size:14px;outline:none}
 .find-s:focus{border-color:var(--blue);width:150px}@media (max-width:430px){.runhead{flex-wrap:wrap;gap:6px}.find-s{width:84px}.find-s:focus{width:120px}}.console .ln.f{display:none}.console mark{background:rgba(249,226,175,.35);color:inherit;border-radius:3px}.ibtn:active{background:var(--s0)}.ibtn[disabled]{opacity:.35}.ibtn.done{color:var(--green);border-color:var(--green)}
+#aDot,#sxDot{margin-left:10px}.grow{flex:1;min-width:0}.asum{font-weight:600;font-size:15px;margin:6px 0 2px}
+.alines{margin-top:6px;padding-top:4px}.alines summary{padding:2px 0;font-size:13px;color:var(--blue)}.alines .kv{padding:5px 0;font-size:14px}
+.item .act{flex-wrap:wrap;gap:8px}#aIn .row .txt{flex:1;min-width:0}#aIn{margin-bottom:4px}
+.asec{font:600 22px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:1px;background:var(--crust);border:1px solid var(--s1);border-radius:12px;padding:12px;margin:10px 0;word-break:break-all;-webkit-user-select:all;user-select:all}
+#aML .kv{font-size:14px}
 '@
 
 $script:HURemoteJs = @'
@@ -428,7 +466,7 @@ $script:HURemoteJs = @'
   // sessionStorage in der installierten App beim Neuladen nicht immer erhalten bleibt; gilt 30 Minuten.
   function memo() {
     var v = S.tab === 'vConfirm' ? (S.backTo === 'vIObj' ? 'vIObj' : 'vStart') : S.tab;
-    try { localStorage.setItem('hu_nav', JSON.stringify({ v: v, k: S.kind, i: S.item ? S.item.id : '', ia: S.ia, it: S.iten, io: S.iobjId || '', t: Date.now() })); } catch (e) { }
+    try { localStorage.setItem('hu_nav', JSON.stringify({ v: v, k: S.kind, i: S.item ? S.item.id : '', ia: S.ia, it: S.iten, io: S.iobjId || '', am: S.amod || '', ap: S.apage || '', at: S.aten || '', t: Date.now() })); } catch (e) { }
   }
   function recall() {
     try { var n = JSON.parse(localStorage.getItem('hu_nav') || 'null'); if (n && Date.now() - (n.t || 0) < 1800000) { return n; } } catch (e) { }
@@ -439,7 +477,7 @@ $script:HURemoteJs = @'
     Array.prototype.forEach.call(document.querySelectorAll('.seg button'), function (x) { x.classList.toggle('on', x.getAttribute('data-k') === k); });
   }
   // --- Ansicht
-  var VIEWS = ['vPair', 'vList', 'vStart', 'vConfirm', 'vRun', 'vMore', 'vIntune', 'vIObj', 'vSec'];
+  var VIEWS = ['vPair', 'vList', 'vStart', 'vConfirm', 'vRun', 'vMore', 'vIntune', 'vIObj', 'vSec', 'vAddon'];
   function setView(v) {
     VIEWS.forEach(function (x) { show(x, x === v); });
     show('tabs', v !== 'vPair');
@@ -452,6 +490,7 @@ $script:HURemoteJs = @'
     if (v === 'vMore') { pushState(); }
     if (v === 'vIntune') { iShow(); }
     if (v === 'vSec') { sxShow(); }
+    if (v === 'vAddon') { aShow(); }
     if (v === 'vIObj' && S.iobjId) { oLoad(false); }
     if (v !== 'vConfirm') { clearInterval(S.cdTimer); }
     window.scrollTo(0, 0);
@@ -515,6 +554,7 @@ $script:HURemoteJs = @'
       if (!hasI && (S.tab === 'vIntune' || S.tab === 'vIObj')) { setView('vList'); }
       if (S.tab === 'vIntune') { iShow(); }
       S.secOn = j.sec === true; sxTab();
+      aTab(); if (S.tab === 'vAddon') { aShow(); }
       renderList();
       if (S.restoreItem) {
         var it = (j.items || []).filter(function (x) { return x.id === S.restoreItem; })[0];
@@ -959,6 +999,165 @@ $script:HURemoteJs = @'
     box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  // --- Zusatzmodule (z.B. Kinderschutz): Seiten nach Angaben des Moduls (Katalog vom PC). Nur lesen; Personendaten
+  // nur nach PIN (gilt am PC einige Minuten), Einmal-Anzeigen (Kennwort) immer mit PIN, nichts bleibt am Handy.
+  function aMods() { return (S.cat && S.cat.addons) || []; }
+  function aMod() { var m = aMods(); return m.filter(function (x) { return x.id === S.amod; })[0] || m[0] || null; }
+  function aPage() { var m = aMod(); if (!m || !(m.pages || []).length) { return null; } return m.pages.filter(function (p) { return p.id === S.apage; })[0] || m.pages[0]; }
+  function aTab() {
+    var m = aMods(), on = m.length > 0, f = m.length === 1 ? m[0] : null;
+    show('tAddon', on);
+    if (on) { $('tAddonI').textContent = f && f.icon ? f.icon : '✦'; $('tAddonL').textContent = f ? (f.short || f.title) : 'Module'; }
+    if (!on && S.tab === 'vAddon' && S.cat) { setView('vList'); }
+  }
+  function aBusy() { var any = Object.keys(S.aB || {}).length > 0; show('aDot', any); show('tAddonB', any); }
+  // Abfrage beim PC; liest der PC noch ("pending"), wird ohne PIN nachgefragt. slot: nur die letzte Abfrage je Platz zaehlt
+  function aq(slot, body, cb, tries) {
+    tries = tries || 0;
+    S.aqTok = S.aqTok || {}; S.aB = S.aB || {};
+    if (!tries) { S.aqTok[slot] = (S.aqTok[slot] || 0) + 1; S.aB[slot] = true; aBusy(); }
+    var tok = S.aqTok[slot], b = { addon: body.addon, op: body.op, tenant: body.tenant, arg: body.arg || '' };
+    if (!tries) { if (body.pin) { b.pin = body.pin; } if (body.force) { b.force = true; } }
+    var done = function (j) { delete S.aB[slot]; aBusy(); cb(j); };
+    api('POST', '/api/addon', b).then(function (j) {
+      if (tok !== S.aqTok[slot]) { return; }
+      if (j.__status === 401) { delete S.aB[slot]; aBusy(); needPair('Nicht mehr gekoppelt.'); return; }
+      if (j.ok && j.pending) { if (tries > 300) { done({ ok: false, error: 'Keine Antwort vom PC (Zeitlimit)' }); return; } setTimeout(function () { aq(slot, body, cb, tries + 1); }, 1500); return; }
+      done(j);
+    }).catch(function (e) { if (tok === S.aqTok[slot]) { done({ ok: false, error: failMsg(e) }); } });
+  }
+  function aShow() {
+    var mods = aMods(), m = aMod(); if (!m) { return; }
+    if (S.amod !== m.id) { S.amod = m.id; S.ares = null; }
+    var ms = $('aMod'); clear(ms); show('aMod', mods.length > 1);
+    if (mods.length > 1) {
+      mods.forEach(function (x) { var b = el('button', x.id === m.id ? 'on' : '', (x.icon ? x.icon + ' ' : '') + x.title); b.setAttribute('role', 'tab'); b.addEventListener('click', function () { if (S.amod === x.id) { return; } S.amod = x.id; S.apage = ''; S.aarg = ''; S.ares = null; aShow(); memo(); }); ms.appendChild(b); });
+    }
+    $('aTitle').textContent = m.title;
+    var sel = $('aTen'), ts = (S.cat && S.cat.tenants) || [];
+    if (sel.options.length !== ts.length) { clear(sel); ts.forEach(function (t) { var o = el('option', '', t.name); o.value = t.key; sel.appendChild(o); }); }
+    if (!S.aten || !ts.some(function (t) { return t.key === S.aten; })) { S.aten = S.iten || (ts.length ? ts[0].key : ''); }
+    sel.value = S.aten;
+    var p = aPage(); if (!p) { return; }
+    if (S.apage !== p.id) { S.apage = p.id; S.aarg = ''; S.ares = null; }
+    var sg = $('aSeg'); clear(sg);
+    m.pages.forEach(function (x) { var b = el('button', x.id === p.id ? 'on' : '', x.title); b.setAttribute('role', 'tab'); b.addEventListener('click', function () { if (S.apage === x.id) { return; } S.apage = x.id; S.aarg = ''; S.ares = null; aShow(); memo(); }); sg.appendChild(b); });
+    show('aIn', p.input === 'search');
+    if (p.input === 'search') {
+      $('aArg').placeholder = p.hint || 'Suchen ...';
+      var gv = p.alt ? (p.alt.values || {})[S.aten] : '';
+      $('aAlt').textContent = gv ? ((p.alt.label || 'Gruppe') + ': ' + gv) : ''; show('aAlt', !!gv);
+    }
+    var k = m.id + '|' + p.id + '|' + S.aten + '|' + (S.aarg || '');
+    if (S.ares && S.ares.key === k) { aRender(); return; }
+    S.ares = null; clear($('aBody')); $('aSum').textContent = ''; show('aFind', false); show('aPin', false); err('aErr', '');
+    if (p.input === 'search' && !S.aarg) { $('aAt').textContent = p.alt && (p.alt.values || {})[S.aten] ? 'Suchen oder die ganze Gruppe laden.' : 'Suchbegriff eingeben (mindestens 2 Zeichen).'; return; }
+    aLoad(false, '');
+  }
+  function aSearch() {
+    var p = aPage(), v = ($('aArg').value || '').trim(); if (!p) { return; }
+    if (v.length < 2) { err('aErr', 'Bitte mindestens 2 Zeichen eingeben.'); return; }
+    $('aArg').blur(); S.aarg = (p.prefix || '') + v; aLoad(false, '');
+  }
+  function aLoad(force, pin) {
+    var m = aMod(), p = aPage(); if (!m || !p || !S.aten) { return; }
+    var arg = S.aarg || '';
+    if (p.input === 'search' && !arg) { return; }
+    var k = m.id + '|' + p.id + '|' + S.aten + '|' + arg; S.areq = k;
+    err('aErr', ''); show('aPin', false); clear($('aBody')); $('aSum').textContent = ''; show('aFind', false);
+    $('aAt').textContent = 'Lade ' + p.title + ' aus ' + tName(S.aten) + ' (am PC) ...';
+    aq('page', { addon: m.id, op: p.op, tenant: S.aten, arg: arg, pin: pin, force: force }, function (j) {
+      if (S.areq !== k) { return; }
+      $('aAt').textContent = '';
+      if (!j.ok && j.pin) { aPinBox($('aPin'), j.error, function (v) { aLoad(force, v); }); return; }
+      if (!j.ok || j.error || !j.data) { err('aErr', j.error || 'Nicht lesbar'); return; }
+      S.ares = { key: k, data: j.data, at: j.at || '' }; $('aFind').value = ''; aRender();
+    });
+  }
+  function aPinBox(slot, msg, go) {
+    clear(slot); slot.classList.remove('hidden');
+    slot.appendChild(el('div', 'muted small', msg || 'PIN noetig'));
+    var w = el('div', 'sxpin'), i = el('input'), b = el('button', 'sxbtn', 'Anzeigen');
+    i.type = 'password'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.maxLength = 12; i.setAttribute('aria-label', 'PIN');
+    var f = function () { var v = (i.value || '').replace(/\D/g, ''); if (v.length < 4) { i.focus(); return; } slot.classList.add('hidden'); clear(slot); go(v); };
+    b.addEventListener('click', f); i.addEventListener('keydown', function (e) { if (e.key === 'Enter') { f(); } });
+    w.appendChild(i); w.appendChild(b); slot.appendChild(w); setTimeout(function () { i.focus(); }, 50);
+  }
+  var A_LV = { ok: 'OK', warn: 'Warning', bad: 'Error', info: 'Info' };
+  function aRender() {
+    var r = S.ares, b = $('aBody'); clear(b);
+    if (!r) { return; }
+    var d = r.data || {}, rows = d.rows || [];
+    $('aAt').textContent = 'Stand ' + r.at + ' - ' + tName(S.aten);
+    $('aSum').textContent = d.summary || '';
+    show('aFind', rows.length > 5);
+    var q = ($('aFind').value || '').toLowerCase(), n = 0;
+    rows.forEach(function (x) {
+      if (q) { var txt = [x.t || '', x.sub || ''].concat((x.lines || []).map(function (l) { return (l || []).join(' '); })).join(' ').toLowerCase(); if (txt.indexOf(q) < 0) { return; } }
+      n++; if (n <= 300) { b.appendChild(aCard(x)); }
+    });
+    if (!n) { b.appendChild(el('div', 'empty', q ? 'Nichts gefunden.' : (d.empty || 'Keine Eintraege.'))); }
+    else if (n > 300) { b.appendChild(el('div', 'muted small', 'Erste 300 von ' + n + ' - bitte filtern.')); }
+  }
+  function aCard(x) {
+    var lv = A_LV[x.s] || '', it = el('div', 'item' + (lv ? ' ' + lv : '')), w = el('div', 'grow');
+    it.appendChild(el('span', 'lv' + (lv ? ' ' + lv : '')));
+    w.appendChild(el('div', 't', x.t || ''));
+    if (x.sub) { w.appendChild(el('div', 's', x.sub)); }
+    if ((x.lines || []).length) {
+      var dt = el('details', 'alines'); dt.appendChild(el('summary', '', 'Details'));
+      x.lines.forEach(function (l) { var kv = el('div', 'kv'); kv.appendChild(el('span', '', (l || [])[0] || '')); kv.appendChild(el('b', '', (l || [])[1] || '')); dt.appendChild(kv); });
+      w.appendChild(dt);
+    }
+    if ((x.acts || []).length) {
+      var ar = el('div', 'act row');
+      x.acts.forEach(function (a) { var bt = el('button', 'btn mini', a.label || a.op); bt.addEventListener('click', function () { aAct(a, x); }); ar.appendChild(bt); });
+      w.appendChild(ar);
+    }
+    it.appendChild(w); return it;
+  }
+  // Aktion einer Zeile (z.B. LAPS-Kennwort): Einmal-Abfragen immer mit PIN; Ergebnis nur im Fenster, beim Schliessen weg
+  function aAct(a, x) {
+    var m = aMod(); if (!m) { return; }
+    var once = (m.once || []).indexOf(a.op) >= 0;
+    aClose();
+    $('aMT').textContent = (a.label || a.op) + (x && x.t ? ' - ' + x.t : '');
+    $('aMX').textContent = once ? 'PIN eingeben. Das Ergebnis steht nur hier, wird nicht gespeichert und nach einer Minute ausgeblendet.' : '';
+    show('modal', false); show('aM', true);
+    var run = function (pin) {
+      show('aMPin', false); err('aME', ''); clear($('aML')); $('aML').appendChild(el('div', 'muted small', 'Wird am PC abgefragt ...'));
+      aq('act', { addon: m.id, op: a.op, tenant: S.aten, arg: a.arg || '', pin: pin }, function (j) {
+        if ($('aM').classList.contains('hidden')) { return; }
+        clear($('aML'));
+        if (!j.ok && j.pin) { err('aME', j.error || 'PIN noetig'); $('aMP').value = ''; show('aMPin', true); setTimeout(function () { $('aMP').focus(); }, 50); return; }
+        if (!j.ok || j.error || !j.data) { err('aME', j.error || 'Nicht lesbar'); return; }
+        aResult(j.data);
+      });
+    };
+    S.amGo = run;
+    if (once) { $('aMP').value = ''; show('aMPin', true); setTimeout(function () { $('aMP').focus(); }, 50); } else { run(''); }
+  }
+  function aResult(d) {
+    if (d.title) { $('aMT').textContent = d.title; }
+    (d.lines || []).forEach(function (l) { var kv = el('div', 'kv'); kv.appendChild(el('span', '', (l || [])[0] || '')); kv.appendChild(el('b', '', (l || [])[1] || '')); $('aML').appendChild(kv); });
+    if (d.secret) {
+      $('aMX').textContent = 'Nur hier sichtbar, nicht gespeichert - wird nach einer Minute ausgeblendet.';
+      $('aMS').textContent = d.secret; show('aMS', true); show('aMC', true);
+      clearTimeout(S.amTimer); S.amTimer = setTimeout(aClose, 60000);
+    }
+  }
+  function aCopy() {
+    var t = $('aMS').textContent || ''; if (!t) { return; }
+    var ok = function () { $('aMC').textContent = 'Kopiert'; setTimeout(function () { $('aMC').textContent = 'Kopieren'; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(ok, function () { }); }
+  }
+  function aClose() {
+    clearTimeout(S.amTimer); S.amGo = null;
+    if (S.aqTok) { S.aqTok.act = (S.aqTok.act || 0) + 1; } if (S.aB) { delete S.aB.act; aBusy(); }
+    $('aMS').textContent = ''; $('aMP').value = ''; clear($('aML')); err('aME', '');
+    show('aMS', false); show('aMC', false); show('aMPin', false); show('aM', false);
+  }
+
   // --- Intune: Apps und Wartung (lesen ohne PIN; Zuweisen/Aufheben ueber Pruefen + Kuerzel + PIN)
   function iItem() { return ((S.cat && S.cat.items) || []).filter(function (x) { return x.kind === 'intune' && x.area === S.ia; })[0]; }
   function tName(k) { var t = ((S.cat && S.cat.tenants) || []).filter(function (x) { return x.key === k; })[0]; return t ? t.name : k; }
@@ -1305,6 +1504,16 @@ $script:HURemoteJs = @'
     if (SX_WIDE) { if (SX_WIDE.addEventListener) { SX_WIDE.addEventListener('change', sxTab); } else if (SX_WIDE.addListener) { SX_WIDE.addListener(sxTab); } }
     window.addEventListener('resize', sxTab);
     $('nBtn').addEventListener('click', pushToggle);
+    $('aTen').addEventListener('change', function () { S.aten = $('aTen').value; S.ares = null; aShow(); memo(); });
+    $('aReload').addEventListener('click', function () { aLoad(true, ''); });
+    $('aGo').addEventListener('click', aSearch);
+    $('aArg').addEventListener('keydown', function (e) { if (e.key === 'Enter') { aSearch(); } });
+    $('aAlt').addEventListener('click', function () { var p = aPage(), v = p && p.alt ? (p.alt.values || {})[S.aten] : ''; if (v) { S.aarg = (p.alt.prefix || '') + v; aLoad(false, ''); } });
+    $('aFind').addEventListener('input', aRender);
+    $('aMClose').addEventListener('click', aClose);
+    $('aMC').addEventListener('click', aCopy);
+    $('aMGo').addEventListener('click', function () { var v = ($('aMP').value || '').replace(/\D/g, ''); if (v.length < 4) { $('aMP').focus(); return; } if (S.amGo) { S.amGo(v); } });
+    $('aMP').addEventListener('keydown', function (e) { if (e.key === 'Enter') { $('aMGo').click(); } });
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) { b.addEventListener('click', function () { setView(b.getAttribute('data-tab')); }); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden) { schedule(50); } else { clearTimeout(S.timer); } });
     initSw();
@@ -1314,7 +1523,8 @@ $script:HURemoteJs = @'
       if (n.ia === 'app' || n.ia === 'rem') { S.ia = n.ia; } if (n.it) { S.iten = n.it; }
       if (v === 'vIObj') { if (n.io) { S.iobjId = n.io; } else { v = 'vIntune'; } }
       if (v === 'vStart') { S.restoreItem = n.i || null; v = 'vList'; }
-      if (['vList', 'vRun', 'vMore', 'vIntune', 'vIObj', 'vSec'].indexOf(v) < 0) { v = 'vList'; }
+      if (n.am) { S.amod = n.am; } if (n.ap) { S.apage = n.ap; } if (n.at) { S.aten = n.at; }
+      if (['vList', 'vRun', 'vMore', 'vIntune', 'vIObj', 'vSec', 'vAddon'].indexOf(v) < 0) { v = 'vList'; }
       setView(v); poll();
     } else { setView('vPair'); }
   });

@@ -49,10 +49,10 @@
                                   SelectionMode="Single" Height="150">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
-                                <DataGridTextColumn Header="Gekoppelt" Binding="{Binding Created}" Width="120"/>
-                                <DataGridTextColumn Header="Zuletzt" Binding="{Binding LastSeen}" Width="120"/>
-                                <DataGridTextColumn Header="Adresse" Binding="{Binding LastIp}" Width="110"/>
-                                <DataGridTextColumn Header="Zustand" Binding="{Binding State}" Width="120"/>
+                                <DataGridTextColumn Header="Gekoppelt" Binding="{Binding Created}" Width="Auto" MinWidth="120"/>
+                                <DataGridTextColumn Header="Zuletzt" Binding="{Binding LastSeen}" Width="Auto" MinWidth="120"/>
+                                <DataGridTextColumn Header="Adresse" Binding="{Binding LastIp}" Width="Auto" MinWidth="110"/>
+                                <DataGridTextColumn Header="Zustand" Binding="{Binding State}" Width="Auto" MinWidth="120"/>
                             </DataGrid.Columns>
                         </DataGrid>
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -87,7 +87,7 @@
                     <DataGrid x:Name="gridRemMarks" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" HeadersVisibility="Column" SelectionMode="Single" IsReadOnly="False"
                               CanUserAddRows="False" CanUserDeleteRows="False">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Art" Binding="{Binding Art}" Width="90" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Art" Binding="{Binding Art}" Width="Auto" MinWidth="90" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
                             <DataGridTemplateColumn Header="Handy" Width="160">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -105,7 +105,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Hinweis" Binding="{Binding Hinweis}" Width="260" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Hinweis" Binding="{Binding Hinweis}" Width="Auto" MinWidth="260" IsReadOnly="True"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
@@ -132,6 +132,8 @@
                         <CheckBox x:Name="chkRemIntune" Content="Apps und Wartung (Intune) am Handy: Stand ansehen, Zuweisungen setzen und aufheben (immer mit Kuerzel und PIN)" Foreground="#CCCCCC" Margin="0,2"/>
                         <CheckBox x:Name="chkRemSec" Content="Sicherheit am Handy: Sicherheitskatalog pruefen und ansehen (nur lesen; Listen mit Personendaten nur mit PIN; Reiter ab Tablet- bzw. Querformat-Breite)" Foreground="#CCCCCC" Margin="0,2"
                                   ToolTip="Die Pruefung laeuft am PC mit den Rechten des Programms. Listen mit Personendaten (Konten, Geraete, Gaeste) nur nach PIN, nur zur Anzeige."/>
+                        <CheckBox x:Name="chkRemAddon" Content="Zusatzmodule am Handy: eigene Seiten der Module (z. B. Kinderschutz) ansehen (Personendaten nur mit PIN, Kennwoerter immer mit PIN)" Foreground="#CCCCCC" Margin="0,2"
+                                  ToolTip="Die Abfragen laufen am PC mit den Rechten des Programms. Am Handy wird nichts gespeichert."/>
 
                         <TextBlock Text="Netz" Style="{StaticResource SectionTitle}" Margin="0,16,0,0"/>
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,2">

@@ -219,9 +219,13 @@ function Show-HUVersionPicker {
 }
 
 # --- Herausgeber: Release signieren / freigeben (Zertifikat mit privatem Schluessel nur auf dessen PC) ---
-function Get-HUSignTokenFile { return (Join-Path $env:APPDATA 'HU-MultiTenant\GitHubSignToken.xml') }
-function Read-HUSignToken {
-    $f = Get-HUSignTokenFile
+# Schreib-Token zum Signieren/Freigeben: Hauptprogramm wie bisher, Zusatzmodul-Repositories je eigener Datei
+function Get-HUSignTokenFile([string]$Owner = '', [string]$Repo = '') {
+    if ($Repo) { return (Join-Path $env:APPDATA "HU-MultiTenant\GitHubSignToken-$Owner`_$Repo.xml") }
+    return (Join-Path $env:APPDATA 'HU-MultiTenant\GitHubSignToken.xml')
+}
+function Read-HUSignToken([string]$Owner = '', [string]$Repo = '') {
+    $f = Get-HUSignTokenFile $Owner $Repo
     if (Test-Path -LiteralPath $f) { try { $c = Import-Clixml -Path $f; if ($c -is [System.Management.Automation.PSCredential]) { return $c.GetNetworkCredential().Password.Trim() } } catch { } }
     return ''
 }
@@ -230,11 +234,22 @@ function Test-HUCanSign {
     if (-not $c -or -not (Get-Command Get-HMSigningCert -ErrorAction SilentlyContinue)) { return $false }
     return [bool](Get-HMSigningCert $c.SignerThumbprint)
 }
-function Get-HUSignTokenOrPrompt([object]$Cfg) {
-    $tok = Read-HUSignToken
+function Get-HUSignTokenOrPrompt([object]$Cfg, [switch]$Addon) {
+    $o = if ($Addon) { "$($Cfg.Owner)" } else { '' }; $r = if ($Addon) { "$($Cfg.Repo)" } else { '' }
+    $tok = Read-HUSignToken $o $r
     if ($tok) { return $tok }
-    if (-not (Save-GitHubTokenFromPrompt (Get-HUSignTokenFile) "GitHub-Token mit Schreibrecht fuer $($Cfg.Owner)/$($Cfg.Repo) (Fine-grained PAT, 'Contents: Read and write'). Wird verschluesselt nur fuer deinen Windows-Benutzer gespeichert.")) { return '' }
-    return (Read-HUSignToken)
+    if (-not (Save-GitHubTokenFromPrompt (Get-HUSignTokenFile $o $r) "GitHub-Token mit Schreibrecht fuer $($Cfg.Owner)/$($Cfg.Repo) (Fine-grained PAT, 'Contents: Read and write'). Wird verschluesselt nur fuer deinen Windows-Benutzer gespeichert.")) { return '' }
+    return (Read-HUSignToken $o $r)
+}
+
+# Zusatzmodul-Repository zum Signieren/Freigeben waehlen (nur hinterlegte Module); $null = abgebrochen
+function Select-HUAddonSignTarget([string]$What) {
+    $src = @(Get-HUAddonSources)
+    if (-not $src.Count) { Show-HUMessage 'Kein Zusatzmodul hinterlegt (Rechtsklick auf Update > Zusatzmodule ...).' 'Zusatzmodul' -Icon Info; return $null }
+    foreach ($s in $src) {
+        if ($src.Count -eq 1 -or (Confirm-HU "$What fuer $($s.Owner)/$($s.Repo)?" 'Zusatzmodul')) { return $s }
+    }
+    return $null
 }
 
 # Signieren/Freigeben: ins Protokoll UND in die Ausgabe des gerade offenen Reiters (ohne Reiterwechsel)
@@ -253,9 +268,13 @@ function Write-HUPub([string]$Text, [ValidateSet('OK', 'WARN', 'ERROR', 'INFO')]
     } catch { }
 }
 
-function Start-HUReleaseSigning {
+function Start-HUReleaseSigning([switch]$Addon) {
     $cfg = Update-UpdateConfig
     if (-not $cfg) { return }
+    if ($Addon) {
+        $t = Select-HUAddonSignTarget 'Release signieren'; if (-not $t) { return }
+        $cfg = [pscustomobject]@{ Owner = $t.Owner; Repo = $t.Repo; SignerThumbprint = $cfg.SignerThumbprint }
+    }
     Write-HUPub "=== Release signieren ($($cfg.Owner)/$($cfg.Repo)) ===" INFO
     $cert = Get-HMSigningCert $cfg.SignerThumbprint
     if (-not $cert) {
@@ -264,9 +283,9 @@ function Start-HUReleaseSigning {
         return
     }
     Write-HUPub "Zertifikat: $($cert.Subject) - gueltig bis $($cert.NotAfter.ToString('dd.MM.yyyy'))" INFO
-    $tok = Get-HUSignTokenOrPrompt $cfg
+    $tok = Get-HUSignTokenOrPrompt $cfg -Addon:$Addon
     if (-not $tok) { Write-HUPub 'Abgebrochen: kein GitHub-Token mit Schreibrecht.' WARN; return }
-    $script:SignCtx = [pscustomobject]@{ Owner = $cfg.Owner; Repo = $cfg.Repo; Thumb = $cfg.SignerThumbprint; Token = $tok }
+    $script:SignCtx = [pscustomobject]@{ Owner = $cfg.Owner; Repo = $cfg.Repo; Thumb = $cfg.SignerThumbprint; Token = $tok; Addon = [bool]$Addon }
     Write-HUPub 'Releases werden gelesen ...' INFO
     Invoke-AsyncCommand -ScriptBlock {
         param($lib, $tok, $owner, $repo)
@@ -300,6 +319,7 @@ function Start-HUReleaseSigning {
         if (-not (Confirm-HU "Diese Releases jetzt signieren?`n`n$($tags -join ', ')`n`nDanach werden sie allen Installationen angeboten (je nach Kanal Stabil/Test)." 'Release signieren')) { Write-HUPub 'Signieren abgebrochen.' WARN; $script:SignCtx = $null; return }
         Write-HUPub "Signiere $($tags -join ', ') ... (Pruefsumme laden, signieren, Signatur pruefen, hochladen)" INFO
         $sc = $script:SignCtx
+        $script:SignTokFile = if ($sc.Addon) { Get-HUSignTokenFile $sc.Owner $sc.Repo } else { Get-HUSignTokenFile }
         Invoke-AsyncCommand -ScriptBlock {
             param($lib, $owner, $repo, $tp, $tok, $tags)
             try {
@@ -322,7 +342,7 @@ function Start-HUReleaseSigning {
             if ($bad.Count) { Show-HUMessage "Signieren mit Fehlern:`n`n$sum" 'Release signieren' -Icon Error }
             else { Show-HUMessage "Signiert:`n`n$sum`n`nNaechster Schritt: Rechtsklick auf Update > Release freigeben." 'Release signieren' }
             if (@($items | Where-Object { -not $_.Ok -and "$($_.Text)" -match 'Schreibrecht' }).Count) {
-                Remove-Item -LiteralPath (Get-HUSignTokenFile) -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $script:SignTokFile -Force -ErrorAction SilentlyContinue
                 Write-HUPub 'Gespeicherter Schreib-Token geloescht - beim naechsten Signieren neu eingeben.' WARN
             }
             Invoke-UpdateCheck
@@ -330,13 +350,18 @@ function Start-HUReleaseSigning {
     }
 }
 
-function Start-HUReleasePublish {
+function Start-HUReleasePublish([switch]$Addon) {
     $cfg = Update-UpdateConfig
     if (-not $cfg) { return }
+    if ($Addon) {
+        $t = Select-HUAddonSignTarget 'Release freigeben'; if (-not $t) { return }
+        $cfg = [pscustomobject]@{ Owner = $t.Owner; Repo = $t.Repo; SignerThumbprint = $cfg.SignerThumbprint }
+    }
     Write-HUPub "=== Release freigeben ($($cfg.Owner)/$($cfg.Repo)) ===" INFO
-    $tok = Get-HUSignTokenOrPrompt $cfg
+    $tok = Get-HUSignTokenOrPrompt $cfg -Addon:$Addon
     if (-not $tok) { Write-HUPub 'Abgebrochen: kein GitHub-Token mit Schreibrecht.' WARN; return }
-    $script:PubCtx = [pscustomobject]@{ Owner = $cfg.Owner; Repo = $cfg.Repo; Thumb = $cfg.SignerThumbprint; Token = $tok }
+    $script:PubCtx = [pscustomobject]@{ Owner = $cfg.Owner; Repo = $cfg.Repo; Thumb = $cfg.SignerThumbprint; Token = $tok; Addon = [bool]$Addon }
+    $script:PubTokFile = if ($Addon) { Get-HUSignTokenFile $cfg.Owner $cfg.Repo } else { Get-HUSignTokenFile }
     Write-HUPub 'Signierte Vorab-Releases werden gesucht ...' INFO
     Invoke-AsyncCommand -ScriptBlock {
         param($lib, $tok, $owner, $repo)
@@ -380,7 +405,7 @@ function Start-HUReleasePublish {
             $script:PubCtx = $null
             $s = "$res".Trim()
             if ($s -match '^OK:(.+)$') { $t = $Matches[1]; Write-HUPub "${t}: freigegeben (Kanal Stabil)" OK; Show-HUMessage "$t ist freigegeben (Kanal Stabil) und wird allen Installationen als Update angeboten." 'Release freigeben'; Invoke-UpdateCheck }
-            elseif ($s -match '^AUTH:(.+)$') { $msg = "Freigabe fehlgeschlagen: $($Matches[1])"; Write-HUPub $msg ERROR; Remove-Item -LiteralPath (Get-HUSignTokenFile) -Force -ErrorAction SilentlyContinue; Show-HUMessage "$msg`n`nGespeicherter Token wurde geloescht - beim naechsten Versuch neu eingeben." 'Release freigeben' -Icon Error }
+            elseif ($s -match '^AUTH:(.+)$') { $msg = "Freigabe fehlgeschlagen: $($Matches[1])"; Write-HUPub $msg ERROR; Remove-Item -LiteralPath $script:PubTokFile -Force -ErrorAction SilentlyContinue; Show-HUMessage "$msg`n`nGespeicherter Token wurde geloescht - beim naechsten Versuch neu eingeben." 'Release freigeben' -Icon Error }
             else { $msg = "Freigabe fehlgeschlagen: $($s -replace '^(ERR:|FEHLER:)\s*', '')"; Write-HUPub $msg ERROR; Show-HUMessage $msg 'Release freigeben' -Icon Error }
         }
     }
@@ -467,7 +492,8 @@ function Register-HUUpdateHandlers {
     $add = { param($h, $sb) $mi = New-Object System.Windows.Controls.MenuItem; $mi.Header = $h; $mi.Add_Click($sb); [void]$cm.Items.Add($mi); $mi }
     [void](& $add 'Andere Version / Vorversion installieren ...' { Show-HUVersionPicker })
     [void](& $add 'Update-Einstellungen (Kanal, Signatur) ...' { Open-HUSettings 'Update' })
-    [void](& $add 'Jetzt nach Updates suchen' { Invoke-UpdateCheck })
+    [void](& $add 'Jetzt nach Updates suchen' { Invoke-UpdateCheck; try { Start-HUAddonUpdate -Loud } catch { } })
+    [void](& $add 'Zusatzmodule ...' { Show-HUAddonDialog })
     [void](& $add 'Info ...' { Show-HUAbout })
     [void](& $add 'Anleitung (F1)' { Show-HUManual })
     [void](& $add 'Roadmap - wie es weitergeht' { Show-HUManual -Page 'Roadmap' })
@@ -483,7 +509,9 @@ function Register-HUUpdateHandlers {
     [void]$cm.Items.Add($sep)
     $miSign = & $add 'Release signieren (Herausgeber) ...' { Start-HUReleaseSigning }
     $miPub = & $add 'Release freigeben (Herausgeber) ...' { Start-HUReleasePublish }
-    $script:UpdMenuSign = @($sep, $miSign, $miPub)
+    $miASign = & $add 'Zusatzmodul: Release signieren (Herausgeber) ...' { Start-HUReleaseSigning -Addon }
+    $miAPub = & $add 'Zusatzmodul: Release freigeben (Herausgeber) ...' { Start-HUReleasePublish -Addon }
+    $script:UpdMenuSign = @($sep, $miSign, $miPub, $miASign, $miAPub)
     $cm.Add_Opened({ $v = $(if (Test-HUCanSign) { 'Visible' } else { 'Collapsed' }); foreach ($m in $script:UpdMenuSign) { $m.Visibility = $v } })
     $b.ContextMenu = $cm
     $script:Controls['btnHelp'].Add_Click({ Show-HUManual })

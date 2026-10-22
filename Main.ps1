@@ -159,8 +159,8 @@ foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensi
 $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
-$uiFiles = @('Core-Async', 'Core-Update', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote')
+$uiFiles = @('Core-Async', 'Core-Update', 'Core-Addons', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
+             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
 # ohne Oberflaeche nur das Noetige (Einstellungen lesen/ergaenzen)
 if ($Headless) { $uiFiles = @('UI-Common', 'UI-Settings') }
 foreach ($f in $uiFiles) {
@@ -281,6 +281,18 @@ Register-HURemParamHandlers
 Register-HUAnaHandlers
 Register-HUUpdHandlers
 Register-HUTeamsHandlers
+
+# Zusatzmodule (signiert, aus privaten Repositories): Funktionen per Dot-Source in den Programm-Bereich, dann Reiter einbauen
+foreach ($__a in @(Get-HUAddonStartList)) {
+    try {
+        . (Join-Path $__a.Dir $__a.Script)
+        Add-HUAddonTab $__a
+        & $__a.Init
+        $script:LoadedAddons += $__a
+        Write-HULogOK "Zusatzmodul geladen: $($__a.Title) $($__a.Version)"
+    } catch { Write-HULogWarn "Zusatzmodul $($__a.Id) nicht geladen: $($_.Exception.Message)" }
+}
+Remove-Variable __a -ErrorAction SilentlyContinue
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
 $script:Controls['btnSupport'].Add_Click({ Show-HUSupport })
 $script:Controls['btnRemote'].Add_Click({ Show-HURemoteDialog })
@@ -476,7 +488,7 @@ $script:Window.Add_ContentRendered({
         Open-HUSettings 'Tenants'
         return
     }
-    if ($script:Settings.ui.checkUpdatesOnStart -ne $false) { Invoke-UpdateCheck -Quiet }
+    if ($script:Settings.ui.checkUpdatesOnStart -ne $false) { Invoke-UpdateCheck -Quiet; try { Start-HUAddonUpdate } catch { } }
     Start-HUCertRenewAll
     Remove-HUObsoleteSecretsAll
     if ($script:Settings.ui.checkSecretsOnStart -ne $false) { Start-HUSecretCheckAll }

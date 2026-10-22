@@ -55,3 +55,7 @@ $RECYCLE.BIN/
 *.code-workspace
 *.psd1.bak
 *.psm1.bak
+
+# Zusatzmodule (private Repositories, werden lokal geladen)
+Addons/
+AddonsDev/

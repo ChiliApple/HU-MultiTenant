@@ -869,6 +869,62 @@ function Test-HURemoteIntuneReq($X, [string]$Area) {
 }
 
 # Text fuer die Anzeige: Werte, die nach Kennwort aussehen, nie zeigen (Review 031 B17)
+# Handy-Seiten eines Zusatzmoduls pruefen und aufteilen: Client (Katalog fuers Handy, nur Anzeige-Angaben) und
+# Server (Core-Datei, Funktion, erlaubte Abfragen). $Addon: geladenes Modul (Id, Title, Dir), $Def: Rueckgabe von
+# Get-HUAddonRemotePages<Id>. Wirft bei ungueltigen Angaben - das Modul bekommt dann keine Seiten.
+function ConvertTo-HURemoteAddonPages($Addon, $Def) {
+    $get = { param($o, [string]$n) if ($null -eq $o) { return $null } if ($o -is [System.Collections.IDictionary]) { return $o[$n] } $p = $o.PSObject.Properties[$n]; if ($p) { return $p.Value } return $null }
+    $clean = { param($t, [int]$max) $x = ("$t" -replace '[\x00-\x1f\x7f]', '').Trim(); if ($x.Length -gt $max) { $x = $x.Substring(0, $max) }; return $x }
+    $id = "$($Addon.Id)"
+    if ($id -cnotmatch '^[A-Za-z0-9]{1,40}$') { throw "Kennung '$id' ungueltig" }
+    $dir = [IO.Path]::GetFullPath("$($Addon.Dir)").TrimEnd('\', '/')
+    $core = "$(& $get $Def 'Core')"
+    if (-not $core) { throw 'Core fehlt' }
+    $core = [IO.Path]::GetFullPath($core)
+    if (-not $core.StartsWith($dir + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or $core -notmatch '\.ps1$') { throw 'Core muss eine .ps1 im Modulordner sein' }
+    if (-not (Test-Path -LiteralPath $core -PathType Leaf)) { throw "Core '$core' fehlt" }
+    $fn = "$(& $get $Def 'Function')"
+    if ($fn -cnotmatch '^Invoke-HUAddonRemote[A-Za-z0-9]{1,40}$') { throw "Funktion '$fn' ungueltig (Invoke-HUAddonRemote<Name>)" }
+    $ops = @{}; $once = @(); $pii = @()
+    $od = & $get $Def 'Ops'
+    $names = if ($od -is [System.Collections.IDictionary]) { @($od.Keys) } elseif ($od) { @($od.PSObject.Properties | ForEach-Object { $_.Name }) } else { @() }
+    foreach ($n in $names) {
+        if ("$n" -cnotmatch '^[a-z]{1,20}$') { throw "Abfrage '$n' ungueltig" }
+        $o = & $get $od "$n"
+        $ttl = 120; try { $t0 = & $get $o 'Ttl'; if ($null -ne $t0) { $ttl = [int]$t0 } } catch { }
+        $ttl = [Math]::Max(10, [Math]::Min(3600, $ttl))
+        $isOnce = [bool](& $get $o 'Once'); $isPii = [bool](& $get $o 'Pii') -or $isOnce
+        $ops["$n"] = @{ Ttl = $ttl; Pii = $isPii; Once = $isOnce }
+        if ($isOnce) { $once += "$n" } elseif ($isPii) { $pii += "$n" }
+    }
+    if (-not $ops.Count -or $ops.Count -gt 20) { throw 'Ops: 1 bis 20 Abfragen' }
+    $pages = @()
+    foreach ($pg in @(& $get $Def 'Pages')) {
+        if (-not $pg) { continue }
+        $op = "$(& $get $pg 'Op')"
+        if (-not $ops.ContainsKey($op) -or $ops[$op].Once) { throw "Seite: Abfrage '$op' unbekannt oder nur fuer Aktionen" }
+        $in = "$(& $get $pg 'Input')"; if ($in -notin '', 'search') { throw "Seite '$op': Input '$in' unbekannt" }
+        $c = [ordered]@{ id = $op; title = (& $clean (& $get $pg 'Title') 24); op = $op; input = $in; hint = (& $clean (& $get $pg 'Hint') 80); prefix = (& $clean (& $get $pg 'Prefix') 10) }
+        $alt = & $get $pg 'Alt'
+        if ($alt) {
+            $vals = [ordered]@{}; $av = & $get $alt 'Values'
+            $vk = if ($av -is [System.Collections.IDictionary]) { @($av.Keys) } elseif ($av) { @($av.PSObject.Properties | ForEach-Object { $_.Name }) } else { @() }
+            foreach ($k in $vk) { $v = & $clean (& $get $av "$k") 150; if ($v -and "$k".Length -le 40) { $vals["$k"] = $v } }
+            $c.alt = [ordered]@{ label = (& $clean (& $get $alt 'Label') 30); prefix = (& $clean (& $get $alt 'Prefix') 10); values = $vals }
+        }
+        if (-not $c.title) { $c.title = $op }
+        $pages += $c
+    }
+    if (-not $pages.Count -or $pages.Count -gt 6) { throw 'Pages: 1 bis 6 Seiten' }
+    $title = & $clean $(if (& $get $Def 'Title') { & $get $Def 'Title' } else { $Addon.Title }) 30
+    $short = & $clean (& $get $Def 'Short') 4; if (-not $short) { $short = $title.Substring(0, [Math]::Min(2, $title.Length)) }
+    $icon = & $clean (& $get $Def 'Icon') 2
+    return @{
+        Id     = $id
+        Client = [ordered]@{ id = $id; title = $title; short = $short; icon = $icon; pages = @($pages); once = @($once); pii = @($pii) }
+        Server = @{ Core = $core; Fn = $fn; Ops = $ops }
+    }
+}
 function Format-HURemoteParamText($Defs, [hashtable]$Values) {
     $l = @()
     foreach ($d in @($Defs)) {
@@ -901,6 +957,8 @@ function New-HURemoteState {
         Sec = $true
         SecRules = [hashtable]::Synchronized(@{})   # Regel-Id -> @{ Label; Pii } (vom Hintergrund-Runspace gefuellt)
         SecGrant = [hashtable]::Synchronized(@{})   # Geraete-Hash -> gueltig bis (nach richtiger PIN, 5 Minuten)
+        # Seiten von Zusatzmodulen (z.B. Kinderschutz): Kennung -> @{ Core; Fn; Ops }; laeuft ueber dieselbe Warteschlange
+        Addon = $true; Addons = [hashtable]::Synchronized(@{})
     })
 }
 # Kopplung oeffnen (Code 6 Ziffern, 10 Minuten, 5 Fehlversuche) - nur ueber den Knopf am PC
@@ -936,6 +994,26 @@ function Add-HURemoteFail($S, [string]$Ip, [datetime]$Now) {
     $f.Count++
     if ($f.Count -ge 10) { $f.Until = $Now.AddMinutes(15) }
     $S.FailIp[$Ip] = $f
+}
+# PIN fuer Listen mit Personendaten: nach richtiger PIN gilt sie einige Minuten fuer dieses Handy (SecGrant).
+# -Always: PIN immer verlangen (z.B. Kennwort anzeigen). Rueckgabe $null = erlaubt, sonst die fertige Antwort (403).
+function Test-HURemotePiiGrant($S, $Dev, [string]$Dh, $Body, $Req, [datetime]$Now, [string]$What, [switch]$Always) {
+    $g = $S.SecGrant[$Dh]
+    if (-not $Always -and $g -and $g -gt $Now) { return $null }
+    if (-not $S.Pin) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Am PC ist keine PIN gesetzt (Remote FB > Einstellungen)'; pin = $true }) }
+    $pin = if ($Body -and $Body.PSObject.Properties['pin']) { "$($Body.pin)" } elseif ($Body -is [hashtable]) { "$($Body['pin'])" } else { '' }
+    if (-not $pin) { return (New-HURemoteJson 403 @{ ok = $false; error = $(if ($Always) { 'PIN noetig' } else { 'PIN noetig (Liste mit Personendaten)' }); pin = $true }) }
+    if (-not (Test-HURemotePin $pin $S.Pin)) {
+        $Dev.PinFails = [int]$Dev.PinFails + 1
+        if ($Dev.PinFails -ge $script:HURemotePinFails) { $Dev.Locked = $true; $S.Events.Enqueue(@{ Kind = 'DevLocked'; Name = "$($Dev.Name)" }) }
+        $S.DevDirty = $true
+        Add-HURemoteFail $S $Req.Ip $Now
+        $msg = if ($Dev.Locked) { 'Falsche PIN - Handy jetzt gesperrt (am PC entsperren)' } else { "Falsche PIN (noch $($script:HURemotePinFails - $Dev.PinFails) Versuch(e))" }
+        return (New-HURemoteJson 403 @{ ok = $false; error = $msg; pin = $true } "$What abgelehnt (PIN)")
+    }
+    if ($Dev.PinFails) { $Dev.PinFails = 0; $S.DevDirty = $true }
+    $S.SecGrant[$Dh] = $Now.AddMinutes($script:HURemoteSecGrantMin)
+    return $null
 }
 function Get-HURemoteJobJson($S, [datetime]$Now) {
     $j = $S.Job
@@ -1188,23 +1266,7 @@ function Get-HURemoteResponse($S, $Req) {
             $meta = $S.SecRules[$rid]
             if ($rid -cnotmatch '^[A-Z]\d{1,3}$' -or -not $meta) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Zu dieser Regel gibt es keine Liste' }) }
             if (@($S.Tenants | ForEach-Object { "$($_.key)" }) -cnotcontains $tk) { return (New-HURemoteJson 400 @{ ok = $false; error = "Unbekannter Tenant '$tk'" }) }
-            if ($meta.Pii) {
-                $g = $S.SecGrant[$dh]
-                if (-not ($g -and $g -gt $now)) {
-                    if (-not $S.Pin) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Am PC ist keine PIN gesetzt (Remote FB > Einstellungen)'; pin = $true }) }
-                    if (-not "$($body.pin)") { return (New-HURemoteJson 403 @{ ok = $false; error = 'PIN noetig (Liste mit Personendaten)'; pin = $true }) }
-                    if (-not (Test-HURemotePin "$($body.pin)" $S.Pin)) {
-                        $dev.PinFails = [int]$dev.PinFails + 1
-                        if ($dev.PinFails -ge $script:HURemotePinFails) { $dev.Locked = $true; $S.Events.Enqueue(@{ Kind = 'DevLocked'; Name = "$($dev.Name)" }) }
-                        $S.DevDirty = $true
-                        Add-HURemoteFail $S $Req.Ip $now
-                        $msg = if ($dev.Locked) { 'Falsche PIN - Handy jetzt gesperrt (am PC entsperren)' } else { "Falsche PIN (noch $($script:HURemotePinFails - $dev.PinFails) Versuch(e))" }
-                        return (New-HURemoteJson 403 @{ ok = $false; error = $msg; pin = $true } 'Sicherheitsliste abgelehnt (PIN)')
-                    }
-                    if ($dev.PinFails) { $dev.PinFails = 0; $S.DevDirty = $true }
-                    $S.SecGrant[$dh] = $now.AddMinutes($script:HURemoteSecGrantMin)
-                }
-            }
+            if ($meta.Pii) { $deny = Test-HURemotePiiGrant $S $dev $dh $body $Req $now 'Sicherheitsliste'; if ($deny) { return $deny } }
             $key = "secitems|$rid|$tk"
             $force = ($body.force -eq $true)
             $res = $null; $full = $false; $new = $false
@@ -1225,6 +1287,54 @@ function Get-HURemoteResponse($S, $Req) {
             } finally { [System.Threading.Monitor]::Exit($S.ICache.SyncRoot) }
             if ($full) { return (New-HURemoteJson 429 @{ ok = $false; error = 'Zu viele Abfragen - kurz warten' }) }
             return (New-HURemoteJson 200 $res "$(if ($new) { "Sicherheit: Liste $rid fuer $tk angefordert$(if ($meta.Pii) { ' (mit PIN)' })" })")
+        }
+        '/api/addon' {
+            # Seiten eines Zusatzmoduls (z.B. Kinderschutz). Was abgefragt werden darf, legt der Katalog am PC fest
+            # (Abfragen, Personendaten, Einmal-Anzeige); der Code des Moduls laeuft nur am PC, im Hintergrund-Runspace.
+            # Personendaten nur nach PIN (gilt einige Minuten); Einmal-Anzeigen (z.B. Kennwort) immer mit PIN, nur fuer
+            # dieses Handy und nach der Auslieferung sofort aus dem Zwischenspeicher geloescht.
+            if ($method -ne 'POST') { return (New-HURemoteJson 405 @{ ok = $false; error = 'Methode nicht erlaubt' }) }
+            if (-not $S.Addon) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Zusatzmodule sind fuers Handy ausgeschaltet (am PC: Remote FB > Einstellungen)' }) }
+            if ($dev.Locked) { return (New-HURemoteJson 403 @{ ok = $false; error = 'Dieses Handy ist gesperrt (zu viele falsche PINs) - am PC entsperren' }) }
+            $aid = "$($body.addon)"; $op = "$($body.op)"; $tk = "$($body.tenant)"; $arg = "$($body.arg)"
+            $ad = if ($aid -cmatch '^[A-Za-z0-9]{1,40}$') { $S.Addons[$aid] } else { $null }
+            if (-not $ad) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Unbekanntes Zusatzmodul' }) }
+            $od = if ($op -cmatch '^[a-z]{1,20}$') { $ad.Ops[$op] } else { $null }
+            if (-not $od) { return (New-HURemoteJson 400 @{ ok = $false; error = 'Unbekannte Abfrage' }) }
+            if (@($S.Tenants | ForEach-Object { "$($_.key)" }) -cnotcontains $tk) { return (New-HURemoteJson 400 @{ ok = $false; error = "Unbekannter Tenant '$tk'" }) }
+            if ($arg.Length -gt 200 -or $arg -match '[\x00-\x1f\x7f]') { return (New-HURemoteJson 400 @{ ok = $false; error = 'Ungueltige Eingabe' }) }
+            $key = "addon|$aid|$op|$tk|$arg"; if ($od.Once) { $key += "|$dh" }
+            # PIN ausserhalb der Sperre pruefen (dauert). Einmal-Abfragen: nur beim Anfordern - Nachfragen desselben Handys
+            # zu einer schon angeforderten Abfrage ohne PIN.
+            $pinOk = $false
+            if ($od.Once) {
+                $e0 = $S.ICache[$key]; $a0 = if ($e0) { ($now - $e0.At).TotalSeconds } else { 1e9 }
+                if (-not ($e0 -and $a0 -lt $(if ($e0.State -eq 'pending') { 300 } else { 60 }))) { $deny = Test-HURemotePiiGrant $S $dev $dh $body $Req $now "Zusatzmodul $aid/$op" -Always; if ($deny) { return $deny }; $pinOk = $true }
+            }
+            elseif ($od.Pii) { $deny = Test-HURemotePiiGrant $S $dev $dh $body $Req $now "Zusatzmodul $aid/$op"; if ($deny) { return $deny } }
+            $res = $null; $full = $false; $new = $false
+            [System.Threading.Monitor]::Enter($S.ICache.SyncRoot)
+            try {
+                # Einmal-Ergebnisse, die keiner abgeholt hat, nach einer Minute verwerfen
+                foreach ($k in @($S.ICache.Keys)) { $x = $S.ICache[$k]; if ($x.Once -and $x.State -ne 'pending' -and ($now - $x.At).TotalSeconds -gt 60) { $S.ICache.Remove($k) } }
+                $e = $S.ICache[$key]
+                $age = if ($e) { ($now - $e.At).TotalSeconds } else { 1e9 }
+                if ($e -and $e.State -eq 'pending' -and $age -lt 300) { $res = '{"ok":true,"pending":true}' }
+                elseif ($e -and $e.State -ne 'pending' -and ($od.Once -or $age -lt 3 -or (-not ($body.force -eq $true) -and $age -lt $od.Ttl))) {
+                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('HH:mm') + '","error":' + (ConvertTo-Json -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
+                    if ($od.Once) { $S.ICache.Remove($key) }
+                }
+                elseif ($od.Once -and -not $pinOk) { if ($e) { $S.ICache.Remove($key) }; $res = '{"ok":false,"error":"Abgelaufen - bitte neu anfordern"}' }
+                elseif ($S.IQueue.Count -ge 20) { $full = $true }
+                else {
+                    $S.ICache[$key] = @{ State = 'pending'; At = $now; Data = ''; Error = ''; Once = [bool]$od.Once }
+                    $S.IQueue.Enqueue(@{ Key = $key; Op = 'addon'; Area = 'addon'; Tenant = $tk; Id = ''; Addon = $aid; AOp = $op; Arg = $arg; Core = "$($ad.Core)"; Fn = "$($ad.Fn)"; Once = [bool]$od.Once })
+                    $res = '{"ok":true,"pending":true}'; $new = $true
+                }
+            } finally { [System.Threading.Monitor]::Exit($S.ICache.SyncRoot) }
+            if ($full) { return (New-HURemoteJson 429 @{ ok = $false; error = 'Zu viele Abfragen - kurz warten' }) }
+            # Eingabe (Namen) nicht ins Protokoll
+            return (New-HURemoteJson 200 $res "$(if ($new) { "Zusatzmodul $aid`: $op fuer $tk angefordert$(if ($od.Pii) { ' (mit PIN)' })" })")
         }
         '/api/cancel' {
             if ($method -ne 'POST') { return (New-HURemoteJson 405 @{ ok = $false; error = 'Methode nicht erlaubt' }) }

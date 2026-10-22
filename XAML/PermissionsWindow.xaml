@@ -56,8 +56,8 @@
                       IsReadOnly="True" MaxHeight="170" Margin="0,0,0,10" HeadersVisibility="Column">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Berechtigung" Binding="{Binding Berechtigung}" Width="2*"/>
-                    <DataGridTextColumn Header="Risiko" Binding="{Binding Risiko}" Width="80"/>
-                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="110"/>
+                    <DataGridTextColumn Header="Risiko" Binding="{Binding Risiko}" Width="Auto" MinWidth="80"/>
+                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto" MinWidth="110"/>
                     <DataGridTextColumn Header="Beschreibung" Binding="{Binding Beschreibung}" Width="3*"/>
                 </DataGrid.Columns>
             </DataGrid>

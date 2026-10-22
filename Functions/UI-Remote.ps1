@@ -34,6 +34,7 @@ function Get-HURemoteConfig {
         KeepAwake  = [bool]($j -and $j.KeepAwake -eq $true)
         Intune     = [bool](-not $j -or $j.Intune -ne $false)      # Apps/Wartung am Handy (Standard an, abschaltbar)
         Security   = [bool](-not $j -or $j.Security -ne $false)    # Sicherheitskatalog am Handy (nur lesen; Standard an, abschaltbar)
+        Addons     = [bool](-not $j -or $j.Addons -ne $false)      # Seiten der Zusatzmodule am Handy (Standard an, abschaltbar)
         Port       = $port
         Networks   = @($(if ($j) { @($j.Networks) } else { @() }) | Where-Object { "$_".Trim() } | ForEach-Object { "$_".Trim() })
         SetupPort  = $(if ($j -and [int]$j.SetupPort -gt 0) { [int]$j.SetupPort } else { 0 })
@@ -43,7 +44,7 @@ function Get-HURemoteConfig {
     }
 }
 function Save-HURemoteConfig($Cfg) {
-    Write-HUJsonFile -Path (Get-HURemoteConfigFile) -Object ([ordered]@{ v = 1; AutoStart = [bool]$Cfg.AutoStart; WhenLocked = [bool]$Cfg.WhenLocked; KeepAwake = [bool]$Cfg.KeepAwake; Intune = [bool]$Cfg.Intune; Security = [bool]$Cfg.Security
+    Write-HUJsonFile -Path (Get-HURemoteConfigFile) -Object ([ordered]@{ v = 1; AutoStart = [bool]$Cfg.AutoStart; WhenLocked = [bool]$Cfg.WhenLocked; KeepAwake = [bool]$Cfg.KeepAwake; Intune = [bool]$Cfg.Intune; Security = [bool]$Cfg.Security; Addons = [bool]$Cfg.Addons
             Port = [int]$Cfg.Port; Networks = @($Cfg.Networks); SetupPort = [int]$Cfg.SetupPort; SetupSid = "$($Cfg.SetupSid)"; SetupAt = "$($Cfg.SetupAt)"; SetupIps = @($Cfg.SetupIps) })
 }
 function Get-HURemoteMarksFile { return (Join-Path (Get-HURemoteDataDir) 'remote-marks.json') }
@@ -116,6 +117,18 @@ function Update-HURemoteCatalog([switch]$Force) {
         $client += [ordered]@{ id = $id; kind = 'ext'; name = "$($ex.Name)"; desc = $(if ($stale) { 'GEAENDERT - am PC unter Remote FB > Freigaben neu freigeben' } else { "$(if ($ex.Synopsis) { $ex.Synopsis } else { $ex.Description })" }); cat = "$($ex.Category)"; mode = $mode; stale = $stale
             params = @($defs | ForEach-Object { [ordered]@{ name = $_.Name; type = $_.Type; label = $_.Label; def = $_.Default; choices = @($_.Choices) } }); tenants = @($(try { $k0 = Get-SelectedTenantKey; if ($k0) { "$k0" } elseif ($defTen.Count) { $defTen[0] } } catch { })) }
     }
+    # Zusatzmodule: feste Eintraege des Moduls (signiert geladen, nur lesen) - Funktion Get-HUAddonRemoteItems<Id>
+    foreach ($ad in @($script:LoadedAddons)) {
+        $fn = "Get-HUAddonRemoteItems$($ad.Id)"
+        if (-not (Get-Command $fn -ErrorAction SilentlyContinue)) { continue }
+        $ais = @(); try { $ais = @(& $fn) } catch { continue }
+        foreach ($ai in $ais) {
+            if (-not $ai -or -not "$($ai.Name)" -or -not "$($ai.Code)") { continue }
+            $id = Get-HURemoteItemId "addon|$($ad.Id)|$($ai.Name)"
+            $items[$id] = @{ Id = $id; Kind = 'snippet'; Name = "$($ai.Name)"; Mode = 'read'; Params = @(); Hash = (Get-HUTeamsCodeHash "$($ai.Code)"); Code = "$($ai.Code)"; Route = $null; Stale = $false; TargetText = '' }
+            $client += [ordered]@{ id = $id; kind = 'snippet'; name = "$($ai.Name)"; desc = "$($ai.Desc)"; cat = "$($ad.Title)"; mode = 'read'; stale = $false; params = @(); tenants = @($defTen) }
+        }
+    }
     # Teams-Meldungen (alle gespeicherten)
     $targets = @()
     try { $targets = @((Get-HUNotifyConfig).Targets | Where-Object { $_ -and $_.Enabled } | ForEach-Object { [ordered]@{ id = "$($_.Id)"; name = "$($_.Name)" } }) } catch { }
@@ -157,8 +170,27 @@ function Update-HURemoteCatalog([switch]$Force) {
     $S.Intune = $intune
     $sec = [bool](Get-HURemoteConfig).Security
     $S.Sec = $sec
+    # Zusatzmodule mit eigenen Handy-Seiten: Funktion Get-HUAddonRemotePages<Id> (Angaben werden hier geprueft;
+    # der Code des Moduls laeuft nur am PC im Hintergrund-Runspace)
+    $adOn = [bool](Get-HURemoteConfig).Addons
+    $adCat = @(); $adSrv = @{}
+    if ($adOn) {
+        foreach ($ad in @($script:LoadedAddons)) {
+            $fn = "Get-HUAddonRemotePages$($ad.Id)"
+            if (-not (Get-Command $fn -ErrorAction SilentlyContinue)) { continue }
+            try {
+                $pg = ConvertTo-HURemoteAddonPages $ad (& $fn)
+                $adCat += $pg.Client; $adSrv[$pg.Id] = $pg.Server
+            } catch {
+                $wk = "addonpages|$($ad.Id)|$($_.Exception.Message)"
+                if ($r.AddonWarn -ne $wk) { $r.AddonWarn = $wk; Write-HULogWarn "Fernbedienung: Handy-Seiten von $($ad.Id) nicht verfuegbar - $($_.Exception.Message)" }
+            }
+        }
+    }
+    $S.Addons = [hashtable]::Synchronized($adSrv)
+    $S.Addon = $adOn
     $tenants = @($script:Settings.tenants | Where-Object { $_ -and "$($_.key)" } | ForEach-Object { [ordered]@{ key = "$($_.key)"; name = $(if ("$($_.displayName)") { "$($_.displayName)" } else { "$($_.key)" }) } })
-    $json = ConvertTo-Json -InputObject ([ordered]@{ items = @($client); tenants = @($tenants); targets = @($targets); sec = $sec }) -Depth 8 -Compress
+    $json = ConvertTo-Json -InputObject ([ordered]@{ items = @($client); tenants = @($tenants); targets = @($targets); sec = $sec; addons = @($adCat) }) -Depth 10 -Compress
     $S.Tenants = @($tenants | ForEach-Object { [pscustomobject]$_ })
     $S.Targets = @($targets | ForEach-Object { [pscustomobject]$_ })
     $S.Items = [hashtable]::Synchronized($items)
@@ -343,7 +375,7 @@ function Start-HURemote([switch]$Quiet, $Owner = $null) {
     [void]$ps.AddScript(". '$core'`nStart-HURemoteListenerLoop `$S")
     $h = $ps.BeginInvoke()
     $script:HURem = @{ S = $S; PS = $ps; RS = $rs; Handle = $h; Port = $cfg.Port; Ip = $ips[0].IP; Ips = @($ips | ForEach-Object { $_.IP }); CaFp = (Get-HURemoteFingerprint $st.Ca)
-        Timer = $null; Runner = $null; CatAt = [datetime]::MinValue; Started = (Get-Date); Awake = $false; LastBusy = '' }
+        Timer = $null; Runner = $null; CatAt = [datetime]::MinValue; Started = (Get-Date); Awake = $false; LastBusy = ''; AddonWarn = '' }
     for ($i = 0; $i -lt 30 -and -not $S.Listening -and $S.Run; $i++) { Start-Sleep -Milliseconds 100 }
     if (-not $S.Listening) {
         $err = if ($S.Error) { $S.Error } else { 'Webserver antwortet nicht' }
@@ -567,6 +599,7 @@ function Show-HURemoteDialog {
     $c['chkRemAwake'].IsChecked = $cfg.KeepAwake
     $c['chkRemIntune'].IsChecked = $cfg.Intune
     $c['chkRemSec'].IsChecked = $cfg.Security
+    $c['chkRemAddon'].IsChecked = $cfg.Addons
     $c['txtRemPort'].Text = "$($cfg.Port)"
     $c['txtRemNets'].Text = (@($cfg.Networks) -join ', ')
     $c['btnRemClose'].Add_Click({ $script:HURemDlg.Window.Close() })
@@ -602,7 +635,7 @@ function Show-HURemoteDialog {
             $nets = @("$($c2['txtRemNets'].Text)" -split '[,; ]+' | Where-Object { $_ })
             foreach ($n in $nets) { if ($n -notmatch '^[0-9./]+$' -or @(Get-HURemoteFirewallRemote @($n)).Count -lt 2) { Show-HUMessage "'$n' ist kein gueltiges Netz (z. B. 192.168.99.0/24)." -Icon Warning -Owner $script:HURemDlg.Window; return } }
             $netChanged = ((@($cfg.Networks) -join ',') -ne ($nets -join ',')) -or ($cfg.Port -ne $p)
-            $cfg.AutoStart = [bool]$c2['chkRemAuto'].IsChecked; $cfg.WhenLocked = [bool]$c2['chkRemLocked'].IsChecked; $cfg.KeepAwake = [bool]$c2['chkRemAwake'].IsChecked; $cfg.Intune = [bool]$c2['chkRemIntune'].IsChecked; $cfg.Security = [bool]$c2['chkRemSec'].IsChecked
+            $cfg.AutoStart = [bool]$c2['chkRemAuto'].IsChecked; $cfg.WhenLocked = [bool]$c2['chkRemLocked'].IsChecked; $cfg.KeepAwake = [bool]$c2['chkRemAwake'].IsChecked; $cfg.Intune = [bool]$c2['chkRemIntune'].IsChecked; $cfg.Security = [bool]$c2['chkRemSec'].IsChecked; $cfg.Addons = [bool]$c2['chkRemAddon'].IsChecked
             $cfg.Port = $p; $cfg.Networks = $nets
             Save-HURemoteConfig $cfg
             if ($script:HURem) { $script:HURem.Cfg = $null }

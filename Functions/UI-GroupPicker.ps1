@@ -132,9 +132,9 @@ function Show-HUTenantPicker {
         <DataGrid x:Name="grid" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" HeadersVisibility="Column">
             <DataGrid.Columns>
                 <DataGridTextColumn x:Name="colName" Header="Name" Binding="{Binding Name}" Width="3*"/>
-                <DataGridTextColumn x:Name="colTyp" Header="Typ" Binding="{Binding Typ}" Width="130"/>
+                <DataGridTextColumn x:Name="colTyp" Header="Typ" Binding="{Binding Typ}" Width="Auto" MinWidth="130"/>
                 <DataGridTextColumn x:Name="colInfo" Header="Hersteller" Binding="{Binding Info}" Width="2*"/>
-                <DataGridTextColumn Header="Vorhanden" Binding="{Binding Vorhanden}" Width="90"/>
+                <DataGridTextColumn Header="Vorhanden" Binding="{Binding Vorhanden}" Width="Auto" MinWidth="90"/>
                 <DataGridTextColumn Header="Fehlt in" Binding="{Binding Fehlt}" Width="2*"/>
             </DataGrid.Columns>
         </DataGrid>

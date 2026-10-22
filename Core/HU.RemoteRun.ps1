@@ -306,7 +306,14 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
     $logDir = Join-Path $AppRoot 'Logs\Remote'
     try { if (-not (Test-Path -LiteralPath $logDir)) { [void](New-Item -ItemType Directory -Path $logDir -Force) } } catch { }
     try { Initialize-Logging -LogFilePath (Join-Path $logDir '{date}_Intune.log') -MinLevel 'INFO' } catch { }
+    $addonLoaded = @{}   # Core-Datei eines Zusatzmoduls -> Aenderungszeit beim Laden (geaendert = neu laden)
+    $purgeAt = [datetime]::MinValue
     while ($S.Run) {
+        # Einmal-Ergebnisse (z.B. Kennwort), die keiner abgeholt hat, nach einer Minute verwerfen
+        if ((Get-Date) -gt $purgeAt) {
+            $purgeAt = (Get-Date).AddSeconds(5)
+            try { foreach ($k in @($S.ICache.Keys)) { $x = $S.ICache[$k]; if ($x -and $x.Once -and $x.State -ne 'pending' -and ((Get-Date) - $x.At).TotalSeconds -gt 60) { $S.ICache.Remove($k) } } } catch { }
+        }
         $q = $null
         try { if ($S.IQueue.Count) { $q = $S.IQueue.Dequeue() } } catch { $q = $null }
         if (-not $q) { Start-Sleep -Milliseconds 200; continue }
@@ -314,15 +321,27 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
         try {
             if ($q.Op -eq 'sec') { $data = Get-HURemoteSecData $S $Settings @($q.Keys) @($q.SevOff) @($q.AreaOff) $AppRoot }
             elseif ($q.Op -eq 'secitems') { $data = Get-HURemoteSecItems $q $Settings }
+            elseif ($q.Op -eq 'addon') {
+                # Zusatzmodul: Core-Datei hier (Bereich der Schleife) laden, damit ihre Funktionen bleiben; Pfad und
+                # Funktionsname hat der Katalog am PC geprueft (Datei im Modulordner, Invoke-HUAddonRemote<Name>)
+                $mt = (Get-Item -LiteralPath $q.Core -ErrorAction Stop).LastWriteTimeUtc
+                if (-not $addonLoaded.ContainsKey($q.Core) -or $addonLoaded[$q.Core] -ne $mt) { . $q.Core; $addonLoaded[$q.Core] = $mt }
+                if (-not (Get-Command $q.Fn -CommandType Function -ErrorAction SilentlyContinue)) { throw "Zusatzmodul $($q.Addon): Funktion $($q.Fn) fehlt" }
+                $data = & $q.Fn -Op $q.AOp -Tenant $q.Tenant -Arg $q.Arg -Settings $Settings
+            }
             elseif ($q.Op -eq 'detail') { $data = Get-HURemoteIntuneData $q $Settings } else { $data = [object[]]@(Get-HURemoteIntuneData $q $Settings) }
         }
         catch {
             $err = "$($_.Exception.Message)"
-            if ($q.Op -notin 'sec', 'secitems' -and $err -match '403|Forbidden|Authorization') { $err = 'Berechtigung fehlt (DeviceManagementApps.ReadWrite.All bzw. DeviceManagementScripts.ReadWrite.All, Group.Read.All)' }
+            if ($q.Op -notin 'sec', 'secitems', 'addon' -and $err -match '403|Forbidden|Authorization') { $err = 'Berechtigung fehlt (DeviceManagementApps.ReadWrite.All bzw. DeviceManagementScripts.ReadWrite.All, Group.Read.All)' }
             if ($err.Length -gt 300) { $err = $err.Substring(0, 300) }
         }
-        $json = if ($err) { '' } elseif ($data -is [array] -and -not $data.Count) { '[]' } else { ConvertTo-Json -InputObject $data -Depth 6 -Compress }
-        $S.ICache[$q.Key] = @{ State = $(if ($err) { 'error' } else { 'done' }); At = (Get-Date); Data = $json; Error = $err }
+        $json = ''
+        if (-not $err) {
+            try { $json = if ($data -is [array] -and -not $data.Count) { '[]' } else { ConvertTo-Json -InputObject $data -Depth 8 -Compress } } catch { $err = "Ergebnis nicht lesbar: $($_.Exception.Message)" }
+        }
+        $S.ICache[$q.Key] = @{ State = $(if ($err) { 'error' } else { 'done' }); At = (Get-Date); Data = $json; Error = $err; Once = [bool]$q.Once }
+        $data = $null; $json = ''
     }
 }
 <#
