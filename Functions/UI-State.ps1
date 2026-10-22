@@ -246,7 +246,7 @@ function Update-HULeftPanel {
     # Tenant-Leiste (Verbinden/Trennen) gilt nur fuer Extensions - Quick Script, Apps und Wartung waehlen Tenants selbst
     $c['pnlTenantBar'].Visibility = $(if ($sel -eq $c['tabExtensions']) { 'Visible' } else { 'Collapsed' })
     $hide = ($sel -eq $c['tabApps'] -or $sel -eq $c['tabMaint'] -or $sel -eq $c['tabAnalyse'] -or $sel -eq $c['tabTeams'] -or ($sel -and "$($sel.Tag)" -eq 'addon'))
-    if ($hide -eq $script:LeftHidden) { return }
+    if ($hide -eq $script:LeftHidden) { Update-HUMainOverlay; return }
     if ($hide) {
         if ($c['colLeft'].ActualWidth -ge 200) { $script:LeftWidthSaved = $c['colLeft'].ActualWidth }
         $c['colLeft'].MinWidth = 0
@@ -260,6 +260,31 @@ function Update-HULeftPanel {
         $c['colLeft'].MinWidth = 200
     }
     $script:LeftHidden = $hide
+    Update-HUMainOverlay
+}
+
+# Reiterleiste immer an derselben Stelle: Tenant-Leiste und Extension-Liste liegen ueber dem Inhaltsbereich der Reiter.
+# Hier werden ihre Abstaende gesetzt (unter der Reiterleiste) und der Inhalt der Reiter entsprechend eingerueckt.
+function Update-HUMainOverlay {
+    $c = $script:Controls
+    $tm = $c['tabMain']; if (-not $tm) { return }
+    # Unterkante der Reiterleiste (auch bei zweizeiliger Leiste): unterster Reiterkopf
+    $hh = 0.0
+    foreach ($ti in @($tm.Items)) {
+        if (-not ($ti -is [System.Windows.Controls.TabItem]) -or $ti.Visibility -ne 'Visible' -or $ti.ActualHeight -le 0) { continue }
+        try { $y = $ti.TranslatePoint((New-Object System.Windows.Point 0, $ti.ActualHeight), $tm).Y; if ($y -gt $hh) { $hh = $y } } catch { }
+    }
+    if ($hh -le 0) { $hh = 32.0 }
+    $tbOn = ($c['pnlTenantBar'].Visibility -eq 'Visible')
+    $tb = 0.0
+    if ($tbOn) { $tb = $c['pnlTenantBar'].ActualHeight; if ($tb -le 0) { $c['pnlTenantBar'].Measure((New-Object System.Windows.Size ([double]::PositiveInfinity), ([double]::PositiveInfinity))); $tb = $c['pnlTenantBar'].DesiredSize.Height }; $tb += 8 }
+    $c['pnlTenantBar'].Margin = New-Object System.Windows.Thickness 0, ($hh + 8), 0, 0
+    $top = $hh + 8 + $tb
+    $c['pnlLeft'].Margin = New-Object System.Windows.Thickness 0, $top, 0, 0
+    $c['splLeft'].Margin = New-Object System.Windows.Thickness 0, $top, 0, 0
+    $left = if ($script:LeftHidden) { 0.0 } else { $c['colLeft'].ActualWidth + $c['colSplit'].ActualWidth }
+    if (-not $script:LeftHidden -and $left -lt 200) { $left = [Math]::Max(200, $script:LeftWidthSaved) + 8 }
+    $tm.Padding = New-Object System.Windows.Thickness $left, $tb, 0, 0
 }
 
 # Unterfenster (z. B. Snippet-Verwaltung): Groesse/Position merken

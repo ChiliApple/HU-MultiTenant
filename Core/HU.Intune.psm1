@@ -2583,6 +2583,10 @@ function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null
             if ($e.PSObject.Properties['settingDefinitionId'] -and "$($e.settingDefinitionId)") { $k = "$($e.settingDefinitionId)" }
             elseif ($e.PSObject.Properties['settingInstance'] -and $e.settingInstance.settingDefinitionId) { $k = "$($e.settingInstance.settingDefinitionId)" }
             elseif ($e.PSObject.Properties['definition'] -and $e.definition.displayName) { $k = "$($e.definition.displayName)" }
+            # Name/Wert-Paare (z. B. Verzeichniseinstellungen: LockoutThreshold = 10) ueber den Namen
+            elseif ($e.PSObject.Properties['name'] -and $e.PSObject.Properties['value'] -and "$($e.name)") { $k = "$($e.name)" }
+            # sprechende Kennungen (z. B. Anmeldemethoden: Fido2, MicrosoftAuthenticator); GUIDs nicht (je Tenant verschieden)
+            elseif ($e.PSObject.Properties['id'] -and "$($e.id)" -match '^[A-Za-z][A-Za-z0-9_.-]{1,60}$') { $k = "$($e.id)" }
             elseif ($e.PSObject.Properties['actionType']) { $k = "$($e.actionType)" }
             elseif ($e.PSObject.Properties['target'] -and $e.target) { $k = "$(("$($e.target.'@odata.type')" -replace '^#microsoft\.graph\.', '' -replace 'AssignmentTarget$', '')) $($e.target.groupId)".Trim() }
             [void](ConvertTo-HUFlatMap $e "$Prefix[$k]" $Map -WithAssignments:$WithAssignments)
@@ -2692,6 +2696,81 @@ function Get-HUAssignmentHash($Assignments) {
     return ($parts -join ';')
 }
 
+# Entra-Einstellungen fuers Backup (Baseline: Autorisierung, Kennwort, Cross-Tenant, benannte Orte), nur lesen, v1.0.
+# Single = ein Objekt (Id = Key), sonst Liste (Name = Feld fuer den Anzeigenamen). Fehlt ein Recht (403), ist die Art
+# "nicht gesichert" - kein Fehler, der Stand bleibt vollstaendig; im Verlauf zaehlt sie wie eine nicht gelesene Art.
+function Get-HUBackupEntraSources {
+    return @(
+        @{ Typ = 'Entra-Einstellung'; Key = 'authorizationPolicy'; Ep = '/policies/authorizationPolicy'; Single = $true; Title = 'Autorisierungsrichtlinie'; Perm = 'Policy.Read.All'; V1 = $true }
+        @{ Typ = 'Entra-Einstellung'; Key = 'securityDefaults'; Ep = '/policies/identitySecurityDefaultsEnforcementPolicy'; Single = $true; Title = 'Sicherheitsstandards'; Perm = 'Policy.Read.All'; V1 = $true }
+        @{ Typ = 'Entra-Einstellung'; Key = 'authenticationMethodsPolicy'; Ep = '/policies/authenticationMethodsPolicy'; Single = $true; Title = 'Authentifizierungsmethoden'; Perm = 'Policy.Read.All'; V1 = $true }
+        @{ Typ = 'Entra-Einstellung'; Key = 'adminConsentRequestPolicy'; Ep = '/policies/adminConsentRequestPolicy'; Single = $true; Title = 'Administratorzustimmung (Anfragen)'; Perm = 'Policy.Read.All'; V1 = $true }
+        @{ Typ = 'Entra-Einstellung'; Key = 'crossTenantAccessDefault'; Ep = '/policies/crossTenantAccessPolicy/default'; Single = $true; Title = 'Cross-Tenant-Zugriff (Standard)'; Perm = 'Policy.Read.All'; V1 = $true }
+        @{ Typ = 'Cross-Tenant-Partner'; Ep = '/policies/crossTenantAccessPolicy/partners'; Name = 'tenantId'; Perm = 'Policy.Read.All'; V1 = $true }
+        @{ Typ = 'Benannter Ort'; Ep = '/identity/conditionalAccess/namedLocations'; Name = 'displayName'; Perm = 'Policy.Read.All'; V1 = $true }
+        # u. a. "Password Rule Settings" (Sperrschwelle, verbotene Kennwoerter) und Gruppen-/Zustimmungseinstellungen
+        @{ Typ = 'Verzeichniseinstellung'; Ep = '/groupSettings'; Name = 'displayName'; Perm = 'Group.Read.All'; V1 = $true }
+        # Kennwortablauf und Benachrichtigung je Domain
+        @{ Typ = 'Domain'; Ep = '/domains'; Name = 'id'; Perm = 'Domain.Read.All'; V1 = $true }
+        # Geraete-Registrierung (Beitritt, lokale Admins, Kontingent) - eigenes Leserecht, Policy.Read.All reicht laut Microsoft Learn nicht
+        @{ Typ = 'Entra-Einstellung'; Key = 'deviceRegistrationPolicy'; Ep = '/policies/deviceRegistrationPolicy'; Single = $true; Title = 'Geraete-Registrierung'; Perm = 'Policy.Read.DeviceConfiguration'; V1 = $true }
+        @{ Typ = 'Authentifizierungsstaerke'; Ep = '/policies/authenticationStrengthPolicies'; Name = 'displayName'; Skip = { param($o) "$($o.policyType)" -eq 'builtIn' }; Perm = 'Policy.Read.All'; V1 = $true }
+        @{ Typ = 'Token-Richtlinie'; Ep = '/policies/tokenLifetimePolicies'; Name = 'displayName'; Perm = 'Policy.Read.All'; V1 = $true }
+        @{ Typ = 'Token-Richtlinie'; Ep = '/policies/activityBasedTimeoutPolicies'; Name = 'displayName'; Perm = 'Policy.Read.All'; V1 = $true }
+        # Zustimmungsrichtlinien: laut Microsoft Learn nur mit Policy.Read.PermissionGrant (Policy.Read.All reicht nicht)
+        @{ Typ = 'Zustimmungsrichtlinie'; Ep = '/policies/permissionGrantPolicies'; Name = 'displayName'; Skip = { param($o) "$($o.id)" -like 'microsoft-*' }; Perm = 'Policy.Read.PermissionGrant'; V1 = $true }
+        # eigene Entra-Rollen und alle Rollenzuweisungen (Name: Rolle - Mitglied)
+        @{ Typ = 'Entra-Rolle'; Ep = '/roleManagement/directory/roleDefinitions'; Name = 'displayName'; SkipBuiltIn = $true; Perm = 'RoleManagement.Read.Directory'; V1 = $true }
+        @{ Typ = 'Entra-Rollenzuweisung'; Ep = '/roleManagement/directory/roleAssignments?$expand=principal'; Perm = 'RoleManagement.Read.Directory'; V1 = $true
+            Ctx = { param($tk, $set) $m = @{}; foreach ($r in @(Get-HUIntuneGraphAll -TenantKey $tk -Settings $set -Endpoint '/roleManagement/directory/roleDefinitions?$select=id,displayName' -V1)) { $m["$($r.id)"] = "$($r.displayName)" }; $m }
+            Name = { param($o, $ctx) $r = $ctx["$($o.roleDefinitionId)"]; if (-not $r) { $r = "$($o.roleDefinitionId)" }; $p = if ($o.principal) { $(if ("$($o.principal.userPrincipalName)") { "$($o.principal.userPrincipalName)" } else { "$($o.principal.displayName)" }) } else { "$($o.principalId)" }; "$r - $p$(if ("$($o.directoryScopeId)" -and "$($o.directoryScopeId)" -ne '/') { " ($($o.directoryScopeId))" })" } }
+        # Ablauf von M365-Gruppen - braucht Directory.Read.All (kein Standard-Recht): ohne Recht nur Hinweis
+        @{ Typ = 'Gruppen-Ablauf'; Ep = '/groupLifecyclePolicies'; Name = 'managedGroupTypes'; Perm = 'Directory.Read.All'; Optional = $true; V1 = $true }
+        # Organisation und Dienste (nur lesbare Einstellungen per Graph)
+        @{ Typ = 'Organisation'; Ep = '/organization?$select=id,displayName,technicalNotificationMails,securityComplianceNotificationMails,marketingNotificationEmails,privacyProfile,preferredLanguage,countryLetterCode,onPremisesSyncEnabled'; Name = 'displayName'; Perm = 'Organization.Read.All'; V1 = $true }
+        @{ Typ = 'Dienst-Einstellung'; Key = 'sharepointSettings'; Ep = '/admin/sharepoint/settings'; Single = $true; Title = 'SharePoint und OneDrive'; Perm = 'SharePointTenantSettings.Read.All'; V1 = $true }
+        @{ Typ = 'Dienst-Einstellung'; Key = 'reportSettings'; Ep = '/admin/reportSettings'; Single = $true; Title = 'Berichte (Namen verbergen)'; Perm = 'ReportSettings.Read.All'; V1 = $true }
+    )
+}
+# Weitere Intune-Arten fuers Backup (beta, nur lesen). Mehrere Endpunkte koennen dieselbe Art fuellen.
+function Get-HUBackupMoreSources {
+    return @(
+        @{ Typ = 'App-Schutz'; Ep = '/deviceAppManagement/iosManagedAppProtections?$expand=apps,assignments'; Name = 'displayName'; Asg = 'expand'; Perm = 'DeviceManagementApps.Read.All' }
+        @{ Typ = 'App-Schutz'; Ep = '/deviceAppManagement/androidManagedAppProtections?$expand=apps,assignments'; Name = 'displayName'; Asg = 'expand'; Perm = 'DeviceManagementApps.Read.All' }
+        @{ Typ = 'App-Schutz'; Ep = '/deviceAppManagement/windowsManagedAppProtections?$expand=apps,assignments'; Name = 'displayName'; Asg = 'expand'; Perm = 'DeviceManagementApps.Read.All' }
+        @{ Typ = 'App-Konfiguration'; Ep = '/deviceAppManagement/targetedManagedAppConfigurations?$expand=apps,assignments'; Name = 'displayName'; Asg = 'expand'; Perm = 'DeviceManagementApps.Read.All' }
+        @{ Typ = 'App-Konfiguration'; Ep = '/deviceAppManagement/mobileAppConfigurations?$expand=assignments'; Name = 'displayName'; Asg = 'expand'; Perm = 'DeviceManagementApps.Read.All' }
+        # Registrierungseinschraenkungen, Statusseite (ESP), Windows Hello usw.
+        @{ Typ = 'Registrierung'; Ep = '/deviceManagement/deviceEnrollmentConfigurations'; Name = 'displayName'; Asg = 'sub'; Perm = 'DeviceManagementServiceConfig.Read.All' }
+        @{ Typ = 'Zuweisungsfilter'; Ep = '/deviceManagement/assignmentFilters'; Name = 'displayName'; Perm = 'DeviceManagementConfiguration.Read.All' }
+        @{ Typ = 'Endpunktsicherheit (alt)'; Ep = '/deviceManagement/intents'; Name = 'displayName'; Asg = 'sub'; Sub = @('settings'); Perm = 'DeviceManagementConfiguration.Read.All' }
+        @{ Typ = 'Qualitaets-Update'; Ep = '/deviceManagement/windowsQualityUpdateProfiles'; Name = 'displayName'; Asg = 'sub'; Perm = 'DeviceManagementConfiguration.Read.All' }
+        @{ Typ = 'Qualitaets-Update'; Ep = '/deviceManagement/windowsQualityUpdatePolicies'; Name = 'displayName'; Asg = 'sub'; Perm = 'DeviceManagementConfiguration.Read.All' }
+        @{ Typ = 'Treiber-Update'; Ep = '/deviceManagement/windowsDriverUpdateProfiles'; Name = 'displayName'; Asg = 'sub'; Perm = 'DeviceManagementConfiguration.Read.All' }
+        @{ Typ = 'Geraetekategorie'; Ep = '/deviceManagement/deviceCategories'; Name = 'displayName'; Perm = 'DeviceManagementManagedDevices.Read.All' }
+        @{ Typ = 'Compliance-Skript'; Ep = '/deviceManagement/deviceComplianceScripts'; Name = 'displayName'; Asg = 'sub'; Perm = 'DeviceManagementConfiguration.Read.All' }
+        @{ Typ = 'Benachrichtigungsvorlage'; Ep = '/deviceManagement/notificationMessageTemplates'; Name = 'displayName'; Sub = @('localizedNotificationMessages'); Perm = 'DeviceManagementServiceConfig.Read.All' }
+        @{ Typ = 'Nutzungsbedingungen'; Ep = '/deviceManagement/termsAndConditions'; Name = 'displayName'; Asg = 'sub'; Perm = 'DeviceManagementServiceConfig.Read.All' }
+        @{ Typ = 'Unternehmensportal-Branding'; Ep = '/deviceManagement/intuneBrandingProfiles'; Name = 'profileName'; Asg = 'sub'; Perm = 'DeviceManagementApps.Read.All' }
+        @{ Typ = 'Richtliniensatz'; Ep = '/deviceAppManagement/policySets'; Name = 'displayName'; Asg = 'sub'; Sub = @('items'); Perm = 'DeviceManagementConfiguration.Read.All' }
+        @{ Typ = 'App-Kategorie'; Ep = '/deviceAppManagement/mobileAppCategories'; Name = 'displayName'; Perm = 'DeviceManagementApps.Read.All' }
+        @{ Typ = 'Defender-Connector'; Ep = '/deviceManagement/mobileThreatDefenseConnectors'; Name = 'id'; Perm = 'DeviceManagementServiceConfig.Read.All' }
+        # nur eigene (eingebaute Rollen und die Markierung "Default" sind in jedem Tenant gleich)
+        @{ Typ = 'Bereichsmarkierung'; Ep = '/deviceManagement/roleScopeTags'; Name = 'displayName'; Asg = 'sub'; SkipBuiltIn = $true; Perm = 'DeviceManagementRBAC.Read.All' }
+        @{ Typ = 'Intune-Rolle'; Ep = '/deviceManagement/roleDefinitions'; Name = 'displayName'; Sub = @('roleAssignments'); SkipBuiltIn = $true; Perm = 'DeviceManagementRBAC.Read.All' }
+    )
+}
+function Test-HUGraphNotAvailable($Err) {
+    $ex = if ($Err -is [System.Management.Automation.ErrorRecord]) { $Err.Exception } else { $Err }
+    try { if ($ex.Data -and $ex.Data.Contains('StatusCode') -and [int]$ex.Data['StatusCode'] -in 400, 404) { return $true } } catch { }
+    return $false
+}
+function Test-HUGraphForbidden($Err) {
+    $ex = if ($Err -is [System.Management.Automation.ErrorRecord]) { $Err.Exception } else { $Err }
+    try { if ($ex.Data -and $ex.Data.Contains('StatusCode') -and [int]$ex.Data['StatusCode'] -eq 403) { return $true } } catch { }
+    return ("$($ex.Message)" -match '403|Forbidden|Authorization_RequestDenied|Insufficient privileges')
+}
+
 # Backup eines Tenants -> Ordner des Stands
 function Save-HUTenantBackup {
     [CmdletBinding()]
@@ -2737,13 +2816,76 @@ function Save-HUTenantBackup {
         }
         Write-HULog -Message "$($src.Typ): $n gesichert" -Level 'INFO' -Tenant $TenantKey
     }
+    # weitere Intune-Arten (beta) und Entra-Einstellungen (Baseline, v1.0): Einzelobjekte und Listen; Zuweisungen je nach Art
+    # ueber $expand (Asg = expand) oder je Eintrag (Asg = sub). Fehlt ein Recht (403): Art nicht gesichert, kein Fehler.
+    # Gibt es eine Art im Tenant nicht (400/404, z. B. ohne passende Lizenz): Hinweis, kein Fehler.
+    $missing = New-Object System.Collections.Generic.List[string]
+    $moreN = @{}
+    foreach ($src in @(Get-HUBackupMoreSources) + @(Get-HUBackupEntraSources)) {
+        if (@($Types).Count -and $Types -notcontains $src.Typ) { continue }
+        $v1 = [bool]$src.V1
+        $ctx = $null
+        $label = if ($src.Single) { "$($src.Typ) '$($src.Title)'" } else { "$($src.Typ) ($($src.Ep -replace '\?.*$', ''))" }
+        $items = $null
+        try {
+            if ($src.Single) {
+                $o = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint $src.Ep -V1:$v1
+                $items = @([pscustomobject]@{ Obj = $o; Id = $src.Key; Name = $src.Title })
+            } else {
+                if ($src.Ctx) { $ctx = & $src.Ctx $TenantKey $Settings }
+                $items = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint $src.Ep -V1:$v1 |
+                    Where-Object { -not ($src.SkipBuiltIn -and $_.PSObject.Properties['isBuiltIn'] -and $_.isBuiltIn) -and -not ($src.Skip -and (& $src.Skip $_)) } |
+                    ForEach-Object { [pscustomobject]@{ Obj = $_; Id = "$($_.id)"; Name = $(if ($src.Name -is [scriptblock]) { "$(& $src.Name $_ $ctx)" } else { "$($_.($src.Name))" }) } })
+            }
+        } catch {
+            if ((Test-HUGraphForbidden $_) -and $src.Optional) {
+                # Recht ist kein Standard-Recht (bewusst nicht erteilt): nur Hinweis
+                if (-not $failedTypes.Contains($src.Typ)) { $failedTypes.Add($src.Typ) }
+                Write-HULog -Message "$label`: uebersprungen - optionales Recht $($src.Perm) nicht erteilt" -Level 'INFO' -Tenant $TenantKey
+            } elseif (Test-HUGraphForbidden $_) {
+                if (-not $failedTypes.Contains($src.Typ)) { $failedTypes.Add($src.Typ) }
+                if (-not $missing.Contains("$($src.Perm)")) { $missing.Add("$($src.Perm)") }
+                Write-HULog -Message "$label`: nicht gesichert - Recht $($src.Perm) fehlt" -Level 'WARN' -Tenant $TenantKey
+            } elseif (Test-HUGraphNotAvailable $_) {
+                Write-HULog -Message "$label`: in diesem Tenant nicht verfuegbar - uebersprungen" -Level 'INFO' -Tenant $TenantKey
+            } else {
+                Write-HULog -Message "$label`: nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey
+                $errors++; if (-not $failedTypes.Contains($src.Typ)) { $failedTypes.Add($src.Typ) }
+            }
+            continue
+        }
+        $base = $src.Ep -replace '\?.*$', ''
+        foreach ($it in $items) {
+            if ($null -eq $it.Obj) { continue }
+            $id = if ($it.Id) { $it.Id } else { $it.Name }
+            $nm = if ($it.Name) { $it.Name } else { $id }
+            $full = $it.Obj
+            try {
+                # Teil-Listen (z. B. Einstellungen alter Endpunktsicherheit, Rollenzuweisungen)
+                foreach ($sub in @($src.Sub | Where-Object { $_ })) { $full | Add-Member -NotePropertyName $sub -NotePropertyValue @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$id/$sub" -V1:$v1) -Force }
+            } catch { Write-HULog -Message "$($src.Typ) '$nm': $($_.Exception.Message)" -Level 'WARN' -Tenant $TenantKey; $errors++; $failedIds.Add("$($src.Typ)|$id"); continue }
+            $ah = ''
+            if ($src.Asg -eq 'sub') {
+                try { $full | Add-Member -NotePropertyName 'assignments' -NotePropertyValue @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$id/assignments" -V1:$v1) -Force; $ah = Get-HUAssignmentHash $full.assignments }
+                catch { $ah = '?'; Write-HULog -Message "$($src.Typ) '$nm': Zuweisungen nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey }
+            } elseif ($src.Asg -eq 'expand') { $ah = Get-HUAssignmentHash @($full.assignments) }
+            $short = ConvertTo-HUSafeFileName ($id.Substring(0, [Math]::Min(8, $id.Length)))
+            $rel = "$(ConvertTo-HUSafeFileName $src.Typ)\$(ConvertTo-HUSafeFileName $nm 60)__$short.json"
+            Write-HUBackupJson (Join-Path $dir $rel) $full
+            $index.Add([pscustomobject]@{ Typ = $src.Typ; Name = $nm; Id = $id; File = $rel; Hash = (Get-HUCompareHash $full); AHash = $ah; Desc = "$(if ($full.PSObject.Properties['description']) { $full.description })" })
+            $moreN[$src.Typ] = [int]$moreN[$src.Typ] + 1
+        }
+        if (-not $moreN.ContainsKey($src.Typ)) { $moreN[$src.Typ] = 0 }
+    }
+    foreach ($t in @($moreN.Keys | Sort-Object)) { Write-HULog -Message "$t`: $($moreN[$t]) gesichert" -Level 'INFO' -Tenant $TenantKey }
     # nichts lesbar (z. B. Secret abgelaufen): keinen leeren Stand anlegen - er wuerde gute Staende verdraengen
     if (-not $index.Count -and $errors) {
         Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
         throw "Backup fehlgeschlagen - nichts lesbar ($errors Fehler). Secret und Berechtigungen pruefen"
     }
-    Write-HUBackupJson (Join-Path $dir 'index.json') ([pscustomobject]@{ Tenant = $TenantKey; Time = (Get-Date).ToString('s'); Errors = $errors; Complete = ($errors -eq 0); FailedTypes = $failedTypes.ToArray(); FailedIds = $failedIds.ToArray(); Items = $index.ToArray() })
-    return [pscustomobject]@{ Tenant = $TenantKey; Folder = $dir; Count = $index.Count; Errors = $errors; Complete = ($errors -eq 0) }
+    $types = @(@(Get-HUCompareSources) + @(Get-HUBackupMoreSources) + @(Get-HUBackupEntraSources) | ForEach-Object { $_.Typ } | Where-Object { -not @($Types).Count -or $Types -contains $_ } | Select-Object -Unique)
+    Write-HUBackupJson (Join-Path $dir 'index.json') ([pscustomobject]@{ Tenant = $TenantKey; Time = (Get-Date).ToString('s'); Errors = $errors; Complete = ($errors -eq 0); Types = $types; FailedTypes = $failedTypes.ToArray(); FailedIds = $failedIds.ToArray(); MissingPerms = $missing.ToArray(); Items = $index.ToArray() })
+    return [pscustomobject]@{ Tenant = $TenantKey; Folder = $dir; Count = $index.Count; Errors = $errors; Complete = ($errors -eq 0); MissingPerms = $missing.ToArray() }
 }
 
 # Staende eines Tenants (neueste zuerst)
@@ -2784,12 +2926,16 @@ function Compare-HUBackups {
     # nicht gelesene Arten/Eintraege: dort ist 'fehlt' kein 'geloescht' bzw. 'neu'
     $failA = @($ia.FailedTypes) + @(); $failB = @($ib.FailedTypes) + @()
     $failIdA = @($ia.FailedIds) + @(); $failIdB = @($ib.FailedIds) + @()
+    # gesicherte Arten je Stand (aeltere Staende ohne Angabe: nur die Intune-Arten und Conditional Access)
+    $legacy = @(Get-HUCompareSources | ForEach-Object { $_.Typ })
+    $typA = if ($ia.PSObject.Properties['Types']) { @($ia.Types) } else { $legacy }
+    $typB = if ($ib.PSObject.Properties['Types']) { @($ib.Types) } else { $legacy }
     $byIdA = @{}; foreach ($x in $a) { $byIdA["$($x.Typ)|$($x.Id)"] = $x }
     $seen = @{}
     foreach ($y in $b) {
         $k = "$($y.Typ)|$($y.Id)"; $seen[$k] = $true
         $x = $byIdA[$k]
-        $ch = if (-not $x -and ($failA -contains $y.Typ -or $failIdA -contains $k)) { 'unbekannt (aelterer Stand unvollstaendig)' } elseif (-not $x) { 'neu' } else {
+        $ch = if (-not $x -and $typA -notcontains $y.Typ) { 'erstmals gesichert' } elseif (-not $x -and ($failA -contains $y.Typ -or $failIdA -contains $k)) { 'unbekannt (aelterer Stand unvollstaendig)' } elseif (-not $x) { 'neu' } else {
             $c = @()
             if ("$($x.Name)" -ne "$($y.Name)") { $c += "umbenannt (vorher '$($x.Name)')" }
             if ($x.PSObject.Properties['Desc'] -and $y.PSObject.Properties['Desc'] -and "$($x.Desc)" -ne "$($y.Desc)") { $c += 'Beschreibung geaendert' }
@@ -2802,7 +2948,7 @@ function Compare-HUBackups {
     }
     foreach ($x in $a) {
         if ($seen["$($x.Typ)|$($x.Id)"]) { continue }
-        $gone = if ($failB -contains $x.Typ -or $failIdB -contains "$($x.Typ)|$($x.Id)") { 'unbekannt (neuerer Stand unvollstaendig)' } else { 'geloescht' }
+        $gone = if ($typB -notcontains $x.Typ) { 'nicht mehr gesichert' } elseif ($failB -contains $x.Typ -or $failIdB -contains "$($x.Typ)|$($x.Id)") { 'unbekannt (neuerer Stand unvollstaendig)' } else { 'geloescht' }
         [pscustomobject]@{ Typ = $x.Typ; Name = $x.Name; Aenderung = $gone; Id = $x.Id; FileA = $(if ($x.File) { Join-Path $FolderA $x.File } else { '' }); FileB = '' }
     }
 }
@@ -2855,7 +3001,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'New-HUIntuneObject', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUBackupRoot', 'ConvertTo-HUSafeFileName', 'Write-HUBackupJson', 'Read-HUBackupJson', 'Get-HUAssignmentHash', 'Save-HUTenantBackup', 'Get-HUBackupList', 'Remove-HUOldBackups', 'Compare-HUBackups', 'Get-HUBackupItemDiff', 'Restore-HUBackupItem', 'Get-HUAuditEvents', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'New-HUIntuneObject', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUBackupRoot', 'Get-HUBackupEntraSources', 'Get-HUBackupMoreSources', 'Test-HUGraphForbidden', 'Test-HUGraphNotAvailable', 'ConvertTo-HUSafeFileName', 'Write-HUBackupJson', 'Read-HUBackupJson', 'Get-HUAssignmentHash', 'Save-HUTenantBackup', 'Get-HUBackupList', 'Remove-HUOldBackups', 'Compare-HUBackups', 'Get-HUBackupItemDiff', 'Restore-HUBackupItem', 'Get-HUAuditEvents', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

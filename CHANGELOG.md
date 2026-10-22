@@ -1,5 +1,27 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.3.2 (Testversion, 22.10.2026, Weg zu 2.4.0)
+
+### 💾 Backup: weitere Intune-Arten
+- **Neu gesichert:** App-Schutz- und App-Konfigurationsrichtlinien, Registrierung (Einschränkungen, Statusseite/ESP, Windows Hello), Zuweisungsfilter, ältere Endpunktsicherheits-Richtlinien (mit Einstellungen), Qualitäts- und Treiber-Updates, Gerätekategorien, eigene Intune-Rollen (mit Zuweisungen) und Bereichsmarkierungen – jeweils mit Zuweisungen, wo es sie gibt.
+- **Außerdem:** Compliance-Skripte, Benachrichtigungsvorlagen, Nutzungsbedingungen, Unternehmensportal-Branding, Richtliniensätze, App-Kategorien, Defender-Connector.
+- **Entra-Rest:** Geräte-Registrierung (Beitritt, lokale Admins), eigene Authentifizierungsstärken, Token- und Zustimmungsrichtlinien, eigene Entra-Rollen, alle Rollenzuweisungen (Rolle – Mitglied), Ablauf von M365-Gruppen (nur mit `Directory.Read.All`, sonst still übersprungen), Organisation, SharePoint/OneDrive- und Berichtseinstellungen.
+- **Nicht im Tenant vorhanden** (z. B. ohne passende Lizenz): wird ohne Fehler übersprungen.
+- **Neue Standard-Rechte:** `DeviceManagementRBAC.Read.All` (Intune-Rollen und Bereichsmarkierungen), `Policy.Read.DeviceConfiguration` (Geräte-Registrierung), `Policy.Read.PermissionGrant` (Zustimmungsrichtlinien).
+
+### 💾 Backup: Entra-Einstellungen der Baseline
+- **Neu gesichert:** Autorisierungsrichtlinie, Sicherheitsstandards, Authentifizierungsmethoden, Administratorzustimmung (Anfragen), Cross-Tenant-Zugriff (Standard und Partner), benannte Orte, Verzeichniseinstellungen (u. a. Kennwortschutz und Sperrschwelle) und Kennwortablauf je Domain.
+- **Verlauf:** Änderungen an diesen Einstellungen erscheinen wie bei Intune als „Einstellungen geändert“, Doppelklick zeigt Wert vorher und nachher.
+- **Vergleich mit älteren Ständen:** Einträge, die es damals noch nicht im Backup gab, heißen „erstmals gesichert“ statt „neu“ und zählen bei *Nur Änderungen* nicht mit.
+- **Lesbarere Details:** Listen werden über ihren Namen bzw. ihre Kennung gezeigt (z. B. `values[LockoutThreshold]`, `authenticationMethodConfigurations[Fido2]`) statt nur über die Position.
+- **Fehlendes Recht:** Die betroffene Art wird nicht gesichert, der Stand bleibt vollständig, das Protokoll nennt das Recht (neu als Standard-Recht: `Domain.Read.All`).
+- **Wiederherstellen:** Entra-Einstellungen noch nicht – kommt in einem der nächsten Schritte.
+
+### 🔧 Verbesserungen
+- **Backup & Verlauf, Auswahl Art:** neben dem Textfilter eine Auswahl, um nur eine Art zu sehen (z. B. *Entra-Rollenzuweisung*), mit Anzahl je Art; wirkt zusammen mit Textfilter und *Nur Änderungen*.
+- **Reiterleiste bleibt stehen:** Beim Wechsel zwischen Extensions, Quick Script und den übrigen Reitern springen die Reiter nicht mehr – Extension-Liste und Tenant-Leiste liegen jetzt unter der Reiterleiste.
+- **Neustart nach Zusatzmodul:** Die neue Fassung startet sofort und zeigt „wird neu gestartet …“, bis die alte geschlossen ist (bisher bis zu 30 Sekunden ohne Anzeige).
+
 ## v2.3.1 (Stable, 22.10.2026)
 
 ### 🧩 Zusatzmodule

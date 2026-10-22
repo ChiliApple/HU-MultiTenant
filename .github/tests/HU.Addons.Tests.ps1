@@ -128,3 +128,16 @@ Describe 'Zusatzmodule: Einbindung' {
         (Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Update.ps1') -Raw) | Should -Match 'Start-HUReleaseSigning -Addon'
     }
 }
+
+Describe 'Zusatzmodule: Neustart' {
+    It 'startet die neue Instanz direkt (wartet auf diese), ohne verschluesselten Hilfsbefehl' {
+        $ui = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Addons.ps1') -Raw
+        $fn = [regex]::Match($ui, '(?s)function Restart-HUApp \{.*?\n\}').Value
+        $fn | Should -Match '-WaitForPid \$PID'
+        $fn | Should -Not -Match 'EncodedCommand'
+        $main = Get-Content -LiteralPath (Join-Path $root 'Main.ps1') -Raw
+        $main | Should -Match '\[int\]\$WaitForPid = 0'
+        # Warten vor der Einzelinstanz-Pruefung, sonst meldet die neue Instanz "laeuft bereits"
+        $main.IndexOf('$WaitForPid -gt 0') | Should -BeLessThan $main.IndexOf('Local\HU-MultiTenant_')
+    }
+}

@@ -103,17 +103,14 @@ function Show-HUAddonRestartPrompt([string[]]$Names) {
     Restart-HUApp
 }
 
-# HU-MultiTenant beenden und neu starten (wartet, bis dieser Prozess beendet ist)
+# HU-MultiTenant beenden und neu starten: die neue Instanz startet sofort, zeigt "wird neu gestartet" und wartet,
+# bis diese beendet ist (Main.ps1 -WaitForPid). Kein Hilfsprozess mit verschluesseltem Befehl (wird von Virenschutz
+# und Angriffsflaechen-Regeln gern blockiert).
 function Restart-HUApp {
     try {
         $exe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
         $main = Join-Path $script:AppRoot 'Main.ps1'
-        $q = { param($t) "'" + "$t".Replace("'", "''") + "'" }
-        $cmd = "Wait-Process -Id $PID -Timeout 120 -ErrorAction SilentlyContinue`n" +
-               "Start-Process -FilePath $(& $q $exe) -WorkingDirectory $(& $q $script:AppRoot) -ArgumentList $(& $q "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$main`"")"
-        # als EncodedCommand: keine Probleme mit Leerzeichen/Anfuehrungszeichen im Pfad
-        $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
-        Start-Process -FilePath $exe -ArgumentList "-NoProfile -WindowStyle Hidden -EncodedCommand $enc" -WindowStyle Hidden | Out-Null
+        Start-Process -FilePath $exe -WorkingDirectory $script:AppRoot -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$main`" -WaitForPid $PID" | Out-Null
         Write-HULogOK 'HU-MultiTenant wird neu gestartet ...'
         $script:SkipCloseChecks = $true
         $script:Window.Close()
