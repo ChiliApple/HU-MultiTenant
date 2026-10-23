@@ -297,4 +297,141 @@ Describe 'Entra zurueckschreiben' {
             @($p.Blocks | Where-Object { $_ -like '*allowedToReadOtherUsers*' }).Count | Should -Be 1
         }
     }
+    Context 'Conditional Access neu als Nur Bericht (2.3.4)' {
+        BeforeEach {
+            $global:ErFx['/groups/22222222-0000-0000-0000-000000000001'] = [pscustomobject]@{ id = 'g' }
+            $global:ErFx['/identity/conditionalAccess/namedLocations/33333333-0000-0000-0000-000000000001'] = [pscustomobject]@{ id = 'l' }
+            $global:ErFx['/policies/authenticationStrengthPolicies/00000000-0000-0000-0000-000000000004'] = [pscustomobject]@{ id = 'a' }
+            $script:Ca = {
+                [pscustomobject]@{ id = 'p1'; displayName = '201 - MFA'; state = 'enabled'; createdDateTime = '2026-01-01T00:00:00Z'; templateId = $null
+                    conditions = [pscustomobject]@{ clientAppTypes = @('all')
+                        users = [pscustomobject]@{ includeUsers = @('All'); excludeUsers = @('11111111-1111-1111-1111-111111111111'); includeGroups = @(); excludeGroups = @('22222222-0000-0000-0000-000000000001'); includeRoles = @() }
+                        applications = [pscustomobject]@{ includeApplications = @('All'); excludeApplications = @(); includeUserActions = @() }
+                        locations = [pscustomobject]@{ includeLocations = @('All'); excludeLocations = @('33333333-0000-0000-0000-000000000001') } }
+                    grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @(); 'authenticationStrength@odata.context' = 'x'
+                        authenticationStrength = [pscustomobject]@{ id = '00000000-0000-0000-0000-000000000004'; displayName = 'Phishing-resistant MFA'; policyType = 'builtIn'; allowedCombinations = @('fido2') } }
+                    sessionControls = $null }
+            }
+        }
+        It 'POST als Nur Bericht, nur die beschreibbaren Teile, Staerke nur mit Kennung' {
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Id 'p1' -Name '201 - MFA' -Backup (& $script:Ca) -NewName '201 - MFA (wiederhergestellt 2026-10-01)'
+            $p.Blocks.Count | Should -Be 0
+            $p.Method | Should -Be 'POST'
+            $p.Body.state | Should -Be 'enabledForReportingButNotEnforced'
+            $p.Body.displayName | Should -Be '201 - MFA (wiederhergestellt 2026-10-01)'
+            @($p.Body.Keys | Sort-Object) | Should -Be @('conditions', 'displayName', 'grantControls', 'state')
+            $p.Body.grantControls.authenticationStrength.Keys | Should -Be @('id')
+            $p.Body.grantControls.ContainsKey('authenticationStrength@odata.context') | Should -BeFalse
+            $p.Body.ContainsKey('id') | Should -BeFalse
+            @($p.Warnings).Count | Should -Be 0
+        }
+        It 'fehlende Gruppe oder fehlender Ort sperrt' {
+            $global:ErFx.Remove('/groups/22222222-0000-0000-0000-000000000001')
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup (& $script:Ca)
+            @($p.Blocks | Where-Object { $_ -like 'Gruppe 22222222*' }).Count | Should -Be 1
+            { Invoke-HUEntraRestore -Plan $p -Settings $script:Set } | Should -Throw '*Nicht zurueckgeschrieben*'
+            $global:ErWrites.Count | Should -Be 0
+        }
+        It 'Authentifizierungskontext und Dienstprinzipal werden geprueft, eigene Steuerelemente sperren' {
+            $ca = & $script:Ca
+            $ca.conditions.applications | Add-Member -NotePropertyName includeAuthenticationContextClassReferences -NotePropertyValue @('c1')
+            $ca.conditions | Add-Member -NotePropertyName clientApplications -NotePropertyValue ([pscustomobject]@{ includeServicePrincipals = @('44444444-0000-0000-0000-000000000001') })
+            $ca.grantControls | Add-Member -NotePropertyName customAuthenticationFactors -NotePropertyValue @('x1')
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup $ca
+            @($p.Blocks | Where-Object { $_ -like 'Authentifizierungskontext c1*' }).Count | Should -Be 1
+            @($p.Blocks | Where-Object { $_ -like 'Dienstprinzipal 44444444*' }).Count | Should -Be 1
+            @($p.Blocks | Where-Object { $_ -like 'Eigenes Steuerelement x1*' }).Count | Should -Be 1
+        }
+        It 'Notfallkonto nicht ausgenommen -> Warnung; konformes Geraet -> Bestaetigung; Benutzeraktion -> aus' {
+            $ca = & $script:Ca
+            $ca.conditions.users.excludeUsers = @()
+            $ca.grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @('compliantDevice') }
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup $ca
+            @($p.Confirms | Where-Object { $_ -like '*Notfallkonto*' }).Count | Should -Be 1
+            @($p.Confirms | Where-Object { $_ -like '*Geraetezertifikat*' }).Count | Should -Be 1
+            $ca.conditions.applications.includeUserActions = @('urn:user:registersecurityinfo')
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup $ca
+            $p.Body.state | Should -Be 'disabled'
+        }
+        It '046 B1: ohne includeUserActions (Eigenschaft fehlt oder null) bleibt es Nur Bericht' {
+            $ca = & $script:Ca
+            $ca.conditions.applications.PSObject.Properties.Remove('includeUserActions')
+            (Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup $ca).Body.state | Should -Be 'enabledForReportingButNotEnforced'
+            $ca.conditions.applications | Add-Member -NotePropertyName includeUserActions -NotePropertyValue $null -Force
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup $ca
+            $p.Body.state | Should -Be 'enabledForReportingButNotEnforced'
+            @($p.Warnings | Where-Object { $_ -like '*Benutzeraktionen*' }).Count | Should -Be 0
+        }
+        It '046 B3/B5: Notfallkonto + konformes Geraet = Pflicht-Haken; verbundenes Geraet allein keine Zertifikat-Bestaetigung; Gruppen-Zusatz nur mit Gruppen' {
+            $ca = & $script:Ca
+            $ca.conditions.users.excludeUsers = @(); $ca.conditions.users.excludeGroups = $null
+            $ca.grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @('compliantDevice') }
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup $ca
+            @($p.Confirms | Where-Object { $_ -like '*Notfallkonto*schon jetzt*' }).Count | Should -Be 1
+            @($p.Confirms | Where-Object { $_ -like '*Gruppen hier nicht*' }).Count | Should -Be 0
+            $ca.grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @('domainJoinedDevice') }
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup $ca
+            @($p.Confirms).Count | Should -Be 0
+            @($p.Warnings | Where-Object { $_ -like '*Notfallkonto*' }).Count | Should -Be 1
+        }
+        It '046 B5: Authentifizierungskontext und Nutzungsbedingungen mit falschem Format sperren ohne Abfrage' {
+            $ca = & $script:Ca
+            $ca.conditions.applications | Add-Member -NotePropertyName includeAuthenticationContextClassReferences -NotePropertyValue @('c99', '../x') -Force
+            $ca.grantControls | Add-Member -NotePropertyName termsOfUse -NotePropertyValue @('nicht-guid') -Force
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup $ca
+            @($p.Blocks | Where-Object { $_ -like '*kein gueltiges Format*' }).Count | Should -Be 3
+        }
+        It 'legt an und prueft Zustand und Name nach, ohne Sicherung' {
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup (& $script:Ca) -NewName 'Neu'
+            Mock -ModuleName HU.EntraRestore Invoke-HUIntuneGraph {
+                param($TenantKey, $Settings, $Endpoint, $Method = 'GET', $Body, [switch]$V1, [switch]$NoRetry)
+                if ($Method -eq 'POST') { $global:ErWrites += [pscustomobject]@{ Method = $Method; Endpoint = $Endpoint; Body = $Body }; return [pscustomobject]@{ id = 'neu1' } }
+                if ($Endpoint -like '*/policies/neu1') { $o = $global:ErCaBody | ConvertTo-Json -Depth 20 | ConvertFrom-Json; $o | Add-Member -NotePropertyName id -NotePropertyValue 'neu1' -Force; return $o }
+                throw (New-ErFail 404)
+            }
+            $global:ErCaBody = $p.Body
+            $r = Invoke-HUEntraRestore -Plan $p -Settings $script:Set
+            $r.Ok | Should -BeTrue
+            $r.NewId | Should -Be 'neu1'
+            $r.BackupFile | Should -Be ''
+            $global:ErWrites.Count | Should -Be 1
+            $global:ErWrites[0].Endpoint | Should -Be '/identity/conditionalAccess/policies'
+            # 046 B2: andere Steuerelemente nach dem Anlegen fallen auf
+            $bad = $p.Body | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+            $bad.grantControls.builtInControls = @('block'); $global:ErCaBody = $bad
+            (Invoke-HUEntraRestore -Plan $p -Settings $script:Set).Mismatch -join ' ' | Should -BeLike '*builtInControls*'
+        }
+        It 'gleicher Name schon im Tenant: Nummer anhaengen' {
+            Mock -ModuleName HU.EntraRestore Get-HUIntuneGraphAll { param($TenantKey, $Settings, $Endpoint, [switch]$V1)
+                if ($Endpoint -like '/identity/conditionalAccess/policies*') { return @([pscustomobject]@{ displayName = 'Neu (wiederhergestellt 2026-10-23)' }, [pscustomobject]@{ displayName = 'neu (wiederhergestellt 2026-10-23 2)' }) }
+                return @() }
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup (& $script:Ca) -NewName 'Neu (wiederhergestellt 2026-10-23)'
+            $p.Body.displayName | Should -Be 'Neu (wiederhergestellt 2026-10-23 3)'
+            @($p.Notes | Where-Object { $_ -like '*gibt es schon*' }).Count | Should -Be 1
+        }
+        It 'neue Richtlinie erst nach Sekunden lesbar (404): wartet und prueft dann nach; bleibt 404, kein Fehler, sondern Hinweis mit Id' {
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Conditional Access' -Backup (& $script:Ca) -NewName 'Neu'
+            InModuleScope HU.EntraRestore { $script:HUErReadDelays = @(0, 0, 0) }
+            $global:ErCaBody = $p.Body; $global:ErGets = 0; $global:ErReadyAfter = 2
+            Mock -ModuleName HU.EntraRestore Invoke-HUIntuneGraph {
+                param($TenantKey, $Settings, $Endpoint, $Method = 'GET', $Body, [switch]$V1, [switch]$NoRetry)
+                if ($Method -eq 'POST') { return [pscustomobject]@{ id = 'neu2' } }
+                if ($Endpoint -like '*/policies/neu2') {
+                    $global:ErGets++
+                    if ($global:ErGets -le $global:ErReadyAfter) { throw (New-ErFail 404) }
+                    $o = $global:ErCaBody | ConvertTo-Json -Depth 20 | ConvertFrom-Json; $o | Add-Member -NotePropertyName id -NotePropertyValue 'neu2' -Force; return $o
+                }
+                throw (New-ErFail 404)
+            }
+            $r = Invoke-HUEntraRestore -Plan $p -Settings $script:Set
+            $r.Ok | Should -BeTrue
+            $global:ErGets | Should -Be 3
+            $global:ErGets = 0; $global:ErReadyAfter = 99
+            $r = Invoke-HUEntraRestore -Plan $p -Settings $script:Set
+            $r.Ok | Should -BeFalse
+            $r.NewId | Should -Be 'neu2'
+            ($r.Mismatch -join ' ') | Should -BeLike '*Angelegt (Id neu2)*nicht nachlesbar*'
+            InModuleScope HU.EntraRestore { $script:HUErReadDelays = @(2, 3, 5, 5, 5, 10) }
+        }
+    }
 }

@@ -1,5 +1,23 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.3.4 (Testversion, 23.10.2026, Weg zu 2.4.0)
+
+### 🛡️ Conditional Access zurückschreiben – nur als „Nur Bericht“
+- **Neu:** Eine Richtlinie aus einem Backup-Stand kommt als **neue** Richtlinie im Modus „Nur Bericht“ zurück, mit Vorschau wie bei den Entra-Einstellungen. Die bestehende Richtlinie bleibt unverändert.
+- **Vorher geprüft:** Benutzer, Gruppen, Rollen, benannte Orte, Apps, Nutzungsbedingungen und Authentifizierungsstärke müssen im Tenant noch existieren, sonst wird nichts angelegt.
+- **Hinweise:** Warnung, wenn Notfallkonten nicht ausgenommen sind; Bestätigung bei „konformes Gerät“ (Microsoft: Zertifikat-Abfragen auf macOS, iOS, Android auch im Nur-Bericht-Modus); Richtlinien für Benutzeraktionen kommen ausgeschaltet, weil es dort keinen Nur-Bericht-Modus gibt.
+- **Nachgeprüft:** nach dem Anlegen werden Zustand, Name, Steuerelemente und die Anzahl der Benutzer, Apps und Orte gelesen und verglichen.
+- **Vorschau:** Fenstertitel „Conditional Access wiederherstellen (Nur Bericht)“; sind alle Notfallkonten ausgenommen, steht das als Hinweis da; das vom Backup angehängte Feld `assignments` wird nicht mehr als „nicht geschrieben“ gemeldet.
+- **Nachprüfung wartet:** Eine neue Richtlinie ist bei Microsoft oft erst nach einigen Sekunden lesbar. Das Nachlesen versucht es bis etwa 30 Sekunden lang; klappt es dann noch nicht, kommt ein Hinweis mit der Kennung statt der Fehlermeldung „nicht zurückgeschrieben“ (angelegt ist sie ja).
+- **Eindeutiger Name:** Gibt es „… (wiederhergestellt Datum)“ schon (z. B. zweimal am selben Tag), bekommt die neue Richtlinie eine Nummer („… Datum 2)“).
+
+### 💾 Backups mit Ablaufdatum
+- **Neu:** Einstellungen › Allgemein › Backup: „höchstens … Tage“ (Standard 365, 0 = nie). Ältere Stände und Sicherungen vor dem Zurückschreiben werden beim nächsten Backup gelöscht; der neueste vollständige Stand und die jüngste Sicherung vor dem Zurückschreiben bleiben immer.
+
+### 🔍 Verlauf und Tenant-Vergleich: keine versteckten Änderungen
+- **Gleichnamige Einstellungen** (z. B. Computer und Benutzer in Administrativen Vorlagen) überschreiben sich in der Detailansicht nicht mehr (`#2`); eine Änderung an nur einer davon bleibt sichtbar. Treten solche doppelten Namen auf, bleibt die Liste vorsichtig bei „geändert“/„abweichend“.
+- **Protokoll:** Zählt ein Eintrag trotz anderem Fingerabdruck als gleich (nur Reihenfolge oder ignorierte Felder), steht das mit Typ und Name im Protokoll.
+
 ## v2.3.3 (Testversion, 23.10.2026, Weg zu 2.4.0)
 
 ### ↩️ Entra-Einstellungen zurückschreiben (Etappe 1)

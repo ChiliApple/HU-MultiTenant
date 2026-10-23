@@ -2503,8 +2503,13 @@ function Get-HUCompareMatrix([object[]]$Rows, [string[]]$Keys) {
             if (-not @($objs | Where-Object { -not ($_.PSObject.Properties['Obj'] -and $null -ne $_.Obj) }).Count) {
                 try {
                     $maps = @{}; $ks = @()
+                    $script:HUFlatCollision = $false
                     for ($i = 0; $i -lt $objs.Count; $i++) { $maps["o$i"] = ConvertTo-HUNeutralFlatMap $objs[$i].Obj; $ks += "o$i" }
-                    if (-not @(Get-HUCompareDiff $maps $ks).Count) { $hashes = @($hashes[0]) }
+                    # nur wenn beim Aufbau keine Schluessel doppelt waren (048 B1) - sonst bleibt es vorsichtig "abweichend"
+                    if (-not $script:HUFlatCollision -and -not @(Get-HUCompareDiff $maps $ks).Count) {
+                        $hashes = @($hashes[0])
+                        Write-HULog -Message "Tenant-Vergleich $($first.Typ) '$($first.Name)': Fingerabdruck verschieden, Einstellungen Feld fuer Feld gleich (nur Reihenfolge/Kennungen/ignorierte Felder) - nicht als abweichend gezaehlt" -Level 'INFO'
+                    }
                 } catch { }
             }
         }
@@ -2629,17 +2634,17 @@ function Get-HUCompareObject {
 }
 
 # Objekt zu Pfad -> Wert flach machen. Listenelemente mit settingDefinitionId/definition werden darueber benannt (Reihenfolge egal).
-function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null, [switch]$WithAssignments) {
+function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null, [switch]$WithAssignments, [switch]$Full) {
     if ($null -eq $Map) { $Map = @{} }
     $skip = @($script:HUCmpSkip | Where-Object { -not $WithAssignments -or $_ -ne 'assignments' }) + @('displayName', 'name', 'description', '@odata.context', 'settingInstanceTemplateReference', 'settingValueTemplateReference', 'definition@odata.bind', 'presentation@odata.bind')
     if ($null -eq $Obj) { return $Map }
     if ($Obj -is [string] -or $Obj -is [ValueType]) {
         $v = "$Obj"
-        if ($v.Length -gt 120 -and $v -match '^[A-Za-z0-9+/=\r\n]+$') {
+        if (-not $Full -and $v.Length -gt 120 -and $v -match '^[A-Za-z0-9+/=\r\n]+$') {
             $sha = [System.Security.Cryptography.SHA256]::Create()
             try { $h = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($v))) -replace '-', '').Substring(0, 8) } finally { $sha.Dispose() }
             $v = "(Inhalt, $($v.Length) Zeichen, #$h)"
-        } elseif ($v.Length -gt 200) {
+        } elseif (-not $Full -and $v.Length -gt 200) {
             # gekuerzt, aber mit Pruefsumme: eine Aenderung hinter Zeichen 200 bleibt so sichtbar
             $sha = [System.Security.Cryptography.SHA256]::Create()
             try { $h = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($v))) -replace '-', '').Substring(0, 8) } finally { $sha.Dispose() }
@@ -2654,6 +2659,9 @@ function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null
         $simple = @($list | Where-Object { $_ -is [string] -or $_ -is [ValueType] })
         if ($simple.Count -eq $list.Count) { $Map[$Prefix] = (@($list | ForEach-Object { "$_" } | Sort-Object) -join ', '); return $Map }
         $i = 0
+        # 048 B1: gleiche Schluessel in einer Liste (z. B. gleichnamige Einstellungen fuer Computer und Benutzer) duerfen sich nicht
+        # ueberschreiben - sonst verschwindet eine Aenderung. Doppelte bekommen #2, #3 ...; $script:HUFlatCollision merkt sich das.
+        $usedK = @{}
         foreach ($e in $list) {
             $k = "$i"
             if ($e.PSObject.Properties['settingDefinitionId'] -and "$($e.settingDefinitionId)") { $k = "$($e.settingDefinitionId)" }
@@ -2667,7 +2675,9 @@ function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null
             elseif ($e.PSObject.Properties['id'] -and "$($e.id)" -match '^[A-Za-z][A-Za-z0-9_.-]{1,60}$') { $k = "$($e.id)" }
             elseif ($e.PSObject.Properties['actionType']) { $k = "$($e.actionType)" }
             elseif ($e.PSObject.Properties['target'] -and $e.target) { $k = "$(("$($e.target.'@odata.type')" -replace '^#microsoft\.graph\.', '' -replace 'AssignmentTarget$', '')) $($e.target.groupId)".Trim() }
-            [void](ConvertTo-HUFlatMap $e "$Prefix[$k]" $Map -WithAssignments:$WithAssignments)
+            if ($usedK.ContainsKey($k)) { $script:HUFlatCollision = $true; $n = 2; while ($usedK.ContainsKey("$k#$n")) { $n++ }; $k = "$k#$n" }
+            $usedK[$k] = $true
+            [void](ConvertTo-HUFlatMap $e "$Prefix[$k]" $Map -WithAssignments:$WithAssignments -Full:$Full)
             $i++
         }
         return $Map
@@ -2677,7 +2687,7 @@ function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null
         if ($p.Name -in $skip -or $p.Name -match '@odata\.(context|navigationLink|associationLink|etag)$|^id$') { continue }
         if ($null -eq $p.Value) { continue }
         if ($p.Name -eq '@odata.type' -and $Prefix) { continue }
-        [void](ConvertTo-HUFlatMap $p.Value $(if ($Prefix) { "$Prefix.$($p.Name)" } else { $p.Name }) $Map -WithAssignments:$WithAssignments)
+        [void](ConvertTo-HUFlatMap $p.Value $(if ($Prefix) { "$Prefix.$($p.Name)" } else { $p.Name }) $Map -WithAssignments:$WithAssignments -Full:$Full)
     }
     return $Map
 }
@@ -3039,16 +3049,30 @@ function Get-HUBackupList {
 }
 
 # alte Staende entfernen (die neuesten $Keep bleiben)
+# Alte Staende entfernen: hoechstens $Keep vollstaendige; mit $MaxDays > 0 zusaetzlich alles aelter als $MaxDays Tage
+# (Ablaufdatum - Sicherungen enthalten vollstaendige Richtlinien). Der neueste vollstaendige Stand bleibt immer.
+# Sicherungen vor dem Zurueckschreiben (_vor-zurueckschreiben) laufen mit demselben Ablaufdatum ab.
 function Remove-HUOldBackups {
-    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$TenantKey, [int]$Keep = 30)
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$TenantKey, [int]$Keep = 30, [int]$MaxDays = 0, [datetime]$Now = (Get-Date))
     if ($Keep -lt 1) { return 0 }
     # nur vollstaendige Staende zaehlen; unvollstaendige bleiben nur, solange sie neuer als der aelteste behaltene vollstaendige sind
     $all = @(Get-HUBackupList -Root $Root -TenantKey $TenantKey)
     $keepFull = @($all | Where-Object Complete | Select-Object -First $Keep)
+    $newest = @($keepFull | Select-Object -First 1)
+    if ($MaxDays -gt 0) { $cut = $Now.AddDays(-$MaxDays); $keepFull = @($keepFull | Where-Object { $_.Time -ge $cut -or $newest -contains $_ }) }
     $limit = if ($keepFull.Count -ge $Keep) { $keepFull[-1].Time } else { [datetime]::MinValue }
+    if ($MaxDays -gt 0 -and $Now.AddDays(-$MaxDays) -gt $limit) { $limit = $Now.AddDays(-$MaxDays) }
     $old = @($all | Where-Object { ($_.Complete -and $keepFull -notcontains $_) -or (-not $_.Complete -and $_.Time -lt $limit) })
     foreach ($o in $old) { Remove-Item -LiteralPath $o.Folder -Recurse -Force -ErrorAction SilentlyContinue }
-    return $old.Count
+    $n = $old.Count
+    if ($MaxDays -gt 0) {
+        $pre = Join-Path (Join-Path $Root (ConvertTo-HUSafeFileName $TenantKey)) '_vor-zurueckschreiben'
+        if (Test-Path -LiteralPath $pre) {
+            # die juengste Sicherung bleibt immer (sonst ist das Rueckgaengigmachen weg, 046 B4)
+            foreach ($f in @(Get-ChildItem -LiteralPath $pre -File -Filter '*.json' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 1 | Where-Object { $_.LastWriteTime -lt $Now.AddDays(-$MaxDays) })) { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue; $n++ }
+        }
+    }
+    return $n
 }
 
 # zwei Staende vergleichen (A = aelter, B = neuer) -> Zeilen Typ, Name, Aenderung, FileA, FileB
@@ -3089,7 +3113,15 @@ function Compare-HUBackups {
             # Fingerabdruck verschieden, die Detailansicht findet aber keinen Unterschied (z. B. nur andere Reihenfolge einer
             # einfachen Liste): nicht als Aenderung melden - Liste und Detailansicht sollen dasselbe sagen
             if ($hx -ne $hy -and $x.File -and $y.File -and $dupA -notcontains $x.File -and $dupB -notcontains $y.File) {
-                try { if (@(Get-HUBackupItemDiff -FileA (Join-Path $FolderA $x.File) -FileB (Join-Path $FolderB $y.File)).Count -eq 0) { $hy = $hx } } catch { }
+                try {
+                    $script:HUFlatCollision = $false
+                    $dd = @(Get-HUBackupItemDiff -FileA (Join-Path $FolderA $x.File) -FileB (Join-Path $FolderB $y.File))
+                    # nur wenn beim Aufbau keine Schluessel doppelt waren (048 B1) - sonst bleibt es vorsichtig "geaendert"
+                    if (-not $dd.Count -and -not $script:HUFlatCollision) {
+                        $hy = $hx
+                        Write-HULog -Message "Verlauf $($y.Typ) '$($y.Name)': Fingerabdruck verschieden, Einstellungen Feld fuer Feld gleich (nur Reihenfolge/ignorierte Felder) - als gleich gezaehlt" -Level 'INFO'
+                    }
+                } catch { }
             }
             if ($hx -ne $hy) { $c += 'Einstellungen geaendert' }
             if ("$($x.AHash)" -eq '?' -or "$($y.AHash)" -eq '?') { $c += 'Zuweisungen nicht lesbar' }

@@ -61,9 +61,9 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
     $w = $d.Window; $c = $d.C
-    $w.Title = 'Entra-Einstellung zurueckschreiben'
+    $w.Title = if ($Plan.Kind -eq 'caNew') { 'Conditional Access wiederherstellen (Nur Bericht)' } else { 'Entra-Einstellung zurueckschreiben' }
     $c.lblTitle.Text = "$($Plan.Typ): $($Plan.Name)  -  $TenantName"
-    $c.lblSub.Text = "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert."
+    $c.lblSub.Text = if ($Plan.Method -eq 'POST') { "Aus dem Stand $Stamp in denselben Tenant als NEUE Richtlinie, Schreibrecht: $($Plan.Perm). Die bestehende Richtlinie wird nicht veraendert." } else { "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert." }
     # B1: gekuerzte Werte muessen vor dem Schreiben einmal voll angesehen werden (Zeile markieren, voller Wert klappt auf)
     $rows = @($Plan.Changes | ForEach-Object { [pscustomobject]@{ Feld = $_.Feld; Anzahl = $_.Anzahl; Jetzt = $_.Jetzt; Danach = $_.Danach; JetztVoll = $_.JetztVoll; DanachVoll = $_.DanachVoll; Gekuerzt = [bool]$_.Gekuerzt; Status = $(if ($_.Gekuerzt) { 'ansehen' } else { '' }) } })
     $c.gridChanges.ItemsSource = $rows
@@ -103,11 +103,11 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
             & $upd
         })
     & $upd
-    # nur eine Zeile: gleich markieren, damit der volle Wert sofort zu sehen ist - nicht bei gekuerzten Werten,
-    # die muessen bewusst angesehen werden (044 B1)
+    # nur eine Zeile: gleich markieren, damit der volle Wert sofort zu sehen ist
     if ($rows.Count -eq 1 -and -not $rows[0].Gekuerzt) { $c.gridChanges.SelectedIndex = 0 }
     $c.btnWrite.Add_Click({
-            if (-not (Confirm-HU "Jetzt $($Plan.Changes.Count) Feld(er) von '$($Plan.Name)' in $TenantName zurueckschreiben?" -Warning -Owner $w)) { return }
+            $q = if ($Plan.Method -eq 'POST') { "'$($Plan.Body.displayName)' jetzt in $TenantName NEU anlegen ($(if ($Plan.Body.state -eq 'disabled') { 'ausgeschaltet' } else { 'Nur Bericht' }))?" } else { "Jetzt $($Plan.Changes.Count) Feld(er) von '$($Plan.Name)' in $TenantName zurueckschreiben?" }
+            if (-not (Confirm-HU $q -Warning -Owner $w)) { return }
             $state.Ok = $true; $w.Close()
         })
     [void]$w.ShowDialog()
@@ -126,8 +126,10 @@ function Start-HUEntraRestore($Row) {
     try { $bix = Read-HUBackupJson (Join-Path $script:BakA 'index.json') } catch { Show-HUMessage "index.json des Backup-Stands nicht lesbar - ohne sie wird nicht zurueckgeschrieben: $($_.Exception.Message)" -Icon Error; return }
     Add-HURtbLine $c['rtbAna'] "Lese $($Row.Typ) '$($Row.Name)' in $tn fuer die Vorschau ..." '#90CAF9'
     $script:EntraRestoreCtx = @{ Tenant = $tn; Stamp = $stamp }
-    [void](Start-HUJob -Name 'EntraRestorePlan' -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; Typ = "$($Row.Typ)"; Id = "$($Row.Id)"; Nm = "$($Row.Name)"; Bk = $backup; Bix = $bix } -Code {
-            try { [pscustomobject]@{ __Plan = (Get-HUEntraRestorePlan -TenantKey $TK -Settings $Settings -Typ $Typ -Id $Id -Name $Nm -Backup $Bk -BackupIndex $Bix) } }
+    # Conditional Access wird neu angelegt: Name mit Zusatz wie beim Wiederherstellen von Intune-Eintraegen
+    $newName = if ((Get-HUEntraRestoreKind "$($Row.Typ)" "$($Row.Id)") -eq 'caNew') { "$($Row.Name) (wiederhergestellt $((Split-Path $script:BakA -Leaf).Substring(0, 10)))" } else { '' }
+    [void](Start-HUJob -Name 'EntraRestorePlan' -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; Typ = "$($Row.Typ)"; Id = "$($Row.Id)"; Nm = "$($Row.Name)"; Bk = $backup; Bix = $bix; NN = $newName } -Code {
+            try { [pscustomobject]@{ __Plan = (Get-HUEntraRestorePlan -TenantKey $TK -Settings $Settings -Typ $Typ -Id $Id -Name $Nm -Backup $Bk -BackupIndex $Bix -NewName $NN) } }
             catch { [pscustomobject]@{ __PlanError = $(if (Test-HUGraphForbidden $_) { "Leserecht fehlt ($($_.Exception.Message))" } else { "$($_.Exception.Message)" }) } }
         } -OnDone {
             param($Result, $Errors)
@@ -147,7 +149,7 @@ function Start-HUEntraRestore($Row) {
                     if (-not $r2) { Show-HUMessage 'Zurueckschreiben: kein Ergebnis (siehe Protokoll).' -Icon Error; return }
                     if ($r2.PSObject.Properties['__ResError']) { Show-HUMessage "Nicht zurueckgeschrieben:`n`n$($r2.__ResError)" -Icon Error; return }
                     $res = $r2.__Res
-                    $txt = "$($res.Written) Feld(er) geschrieben. Stand vorher gesichert:`n$($res.BackupFile)"
+                    $txt = if ($res.PSObject.Properties['NewId'] -and $res.NewId) { "Neu angelegt als 'Nur Bericht' (Id $($res.NewId)). Die bestehende Richtlinie ist unveraendert." } else { "$($res.Written) Feld(er) geschrieben. Stand vorher gesichert:`n$($res.BackupFile)" }
                     if ($res.Mismatch.Count) { $txt += "`n`nNachpruefung - abweichend gelesen:`n$($res.Mismatch -join "`n")" } else { $txt += "`n`nNachpruefung: alle geschriebenen Felder stimmen." }
                     if ($res.Notes.Count) { $txt += "`n`n$($res.Notes -join "`n")" }
                     Show-HUMessage $txt -Icon $(if ($res.Ok) { 'Info' } else { 'Warning' })
