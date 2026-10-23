@@ -1,5 +1,15 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.4.1 (Testversion, Weg zu 2.5.0)
+
+### → Übertragen statt Kopieren
+- **Neu:** Tenant-Vergleich › *Übertragen …* ersetzt *Fehlendes kopieren*. Einen Eintrag markieren, Quelle wählen (Tenant oder Muster), Ziel-Tenants wählen; je Ziel eine **Vorschau** mit allen Einstellungen, Sperren und Hinweisen. Bei mehreren Zielen den Tenant-Namen zur Bestätigung eintippen.
+- **Gesperrt:** gleicher Name im Ziel schon vorhanden; Verweise auf Objekte des Quell-Tenants (z. B. Compliance-Skript); Geheimnisse (verschlüsselte Werte, Kennwörter, Pre-Shared-Keys); WLAN-, VPN-, kabelgebundene, SCEP-, PKCS- und Zertifikatsprofile; genau eine Aktion „nicht konform markieren“ nötig, weggelassene Benachrichtigungen bewusst bestätigen; Bereichsmarkierungen, die es im Ziel nicht genau einmal gibt.
+- **Sicher angelegt:** neu und ohne Zuweisungen; unmittelbar davor erneut geprüft; Bereichsmarkierungen über den Namen; unvollständige Administrative Vorlagen werden sofort wieder gelöscht; danach jede Einstellung mit der Quelle verglichen.
+- **Neu:** Erfolgsmeldung und Abschlussmeldung erinnern ans Zuweisen im Ziel (Zuweisungen werden nicht übertragen).
+- **Fix:** Graph-Metadaten-Zeilen (`…@odata.context`) sperrten das Übertragen fälschlich als Quell-Verweis – sie werden nie mitgeschickt und jetzt ignoriert. Knopf heißt nun *Vergleich einlesen*.
+- **Rückgängig:** Tenant-Vergleich › *Rückgängig …* löscht übertragene Einträge wieder, nur wenn sie seitdem unverändert und nicht zugewiesen sind. Weicht die Nachprüfung ab, bietet die Meldung das Rückgängigmachen gleich an. Die Dateien liegen unter `_vor-uebertragen` und laufen mit den Backups ab.
+
 ## v2.4.0 (Stable, 23.10.2026)
 
 Stable-Release der Testversionen 2.3.2 bis 2.3.5 – „Sichern und Wiederherstellen“. Alle Punkte im Detail stehen in den Abschnitten darunter.

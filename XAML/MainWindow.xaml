@@ -1119,11 +1119,13 @@
                                         </StackPanel>
                                         <ComboBox x:Name="cmbCmpType" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,4" ToolTip="Nur eine Art anzeigen"/>
                                         <CheckBox x:Name="chkCmpDiff" Content="Nur Unterschiede" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"/>
-                                        <Button x:Name="btnCmpRun" Content="&#x25B6; Vergleichen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
-                                        <Button x:Name="btnCmpCopy" Content="&#x1F4CB; Fehlendes kopieren ..." Background="#A65A28" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
-                                                ToolTip="Markierte Eintraege in die angehakten Tenants kopieren, in denen sie fehlen - ohne Zuweisungen"/>
+                                        <Button x:Name="btnCmpRun" Content="&#x25B6; Vergleich einlesen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
+                                        <Button x:Name="btnCmpCopy" Content="&#x2192; Uebertragen ..." Background="#A65A28" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
+                                                ToolTip="Einen markierten Eintrag aus einer Quelle (Tenant oder Muster) in Tenants neu anlegen, in denen er fehlt - je Ziel mit Vorschau und Pruefungen, ohne Zuweisungen, rueckgaengig machbar"/>
+                                        <Button x:Name="btnCmpUndo" Content="&#x21B6; Rueckgaengig ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,4"
+                                                ToolTip="Uebertragene Eintraege in den angehakten Tenants wieder loeschen - nur, wenn sie seitdem unveraendert sind"/>
                                         <Button x:Name="btnCmpTable" Content="&#x1F4CA; Tabelle / Export" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
-                                        <CheckBox x:Name="chkCmpMuster" Content="Muster" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
+                                        <CheckBox x:Name="chkCmpMuster" Content="Muster aus Backup" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
                                                   ToolTip="Den festgehaltenen Mustertenant (Soll-Stand aus Backup &amp; Verlauf) als eigene Spalte mitvergleichen"/>
                                         <CheckBox x:Name="chkCmpColor" Content="Farben" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
                                                   ToolTip="Zeichen farbig: gruen = vorhanden und gleich wie das Muster (ohne Muster: wie die Mehrheit), orange = Einstellungen abweichend, rot = fehlt, grau = nicht lesbar"/>
