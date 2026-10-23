@@ -831,6 +831,13 @@ Describe 'Analyse: Tenant-Vergleich' {
         $cp = $m | Where-Object Typ -eq 'Compliance'
         $cp.Missing.Count | Should -Be 0; $cp.Status | Should -Match 'abweichend'
     }
+    It 'Matrix: Copy-Kennzeichen kommt von der ersten Zeile MIT Kennzeichen (Muster-Stand zuerst in der Gruppe)' {
+        $rows = @(
+            [pscustomobject]@{ Tenant = '__MUSTER__'; Typ = 'Konfiguration'; Name = 'Win'; Id = 'a'; Hash = 'h1'; Copy = '' }
+            [pscustomobject]@{ Tenant = 't2'; Typ = 'Konfiguration'; Name = 'Win'; Id = 'b'; Hash = 'h1'; Copy = 'generic' }
+        )
+        @(Get-HUCompareMatrix $rows @('__MUSTER__', 't2', 't3'))[0].Copy | Should -Be 'generic'
+    }
     It 'Kopieren (generisch): ohne IDs/Zuweisungen, mit Inhalt, POST in den Ziel-Tenant' {
         InModuleScope HU.Intune {
             $script:posted = $null

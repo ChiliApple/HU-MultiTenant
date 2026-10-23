@@ -32,6 +32,98 @@ BeforeAll {
     }
 }
 
+Describe 'Uebertragen B - Angleichen (2.4.2)' {
+    BeforeEach {
+        $global:TrFx = @{}; $global:TrList = @{}; $global:TrWrites = @(); $global:TrObj = @{}; $global:TrObjAfter = @{}
+        Mock -ModuleName HU.Transfer Get-HUCompareObject {
+            param($TenantKey, $Settings, $Typ, $Id)
+            $k = "$TenantKey|$Id"
+            if ($global:TrWrites.Count -and $global:TrObjAfter.ContainsKey($k)) { return $global:TrObjAfter[$k] }
+            if ($global:TrObj.ContainsKey($k)) { return $global:TrObj[$k] }
+            $ex = New-Object System.Exception('404'); $ex.Data['StatusCode'] = 404; throw $ex
+        }
+        $script:SrcProf = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10GeneralConfiguration'; id = 'q1'; displayName = 'Win Basis'; passwordRequired = $true; passwordMinimumLength = 8 }
+        $script:TgtProf = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10GeneralConfiguration'; id = 't1'; displayName = 'Win Basis'; passwordRequired = $false; passwordMinimumLength = 6; storageRequireDeviceEncryption = $true }
+    }
+    It 'Plan zeigt nur Unterschiede; Feld nur im Ziel wird geleert (F3); gleiche Felder gezaehlt' {
+        $global:TrObj['Z|t1'] = $script:TgtProf
+        $p = Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Konfiguration' -SourceObj $script:SrcProf -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1'
+        $p.Blocks.Count | Should -Be 0
+        $p.Kind | Should -Be 'transferAlign'
+        @($p.Changes | Where-Object Feld -eq 'passwordMinimumLength')[0].Jetzt | Should -Be '6'
+        @($p.Changes | Where-Object Feld -eq 'passwordMinimumLength')[0].Danach | Should -Be '8'
+        @($p.Changes | Where-Object Feld -eq 'storageRequireDeviceEncryption')[0].Danach | Should -BeLike '(wird geleert*'
+        # Quelle schickt die Eigenschaft als leere Liste mit -> Ziel-Eintraege darunter werden entfernt, nicht 'bleibt'
+        $src2 = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.iosUpdateConfiguration'; id = 'q2'; displayName = 'Upd'; customUpdateTimeWindows = @(); updateScheduleType = 'alwaysUpdate' }
+        $global:TrObj['Z|t9'] = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.iosUpdateConfiguration'; id = 't9'; displayName = 'Upd'; customUpdateTimeWindows = @([pscustomobject]@{ startDay = 'monday'; endDay = 'tuesday' }); updateScheduleType = 'updateDuringTimeWindows' }
+        $p2 = Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Konfiguration' -SourceObj $src2 -SourceKey 'Q' -TargetKey 'Z' -TargetId 't9'
+        @($p2.Changes | Where-Object { $_.Feld -like 'customUpdateTimeWindows`[0`]*' } | ForEach-Object { $_.Danach } | Select-Object -Unique) | Should -Be '(wird entfernt - die Quelle hat diesen Eintrag nicht)'
+        @($p.Changes | Where-Object Feld -eq 'displayName').Count | Should -Be 0
+        @($p.Notes | Where-Object { $_ -like '*schon gleich*' }).Count | Should -Be 1
+        $p.LiveHash | Should -Not -BeNullOrEmpty
+    }
+    It 'sperrt: anderer Profiltyp, Administrative Vorlage, Einstellungskatalog, keine Unterschiede' {
+        $global:TrObj['Z|t1'] = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows11GeneralConfiguration'; id = 't1'; displayName = 'Win Basis' }
+        (Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Konfiguration' -SourceObj $script:SrcProf -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1').Blocks[0] | Should -BeLike '*Profiltyp verschieden*'
+        (Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Administrative Vorlage' -SourceObj ([pscustomobject]@{ displayName = 'A' }) -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1').Blocks[0] | Should -BeLike '*nicht angeglichen*'
+        (Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Einstellungskatalog' -SourceObj ([pscustomobject]@{ name = 'K' }) -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1').Blocks[0] | Should -BeLike '*nicht angeglichen*'
+        $global:TrObj['Z|t2'] = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10GeneralConfiguration'; id = 't2'; displayName = 'Win Basis'; passwordRequired = $true; passwordMinimumLength = 8 }
+        (Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Konfiguration' -SourceObj $script:SrcProf -SourceKey 'Q' -TargetKey 'Z' -TargetId 't2').Blocks[0] | Should -BeLike '*keine Unterschiede*'
+    }
+    It 'Ue-8: Ziel seit der Vorschau geaendert -> Abbruch, nichts geschrieben' {
+        $global:TrObj['Z|t1'] = $script:TgtProf
+        $p = Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Konfiguration' -SourceObj $script:SrcProf -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1'
+        $global:TrObj['Z|t1'] = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10GeneralConfiguration'; id = 't1'; displayName = 'Win Basis'; passwordRequired = $false; passwordMinimumLength = 4 }
+        { Invoke-HUTransferAlign -Plan $p -Settings $script:Set } | Should -Throw '*seit der Vorschau geaendert*'
+        @($global:TrWrites).Count | Should -Be 0
+    }
+    It 'schreibt PATCH, sichert vorher, prueft nach, Rueckgaengig stellt den Stand wieder her' {
+        $global:TrObj['Z|t1'] = $script:TgtProf
+        $global:TrObjAfter['Z|t1'] = $script:SrcProf
+        $p = Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Konfiguration' -SourceObj $script:SrcProf -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1'
+        $r = Invoke-HUTransferAlign -Plan $p -Settings $script:Set
+        $r.Ok | Should -BeTrue
+        @($global:TrWrites | Where-Object { $_.Method -eq 'PATCH' -and $_.Endpoint -like '*deviceConfigurations/t1' }).Count | Should -Be 1
+        Test-Path $r.UndoFile | Should -BeTrue
+        $u = Read-HUBackupJson $r.UndoFile
+        "$($u.Kind)" | Should -Be 'changed'
+        "$($u.HashAfter)" | Should -Not -BeNullOrEmpty
+        @(Get-HUTransferUndoList -Settings $script:Set -Keys @('Z'))[0].Was | Should -Be 'angeglichen'
+        # Rueckgaengig: Ziel ist noch auf dem Nach-Stand -> gesicherter Stand wird zurueckgeschrieben
+        $res = Undo-HUTransfer -Settings $script:Set -File $r.UndoFile
+        $res.Text | Should -BeLike '*zurueckgesetzt*'
+        @($global:TrWrites | Where-Object { $_.Method -eq 'PATCH' }).Count | Should -Be 2
+        Test-Path ($r.UndoFile -replace '\.json$', '.rueckgaengig.json') | Should -BeTrue
+    }
+    AfterAll { Get-ChildItem -LiteralPath $script:Tmp -Recurse -File -Filter '*.json' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue }
+    It 'Rueckgaengig-Status: nur pruefen, nichts schreiben; Grund bei nicht moeglich' {
+        $global:TrObj['Z|t1'] = $script:TgtProf
+        $global:TrObjAfter['Z|t1'] = $script:SrcProf
+        $p = Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Konfiguration' -SourceObj $script:SrcProf -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1'
+        $r = Invoke-HUTransferAlign -Plan $p -Settings $script:Set
+        $n = @($global:TrWrites).Count
+        (Get-HUTransferUndoStatus -Settings $script:Set -File $r.UndoFile).Ok | Should -BeTrue
+        @($global:TrWrites).Count | Should -Be $n
+        # Ziel seitdem geaendert -> nicht moeglich, mit Grund
+        $global:TrObjAfter['Z|t1'] = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10GeneralConfiguration'; id = 't1'; displayName = 'Win Basis'; passwordMinimumLength = 12 }
+        $st = Get-HUTransferUndoStatus -Settings $script:Set -File $r.UndoFile
+        $st.Ok | Should -BeFalse
+        $st.Text | Should -BeLike '*nach dem Angleichen geaendert*'
+        Test-Path $r.UndoFile | Should -BeTrue
+    }
+    It 'Compliance: Aktionen werden ersetzt, Benachrichtigung bewusst bestaetigen, zwei Schritte' {
+        $src = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CompliancePolicy'; id = 'q1'; displayName = 'Comp'; passwordRequired = $true
+            scheduledActionsForRule = @([pscustomobject]@{ scheduledActionConfigurations = @([pscustomobject]@{ actionType = 'block'; gracePeriodHours = 0 }, [pscustomobject]@{ actionType = 'notification'; gracePeriodHours = 1 }) }) }
+        $global:TrObj['Z|t1'] = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CompliancePolicy'; id = 't1'; displayName = 'Comp'; passwordRequired = $false }
+        $global:TrObjAfter['Z|t1'] = $src
+        $p = Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Compliance' -SourceObj $src -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1'
+        $p.Blocks.Count | Should -Be 0
+        @($p.Confirms | Where-Object { $_ -like '*OHNE Benachrichtigungen*' }).Count | Should -Be 1
+        $r = Invoke-HUTransferAlign -Plan $p -Settings $script:Set
+        @($global:TrWrites | Where-Object { $_.Method -eq 'POST' -and $_.Endpoint -like '*t1/scheduleActionsForRules' }).Count | Should -Be 1
+    }
+}
+
 AfterAll {
     Remove-Module HU.Transfer -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $script:Tmp -Recurse -Force -ErrorAction SilentlyContinue

@@ -33,6 +33,8 @@ $script:HUTrIdOkNames = @('settingDefinitionId', 'templateId', 'settingInstanceT
 # 047 B6: eigene 'id' nur auf oberster Ebene und bei Einstellungen/Werten von Vorlagen, nicht in jeder Tiefe
 $script:HUTrIdOkPath = '^(|(settings|definitionValues|presentationValues)\[\d+\]|definitionValues\[\d+\]\.presentationValues\[\d+\])$'
 $script:HUTrGuidRx = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+# 2.4.2 Uebertragen B (045/F3-F4): nur Arten mit dokumentiertem PATCH; Einstellungskatalog und Administrative Vorlage nicht
+$script:HUTrAlignCopy = @('generic', 'compliance')
 
 # GUIDs ausserhalb der erlaubten Felder suchen -> Fundstellen (Pfad = Wert)
 function Find-HUTrForeignIds($Obj, [string]$Path = '') {
@@ -181,6 +183,161 @@ function Get-HUTransferPlan {
     return $plan
 }
 
+# Compliance: Aktionen der Quelle fuer das Ziel aufbereiten (Benachrichtigungen weglassen, Vorlagen gibt es je Tenant)
+function Get-HUTrComplianceActions($Obj) {
+    $acts = @(@(Get-HUTrProp $Obj 'scheduledActionsForRule') | ForEach-Object { @(Get-HUTrProp $_ 'scheduledActionConfigurations') } | Where-Object { $_ } | ForEach-Object {
+            @{ actionType = "$(Get-HUTrProp $_ 'actionType')"; gracePeriodHours = [int](Get-HUTrProp $_ 'gracePeriodHours'); notificationTemplateId = ''; notificationMessageCCList = @() } })
+    $acts = @($acts | Where-Object { $_.actionType -ne 'notification' -and $_.actionType -ne 'pushNotification' })
+    if (-not $acts.Count) { $acts = @(@{ actionType = 'block'; gracePeriodHours = 0; notificationTemplateId = ''; notificationMessageCCList = @() }) }
+    return ,$acts
+}
+
+# Angleichen-Body (045 F3, volles Objekt): Quell-Stand plus null fuer Felder, die nur das Ziel gesetzt hat -
+# so wird das Ziel wirklich gleich der Quelle (nichts bleibt still stehen)
+function Get-HUTrAlignBody($SourceObj, $TargetObj) {
+    $body = ConvertTo-HUHashtable (ConvertTo-HUCleanObject $SourceObj)
+    $tgt = ConvertTo-HUHashtable (ConvertTo-HUCleanObject $TargetObj)
+    if ($tgt -is [System.Collections.IDictionary]) {
+        foreach ($k in @($tgt.Keys)) { if (-not $body.ContainsKey("$k")) { $body["$k"] = $null } }
+    }
+    return $body
+}
+
+# Plan fuer das Angleichen (2.4.2, 045 Ue-8/F3): bestehendes Objekt gleichen Namens im Ziel per PATCH auf den Quell-Stand bringen.
+# Liest das Ziel-Objekt, schreibt nichts. Felder, die nur im Ziel einen Wert haben, bleiben (PATCH ohne dieses Feld) und werden gezeigt.
+function Get-HUTransferAlignPlan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [Parameter(Mandatory)]$SourceObj,
+        [Parameter(Mandatory)][string]$SourceKey, [string]$ResolveKey = '', [string]$SourceLabel = '',
+        [Parameter(Mandatory)][string]$TargetKey, [Parameter(Mandatory)][string]$TargetId
+    )
+    if (-not $ResolveKey) { $ResolveKey = $SourceKey }
+    $src = Get-HUTrSource $Typ
+    $nameProp = if ($src) { $src.Name } else { 'displayName' }
+    $name = "$(Get-HUTrProp $SourceObj $nameProp)"
+    $plan = [pscustomobject]@{
+        Kind = 'transferAlign'; Typ = $Typ; Name = $name; NewName = $name; TenantKey = $TargetKey; SourceKey = $SourceKey; SourceLabel = $(if ($SourceLabel) { $SourceLabel } else { $SourceKey })
+        Method = 'PATCH'; Endpoint = $(if ($src) { $src.Ep -replace '\?.*$', '' } else { '' }); Perm = 'DeviceManagementConfiguration.ReadWrite.All'
+        TargetId = $TargetId; Body = $null; SourceObj = $SourceObj; ScopeTagIds = @()
+        Changes = New-Object System.Collections.Generic.List[object]; Dropped = New-Object System.Collections.Generic.List[string]
+        Blocks = New-Object System.Collections.Generic.List[string]; Warnings = New-Object System.Collections.Generic.List[string]
+        Confirms = New-Object System.Collections.Generic.List[string]; Notes = New-Object System.Collections.Generic.List[string]
+        BreakGlass = $null; LiveHash = ''; Live = $null
+    }
+    if ($SourceKey -eq $TargetKey) { $plan.Blocks.Add('Quelle und Ziel sind derselbe Tenant - dafuer gibt es Zurueckschreiben.'); return $plan }
+    if (-not $src -or -not $src.Copy) { $plan.Blocks.Add("$Typ laesst sich (noch) nicht uebertragen."); return $plan }
+    if (-not $name) { $plan.Blocks.Add('Die Quelle hat keinen Namen.'); return $plan }
+    if ($src.Copy -eq 'admx') { $plan.Blocks.Add('Administrative Vorlagen werden (noch) nicht angeglichen - die Bindung der Werte (updateDefinitionValues) ist erst im Test-Tenant zu klaeren.'); return $plan }
+    if ($src.Copy -notin $script:HUTrAlignCopy) { $plan.Blocks.Add("$Typ wird (noch) nicht angeglichen."); return $plan }
+    # Geheimnisse und Verweise wie beim Neu-Anlegen
+    foreach ($h in @(Find-HUTrSecrets $SourceObj | Select-Object -First 5)) { $plan.Blocks.Add("Geheimer Wert ($h) - Geheimnisse werden nie uebertragen, das Objekt bitte im Ziel selbst pflegen.") }
+    $fids = @(Find-HUTrForeignIds $SourceObj)
+    foreach ($h in @($fids | Select-Object -First 5)) { $plan.Blocks.Add("Verweis auf ein Objekt des Quell-Tenants ($h) - im Ziel ungueltig, nicht uebertragbar.") }
+    if ($fids.Count -gt 5) { $plan.Blocks.Add("... und $($fids.Count - 5) weitere Verweise.") }
+    $ot = "$(Get-HUTrProp $SourceObj '@odata.type')"
+    if ($ot -match $script:HUTrRefTypes) { $plan.Blocks.Add("Profiltyp $($ot -replace '^#microsoft\.graph\.', '') verweist auf Zertifikate oder Geheimnisse des Quell-Tenants - nicht uebertragbar.") }
+    # Ziel-Objekt lesen
+    $tgt = $null
+    try { $tgt = Get-HUCompareObject -TenantKey $TargetKey -Settings $Settings -Typ $Typ -Id $TargetId }
+    catch { $plan.Blocks.Add("Ziel-Objekt nicht lesbar ($($_.Exception.Message))."); return $plan }
+    if ((ConvertTo-HUTrName "$(Get-HUTrProp $tgt $nameProp)") -ne (ConvertTo-HUTrName $name)) { $plan.Blocks.Add('Das Ziel-Objekt heisst inzwischen anders - bitte neu vergleichen.'); return $plan }
+    $tot = "$(Get-HUTrProp $tgt '@odata.type')"
+    if ($ot -and $tot -and $ot -ne $tot) { $plan.Blocks.Add("Profiltyp verschieden: Quelle $($ot -replace '^#microsoft\.graph\.', ''), Ziel $($tot -replace '^#microsoft\.graph\.', '') - nicht angleichbar.") }
+    if ($src.Copy -eq 'compliance') {
+        $acts = @(@(Get-HUTrProp $SourceObj 'scheduledActionsForRule') | Where-Object { $_ } | ForEach-Object { @(Get-HUTrProp $_ 'scheduledActionConfigurations') } | Where-Object { $_ })
+        $n = @($acts | Where-Object { "$(Get-HUTrProp $_ 'actionType')" -in 'notification', 'pushNotification' }).Count
+        $nb = @($acts | Where-Object { "$(Get-HUTrProp $_ 'actionType')" -eq 'block' }).Count
+        if ($nb -ne 1) { $plan.Blocks.Add("Die Quelle hat $nb Aktion(en) 'Als nicht konform markieren' - genau eine ist noetig.") }
+        if ($n) {
+            $plan.Dropped.Add("$n Benachrichtigungs-Aktion(en) (Vorlagen gibt es je Tenant)")
+            $plan.Confirms.Add("Die Aktionen im Ziel werden ersetzt - OHNE Benachrichtigungen: Geraete werden als nicht konform markiert, ohne dass jemand eine Nachricht bekommt. Im Ziel im Portal ergaenzen.")
+        } else { $plan.Confirms.Add('Die Aktionen im Ziel werden durch die der Quelle ersetzt (bestehende Benachrichtigungen im Ziel fallen weg).') }
+    }
+    $plan.Live = $tgt
+    $plan.LiveHash = Get-HUCompareHashNeutral $tgt
+    # Vorschau: nur Unterschiede; Felder, die nur im Ziel einen Wert haben, bleiben und werden gezeigt (045 F3)
+    $ms = ConvertTo-HUFlatMap $SourceObj -Full
+    try { $ms = Resolve-HUFlatMapIds -TenantKey $ResolveKey -Settings $Settings -Map $ms } catch { }
+    $mt = ConvertTo-HUFlatMap $tgt -Full
+    try { $mt = Resolve-HUFlatMapIds -TenantKey $TargetKey -Settings $Settings -Map $mt } catch { }
+    $keys = @(@($ms.Keys) + @($mt.Keys) | Sort-Object -Unique)
+    $same = 0
+    foreach ($k in $keys) {
+        $sv = if ($ms.ContainsKey($k)) { "$($ms[$k])" } else { $null }
+        $tv = if ($mt.ContainsKey($k)) { "$($mt[$k])" } else { $null }
+        if ($null -ne $sv -and $sv -eq $tv) { $same++; continue }
+        if ($null -eq $sv) {
+            # Nur im Ziel gesetzt: wird beim Angleichen entfernt bzw. geleert (045 F3, volles Objekt) - sichtbar, nie still
+            $top = ($k -split '[\.\[]')[0]
+            $sent = [bool]@($ms.Keys | Where-Object { ($_ -split '[\.\[]')[0] -eq $top }).Count
+            $lbl = if ($sent) { '(wird entfernt - die Quelle hat diesen Eintrag nicht)' } else { '(wird geleert - die Quelle hat hier keinen Wert)' }
+            $plan.Changes.Add([pscustomobject]@{ Feld = $k; Jetzt = $(if ($tv.Length -gt 300) { $tv.Substring(0, 300) + ' ...' } else { $tv }); Danach = $lbl; Expected = $null; JetztVoll = $tv; DanachVoll = $lbl; Anzahl = ''; Gekuerzt = ($tv.Length -gt 300) })
+            continue
+        }
+        $jetzt = if ($null -eq $tv) { '(fehlt)' } else { $tv }
+        $plan.Changes.Add([pscustomobject]@{ Feld = $k; Jetzt = $(if ($jetzt.Length -gt 300) { $jetzt.Substring(0, 300) + ' ...' } else { $jetzt }); Danach = $(if ($sv.Length -gt 300) { $sv.Substring(0, 300) + ' ...' } else { $sv }); Expected = $sv; JetztVoll = $jetzt; DanachVoll = $sv; Anzahl = ''; Gekuerzt = ($sv.Length -gt 300 -or $jetzt.Length -gt 300) })
+    }
+    if (-not $plan.Changes.Count -and -not $plan.Blocks.Count) { $plan.Blocks.Add('Feld fuer Feld keine Unterschiede zur Quelle - nichts anzugleichen (nur Reihenfolge oder Kennungen verschieden).') }
+    if ($same) { $plan.Notes.Add("$same Feld(er) sind schon gleich und werden nicht gezeigt.") }
+    $plan.Notes.Add('Zuweisungen und Bereichsmarkierungen des Ziels bleiben unveraendert.')
+    $plan.Notes.Add('Vor dem Schreiben wird das Ziel erneut gelesen (geaendert seit der Vorschau = Abbruch) und der Ziel-Stand als Rueckgaengig-Datei gesichert.')
+    return $plan
+}
+
+# Angleichen schreiben (nach Bestaetigung): erneut lesen, sichern, PATCH mit vollem Quell-Objekt, nachlesen und pruefen
+function Invoke-HUTransferAlign {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Plan, [Parameter(Mandatory)]$Settings, [string]$Actor = "$env:USERNAME", [datetime]$Now = (Get-Date))
+    if ($Plan.Blocks.Count) { throw "Nicht angeglichen: $($Plan.Blocks -join ' ')" }
+    $tk = $Plan.TenantKey
+    $src = Get-HUTrSource $Plan.Typ
+    $ep = "$($Plan.Endpoint)/$($Plan.TargetId)"
+    # Ue-8: unmittelbar vor dem Schreiben erneut lesen und mit dem Vorschau-Stand vergleichen
+    $cur = $null
+    try { $cur = Get-HUCompareObject -TenantKey $tk -Settings $Settings -Typ $Plan.Typ -Id $Plan.TargetId }
+    catch { throw "Ziel-Objekt nicht mehr lesbar ($($_.Exception.Message)) - nichts geschrieben." }
+    if ((Get-HUCompareHashNeutral $cur) -ne "$($Plan.LiveHash)") { throw "'$($Plan.Name)' wurde im Ziel seit der Vorschau geaendert - nichts geschrieben. Bitte neu vergleichen." }
+    # Ziel-Stand sichern (Rueckgaengig)
+    $dir = Get-HUTrUndoDir $Settings $tk
+    $file = Join-Path $dir ("$($Now.ToString('yyyy-MM-dd_HHmmss'))_geaendert_$(ConvertTo-HUSafeFileName $Plan.Name 40).json")
+    Write-HUBackupJson $file ([pscustomobject]@{ Kind = 'changed'; Tenant = $tk; Typ = $Plan.Typ; Name = $Plan.Name; Id = "$($Plan.TargetId)"; Endpoint = $ep; HashBefore = "$($Plan.LiveHash)"; HashAfter = ''; Before = $cur; Source = $Plan.SourceLabel; Time = $Now.ToString('s'); By = $Actor })
+    # PATCH mit vollem Quell-Objekt (045 F3); id/Zeiten/Zuweisungen/Bereichsmarkierungen/Aktionen entfernt ConvertTo-HUCleanObject
+    $body = Get-HUTrAlignBody $Plan.SourceObj $cur
+    try {
+        [void](Invoke-HUIntuneGraph -TenantKey $tk -Settings $Settings -Endpoint $ep -Method PATCH -Body $body)
+        if ($src.Copy -eq 'compliance') {
+            $acts = Get-HUTrComplianceActions $Plan.SourceObj
+            [void](Invoke-HUIntuneGraph -TenantKey $tk -Settings $Settings -Endpoint "$ep/scheduleActionsForRules" -Method POST -Body @{ deviceComplianceScheduledActionForRules = @(@{ ruleName = 'PasswordRequired'; scheduledActionConfigurations = @($acts) }) })
+        }
+    } catch {
+        if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm). Nichts veraendert (Rueckgaengig-Datei kann geloescht werden)." }
+        throw "Angleichen fehlgeschlagen ($($_.Exception.Message)) - Ziel-Stand liegt in der Rueckgaengig-Datei, bitte im Portal pruefen."
+    }
+    Write-HULog -Message "Angleichen: $($Plan.Typ) '$($Plan.Name)' in $tk an $($Plan.SourceLabel) angeglichen (Id $($Plan.TargetId), durch $Actor)" -Level 'OK' -Tenant $tk
+    # Nachpruefung: jede Einstellung der Quelle muss im Ziel angekommen sein
+    $mismatch = New-Object System.Collections.Generic.List[string]
+    $hash = ''
+    try {
+        $after = Get-HUCompareObject -TenantKey $tk -Settings $Settings -Typ $Plan.Typ -Id $Plan.TargetId
+        $hash = Get-HUCompareHashNeutral $after
+        $ms = ConvertTo-HUFlatMap $Plan.SourceObj; $ma = ConvertTo-HUFlatMap $after
+        foreach ($k in @($ms.Keys | Sort-Object)) {
+            if ("$($ms[$k])" -match $script:HUTrGuidRx) { continue }
+            if (-not $ma.ContainsKey($k)) { $mismatch.Add("$k`: fehlt im Ziel") }
+            elseif ("$($ma[$k])" -ne "$($ms[$k])") { $mismatch.Add("$k`: Quelle '$($ms[$k])', Ziel '$($ma[$k])'") }
+        }
+        # Rueckrichtung: Ziel-eigene Felder muessen geleert sein (045 F3)
+        foreach ($k in @($ma.Keys | Sort-Object)) {
+            if ($ms.ContainsKey($k) -or "$($ma[$k])" -match $script:HUTrGuidRx) { continue }
+            $mismatch.Add("$k`: steht noch im Ziel ('$($ma[$k])'), die Quelle hat hier keinen Wert")
+        }
+    } catch { $mismatch.Add("Nachlesen nicht moeglich ($($_.Exception.Message))") }
+    foreach ($m in @($mismatch | Select-Object -First 20)) { Write-HULog -Message "Nachpruefung $($Plan.Typ) '$($Plan.Name)': $m" -Level 'WARN' -Tenant $tk }
+    Write-HUBackupJson $file ([pscustomobject]@{ Kind = 'changed'; Tenant = $tk; Typ = $Plan.Typ; Name = $Plan.Name; Id = "$($Plan.TargetId)"; Endpoint = $ep; HashBefore = "$($Plan.LiveHash)"; HashAfter = $hash; Before = $cur; Source = $Plan.SourceLabel; Time = $Now.ToString('s'); By = $Actor })
+    return [pscustomobject]@{ Ok = (-not $mismatch.Count); NewId = "$($Plan.TargetId)"; Written = 1; Mismatch = @($mismatch); UndoFile = $file; BackupFile = $file; Dropped = @($Plan.Dropped); Notes = @($Plan.Notes) }
+}
+
 function Get-HUTrUndoDir($Settings, [string]$TenantKey) { return (Join-Path (Join-Path (Get-HUBackupRoot $Settings) (ConvertTo-HUSafeFileName $TenantKey)) '_vor-uebertragen') }
 
 # Schreiben nach Bestaetigung
@@ -234,9 +391,9 @@ function Get-HUTransferUndoList {
     $rows = foreach ($k in $Keys) {
         $d = Get-HUTrUndoDir $Settings $k
         if (-not (Test-Path -LiteralPath $d)) { continue }
-        foreach ($f in @(Get-ChildItem -LiteralPath $d -File -Filter '*_neu_*.json' | Where-Object { $_.Name -notmatch '\.(rueckgaengig|erledigt)\.json$' })) {
+        foreach ($f in @(Get-ChildItem -LiteralPath $d -File -Filter '*.json' | Where-Object { $_.Name -match '_(neu|geaendert)_' -and $_.Name -notmatch '\.(rueckgaengig|erledigt)\.json$' })) {
             try { $u = Read-HUBackupJson $f.FullName } catch { continue }
-            [pscustomobject]@{ Tenant = "$($u.Tenant)"; Typ = "$($u.Typ)"; Name = "$($u.Name)"; Zeit = "$($u.Time)"; Quelle = "$($u.Source)"; Datei = $f.FullName }
+            [pscustomobject]@{ Tenant = "$($u.Tenant)"; Typ = "$($u.Typ)"; Name = "$($u.Name)"; Zeit = "$($u.Time)"; Quelle = "$($u.Source)"; Was = $(if ("$($u.Kind)" -eq 'changed') { 'angeglichen' } else { 'neu angelegt' }); Datei = $f.FullName }
         }
     }
     return @($rows | Sort-Object Zeit -Descending)
@@ -245,8 +402,9 @@ function Get-HUTransferUndoList {
 # Rueckgaengig: angelegtes Objekt loeschen, wenn es seitdem unveraendert ist
 function Undo-HUTransfer {
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$File, [switch]$Force)
+    param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$File, [switch]$Force, [switch]$CheckOnly)
     $u = Read-HUBackupJson $File
+    if ("$($u.Kind)" -eq 'changed') { return (Undo-HUTransferChange -Settings $Settings -File $File -U $u -Force:$Force -CheckOnly:$CheckOnly) }
     if ("$($u.Kind)" -ne 'created') { throw 'Unbekannte Rueckgaengig-Datei.' }
     $tk = "$($u.Tenant)"
     $cur = $null
@@ -262,10 +420,58 @@ function Undo-HUTransfer {
     $asg = $null
     try { $asg = @(Get-HUIntuneGraphAll -TenantKey $tk -Settings $Settings -Endpoint "$($u.Endpoint)/assignments") } catch { throw "Zuweisungen von '$($u.Name)' nicht lesbar - nicht geloescht ($($_.Exception.Message))." }
     if ($asg.Count) { throw "'$($u.Name)' ist inzwischen zugewiesen ($($asg.Count)) - nicht automatisch geloescht. Erst die Zuweisungen im Portal entfernen." }
+    if ($CheckOnly) { return [pscustomobject]@{ Deleted = $false; Text = 'Loeschen moeglich' } }
     [void](Invoke-HUIntuneGraph -TenantKey $tk -Settings $Settings -Endpoint "$($u.Endpoint)" -Method DELETE -NoRetry)
     Write-HULog -Message "Rueckgaengig: $($u.Typ) '$($u.Name)' im Ziel geloescht (uebertragen $($u.Time) aus $($u.Source))" -Level 'OK' -Tenant $tk
     Move-Item -LiteralPath $File -Destination ($File -replace '\.json$', '.rueckgaengig.json') -Force
     return [pscustomobject]@{ Deleted = $true; Text = "'$($u.Name)' geloescht." }
 }
 
-Export-ModuleMember -Function Get-HUTransferPlan, Invoke-HUTransfer, Get-HUTransferUndoList, Undo-HUTransfer, Find-HUTrSecrets, Find-HUTrForeignIds
+# Rueckgaengig nach dem Angleichen: gesicherten Ziel-Stand zurueckschreiben, nur wenn seitdem unveraendert (045 Ue-9)
+function Undo-HUTransferChange {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$File, [Parameter(Mandatory)]$U, [switch]$Force, [switch]$CheckOnly)
+    $tk = "$($U.Tenant)"
+    $cur = $null
+    try { $cur = Get-HUCompareObject -TenantKey $tk -Settings $Settings -Typ "$($U.Typ)" -Id "$($U.Id)" }
+    catch {
+        if ($_.Exception.Data['StatusCode'] -eq 404) { Move-Item -LiteralPath $File -Destination ($File -replace '\.json$', '.erledigt.json') -Force; return [pscustomobject]@{ Deleted = $false; Text = 'Gibt es im Ziel nicht mehr - nichts zu tun.' } }
+        throw
+    }
+    if (-not "$($U.HashAfter)" -and -not $Force) { throw "Fuer '$($U.Name)' gibt es keinen Fingerabdruck (Nachlesen nach dem Angleichen war gescheitert) - bitte im Portal pruefen." }
+    if ("$($U.HashAfter)" -and (Get-HUCompareHashNeutral $cur) -ne "$($U.HashAfter)" -and -not $Force) { throw "'$($U.Name)' wurde nach dem Angleichen geaendert - nicht automatisch zurueckgesetzt. Bitte im Portal pruefen." }
+    if ($CheckOnly) { return [pscustomobject]@{ Deleted = $false; Text = 'Zuruecksetzen moeglich' } }
+    # gesicherten Stand zurueckschreiben (eigener Tenant: auch Benachrichtigungs-Vorlagen duerfen zurueck);
+    # Felder, die erst das Angleichen gesetzt hat, werden wieder geleert
+    $body = Get-HUTrAlignBody $U.Before $cur
+    [void](Invoke-HUIntuneGraph -TenantKey $tk -Settings $Settings -Endpoint "$($U.Endpoint)" -Method PATCH -Body $body)
+    if ("$($U.Typ)" -eq 'Compliance') {
+        $rules = @(@(Get-HUTrProp $U.Before 'scheduledActionsForRule') | Where-Object { $_ } | ForEach-Object {
+                @{ ruleName = "$(if ("$(Get-HUTrProp $_ 'ruleName')") { Get-HUTrProp $_ 'ruleName' } else { 'PasswordRequired' })"
+                    scheduledActionConfigurations = @(@(Get-HUTrProp $_ 'scheduledActionConfigurations') | Where-Object { $_ } | ForEach-Object {
+                            @{ actionType = "$(Get-HUTrProp $_ 'actionType')"; gracePeriodHours = [int](Get-HUTrProp $_ 'gracePeriodHours'); notificationTemplateId = "$(Get-HUTrProp $_ 'notificationTemplateId')"; notificationMessageCCList = @(@(Get-HUTrProp $_ 'notificationMessageCCList') | Where-Object { $_ }) } })
+                } })
+        if ($rules.Count) { [void](Invoke-HUIntuneGraph -TenantKey $tk -Settings $Settings -Endpoint "$($U.Endpoint)/scheduleActionsForRules" -Method POST -Body @{ deviceComplianceScheduledActionForRules = @($rules) }) }
+    }
+    $txt = "'$($U.Name)' auf den Stand vor dem Angleichen zurueckgesetzt."
+    try {
+        $after = Get-HUCompareObject -TenantKey $tk -Settings $Settings -Typ "$($U.Typ)" -Id "$($U.Id)"
+        if ((Get-HUCompareHashNeutral $after) -ne "$($U.HashBefore)") { $txt += ' ACHTUNG: Der Fingerabdruck weicht vom gesicherten Stand ab - bitte im Portal pruefen (Details im Protokoll).' }
+    } catch { $txt += " (Nachlesen nicht moeglich: $($_.Exception.Message))" }
+    Write-HULog -Message "Rueckgaengig: $($U.Typ) '$($U.Name)' auf den Stand vor dem Angleichen zurueckgesetzt (angeglichen $($U.Time) aus $($U.Source))" -Level 'OK' -Tenant $tk
+    Move-Item -LiteralPath $File -Destination ($File -replace '\.json$', '.rueckgaengig.json') -Force
+    return [pscustomobject]@{ Deleted = $false; Text = $txt }
+}
+
+# Nur pruefen, ob Rueckgaengig gerade moeglich waere (liest das Ziel, schreibt nichts) - fuer die Anzeige im Rueckgaengig-Fenster
+function Get-HUTransferUndoStatus {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$File)
+    try {
+        $r = Undo-HUTransfer -Settings $Settings -File $File -CheckOnly
+        if ("$($r.Text)" -like '*moeglich') { return [pscustomobject]@{ Ok = $true; Text = "$($r.Text)" } }
+        return [pscustomobject]@{ Ok = $false; Text = "$($r.Text)" }
+    } catch { return [pscustomobject]@{ Ok = $false; Text = "$($_.Exception.Message)" } }
+}
+
+Export-ModuleMember -Function Get-HUTransferPlan, Get-HUTransferAlignPlan, Invoke-HUTransfer, Invoke-HUTransferAlign, Get-HUTransferUndoList, Get-HUTransferUndoStatus, Undo-HUTransfer, Find-HUTrSecrets, Find-HUTrForeignIds

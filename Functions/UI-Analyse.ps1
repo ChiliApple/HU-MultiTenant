@@ -225,10 +225,17 @@ function Update-HUCmpHint {
     $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' fuer Profile, Compliance, Feature-Updates, Autopilot, Conditional Access (Zelle Ein, Aus oder Melden) und die weiteren Arten aus dem Backup; IDs von Gruppen, Apps und Orten zaehlen dabei nicht, die Namen zeigt der Doppelklick. Doppelklick zeigt die abweichenden Einstellungen. Uebertragen: einen Eintrag markieren, Quelle und Ziele waehlen, je Ziel Vorschau - neu angelegt ohne Zuweisungen, nur Intune-Grundarten."
 }
 
+# Arten-Dropdown: hinter jeder Art steht, was damit geht (uebertragen/angleichen/nur vergleichen)
+function Get-HUCmpTypeHint([string]$Typ) {
+    $src = Get-HUCompareSources | Where-Object { $_.Typ -eq $Typ } | Select-Object -First 1
+    if ($src -and $src.Copy) { if ($src.Copy -in @('generic', 'compliance') -and $src.Hash) { return 'uebertragen + angleichen' } else { return 'neu anlegen' } }
+    return 'nur vergleichen'
+}
+
 function Get-HUCmpVisibleRows {
     $rows = @($script:CmpMatrix)
     if ($script:Controls['chkCmpDiff'].IsChecked) { $rows = @($rows | Where-Object Diff) }
-    $typ = "$($script:Controls['cmbCmpType'].SelectedItem)"
+    $typ = "$($script:Controls['cmbCmpType'].SelectedItem)" -replace '\s+\([^)]*\)$', ''
     if ($typ -and $typ -ne '(alle Arten)') { $rows = @($rows | Where-Object { $_.Typ -eq $typ }) }
     foreach ($w in @("$($script:Controls['txtCmpFilter'].Text)" -split '\s+' | Where-Object { $_ })) {
         $rows = @($rows | Where-Object { ("$($_.Typ) $($_.Name) $($_.Status)").IndexOf($w, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
@@ -280,7 +287,7 @@ function Update-HUCmpGrid {
     & $add 'Status' 'Status' (New-Object System.Windows.Controls.DataGridLength(1, 'Star'))
     # Arten-Auswahl
     $cb = $c['cmbCmpType']; $cur = "$($cb.SelectedItem)"
-    $types = @('(alle Arten)') + @($script:CmpMatrix | ForEach-Object { $_.Typ } | Sort-Object -Unique)
+    $types = @('(alle Arten)') + @($script:CmpMatrix | ForEach-Object { $_.Typ } | Sort-Object -Unique | ForEach-Object { "$_   ($(Get-HUCmpTypeHint $_))" })
     if ((@($cb.Items) -join '|') -ne ($types -join '|')) {
         $script:CmpTypeBusy = $true
         $cb.Items.Clear(); foreach ($t in $types) { [void]$cb.Items.Add($t) }
@@ -356,8 +363,6 @@ function Start-HUCmpCopy {
     $m = $sel[0]
     if ($m.Dupe) { Show-HUMessage "'$($m.Name)' ist in einem Tenant doppelt - wird nicht uebertragen (unklar, welche Fassung die richtige ist)." -Icon Warning; return }
     if (-not (@(Get-HUCompareSources | Where-Object { $_.Typ -eq $m.Typ -and $_.Copy }).Count)) { Show-HUMessage "$($m.Typ) laesst sich (noch) nicht uebertragen.`n`nApps ueber die Bibliothek verteilen; Conditional Access, Autopilot und die weiteren Arten werden vorerst nur verglichen." -Icon Info; return }
-    $targets = @($m.Missing | Where-Object { $_ -ne $mk })
-    if (-not $targets.Count) { Show-HUMessage "'$($m.Name)' fehlt in keinem angehakten Tenant. Bestehende angleichen kommt mit 2.4.2." -Icon Info; return }
     $have = @($m.Items | ForEach-Object { $_.Tenant } | Select-Object -Unique)
     $srcKey = $have[0]
     if ($have.Count -gt 1) {
@@ -366,14 +371,32 @@ function Start-HUCmpCopy {
         if ($pick.Count -ne 1) { Show-HUMessage 'Bitte genau eine Quelle anhaken.' -Icon Warning; return }
         $srcKey = $pick[0]
     }
-    $tg = @(Show-HUTenantChoice -Title 'Uebertragen nach' -Text "'$($m.Name)' aus $(Get-HUAnaTenantName $srcKey) in welche Tenants neu anlegen (ohne Zuweisungen)? Je Tenant folgt eine eigene Vorschau." -Keys $targets -OkText 'Weiter')
-    if (-not $tg.Count) { return }
     $srcItem = @($m.Items | Where-Object { $_.Tenant -eq $srcKey })[0]
+    $missing = @($m.Missing | Where-Object { $_ -ne $mk })
+    # 2.4.2 Angleichen: Ziele, in denen es den Eintrag gibt, aber mit anderem Fingerabdruck (nur Arten mit PATCH-Weg)
+    $diff = @()
+    if ($m.Copy -in @('generic', 'compliance') -and "$($srcItem.Hash)") {
+        $diff = @($m.Items | Where-Object { $_.Tenant -ne $mk -and $_.Tenant -ne $srcKey -and "$($_.Hash)" -and "$($_.Hash)" -ne "$($srcItem.Hash)" } | ForEach-Object { $_.Tenant } | Select-Object -Unique)
+    }
+    $targets = @($missing + $diff)
+    if (-not $targets.Count) { Show-HUMessage "'$($m.Name)' fehlt in keinem angehakten Tenant und weicht nirgends ab (oder diese Art wird noch nicht angeglichen - Einstellungskatalog und Administrative Vorlage folgen spaeter)." -Icon Info; return }
+    $txt = "'$($m.Name)' aus $(Get-HUAnaTenantName $srcKey) uebertragen - je Tenant folgt eine eigene Vorschau."
+    if ($missing.Count) { $txt += "`nFehlt (wird NEU angelegt, ohne Zuweisungen): $(@($missing | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
+    if ($diff.Count) { $txt += "`nWeicht ab (wird ANGEGLICHEN, Zuweisungen bleiben): $(@($diff | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
+    $tg = @(Show-HUTenantChoice -Title 'Uebertragen nach' -Text $txt -Keys $targets -OkText 'Weiter')
+    if (-not $tg.Count) { return }
     $muster = $null; if ($srcKey -eq $mk) { try { $muster = Get-HUMuster $script:Settings } catch { } }
+    $modes = @{}; $tids = @{}
+    foreach ($t in $targets) {
+        $modes[$t] = $(if ($diff -contains $t) { 'align' } else { 'new' })
+        $ti = @($m.Items | Where-Object { $_.Tenant -eq $t })
+        $tids[$t] = $(if ($ti.Count) { "$($ti[0].Id)" } else { '' })
+    }
     $script:TrQueue = New-Object System.Collections.Generic.Queue[object]
     foreach ($t in $tg) { $script:TrQueue.Enqueue($t) }
     $script:TrCtx = @{ Typ = $m.Typ; Name = $m.Name; Src = $srcKey; SrcLabel = (Get-HUAnaTenantName $srcKey); Resolve = $(if ($muster) { $muster.Source } else { $srcKey })
-        Obj = $(if ($srcItem.PSObject.Properties['Obj'] -and $null -ne $srcItem.Obj) { $srcItem.Obj } else { $null }); Id = $srcItem.Id; Multi = ($tg.Count -gt 1); Done = 0; DoneNames = (New-Object System.Collections.Generic.List[string]); Cur = '' }
+        Obj = $(if ($srcItem.PSObject.Properties['Obj'] -and $null -ne $srcItem.Obj) { $srcItem.Obj } else { $null }); Id = $srcItem.Id; Multi = ($tg.Count -gt 1); Done = 0; DoneNames = (New-Object System.Collections.Generic.List[string]); Cur = ''
+        Modes = $modes; TIds = $tids }
     Start-HUTransferNext
 }
 
@@ -393,10 +416,13 @@ function Start-HUTransferNext {
     $script:TrCtx.Cur = (Get-HUAnaTenantName $t)
     $x = $script:TrCtx
     Add-HURtbLine $c['rtbAna'] "Pruefe '$($x.Name)' fuer $(Get-HUAnaTenantName $t) ..." '#90CAF9'
-    [void](Start-HUJob -Name 'TransferPlan' -Quiet -Output $c['rtbAna'] -Vars @{ X = $x; T = $t } -Code {
+    $mode = "$($x.Modes[$t])"; $tid = "$($x.TIds[$t])"
+    [void](Start-HUJob -Name 'TransferPlan' -Quiet -Output $c['rtbAna'] -Vars @{ X = $x; T = $t; Mode = $mode; Tid = $tid } -Code {
             try {
                 $o = if ($null -ne $X.Obj) { $X.Obj } else { Get-HUCompareObject -TenantKey $X.Src -Settings $Settings -Typ $X.Typ -Id $X.Id }
-                [pscustomobject]@{ __Plan = (Get-HUTransferPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T) }
+                $p = if ($Mode -eq 'align') { Get-HUTransferAlignPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T -TargetId $Tid }
+                else { Get-HUTransferPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T }
+                [pscustomobject]@{ __Plan = $p }
             } catch { [pscustomobject]@{ __PlanError = "$($_.Exception.Message)" } }
         } -OnDone {
             param($Result, $Errors)
@@ -408,7 +434,7 @@ function Start-HUTransferNext {
             if ($script:TrCtx.Multi) { $plan | Add-Member -NotePropertyName TypeToConfirm -NotePropertyValue $tn -Force }
             if (-not (Show-HUEntraRestorePreview $plan $tn '')) { Add-HURtbLine $script:Controls['rtbAna'] "$tn`: nicht uebertragen." '#AAAAAA'; Start-HUTransferNext; return }
             [void](Start-HUJob -Name 'TransferWrite' -Output $script:Controls['rtbAna'] -Vars @{ Plan = $plan } -Code {
-                    try { [pscustomobject]@{ __Res = (Invoke-HUTransfer -Plan $Plan -Settings $Settings) } }
+                    try { [pscustomobject]@{ __Res = $(if ("$($Plan.Kind)" -eq 'transferAlign') { Invoke-HUTransferAlign -Plan $Plan -Settings $Settings } else { Invoke-HUTransfer -Plan $Plan -Settings $Settings }); __Kind = "$($Plan.Kind)" } }
                     catch { Write-HULog -Message "$($Plan.Typ) '$($Plan.Name)': $($_.Exception.Message)" -Level 'ERROR' -Tenant $Plan.TenantKey; [pscustomobject]@{ __ResError = "$($_.Exception.Message)" } }
                 } -OnDone {
                     param($Result, $Errors)
@@ -417,12 +443,14 @@ function Start-HUTransferNext {
                     elseif ($r2.PSObject.Properties['__ResError']) { Show-HUMessage "Nicht uebertragen:`n`n$($r2.__ResError)" -Icon Error }
                     else {
                         $res = $r2.__Res; $script:TrCtx.Done++; [void]$script:TrCtx.DoneNames.Add("$($script:TrCtx.Cur)")
-                        $txt = "Neu angelegt (Id $($res.NewId)), ohne Zuweisungen - zum Wirken im Ziel zuweisen. Rueckgaengig: Tenant-Vergleich > Rueckgaengig ..."
+                        $isAl = ("$($r2.__Kind)" -eq 'transferAlign')
+                        $txt = if ($isAl) { "Angeglichen - das Objekt im Ziel hat jetzt die Einstellungen der Quelle. Zuweisungen unveraendert. Rueckgaengig: Tenant-Vergleich > Rueckgaengig ..." }
+                        else { "Neu angelegt (Id $($res.NewId)), ohne Zuweisungen - zum Wirken im Ziel zuweisen. Rueckgaengig: Tenant-Vergleich > Rueckgaengig ..." }
                         if ($res.Mismatch.Count) { $txt += "`n`nNachpruefung - $($res.Mismatch.Count) Einstellung(en) weichen von der Quelle ab:`n$(@($res.Mismatch | Select-Object -First 12) -join "`n")$(if ($res.Mismatch.Count -gt 12) { "`n..." })" } else { $txt += "`n`nNachpruefung: alle Einstellungen wie in der Quelle." }
                         if ($res.Dropped.Count) { $txt += "`n`nNicht uebernommen: $($res.Dropped -join '; ')" }
                         if ($res.Ok) { Show-HUMessage $txt -Icon Info }
                         # 047 F3: Abweichung deutlich melden und Rueckgaengig direkt anbieten (nicht automatisch)
-                        elseif (Confirm-HU "ACHTUNG - im Ziel ist nicht alles wie in der Quelle angekommen.`n`n$txt`n`nJetzt rueckgaengig machen (das neu angelegte Objekt wieder loeschen)?" -Warning) {
+                        elseif (Confirm-HU "ACHTUNG - im Ziel ist nicht alles wie in der Quelle angekommen.`n`n$txt`n`nJetzt rueckgaengig machen ($(if ($isAl) { 'den Stand vor dem Angleichen wiederherstellen' } else { 'das neu angelegte Objekt wieder loeschen' }))?" -Warning) {
                             [void](Start-HUJob -Name 'TransferUndo' -Output $script:Controls['rtbAna'] -Vars @{ F = $res.UndoFile } -Code {
                                     try { $u = Undo-HUTransfer -Settings $Settings -File $F; Write-HULog -Message $u.Text -Level 'OK' }
                                     catch { Write-HULog -Message "Rueckgaengig: $($_.Exception.Message)" -Level 'ERROR' }
@@ -440,15 +468,36 @@ function Start-HUTransferUndo {
     $keys = @(Get-HUCheckedTenants $c['spAnaTenants'])
     $list = @(Get-HUTransferUndoList -Settings $script:Settings -Keys $keys)
     if (-not $list.Count) { Show-HUMessage 'In den angehakten Tenants gibt es nichts rueckgaengig zu machen (keine Uebertragungen gespeichert).' -Icon Info; return }
+    # je Eintrag live pruefen, ob Rueckgaengig gerade moeglich ist (liest nur), dann erst das Fenster
+    Add-HURtbLine $c['rtbAna'] "Pruefe $($list.Count) Rueckgaengig-Eintraege ..." '#90CAF9'
+    [void](Start-HUJob -Name 'UndoCheck' -Quiet -Output $c['rtbAna'] -Vars @{ L = $list } -Code {
+            $o = foreach ($e in $L) {
+                $st = Get-HUTransferUndoStatus -Settings $Settings -File $e.Datei
+                $e | Add-Member -NotePropertyName Ok -NotePropertyValue ([bool]$st.Ok) -Force -PassThru |
+                    Add-Member -NotePropertyName Moeglich -NotePropertyValue $(if ($st.Ok) { 'ja' } else { "nein - $($st.Text)" }) -Force -PassThru |
+                    Add-Member -NotePropertyName Aktion -NotePropertyValue $(if ($e.Was -eq 'angeglichen') { 'Stand zuruecksetzen' } else { 'LOESCHEN im Ziel' }) -Force -PassThru
+            }
+            [pscustomobject]@{ __UndoList = @($o) }
+        } -OnDone {
+            param($Result, $Errors)
+            $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__UndoList'] }) | Select-Object -First 1
+            if (-not $d) { Show-HUMessage 'Rueckgaengig-Eintraege konnten nicht geprueft werden (siehe Protokoll).' -Icon Error; return }
+            Show-HUTransferUndoDialog @($d.__UndoList)
+        })
+}
+
+function Show-HUTransferUndoDialog([object[]]$List) {
+    $c = $script:Controls
+    $list = @($List)
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="760" Height="460" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False">
+        Width="1040" Height="480" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
     <DockPanel Margin="16">
         <TextBlock DockPanel.Dock="Top" Foreground="#E0E0E0" TextWrapping="Wrap" Margin="0,0,0,10"
-                   Text="Uebertragene Objekte wieder loeschen. Geht nur, wenn das Objekt im Ziel seitdem unveraendert ist (auch nicht zugewiesen)."/>
+                   Text="Spalte 'Rueckgaengig =' sagt, was passiert: LOESCHEN im Ziel (neu Angelegtes) oder Stand zuruecksetzen (Angeglichenes). Spalte 'Jetzt moeglich' wurde eben live geprueft - 'nein' nennt den Grund (z. B. seitdem geaendert oder zugewiesen); solche Zeilen lassen sich nicht ausfuehren."/>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="btnOk" Content="Rueckgaengig ..." Width="140" Background="#B71C1C" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
             <Button x:Name="btnCancel" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
@@ -458,8 +507,11 @@ function Start-HUTransferUndo {
                 <DataGridTextColumn Header="Tenant" Binding="{Binding TenantName}" Width="140"/>
                 <DataGridTextColumn Header="Art" Binding="{Binding Typ}" Width="140"/>
                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                <DataGridTextColumn Header="Was" Binding="{Binding Was}" Width="95"/>
+                <DataGridTextColumn Header="Rueckgaengig =" Binding="{Binding Aktion}" Width="140"/>
+                <DataGridTextColumn Header="Jetzt moeglich" Binding="{Binding Moeglich}" Width="260"/>
                 <DataGridTextColumn Header="Uebertragen" Binding="{Binding Zeit}" Width="140"/>
-                <DataGridTextColumn Header="Quelle" Binding="{Binding Quelle}" Width="120"/>
+                <DataGridTextColumn Header="Quelle" Binding="{Binding Quelle}" Width="110"/>
             </DataGrid.Columns>
         </DataGrid>
     </DockPanel>
@@ -475,18 +527,30 @@ function Start-HUTransferUndo {
     $dc.btnOk.Add_Click({
             $state.Sel = @($dc.grid.SelectedItems)
             if (-not $state.Sel.Count) { Show-HUMessage 'Bitte Eintraege markieren.' -Icon Info -Owner $w; return }
-            if (-not (Confirm-HU "$($state.Sel.Count) Objekt(e) im Ziel LOESCHEN?`n`n$(@($state.Sel | Select-Object -First 10 | ForEach-Object { "  $($_.TenantName): $($_.Typ) '$($_.Name)'" }) -join "`n")" -Warning -Owner $w)) { $state.Sel = @(); return }
+            $no = @($state.Sel | Where-Object { -not $_.Ok })
+            if ($no.Count) { Show-HUMessage "Gerade nicht moeglich:`n`n$(@($no | ForEach-Object { "  $($_.TenantName): '$($_.Name)' - $($_.Moeglich)" }) -join "`n")`n`nBitte nur Zeilen mit 'Jetzt moeglich = ja' markieren." -Icon Warning -Owner $w; $state.Sel = @(); return }
+            if (-not (Confirm-HU "$($state.Sel.Count) Objekt(e) rueckgaengig machen?`n`n$(@($state.Sel | Select-Object -First 10 | ForEach-Object { "  $($_.TenantName): $($_.Typ) '$($_.Name)' - $($_.Aktion)" }) -join "`n")" -Warning -Owner $w)) { $state.Sel = @(); return }
             $w.Close()
         })
     [void]$w.ShowDialog()
     if (-not $state.Sel.Count) { return }
     $files = @($state.Sel | ForEach-Object { $_.Datei })
     [void](Start-HUJob -Name 'TransferUndo' -Output $c['rtbAna'] -Vars @{ Files = $files } -Code {
+            $out = New-Object System.Collections.Generic.List[string]
             foreach ($f in $Files) {
-                try { $r = Undo-HUTransfer -Settings $Settings -File $f; Write-HULog -Message $r.Text -Level 'OK' }
-                catch { Write-HULog -Message "Rueckgaengig: $($_.Exception.Message)" -Level 'ERROR' }
+                try { $r = Undo-HUTransfer -Settings $Settings -File $f; Write-HULog -Message $r.Text -Level 'OK'; [void]$out.Add($r.Text) }
+                catch { Write-HULog -Message "Rueckgaengig: $($_.Exception.Message)" -Level 'ERROR'; [void]$out.Add("NICHT rueckgaengig: $($_.Exception.Message)") }
             }
-        } -OnDone { param($Result, $Errors); if (@($script:CmpKeys).Count) { Start-HUCmpRun } })
+            [pscustomobject]@{ __UndoDone = @($out.ToArray()) }
+        } -OnDone {
+            param($Result, $Errors)
+            $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__UndoDone'] }) | Select-Object -First 1
+            if ($d) {
+                $lines = @($d.__UndoDone)
+                Show-HUMessage ($lines -join "`n`n") -Icon $(if (@($lines | Where-Object { $_ -like 'NICHT*' }).Count) { 'Warning' } else { 'Info' })
+            }
+            if (@($script:CmpKeys).Count) { Start-HUCmpRun }
+        })
 }
 
 # Namenszuordnung (nur lesen): Gruppen, Orte, Filter, Bereichsmarkierungen der Quelle in den Ziel-Tenants nach Name suchen.
