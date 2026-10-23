@@ -100,7 +100,9 @@
                                 <CheckBox x:Name="chkBackupDaily" Content="Beim Start automatisch (einmal taeglich, alle Tenants)" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"/>
                                 <TextBlock Text="aufbewahren:" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="16,0,6,0"/>
                                 <TextBox x:Name="txtBackupKeep" Width="50" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Anzahl Staende je Tenant (aeltere werden geloescht)"/>
-                                <TextBlock Text="Staende" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                <TextBlock Text="Staende, hoechstens" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="6,0,6,0"/>
+                                <TextBox x:Name="txtBackupDays" Width="50" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Ablaufdatum: Staende und Sicherungen vor dem Zurueckschreiben, die aelter sind, werden geloescht (0 = kein Ablauf). Der neueste vollstaendige Stand bleibt immer."/>
+                                <TextBlock Text="Tage" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="6,0,0,0"/>
                             </StackPanel>
                             <TextBlock Grid.Row="8" Text="Setup-Ordner (Apps)" Style="{StaticResource FieldLabel}"/>
                             <DockPanel Grid.Row="8" Grid.Column="1" Margin="0,3">

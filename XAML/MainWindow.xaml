@@ -1143,7 +1143,7 @@
                                         <TextBox x:Name="txtBakFilter" Width="200" Margin="0,0,6,4" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Filter: Text in Typ, Name, Aenderung, Geaendert von"/>
                                         <CheckBox x:Name="chkBakChanges" Content="Nur Aenderungen" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,4"/>
                                         <Button x:Name="btnBakRestore" Content="&#x21BA; Wiederherstellen ..." Background="#A65A28" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
-                                                ToolTip="Intune und Conditional Access: markierte Eintraege aus dem aelteren Stand neu anlegen (Zusatz im Namen, ohne Zuweisungen). Entra-Einstellungen (Autorisierung, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen): einzeln zurueckschreiben, mit Vorschau"/>
+                                                ToolTip="Intune: markierte Eintraege aus dem aelteren Stand neu anlegen (Zusatz im Namen, ohne Zuweisungen). Einzeln mit Vorschau: Entra-Einstellungen (Autorisierung, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen) zurueckschreiben, Conditional Access neu als 'Nur Bericht'"/>
                                         <Button x:Name="btnBakTable" Content="&#x1F4CA; Tabelle / Export" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
                                     </WrapPanel>
                                 </StackPanel>

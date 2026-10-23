@@ -88,6 +88,7 @@ function Show-HUSettingsDialog {
     $c.txtBackupPath.Text = "$(Get-HUProp $S.ui 'backupPath' '')"
     $c.txtSetupPath.Text = "$(Get-HUSetupRoot $S -NoCreate)"
     $c.txtBackupKeep.Text = "$(Get-HUProp $S.ui 'backupKeep' 30)"
+    $c.txtBackupDays.Text = "$(Get-HUProp $S.ui 'backupMaxDays' 365)"
     $c.chkBackupDaily.IsChecked = [bool](Get-HUProp $S.ui 'backupDaily' $true)
     # Quelle fuer App-Updates: Liste erst beim Aufklappen holen (winget braucht etwas)
     $ws = "$(Get-HUProp $S.ui 'wingetSource' 'winget')"; if (-not $ws) { $ws = 'winget' }
@@ -480,6 +481,8 @@ function Show-HUSettingsDialog {
         Set-HUProp $S.ui 'setupPath' $c.txtSetupPath.Text.Trim()
         $bk = 30; if (-not [int]::TryParse($c.txtBackupKeep.Text.Trim(), [ref]$bk) -or $bk -lt 1) { $bk = 30 }
         Set-HUProp $S.ui 'backupKeep' $bk
+        $bd = 365; if (-not [int]::TryParse($c.txtBackupDays.Text.Trim(), [ref]$bd) -or $bd -lt 0) { $bd = 365 }
+        Set-HUProp $S.ui 'backupMaxDays' $bd
         Set-HUProp $S.ui 'backupDaily' ([bool]$c.chkBackupDaily.IsChecked)
         Set-HUProp $S.ui 'wingetSource' $(if ($c.cmbWingetSource.SelectedItem) { "$($c.cmbWingetSource.SelectedItem)" } else { 'winget' })
         Set-HUProp $S.ui 'lockEnabled' ([bool]$c.chkLockEnabled.IsChecked)

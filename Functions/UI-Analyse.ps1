@@ -429,7 +429,7 @@ function Update-HUBakHint {
     if (-not $script:BakInfo) { $c['lblAnaHint'].Text = 'Backup jetzt sichert die angehakten Tenants. Danach im Verlauf zwei Staende waehlen und Anzeigen: neu, geloescht, Einstellungen/Zuweisungen geaendert, umbenannt - mit Benutzer aus dem Intune-Protokoll. Doppelklick zeigt die Unterschiede.'; return }
     $all = @($script:BakRows); $vis = @(Get-HUBakVisibleRows).Count
     $chg = @($all | Where-Object { $_.Aenderung -and $_.Aenderung -notin 'gleich', 'erstmals gesichert', 'nicht mehr gesichert' }).Count
-    $c['lblAnaHint'].Text = "$($script:BakInfo): $($all.Count) Eintraege$(if ($script:BakInfo -match '->') { ", $chg geaendert" })$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Wiederherstellen legt den Eintrag aus dem aelteren Stand ($(if ($script:BakA) { [datetime]::ParseExact((Split-Path $script:BakA -Leaf), 'yyyy-MM-dd_HHmmss', $null).ToString('dd.MM. HH:mm') })) neu an (Name mit Zusatz, ohne Zuweisungen; Conditional Access deaktiviert); Entra-Einstellungen (Autorisierung, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen) werden einzeln mit Vorschau zurueckgeschrieben."
+    $c['lblAnaHint'].Text = "$($script:BakInfo): $($all.Count) Eintraege$(if ($script:BakInfo -match '->') { ", $chg geaendert" })$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Wiederherstellen legt den Eintrag aus dem aelteren Stand ($(if ($script:BakA) { [datetime]::ParseExact((Split-Path $script:BakA -Leaf), 'yyyy-MM-dd_HHmmss', $null).ToString('dd.MM. HH:mm') })) neu an (Name mit Zusatz, ohne Zuweisungen; Conditional Access als neue Richtlinie im Modus Nur Bericht); Entra-Einstellungen (Autorisierung, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen) werden einzeln mit Vorschau zurueckgeschrieben."
 }
 
 function Update-HUBakView {
@@ -502,17 +502,18 @@ function Start-HUBakNow([string[]]$Keys = @(), [switch]$Auto) {
     if (-not $Keys.Count) { Show-HUMessage 'Bitte mindestens einen Tenant anhaken.' -Icon Warning; return }
     if (Test-HUJobRunning 'Backup') { if (-not $Auto) { Show-HUMessage 'Es laeuft bereits ein Backup.' -Icon Info }; return }
     $keep = [int](Get-HUProp $script:Settings.ui 'backupKeep' 30)
+    $maxDays = [int](Get-HUProp $script:Settings.ui 'backupMaxDays' 365)
     $script:BakBusy = $true
     $c['btnBakNow'].IsEnabled = $false
     Set-HUAnaRunDot $true
     $c['lblAnaHint'].Text = "Backup laeuft ($($Keys.Count) Tenant(s)) - je Tenant 1-3 Minuten ..."
     Add-HURtbLine $c['rtbAna'] "$(if ($Auto) { 'Automatisches ' })Backup: $(@($Keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" '#90CAF9'
-    [void](Start-HUJob -Name 'Backup' -Output $c['rtbAna'] -Vars @{ Keys = $Keys; Keep = $keep } -Code {
+    [void](Start-HUJob -Name 'Backup' -Output $c['rtbAna'] -Vars @{ Keys = $Keys; Keep = $keep; MaxDays = $maxDays } -Code {
             $root = Get-HUBackupRoot $Settings
             foreach ($k in $Keys) {
                 try {
                     $r = Save-HUTenantBackup -TenantKey $k -Settings $Settings -Root $root
-                    $del = Remove-HUOldBackups -Root $root -TenantKey $k -Keep $Keep
+                    $del = Remove-HUOldBackups -Root $root -TenantKey $k -Keep $Keep -MaxDays $MaxDays
                     if ($r.Errors) { Write-HULog -Message "Backup UNVOLLSTAENDIG: $($r.Count) Eintraege, $($r.Errors) nicht lesbar - Stand ist markiert und zaehlt nicht als vollstaendiges Backup$(if ($del) { ", $del alte Staende entfernt" })" -Level 'WARN' -Tenant $k }
                     else { Write-HULog -Message "Backup fertig: $($r.Count) Eintraege$(if ($del) { ", $del alte Staende entfernt" })" -Level 'OK' -Tenant $k }
                     if (@($r.MissingPerms).Count) { Write-HULog -Message "Nicht gesichert (Recht fehlt): $(@($r.MissingPerms) -join ', ') - Einstellungen > Berechtigungen > Fehlende Rechte erteilen" -Level 'WARN' -Tenant $k }
@@ -596,17 +597,17 @@ function Start-HUBakRestore {
     # Entra-Einstellungen: einzeln zurueckschreiben (Vorschau, Sicherung, Nachpruefung) - nur die freigegebenen Arten
     $entra = @($sel | Where-Object { Get-HUEntraRestoreKind "$($_.Typ)" "$($_.Id)" })
     if ($entra.Count) {
-        if ($sel.Count -gt 1) { Show-HUMessage 'Entra-Einstellungen werden einzeln zurueckgeschrieben - bitte genau einen Eintrag markieren.' -Icon Info; return }
+        if ($sel.Count -gt 1) { Show-HUMessage 'Entra-Einstellungen und Conditional Access werden einzeln mit Vorschau zurueckgeschrieben - bitte genau einen Eintrag markieren.' -Icon Info; return }
         Start-HUEntraRestore $entra[0]; return
     }
-    $ok = @(Get-HUCompareSources | Where-Object { $_.Copy -or $_.Typ -eq 'Conditional Access' } | ForEach-Object { $_.Typ })
+    $ok = @(Get-HUCompareSources | Where-Object { $_.Copy } | ForEach-Object { $_.Typ })
     $skip = @($sel | Where-Object { $ok -notcontains "$($_.Typ)" })
     $sel = @($sel | Where-Object { $ok -contains "$($_.Typ)" })
-    if (-not $sel.Count) { Show-HUMessage "Diese Eintraege lassen sich noch nicht wiederherstellen ($(@($skip | ForEach-Object { $_.Typ } | Sort-Object -Unique) -join ', ')).`n`nSie werden gesichert und im Verlauf verglichen. Zurueckschreiben geht bisher fuer: Autorisierungsrichtlinie, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen." -Icon Info; return }
+    if (-not $sel.Count) { Show-HUMessage "Diese Eintraege lassen sich noch nicht wiederherstellen ($(@($skip | ForEach-Object { $_.Typ } | Sort-Object -Unique) -join ', ')).`n`nSie werden gesichert und im Verlauf verglichen. Einzeln mit Vorschau zurueckschreiben geht fuer: Autorisierungsrichtlinie, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen, Conditional Access (als 'Nur Bericht')." -Icon Info; return }
     $k = $script:BakTenant
     $stamp = (Split-Path $script:BakA -Leaf).Substring(0, 10)
     $lines = @($sel | Select-Object -First 15 | ForEach-Object { "  $($_.Typ): $($_.Name)" })
-    if (-not (Confirm-HU "$($sel.Count) Eintrag/Eintraege aus dem Stand $stamp in $(Get-HUAnaTenantName $k) NEU anlegen:`n`n$($lines -join "`n")$(if ($sel.Count -gt 15) { "`n  ..." })`n`nName mit Zusatz '(wiederhergestellt $stamp)', OHNE Zuweisungen - der bestehende Eintrag bleibt unveraendert. Conditional Access wird deaktiviert angelegt.`n`nDanach vergleichen, zuweisen und den alten Eintrag selbst entfernen.$(if ($skip.Count) { "`n`nNicht dabei ($($skip.Count)): Entra-Einstellungen lassen sich noch nicht wiederherstellen." })")) { return }
+    if (-not (Confirm-HU "$($sel.Count) Eintrag/Eintraege aus dem Stand $stamp in $(Get-HUAnaTenantName $k) NEU anlegen:`n`n$($lines -join "`n")$(if ($sel.Count -gt 15) { "`n  ..." })`n`nName mit Zusatz '(wiederhergestellt $stamp)', OHNE Zuweisungen - der bestehende Eintrag bleibt unveraendert.`n`nDanach vergleichen, zuweisen und den alten Eintrag selbst entfernen.$(if ($skip.Count) { "`n`nNicht dabei ($($skip.Count)): $(@($skip | ForEach-Object { $_.Typ } | Sort-Object -Unique) -join ', ') - lassen sich so nicht wiederherstellen." })")) { return }
     $jobs = @($sel | ForEach-Object { [pscustomobject]@{ Typ = $_.Typ; Name = $_.Name; File = $_.FileA } })
     [void](Start-HUJob -Name 'BakRestore' -Output $c['rtbAna'] -Vars @{ TK = $k; Jobs = $jobs; Stamp = $stamp } -Code {
             foreach ($j in $Jobs) {

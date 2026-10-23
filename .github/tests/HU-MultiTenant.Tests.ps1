@@ -1004,6 +1004,29 @@ Describe 'Backup: Entra-Einstellungen (Baseline)' {
             (@(Get-HUBackupItemDiff $r.FileA $r.FileB) | Where-Object Einstellung -eq 'allowInvitesFrom').T1 | Should -Be 'everyone'
         }
     }
+    It '048 B1: gleichnamige Einstellungen (Computer/Benutzer) - Aenderung an einer bleibt sichtbar (Verlauf und Tenant-Vergleich)' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
+            param($Root)
+            $dv = { param($cls, $en) [pscustomobject]@{ enabled = $en; definition = [pscustomobject]@{ displayName = 'Startseite festlegen'; classType = $cls; categoryPath = '\Edge' } } }
+            $mk = { param($u) [pscustomobject]@{ id = 'g1'; displayName = 'Edge'; definitionValues = @((& $dv 'machine' $true), (& $dv 'user' $u)) } }
+            $oa = & $mk $true; $ob = & $mk $false
+            (Get-HUCompareHash $oa) | Should -Not -Be (Get-HUCompareHash $ob)
+            $m = ConvertTo-HUFlatMap $oa
+            $m.Keys | Should -Contain 'definitionValues[Startseite festlegen#2].enabled'
+            # Verlauf
+            $a = Join-Path $Root 'kol-alt'; $b = Join-Path $Root 'kol-neu'
+            New-Item -ItemType Directory -Path (Join-Path $a 'A'), (Join-Path $b 'A') -Force | Out-Null
+            Write-HUBackupJson (Join-Path $a 'A\e.json') $oa; Write-HUBackupJson (Join-Path $b 'A\e.json') $ob
+            Write-HUBackupJson (Join-Path $a 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Types = @('Administrative Vorlage'); Items = @([pscustomobject]@{ Typ = 'Administrative Vorlage'; Name = 'Edge'; Id = 'g1'; File = 'A\e.json'; Hash = (Get-HUCompareHash $oa); AHash = '' }) })
+            Write-HUBackupJson (Join-Path $b 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Types = @('Administrative Vorlage'); Items = @([pscustomobject]@{ Typ = 'Administrative Vorlage'; Name = 'Edge'; Id = 'g1'; File = 'A\e.json'; Hash = (Get-HUCompareHash $ob); AHash = '' }) })
+            (@(Compare-HUBackups -FolderA $a -FolderB $b))[0].Aenderung | Should -Be 'Einstellungen geaendert'
+            # Tenant-Vergleich: auch wenn die zwei gleichnamigen in anderer Reihenfolge kommen und eine geaendert ist
+            $oc = [pscustomobject]@{ id = 'g1'; displayName = 'Edge'; definitionValues = @((& $dv 'user' $false), (& $dv 'machine' $true)) }
+            $rows = @([pscustomobject]@{ Tenant = 'A'; Typ = 'Administrative Vorlage'; Name = 'Edge'; Id = 'g1'; Hash = (Get-HUCompareHashNeutral $oa); Copy = ''; Info = ''; Obj = $oa },
+                [pscustomobject]@{ Tenant = 'B'; Typ = 'Administrative Vorlage'; Name = 'Edge'; Id = 'g1'; Hash = (Get-HUCompareHashNeutral $oc); Copy = ''; Info = ''; Obj = $oc })
+            (@(Get-HUCompareMatrix -Rows $rows -Keys @('A', 'B')))[0].Status | Should -Be 'ueberall, Einstellungen abweichend'
+        }
+    }
     It 'Tenant-Vergleich: nur andere Reihenfolge oder andere Kennungen ist nicht abweichend, anderer Wert schon' {
         InModuleScope HU.Intune {
             $mk = { param($t, $list, $guest, $flag) $o = [pscustomobject]@{ id = 'authorizationPolicy'; guestUserRoleId = $guest; allowInvitesFrom = $flag; permissionGrantPolicyIdsAssignedToDefaultUserRole = $list }
@@ -1299,6 +1322,32 @@ Describe 'Pruefbefunde 2.1.7' {
             $left = @(Get-HUBackupList -Root $Root -TenantKey 'T')
             @($left | Where-Object Complete).Count | Should -Be 2
             ($left | Where-Object { -not $_.Complete } | Select-Object -First 1).Label | Should -Match 'unvollst'
+        }
+    }
+    It 'Ablaufdatum: alte Staende und alte Sicherungen vor dem Zurueckschreiben gehen, der neueste vollstaendige bleibt' {
+        InModuleScope HU.Intune -Parameters @{ Root = (Join-Path $script:tmp 'bakexp') } {
+            param($Root)
+            $d = Join-Path $Root 'T'
+            $mk = { param($n, $c) $p = Join-Path $d $n; New-Item -ItemType Directory -Path $p -Force | Out-Null; Write-HUBackupJson (Join-Path $p 'index.json') ([pscustomobject]@{ Errors = $(if ($c) { 0 } else { 3 }); Complete = $c; Items = @() }) }
+            & $mk '2025-01-01_080000' $true; & $mk '2025-02-01_080000' $true; & $mk '2026-10-01_080000' $true; & $mk '2025-03-01_080000' $false
+            $pre = Join-Path $d '_vor-zurueckschreiben'; New-Item -ItemType Directory -Path $pre -Force | Out-Null
+            $oldF = Join-Path $pre 'alt.json'; $newF = Join-Path $pre 'neu.json'
+            Set-Content -LiteralPath $oldF -Value '{}'; Set-Content -LiteralPath $newF -Value '{}'
+            (Get-Item -LiteralPath $oldF).LastWriteTime = [datetime]'2025-01-01'
+            (Get-Item -LiteralPath $newF).LastWriteTime = [datetime]'2026-10-20'
+            Remove-HUOldBackups -Root $Root -TenantKey 'T' -Keep 30 -MaxDays 365 -Now ([datetime]'2026-10-22') | Should -Be 4
+            @(Get-HUBackupList -Root $Root -TenantKey 'T').Name | Should -Be @('2026-10-01_080000')
+            Test-Path -LiteralPath $oldF | Should -BeFalse
+            Test-Path -LiteralPath $newF | Should -BeTrue
+            # 046 B4: die juengste Sicherung bleibt, auch wenn sie abgelaufen ist
+            Remove-HUOldBackups -Root $Root -TenantKey 'T' -Keep 30 -MaxDays 1 -Now ([datetime]'2030-01-01') | Out-Null
+            Test-Path -LiteralPath $newF | Should -BeTrue
+            # alles abgelaufen: der neueste vollstaendige bleibt trotzdem
+            Remove-HUOldBackups -Root $Root -TenantKey 'T' -Keep 30 -MaxDays 1 -Now ([datetime]'2030-01-01') | Out-Null
+            @(Get-HUBackupList -Root $Root -TenantKey 'T').Count | Should -Be 1
+            # 0 = kein Ablauf
+            & $mk '2020-01-01_080000' $true
+            Remove-HUOldBackups -Root $Root -TenantKey 'T' -Keep 30 -MaxDays 0 -Now ([datetime]'2030-01-01') | Should -Be 0
         }
     }
     It 'M2: Eintraege einer nicht gelesenen Art sind "unbekannt", nicht "geloescht"' {

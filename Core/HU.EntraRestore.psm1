@@ -19,7 +19,8 @@ $script:HUErAuthzTop = @('allowEmailVerifiedUsersToJoinOrganization', 'allowInvi
 $script:HUErDurp = @('allowedToCreateApps', 'allowedToCreateSecurityGroups', 'allowedToCreateTenants', 'allowedToReadBitlockerKeysForOwnedDevice', 'allowedToReadOtherUsers', 'permissionGrantPoliciesAssigned')
 $script:HUErConsent = @('isEnabled', 'notifyReviewers', 'remindersEnabled', 'requestDurationInDays', 'reviewers')
 # Felder, die nie gesendet werden und auch nicht als "verworfen" gelten (Verwaltung, Anzeige)
-$script:HUErIgnore = @('id', 'displayName', 'description', 'createdDateTime', 'modifiedDateTime', 'lastModifiedDateTime', 'version', 'deletedDateTime', 'templateId')
+# assignments: das Backup haengt sie an jedes Objekt an (bei Entra-Arten und CA leer) - kein Feld der Richtlinie
+$script:HUErIgnore = @('id', 'displayName', 'description', 'createdDateTime', 'modifiedDateTime', 'lastModifiedDateTime', 'version', 'deletedDateTime', 'templateId', 'assignments')
 $script:HUErPwRuleTpl = '5cf42378-d67d-4f36-ba46-e8b86229381d'
 $script:HUErPwRuleP1 = @('BannedPasswordList', 'EnableBannedPasswordCheck', 'LockoutThreshold', 'LockoutDurationInSeconds')
 # Felder, deren Inhalt nie ins Protokoll kommt (nur "geaendert")
@@ -33,6 +34,7 @@ function Get-HUEntraRestoreKind([string]$Typ, [string]$Id) {
         'Entra-Einstellung' { if ($Id -eq 'authorizationPolicy') { return 'authz' }; if ($Id -eq 'adminConsentRequestPolicy') { return 'consent' }; return '' }
         'Benannter Ort' { return 'location' }
         'Verzeichniseinstellung' { return 'groupSetting' }
+        'Conditional Access' { return 'caNew' }
         default { return '' }
     }
 }
@@ -386,10 +388,113 @@ function Assert-HUErSameTenant([string]$TenantKey, $Settings, $BackupIndex) {
     if ($tid -and $bid -ne $tid) { throw 'Die Tenant-ID im Backup-Stand passt nicht zum Ziel-Tenant. Zurueckschreiben nur in denselben Tenant - nichts geschrieben.' }
 }
 
+# ---------- Conditional Access: NEU anlegen, nur als "Nur Bericht" (bestehende Richtlinie bleibt unberuehrt) ----------
+$script:HUErCaSkip = @('id', 'createdDateTime', 'modifiedDateTime', 'templateId', 'deletedDateTime', 'partialEnablementStrategy')
+$script:HUErGuidRx = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+
+# Referenzierte Objekte im Ziel pruefen -> Liste fehlender/nicht pruefbarer (leer = alles da)
+function Test-HUErCaRefs([string]$TenantKey, $Settings, $Policy) {
+    $miss = New-Object System.Collections.Generic.List[string]
+    $c = Get-HUErProp $Policy 'conditions'
+    $u = Get-HUErProp $c 'users'; $a = Get-HUErProp $c 'applications'; $l = Get-HUErProp $c 'locations'; $g = Get-HUErProp $Policy 'grantControls'
+    $checks = New-Object System.Collections.Generic.List[object]
+    foreach ($f in 'includeUsers', 'excludeUsers') { foreach ($x in @(Get-HUErProp $u $f)) { if ("$x" -match $script:HUErGuidRx) { $checks.Add(@{ L = 'Benutzer'; E = "/users/$x`?`$select=id"; X = "$x" }) } } }
+    foreach ($f in 'includeGroups', 'excludeGroups') { foreach ($x in @(Get-HUErProp $u $f)) { if ("$x" -match $script:HUErGuidRx) { $checks.Add(@{ L = 'Gruppe'; E = "/groups/$x`?`$select=id"; X = "$x" }) } } }
+    foreach ($f in 'includeRoles', 'excludeRoles') { foreach ($x in @(Get-HUErProp $u $f)) { if ("$x" -match $script:HUErGuidRx) { $checks.Add(@{ L = 'Rolle'; E = "/roleManagement/directory/roleDefinitions/$x`?`$select=id"; X = "$x" }) } } }
+    foreach ($f in 'includeLocations', 'excludeLocations') { foreach ($x in @(Get-HUErProp $l $f)) { if ("$x" -match $script:HUErGuidRx) { $checks.Add(@{ L = 'Benannter Ort'; E = "/identity/conditionalAccess/namedLocations/$x"; X = "$x" }) } } }
+    foreach ($f in 'includeApplications', 'excludeApplications') { foreach ($x in @(Get-HUErProp $a $f)) { if ("$x" -match $script:HUErGuidRx) { $checks.Add(@{ L = 'App'; E = "/servicePrincipals(appId='$x')?`$select=id"; X = "$x" }) } } }
+    foreach ($x in @(Get-HUErProp $a 'includeAuthenticationContextClassReferences' | Where-Object { "$_" })) {
+        if ("$x" -match '^c([1-9]|1[0-9]|2[0-5])$') { $checks.Add(@{ L = 'Authentifizierungskontext'; E = "/identity/conditionalAccess/authenticationContextClassReferences/$x"; X = "$x" }) }
+        else { $miss.Add("Authentifizierungskontext '$x' hat kein gueltiges Format (c1 bis c25)") }
+    }
+    $ca = Get-HUErProp $c 'clientApplications'
+    foreach ($f in 'includeServicePrincipals', 'excludeServicePrincipals') { foreach ($x in @(Get-HUErProp $ca $f)) { if ("$x" -match $script:HUErGuidRx) { $checks.Add(@{ L = 'Dienstprinzipal'; E = "/servicePrincipals/$x`?`$select=id"; X = "$x" }) } } }
+    foreach ($x in @(Get-HUErProp $g 'customAuthenticationFactors')) { if ("$x") { $miss.Add("Eigenes Steuerelement $x wird nicht unterstuetzt") } }
+    foreach ($x in @(Get-HUErProp $g 'termsOfUse' | Where-Object { "$_" })) {
+        if ("$x" -match $script:HUErGuidRx) { $checks.Add(@{ L = 'Nutzungsbedingungen'; E = "/identityGovernance/termsOfUse/agreements/$x`?`$select=id"; X = "$x" }) }
+        else { $miss.Add("Nutzungsbedingungen '$x' haben kein gueltiges Format") }
+    }
+    $as = Get-HUErProp (Get-HUErProp $g 'authenticationStrength') 'id'
+    if ("$as") { $checks.Add(@{ L = 'Authentifizierungsstaerke'; E = "/policies/authenticationStrengthPolicies/$as`?`$select=id"; X = "$as" }) }
+    foreach ($ck in $checks) {
+        try { if (-not (Test-HUErExists $TenantKey $Settings $ck.E)) { $miss.Add("$($ck.L) $($ck.X) gibt es im Tenant nicht (mehr)") } }
+        catch { $miss.Add("$($ck.L) $($ck.X) nicht pruefbar ($($_.Exception.Message))") }
+    }
+    return , $miss
+}
+
+function Get-HUErPlanCaNew($Plan, [string]$TenantKey, $Settings, $Backup, [string]$NewName) {
+    $Plan.Method = 'POST'; $Plan.Endpoint = '/identity/conditionalAccess/policies'; $Plan.ReadEndpoint = ''; $Plan.Perm = 'Policy.ReadWrite.ConditionalAccess (und Policy.Read.All)'
+    $Plan.BreakGlass = $false
+    if (-not (Get-HUErProp $Backup 'conditions')) { $Plan.Blocks.Add('Der Backup-Eintrag hat keine Bedingungen (conditions).'); return }
+    if (-not $NewName) { $NewName = "$(Get-HUErProp $Backup 'displayName') (wiederhergestellt)" }
+    # gleicher Name schon vorhanden (z. B. zweimal am selben Tag wiederhergestellt): Nummer anhaengen, damit die Kopien unterscheidbar bleiben
+    try {
+        $taken = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/identity/conditionalAccess/policies?$select=displayName' -V1 | ForEach-Object { "$($_.displayName)".Trim().ToLowerInvariant() })
+        if ($taken -contains $NewName.Trim().ToLowerInvariant()) {
+            $n = 2; $base = $NewName -replace '\)$', ''
+            while ($taken -contains "$base $n)".ToLowerInvariant()) { $n++ }
+            $NewName = "$base $n)"
+            $Plan.Notes.Add("Den Namen gibt es schon - die neue Richtlinie heisst '$NewName'.")
+        }
+    } catch { }
+    # Authentifizierungsstaerke: nur die Kennung senden (die gelesene Form enthaelt schreibgeschuetzte Felder)
+    $asId = "$(Get-HUErProp (Get-HUErProp (Get-HUErProp $Backup 'grantControls') 'authenticationStrength') 'id')"
+    $body = @{ displayName = $NewName; state = 'enabledForReportingButNotEnforced' }
+    foreach ($f in 'conditions', 'grantControls', 'sessionControls') {
+        $v = Get-HUErProp $Backup $f
+        if ($null -eq $v) { continue }
+        $h = ConvertTo-HUHashtable (ConvertTo-HUCleanObject $v $script:HUErCaSkip)
+        if ($f -eq 'grantControls') { if ($h.ContainsKey('authenticationStrength')) { $h.Remove('authenticationStrength') }; if ($asId) { $h['authenticationStrength'] = @{ id = $asId } } }
+        if ($h.Count) { $body[$f] = $h }
+    }
+    # "Nur Bericht" gibt es nicht fuer Benutzeraktionen (Learn: report-only "except for items included in the User Actions scope")
+    # nur Eintraege mit Wert zaehlen: @($null) hat die Anzahl 1 (046 B1)
+    if (@(Get-HUErProp (Get-HUErProp (Get-HUErProp $Backup 'conditions') 'applications') 'includeUserActions' | Where-Object { "$_" }).Count) {
+        $body.state = 'disabled'
+        $Plan.Warnings.Add('Richtlinie fuer Benutzeraktionen: "Nur Bericht" ist dafuer nicht moeglich - sie wird AUSGESCHALTET angelegt.')
+    }
+    # Learn-Warnung: Nur-Bericht mit konformem Geraet kann auf macOS/iOS/Android Zertifikat-Abfragen ausloesen
+    $bic = @(Get-HUErProp (Get-HUErProp $Backup 'grantControls') 'builtInControls')
+    $certOpen = @()
+    if ($body.state -eq 'enabledForReportingButNotEnforced' -and $bic -contains 'compliantDevice') {
+        $pl = Get-HUErProp (Get-HUErProp $Backup 'conditions') 'platforms'
+        $ex = @(Get-HUErProp $pl 'excludePlatforms'); $in = @(Get-HUErProp $pl 'includePlatforms' | Where-Object { "$_" })
+        # ohne Plattform-Bedingung oder mit "all" gilt die Richtlinie fuer alle Plattformen
+        $open = @('android', 'iOS', 'macOS' | Where-Object { $ex -notcontains $_ -and (-not $in.Count -or $in -contains 'all' -or $in -contains $_) })
+        $certOpen = $open
+        if ($open.Count) { $Plan.Confirms.Add("Verlangt ein konformes Geraet: Microsoft warnt, dass Benutzer auf $($open -join ', ') auch im Modus 'Nur Bericht' wiederholt nach einem Geraetezertifikat gefragt werden koennen (Plattformen dort ausnehmen).") }
+    }
+    foreach ($m in (Test-HUErCaRefs $TenantKey $Settings $Backup)) { $Plan.Blocks.Add("$m.") }
+    # Notfallkonten: im Nur-Bericht-Modus keine Aussperrung, aber vor dem Einschalten noetig
+    try {
+        $bl = Get-HUSecBaseline -TenantKey $TenantKey
+        $bg = @(); if ($bl -and $bl.Values -and $bl.Values.ContainsKey('V1')) { $bg = @($bl.Values['V1'].accounts | Where-Object { "$_" }) }
+        $exU = @(Get-HUErProp (Get-HUErProp (Get-HUErProp $Backup 'conditions') 'users') 'excludeUsers' | ForEach-Object { "$_".ToLowerInvariant() })
+        $notEx = @($bg | Where-Object { $exU -notcontains "$_".ToLowerInvariant() })
+        if (-not $bg.Count) { $Plan.Notes.Add('Keine Notfallkonten hinterlegt (Sollwert V1) - vor dem Einschalten pruefen, dass sie ausgenommen sind.') }
+        elseif (-not $notEx.Count) { $Plan.Notes.Add("Notfallkonten: alle $($bg.Count) direkt ausgenommen.") }
+        elseif ($notEx.Count) {
+            $txt = "$($notEx.Count) Notfallkonto/-konten sind nicht direkt ausgenommen$(if (@(Get-HUErProp (Get-HUErProp (Get-HUErProp $Backup 'conditions') 'users') 'excludeGroups' | Where-Object { "$_" }).Count) { ' (ausgenommene Gruppen hier nicht aufgeloest)' })"
+            # konformes Geraet: die Zertifikat-Abfrage wirkt schon im Nur-Bericht-Modus (046 B3) -> Pflicht-Haken
+            if ($certOpen.Count) { $Plan.Confirms.Add("$txt - die Zertifikat-Abfrage trifft sie schon jetzt (Nur Bericht).") }
+            else { $Plan.Warnings.Add("$txt - vor dem Einschalten ergaenzen.") }
+        }
+    } catch { }
+    $Plan.Body = $body
+    Add-HUErChange $Plan 'displayName' '(neu)' $NewName
+    Add-HUErChange $Plan 'state' '(neu)' $body.state
+    $map = ConvertTo-HUFlatMap ([pscustomobject]@{ conditions = $body['conditions']; grantControls = $body['grantControls']; sessionControls = $body['sessionControls'] }) -Full
+    try { $map = Resolve-HUFlatMapIds -TenantKey $TenantKey -Settings $Settings -Map $map } catch { }
+    foreach ($k in @($map.Keys | Sort-Object)) { Add-HUErChange $Plan $k '(neu)' "$($map[$k])" }
+    $Plan.Notes.Add('Es wird eine NEUE Richtlinie angelegt; die bestehende bleibt unveraendert. Nach der Pruefung im Anmeldeprotokoll (Nur Bericht) selbst einschalten und die alte entfernen.')
+    Add-HUErDropped $Plan $Backup @('conditions', 'grantControls', 'sessionControls', 'state')
+}
+
 # Plan bauen: liest live, vergleicht, prueft. Schreibt nichts.
 function Get-HUEntraRestorePlan {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [string]$Id = '', [string]$Name = '', [Parameter(Mandatory)]$Backup, $BackupIndex = $null)
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [string]$Id = '', [string]$Name = '', [Parameter(Mandatory)]$Backup, $BackupIndex = $null, [string]$NewName = '')
     $kind = Get-HUEntraRestoreKind $Typ $Id
     if (-not $kind) { throw "$Typ '$Name' laesst sich nicht zurueckschreiben" }
     Assert-HUErSameTenant -TenantKey $TenantKey -Settings $Settings -BackupIndex $BackupIndex
@@ -399,6 +504,7 @@ function Get-HUEntraRestorePlan {
         'consent' { Get-HUErPlanConsent $plan $TenantKey $Settings $Backup }
         'location' { Get-HUErPlanLocation $plan $TenantKey $Settings $Backup }
         'groupSetting' { Get-HUErPlanGroupSetting $plan $TenantKey $Settings $Backup }
+        'caNew' { Get-HUErPlanCaNew $plan $TenantKey $Settings $Backup $NewName }
     }
     if ($plan.BreakGlass -eq $true -and $plan.Changes.Count) {
         $bg = Test-HUEntraBreakGlass -TenantKey $TenantKey -Settings $Settings
@@ -408,6 +514,55 @@ function Get-HUEntraRestorePlan {
     return $plan
 }
 
+# Neu anlegen (Conditional Access): nichts wird ueberschrieben, daher keine Sicherung; danach nachlesen
+# Wartezeiten (Sekunden) fuers Nachlesen nach dem Anlegen: eine neue CA-Richtlinie ist oft erst nach einigen Sekunden lesbar (404)
+$script:HUErReadDelays = @(2, 3, 5, 5, 5, 10)
+function Invoke-HUErCreate($Plan, $Settings, [string]$Actor) {
+    $tk = $Plan.TenantKey
+    $r = $null
+    try { $r = Invoke-HUErGraph $tk $Settings $Plan.Endpoint 'POST' $Plan.Body }
+    catch {
+        if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm) (unter Berechtigungen fuer diesen Tenant erteilen). Nichts angelegt." }
+        throw
+    }
+    $id = "$($r.id)"
+    if (-not $id) { throw 'Angelegt, aber ohne Kennung zurueckgemeldet - bitte im Portal pruefen.' }
+    Write-HULog -Message "Neu angelegt $($Plan.Typ) '$($Plan.Body.displayName)' als $($Plan.Body.state) (Id $id, aus '$($Plan.Name)', durch $Actor)" -Level 'OK' -Tenant $tk
+    $after = $null; $readErr = ''
+    foreach ($wait in @(@(0) + @($script:HUErReadDelays))) {
+        if ($wait -gt 0) { Start-Sleep -Seconds $wait }
+        try { $after = Invoke-HUErGraph $tk $Settings "$($Plan.Endpoint)/$id"; $readErr = ''; break }
+        catch {
+            $readErr = "$($_.Exception.Message)"
+            # nur "noch nicht da" (404) abwarten, andere Fehler sofort melden
+            if ($_.Exception.Data['StatusCode'] -ne 404) { break }
+        }
+    }
+    if ($null -eq $after) {
+        # angelegt ist sie (POST hat die Kennung geliefert) - nur das Nachlesen ging nicht: kein Fehler "nicht zurueckgeschrieben"
+        $msg = "Angelegt (Id $id), aber nicht nachlesbar ($readErr) - bitte im Portal pruefen und NICHT erneut anlegen (sonst entsteht eine zweite Richtlinie)."
+        Write-HULog -Message "Nachpruefung $($Plan.Typ) '$($Plan.Body.displayName)': $msg" -Level 'WARN' -Tenant $tk
+        return [pscustomobject]@{ Ok = $false; Written = 1; Mismatch = @($msg); BackupFile = ''; NewId = $id; Dropped = @($Plan.Dropped); Notes = @($Plan.Notes) }
+    }
+    $bad = New-Object System.Collections.Generic.List[string]
+    if ("$($after.state)" -ne "$($Plan.Body.state)") { $bad.Add("state: erwartet $($Plan.Body.state), gelesen $($after.state)") }
+    if ("$($after.displayName)" -ne "$($Plan.Body.displayName)") { $bad.Add("displayName: erwartet $($Plan.Body.displayName), gelesen $($after.displayName)") }
+    # Inhalt grob nachpruefen (046 B2): Verknuepfung, Steuerelemente, Anzahl der Benutzer/Apps/Orte
+    $bg = $Plan.Body['grantControls']; $ag = Get-HUErProp $after 'grantControls'
+    $cmp = New-Object System.Collections.Generic.List[object]
+    $cmp.Add(@('grantControls.operator', "$(Get-HUErProp $bg 'operator')", "$(Get-HUErProp $ag 'operator')"))
+    $cmp.Add(@('grantControls.builtInControls', ((@(Get-HUErProp $bg 'builtInControls' | Where-Object { "$_" }) | Sort-Object) -join ','), ((@(Get-HUErProp $ag 'builtInControls' | Where-Object { "$_" }) | Sort-Object) -join ',')))
+    $bc = $Plan.Body['conditions']; $ac = Get-HUErProp $after 'conditions'
+    foreach ($pp in @(@('users', 'includeUsers'), @('users', 'excludeUsers'), @('users', 'includeGroups'), @('applications', 'includeApplications'), @('locations', 'includeLocations'), @('locations', 'excludeLocations'))) {
+        $nb = @(Get-HUErProp (Get-HUErProp $bc $pp[0]) $pp[1] | Where-Object { "$_" }).Count
+        $na = @(Get-HUErProp (Get-HUErProp $ac $pp[0]) $pp[1] | Where-Object { "$_" }).Count
+        $cmp.Add(@("conditions.$($pp[0]).$($pp[1]) (Anzahl)", "$nb", "$na"))
+    }
+    foreach ($x in $cmp) { if ($x[1] -ne $x[2]) { $bad.Add("$($x[0]): erwartet '$($x[1])', gelesen '$($x[2])'") } }
+    foreach ($b in $bad) { Write-HULog -Message "Nachpruefung $($Plan.Typ) '$($Plan.Body.displayName)': $b" -Level 'WARN' -Tenant $tk }
+    return [pscustomobject]@{ Ok = (-not $bad.Count); Written = 1; Mismatch = @($bad); BackupFile = ''; NewId = $id; Dropped = @($Plan.Dropped); Notes = @($Plan.Notes) }
+}
+
 # Zurueckschreiben nach Bestaetigung: erneut lesen, sichern, schreiben, nachpruefen.
 function Invoke-HUEntraRestore {
     [CmdletBinding()]
@@ -415,6 +570,7 @@ function Invoke-HUEntraRestore {
     if ($Plan.Blocks.Count) { throw "Nicht zurueckgeschrieben: $($Plan.Blocks -join ' ')" }
     if (-not $Plan.Changes.Count) { throw 'Nichts zu schreiben - der Live-Stand entspricht schon dem Backup.' }
     $tk = $Plan.TenantKey
+    if ($Plan.Method -eq 'POST') { return (Invoke-HUErCreate $Plan $Settings $Actor) }
     # zweites Lesen: hat sich seit der Vorschau etwas geaendert?
     $now = Invoke-HUErGraph $tk $Settings $Plan.ReadEndpoint
     if ((Get-HUErHash $now) -ne $Plan.LiveHash) { throw 'Der Live-Stand hat sich seit der Vorschau geaendert (z. B. im Portal). Nichts geschrieben - bitte Vorschau neu oeffnen.' }
