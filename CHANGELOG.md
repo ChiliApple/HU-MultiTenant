@@ -1,5 +1,30 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.4.0 (Stable, 23.10.2026)
+
+Stable-Release der Testversionen 2.3.2 bis 2.3.5 – „Sichern und Wiederherstellen“. Alle Punkte im Detail stehen in den Abschnitten darunter.
+
+### 💾 Backup für (fast) alles
+- **Gesichert werden Intune, Conditional Access und die Entra-Einstellungen der Security Baseline:** alle Intune-Arten (auch App-Schutz, Registrierung, Zuweisungsfilter, Updates, Rollen), Conditional Access sowie Autorisierungsrichtlinie, Authentifizierungsmethoden, benannte Orte, Verzeichniseinstellungen u. a. **Nicht enthalten:** Exchange und Teams (kommen mit 2.6.0) sowie Geheimnisse – Kennwörter, Pre-Shared-Keys und private Schlüssel liefert Graph nicht aus und sie stehen nie im Backup.
+- **Backups mit Ablaufdatum** (Standard 365 Tage); der neueste vollständige Stand und die jüngste Sicherung vor dem Zurückschreiben bleiben immer.
+
+### ↩️ Wiederherstellen und Zurückschreiben
+- **Intune:** Einträge aus einem Stand neu anlegen (ohne Zuweisungen, Name mit Zusatz).
+- **Entra-Einstellungen:** Autorisierungsrichtlinie, Administratorzustimmung, benannte Orte und Verzeichniseinstellungen einzeln zurückschreiben – mit Vorschau „jetzt → danach“, Sperren, Notfallkonten-Prüfung, Sicherung unmittelbar vor dem Schreiben und Nachprüfung.
+- **Conditional Access:** kommt als **neue** Richtlinie im Modus „Nur Bericht“ zurück; die bestehende bleibt unverändert. Richtlinien für Benutzeraktionen kommen ausgeschaltet zurück, weil es für sie keinen Nur-Bericht-Modus gibt.
+
+### ⭐ Mustertenant und Zuordnung
+- **Einen Backup-Stand als Soll-Stand festhalten**; im Tenant-Vergleich als eigene Spalte „Muster“, mit Farben (grün gleich, orange abweichend, rot fehlt).
+- **Zuordnung prüfen** (nur lesen): Gruppen, benannte Orte, Filter und Bereichsmarkierungen der Quelle je Tenant – ok, fehlt oder mehrfach; dazu die Notfallkonten.
+
+### 🔍 Verlauf ohne Fehlalarme
+- Rollenzuweisungen, Defender-Heartbeat, Listen-Reihenfolge und gleichnamige Einstellungen zählen nicht mehr fälschlich als Änderung; Liste und Detailansicht sagen dasselbe, ohne dass echte Änderungen versteckt werden (gegengeprüft, eigene Tests).
+
+### ⚠️ Bekannte Grenzen
+- Wiederhergestellte WLAN-, VPN- und Zertifikatsprofile brauchen ihre Geheimnisse (Schlüssel, Kennwörter) danach neu – sie stehen nicht im Backup.
+- Änderungen an Compliance-**Aktionen** (z. B. Kulanzfrist bis „nicht konform“) erscheinen im Verlauf noch nicht als eigene Zeile.
+- Die Verzeichniseinstellung `EnableMSStandardBlockedWords` wird beim Zurückschreiben ausgelassen (von Microsoft eingestellt).
+
 ## v2.3.5 (Testversion, 23.10.2026, Weg zu 2.4.0)
 
 ### ⭐ Mustertenant als Soll-Stand
