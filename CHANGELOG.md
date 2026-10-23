@@ -1,5 +1,15 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.4.2 (Testversion, Weg zu 2.5.0)
+
+### → Übertragen: Angleichen bestehender Objekte
+- **Neu:** Weicht ein Eintrag gleichen Namens in anderen Tenants ab, bietet *Übertragen …* jetzt auch **Angleichen** an: das bestehende Objekt im Ziel bekommt per PATCH die Einstellungen der Quelle. Vorschau zeigt nur die Unterschiede (gleiche Felder werden gezählt), auch Felder, die **nur im Ziel** einen Wert haben – die werden beim Angleichen geleert (volles Objekt, nichts bleibt still stehen); die Nachprüfung prüft in beide Richtungen. Zuweisungen und Bereichsmarkierungen des Ziels werden nie angefasst.
+- **Arten:** Konfiguration, Compliance (Aktionen werden ersetzt, Benachrichtigungen bewusst bestätigen), Feature-Update. Einstellungskatalog und Administrative Vorlage werden noch nicht angeglichen (Update-Weg erst im Test-Tenant zu klären).
+- **Sicher:** unmittelbar vor dem Schreiben wird das Ziel erneut gelesen – wurde es seit der Vorschau geändert, wird abgebrochen; der Ziel-Stand wird vorher als Rückgängig-Datei gesichert.
+- **Fix:** Mit angehaktem Muster standen Einträge fälschlich auf „(nur anzeigen)“ – der Muster-Stand gilt jetzt wie vorgesehen als Quelle fürs Übertragen.
+- **Neu:** Das Arten-Dropdown im Tenant-Vergleich zeigt hinter jeder Art, was damit geht: *übertragen + angleichen*, *neu anlegen* oder *nur vergleichen*.
+- **Rückgängig:** stellt bei Angeglichenem den gesicherten Stand wieder her (nur solange seitdem unverändert); das Rückgängig-Fenster sagt jetzt je Zeile, was passiert (*LOESCHEN im Ziel* bzw. *Stand zuruecksetzen*) und prüft beim Öffnen live, ob das gerade möglich ist – mit Grund, wenn nicht; solche Zeilen lassen sich nicht ausführen. Das Ergebnis kommt je Eintrag als Dialog, auch Ablehnungen, die vorher nur im Protokoll standen.
+
 ## v2.4.1 (Testversion, Weg zu 2.5.0)
 
 ### → Übertragen statt Kopieren

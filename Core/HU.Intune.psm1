@@ -2473,8 +2473,8 @@ function Get-HUCompareInventory {
 }
 
 # Bestand aus einem Backup-Stand statt live (z. B. Mustertenant als Spalte im Vergleich). Gleiche Zeilen wie
-# Get-HUCompareInventory: Fingerabdruck nach denselben Regeln, das gelesene Objekt kommt immer mit (Obj), Kopieren aus
-# einem Backup-Stand gibt es nicht (Copy leer). Arten, die im Stand nicht lesbar waren, kommen als Fehlerzeile.
+# Get-HUCompareInventory: Fingerabdruck nach denselben Regeln, das gelesene Objekt kommt immer mit (Obj). Intune-Grundarten
+# tragen ihr Copy-Kennzeichen, damit der Mustertenant als Quelle fuers Uebertragen gilt (2.4.1). Nicht lesbare Arten = Fehlerzeile.
 function Get-HUBackupInventory {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Folder, [Parameter(Mandatory)][string]$TenantKey, [string[]]$Types = @())
@@ -2502,7 +2502,7 @@ function Get-HUBackupInventory {
         if ($base.ContainsKey($typ)) {
             $src = $base[$typ]; $isCa = ($typ -eq 'Conditional Access')
             $h = if ($src.Hash) { if ($isCa) { Get-HUCompareHash (ConvertTo-HUCaComparable $o) } else { Get-HUCompareHash $o } } else { '' }
-            [pscustomobject]@{ Tenant = $TenantKey; Typ = $typ; Name = "$($it.Name)"; Id = "$($it.Id)"; Hash = $h; Copy = ''; Info = $(if ($isCa) { Get-HUCaStateLabel $o } else { '' }); Obj = $o }
+            [pscustomobject]@{ Tenant = $TenantKey; Typ = $typ; Name = "$($it.Name)"; Id = "$($it.Id)"; Hash = $h; Copy = "$($src.Copy)"; Info = $(if ($isCa) { Get-HUCaStateLabel $o } else { '' }); Obj = $o }
         } elseif ($extra.ContainsKey($typ)) {
             [pscustomobject]@{ Tenant = $TenantKey; Typ = $typ; Name = "$($it.Name)"; Id = "$($it.Id)"; Hash = (Get-HUCompareHashNeutral $o); Copy = ''; Info = ''; Obj = $o }
         }
@@ -2552,7 +2552,8 @@ function Get-HUCompareMatrix([object[]]$Rows, [string[]]$Keys) {
         }
         if ($hashes.Count -gt 1) { $st += ', Einstellungen abweichend' }
         if ($dupe.Count) { $st += ', doppelt' }
-        [pscustomobject]@{ Typ = $first.Typ; Name = $first.Name; Have = $have; Missing = $miss; Unknown = $unk; Status = $st; Copy = $first.Copy; Items = @($g.Group); Diff = ($miss.Count -gt 0 -or $unk.Count -gt 0 -or $hashes.Count -gt 1 -or $dupe.Count -gt 0); Dupe = ($dupe.Count -gt 0) }
+        $copyRow = @($g.Group | Where-Object { "$($_.Copy)" }) | Select-Object -First 1
+        [pscustomobject]@{ Typ = $first.Typ; Name = $first.Name; Have = $have; Missing = $miss; Unknown = $unk; Status = $st; Copy = "$(if ($copyRow) { $copyRow.Copy } else { $first.Copy })"; Items = @($g.Group); Diff = ($miss.Count -gt 0 -or $unk.Count -gt 0 -or $hashes.Count -gt 1 -or $dupe.Count -gt 0); Dupe = ($dupe.Count -gt 0) }
     }
 }
 
