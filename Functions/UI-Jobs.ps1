@@ -61,7 +61,7 @@ function Start-HUJob {
     $ps = [powershell]::Create()
     $ps.Runspace = $rs
     [void]$ps.AddScript({
-            foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Intune', 'HU.Winget', 'HU.SecCatalog') {
+            foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Intune', 'HU.Winget', 'HU.SecCatalog', 'HU.EntraRestore') {
                 Import-Module (Join-Path $AppRoot "Core\$m.psm1") -Force -DisableNameChecking -ErrorAction Stop
             }
             Initialize-Logging -LogFilePath $__JobLog -MinLevel 'INFO'
@@ -77,6 +77,8 @@ function Start-HUJob {
     $t.Add_Tick({ Update-HUJob $this.Tag })
     $state.Timer = $t
     $t.Start()
+    # Lauf-Anzeige (pulsierender Punkt) der Ansicht, in die der Auftrag schreibt
+    if (Get-Command Update-HUAnaRunDot -ErrorAction SilentlyContinue) { try { Update-HUAnaRunDot } catch { } }
     return $true
 }
 
@@ -115,6 +117,7 @@ function Update-HUJob($State) {
     $secs = [Math]::Round(((Get-Date) - $s.Started).TotalSeconds, 1)
     if (-not $s.Quiet) { Add-HURtbLine $s.Output "--- fertig ($secs s) ---" '#666666' }
     if ($s.OnDone) { try { & $s.OnDone @($result) @($errs | Where-Object { $_ }) } catch { Add-HURtbLine $s.Output "[FEHLER] $($_.Exception.Message)" '#FF5252' } }
+    if (Get-Command Update-HUAnaRunDot -ErrorAction SilentlyContinue) { try { Update-HUAnaRunDot } catch { } }
 }
 
 # Scriptblock nach ein paar Sekunden im UI-Thread ausfuehren (z. B. neu laden, wenn Intune Aenderungen erst verzoegert liefert)

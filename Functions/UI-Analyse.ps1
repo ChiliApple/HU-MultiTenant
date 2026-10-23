@@ -76,10 +76,24 @@ function Set-HUAnaMode([string]$Mode) {
     Update-HUAnaHint
 }
 
-# Pulsierender gruener Punkt vor der Statuszeile (Analyse), solange gelesen/geprueft wird (wie Teams-Meldung)
+# Pulsierender gruener Punkt vor der Statuszeile (Analyse), solange gelesen/geprueft wird (wie Teams-Meldung).
+# Er pulsiert, wenn eine Ansicht es verlangt (Set-HUAnaRunDot) ODER irgendein Auftrag in die Analyse-Ausgabe schreibt
+# (z. B. Doppelklick, der Einstellungen nachlaedt) - so muss nicht jeder Auftrag den Punkt selbst schalten.
+$script:AnaDotWanted = $false
+function Test-HUAnaJobRunning {
+    $o = $script:Controls['rtbAna']
+    if (-not $o -or -not $script:HUJobs) { return $false }
+    foreach ($s in @($script:HUJobs.Values)) { if ($s -and -not $s.Done -and [object]::ReferenceEquals($s.Output, $o)) { return $true } }
+    return $false
+}
 function Set-HUAnaRunDot([bool]$On) {
+    $script:AnaDotWanted = $On
+    Update-HUAnaRunDot
+}
+function Update-HUAnaRunDot {
     $d = $script:Controls['dotAnaRun']
     if (-not $d) { return }
+    $On = [bool]$script:AnaDotWanted -or (Test-HUAnaJobRunning)
     if ($On) {
         if ($d.Visibility -eq 'Visible') { return }
         $an = New-Object System.Windows.Media.Animation.DoubleAnimation
@@ -203,11 +217,11 @@ function Update-HUCmpHint {
     $wait = @($script:CmpWait.Keys)
     Set-HUAnaRunDot ($wait.Count -gt 0)
     if ($wait.Count) { $c['lblAnaHint'].Text = "Lese Bestand ... warte auf $(@($wait | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')"; return }
-    if (-not $script:CmpKeys.Count) { $c['lblAnaHint'].Text = 'Tenants anhaken (mindestens 2) und Vergleichen klicken. Verglichen werden Profile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Plattform-Skripte, Feature-Updates, Autopilot, Conditional Access und Apps - nach Name.'; return }
+    if (-not $script:CmpKeys.Count) { $c['lblAnaHint'].Text = 'Tenants anhaken (mindestens 2) und Vergleichen klicken. Verglichen werden nach Name: Intune (Profile, Einstellungskatalog, Administrative Vorlagen, Compliance, Wartung, Skripte, Updates, Autopilot, App-Schutz, Registrierung, Filter, Rollen u. a.), Conditional Access, Apps und die Entra-Einstellungen wie im Backup.'; return }
     $all = @($script:CmpMatrix)
     $d = @($all | Where-Object Diff).Count
     $vis = @(Get-HUCmpVisibleRows).Count
-    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' nur fuer Profile, Compliance, Feature-Updates, Autopilot und Conditional Access (dort zeigt die Zelle Ein, Aus oder Melden; Gruppen und Orte werden nur nach Anzahl verglichen, die Namen zeigt der Doppelklick). Doppelklick zeigt die abweichenden Einstellungen. Kopieren ohne Zuweisungen."
+    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' fuer Profile, Compliance, Feature-Updates, Autopilot, Conditional Access (Zelle Ein, Aus oder Melden) und die weiteren Arten aus dem Backup; IDs von Gruppen, Apps und Orten zaehlen dabei nicht, die Namen zeigt der Doppelklick. Doppelklick zeigt die abweichenden Einstellungen. Kopieren ohne Zuweisungen, nur Intune-Grundarten."
 }
 
 function Get-HUCmpVisibleRows {
@@ -309,7 +323,7 @@ function Start-HUCmpCopy {
     if (-not $sel.Count) { return }
     $no = @($sel | Where-Object { -not $_.Copy })
     $todo = @($sel | Where-Object { $_.Copy })
-    if (-not $todo.Count) { Show-HUMessage "Diese Arten koennen nicht kopiert werden: $(@($no | ForEach-Object { $_.Typ } | Select-Object -Unique) -join ', ').`n`nApps ueber die Bibliothek verteilen; Conditional Access und Autopilot im Portal anlegen (Gruppen-IDs unterscheiden sich je Tenant)." -Icon Info; return }
+    if (-not $todo.Count) { Show-HUMessage "Diese Arten koennen nicht kopiert werden: $(@($no | ForEach-Object { $_.Typ } | Select-Object -Unique) -join ', ').`n`nApps ueber die Bibliothek verteilen; Conditional Access und Autopilot im Portal anlegen (Gruppen-IDs unterscheiden sich je Tenant). Die weiteren Arten (z. B. App-Schutz, Registrierung, Entra-Einstellungen) werden vorerst nur verglichen." -Icon Info; return }
     $jobs = foreach ($m in $todo) {
         $srcItem = @($m.Items)[0]
         foreach ($t in $m.Missing) { [pscustomobject]@{ Typ = $m.Typ; Name = $m.Name; From = $srcItem.Tenant; Id = $srcItem.Id; To = $t } }
@@ -350,7 +364,11 @@ function Show-HUCmpDetail {
     [void](Start-HUJob -Name 'CmpDetail' -Quiet -Output $script:Controls['rtbAna'] -Vars @{ Items = $items } -Code {
             $maps = @{}
             foreach ($it in $Items) {
-                try { $maps[$it.Tenant] = Resolve-HUFlatMapIds -TenantKey $it.Tenant -Settings $Settings -Map (ConvertTo-HUFlatMap (Get-HUCompareObject -TenantKey $it.Tenant -Settings $Settings -Typ $it.Typ -Id $it.Id)) }
+                try {
+                    # weitere Arten bringen das gelesene Objekt mit (Obj), die Intune-Grundarten werden vollstaendig nachgeladen
+                    $o = if ($it.PSObject.Properties['Obj'] -and $null -ne $it.Obj) { $it.Obj } else { Get-HUCompareObject -TenantKey $it.Tenant -Settings $Settings -Typ $it.Typ -Id $it.Id }
+                    $maps[$it.Tenant] = Resolve-HUFlatMapIds -TenantKey $it.Tenant -Settings $Settings -Map (ConvertTo-HUFlatMap $o)
+                }
                 catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $it.Tenant }
             }
             [pscustomobject]@{ __Diff = @(Get-HUCompareDiff $maps @($Items | ForEach-Object { $_.Tenant })); Count = $maps.Count }
@@ -411,7 +429,7 @@ function Update-HUBakHint {
     if (-not $script:BakInfo) { $c['lblAnaHint'].Text = 'Backup jetzt sichert die angehakten Tenants. Danach im Verlauf zwei Staende waehlen und Anzeigen: neu, geloescht, Einstellungen/Zuweisungen geaendert, umbenannt - mit Benutzer aus dem Intune-Protokoll. Doppelklick zeigt die Unterschiede.'; return }
     $all = @($script:BakRows); $vis = @(Get-HUBakVisibleRows).Count
     $chg = @($all | Where-Object { $_.Aenderung -and $_.Aenderung -notin 'gleich', 'erstmals gesichert', 'nicht mehr gesichert' }).Count
-    $c['lblAnaHint'].Text = "$($script:BakInfo): $($all.Count) Eintraege$(if ($script:BakInfo -match '->') { ", $chg geaendert" })$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Wiederherstellen legt den Eintrag aus dem aelteren Stand ($(if ($script:BakA) { [datetime]::ParseExact((Split-Path $script:BakA -Leaf), 'yyyy-MM-dd_HHmmss', $null).ToString('dd.MM. HH:mm') })) neu an (Name mit Zusatz, ohne Zuweisungen; Conditional Access deaktiviert)."
+    $c['lblAnaHint'].Text = "$($script:BakInfo): $($all.Count) Eintraege$(if ($script:BakInfo -match '->') { ", $chg geaendert" })$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Wiederherstellen legt den Eintrag aus dem aelteren Stand ($(if ($script:BakA) { [datetime]::ParseExact((Split-Path $script:BakA -Leaf), 'yyyy-MM-dd_HHmmss', $null).ToString('dd.MM. HH:mm') })) neu an (Name mit Zusatz, ohne Zuweisungen; Conditional Access deaktiviert); Entra-Einstellungen (Autorisierung, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen) werden einzeln mit Vorschau zurueckgeschrieben."
 }
 
 function Update-HUBakView {
@@ -575,11 +593,16 @@ function Start-HUBakRestore {
     $c = $script:Controls
     $sel = @($c['gridBak'].SelectedItems | Where-Object { $_.FileA })
     if (-not $sel.Count) { Show-HUMessage 'Bitte Eintraege markieren, die es im aelteren Stand gibt (neue Eintraege gibt es dort noch nicht).' -Icon Info; return }
-    # Entra-Einstellungen (Autorisierung, Kennwort, Cross-Tenant, Orte ...) werden gesichert und verglichen; Zurueckschreiben folgt spaeter
+    # Entra-Einstellungen: einzeln zurueckschreiben (Vorschau, Sicherung, Nachpruefung) - nur die freigegebenen Arten
+    $entra = @($sel | Where-Object { Get-HUEntraRestoreKind "$($_.Typ)" "$($_.Id)" })
+    if ($entra.Count) {
+        if ($sel.Count -gt 1) { Show-HUMessage 'Entra-Einstellungen werden einzeln zurueckgeschrieben - bitte genau einen Eintrag markieren.' -Icon Info; return }
+        Start-HUEntraRestore $entra[0]; return
+    }
     $ok = @(Get-HUCompareSources | Where-Object { $_.Copy -or $_.Typ -eq 'Conditional Access' } | ForEach-Object { $_.Typ })
     $skip = @($sel | Where-Object { $ok -notcontains "$($_.Typ)" })
     $sel = @($sel | Where-Object { $ok -contains "$($_.Typ)" })
-    if (-not $sel.Count) { Show-HUMessage "Diese Eintraege lassen sich noch nicht wiederherstellen ($(@($skip | ForEach-Object { $_.Typ } | Sort-Object -Unique) -join ', ')).`n`nSie werden gesichert und im Verlauf verglichen; das Zurueckschreiben kommt in einer der naechsten Versionen." -Icon Info; return }
+    if (-not $sel.Count) { Show-HUMessage "Diese Eintraege lassen sich noch nicht wiederherstellen ($(@($skip | ForEach-Object { $_.Typ } | Sort-Object -Unique) -join ', ')).`n`nSie werden gesichert und im Verlauf verglichen. Zurueckschreiben geht bisher fuer: Autorisierungsrichtlinie, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen." -Icon Info; return }
     $k = $script:BakTenant
     $stamp = (Split-Path $script:BakA -Leaf).Substring(0, 10)
     $lines = @($sel | Select-Object -First 15 | ForEach-Object { "  $($_.Typ): $($_.Name)" })

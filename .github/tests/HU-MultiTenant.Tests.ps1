@@ -1004,6 +1004,124 @@ Describe 'Backup: Entra-Einstellungen (Baseline)' {
             (@(Get-HUBackupItemDiff $r.FileA $r.FileB) | Where-Object Einstellung -eq 'allowInvitesFrom').T1 | Should -Be 'everyone'
         }
     }
+    It 'Tenant-Vergleich: nur andere Reihenfolge oder andere Kennungen ist nicht abweichend, anderer Wert schon' {
+        InModuleScope HU.Intune {
+            $mk = { param($t, $list, $guest, $flag) $o = [pscustomobject]@{ id = 'authorizationPolicy'; guestUserRoleId = $guest; allowInvitesFrom = $flag; permissionGrantPolicyIdsAssignedToDefaultUserRole = $list }
+                [pscustomobject]@{ Tenant = $t; Typ = 'Entra-Einstellung'; Name = 'Autorisierungsrichtlinie'; Id = 'authorizationPolicy'; Hash = (Get-HUCompareHashNeutral $o); Copy = ''; Info = ''; Obj = $o } }
+            $rows = @((& $mk 'A' @('p1', 'p2') '11111111-1111-1111-1111-111111111111' 'everyone'), (& $mk 'B' @('p2', 'p1') '22222222-2222-2222-2222-222222222222' 'everyone'))
+            $m = @(Get-HUCompareMatrix -Rows $rows -Keys @('A', 'B'))
+            $m[0].Status | Should -Be 'ueberall'
+            $rows2 = @((& $mk 'A' @('p1') '11111111-1111-1111-1111-111111111111' 'everyone'), (& $mk 'B' @('p1') '11111111-1111-1111-1111-111111111111' 'none'))
+            (@(Get-HUCompareMatrix -Rows $rows2 -Keys @('A', 'B')))[0].Status | Should -Be 'ueberall, Einstellungen abweichend'
+        }
+    }
+    It 'Verlauf: nur andere Reihenfolge einer einfachen Liste ist keine Aenderung; langer Text mit Aenderung hinten schon' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
+            param($Root)
+            $a = Join-Path $Root 'ord-alt'; $b = Join-Path $Root 'ord-neu'
+            New-Item -ItemType Directory -Path (Join-Path $a 'E'), (Join-Path $b 'E') -Force | Out-Null
+            $long = 'x' * 250
+            $oa = [pscustomobject]@{ id = 'authorizationPolicy'; permissionGrantPolicyIdsAssignedToDefaultUserRole = @('p1', 'p2'); note = $long + 'A' }
+            $ob = [pscustomobject]@{ id = 'authorizationPolicy'; permissionGrantPolicyIdsAssignedToDefaultUserRole = @('p2', 'p1'); note = $long + 'A' }
+            $oc = [pscustomobject]@{ id = 'oma'; v = $long + 'A' }
+            $od = [pscustomobject]@{ id = 'oma'; v = $long + 'B' }
+            Write-HUBackupJson (Join-Path $a 'E\ap.json') $oa; Write-HUBackupJson (Join-Path $b 'E\ap.json') $ob
+            Write-HUBackupJson (Join-Path $a 'E\om.json') $oc; Write-HUBackupJson (Join-Path $b 'E\om.json') $od
+            foreach ($pair in @(@($a, $oa, $oc), @($b, $ob, $od))) {
+                Write-HUBackupJson (Join-Path $pair[0] 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Types = @('Entra-Einstellung', 'Konfiguration'); Items = @(
+                            [pscustomobject]@{ Typ = 'Entra-Einstellung'; Name = 'Autorisierungsrichtlinie'; Id = 'authorizationPolicy'; File = 'E\ap.json'; Hash = (Get-HUCompareHash $pair[1]); AHash = '' }
+                            [pscustomobject]@{ Typ = 'Konfiguration'; Name = 'OMA'; Id = 'oma'; File = 'E\om.json'; Hash = (Get-HUCompareHash $pair[2]); AHash = '' }) })
+            }
+            $rows = @(Compare-HUBackups -FolderA $a -FolderB $b)
+            ($rows | Where-Object Id -eq 'authorizationPolicy').Aenderung | Should -Be 'gleich'
+            ($rows | Where-Object Id -eq 'oma').Aenderung | Should -Be 'Einstellungen geaendert'
+            @(Get-HUBackupItemDiff -FileA (Join-Path $a 'E\om.json') -FileB (Join-Path $b 'E\om.json')).Count | Should -Be 1
+        }
+    }
+    It 'Administrative Vorlage: andere Reihenfolge der Werte ist keine Aenderung, anderer Wert schon' {
+        InModuleScope HU.Intune {
+            $pv = { param($l, $v) [pscustomobject]@{ value = $v; presentation = [pscustomobject]@{ label = $l; spin = $true } } }
+            $mk = { param($vals) [pscustomobject]@{ id = 'g1'; displayName = 'Zeitsync'; definitionValues = @([pscustomobject]@{ enabled = $true; definition = [pscustomobject]@{ displayName = 'Configure Windows NTP Client'; classType = 'machine' }; presentationValues = $vals }) } }
+            $a = & $mk @((& $pv 'EventLogFlags' 0), (& $pv 'Type' 'NT5DS'), (& $pv 'SpecialPollInterval' 1024))
+            $b = & $mk @((& $pv 'SpecialPollInterval' 1024), (& $pv 'EventLogFlags' 0), (& $pv 'Type' 'NT5DS'))
+            $c = & $mk @((& $pv 'SpecialPollInterval' 3600), (& $pv 'EventLogFlags' 0), (& $pv 'Type' 'NT5DS'))
+            (Get-HUCompareHash $a) | Should -Be (Get-HUCompareHash $b)
+            (Get-HUCompareHash $a) | Should -Not -Be (Get-HUCompareHash $c)
+            $ma = ConvertTo-HUFlatMap $a; $mb = ConvertTo-HUFlatMap $b; $mc = ConvertTo-HUFlatMap $c
+            @(Get-HUCompareDiff @{ A = $ma; B = $mb } @('A', 'B')).Count | Should -Be 0
+            $d = @(Get-HUCompareDiff @{ A = $ma; B = $mc } @('A', 'B'))
+            $d.Count | Should -Be 1
+            $ma.Keys | Should -Contain 'definitionValues[Configure Windows NTP Client].presentationValues[SpecialPollInterval].value'
+        }
+    }
+    It 'Defender-Connector: lastHeartbeatDateTime ist keine Aenderung, auch gegen aeltere Staende' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
+            param($Root)
+            $a = Join-Path $Root 'hb-alt'; $b = Join-Path $Root 'hb-neu'
+            New-Item -ItemType Directory -Path (Join-Path $a 'D'), (Join-Path $b 'D') -Force | Out-Null
+            $oa = [pscustomobject]@{ id = 'd1'; partnerState = 'enabled'; lastHeartbeatDateTime = '2026-10-22T04:51:20Z' }
+            $ob = [pscustomobject]@{ id = 'd1'; partnerState = 'enabled'; lastHeartbeatDateTime = '2026-10-23T04:55:24Z' }
+            $oc = [pscustomobject]@{ id = 'd2'; partnerState = 'enabled'; lastHeartbeatDateTime = '2026-10-22T04:51:20Z' }
+            $od = [pscustomobject]@{ id = 'd2'; partnerState = 'unavailable'; lastHeartbeatDateTime = '2026-10-23T04:55:24Z' }
+            Write-HUBackupJson (Join-Path $a 'D\d1.json') $oa; Write-HUBackupJson (Join-Path $b 'D\d1.json') $ob
+            Write-HUBackupJson (Join-Path $a 'D\d2.json') $oc; Write-HUBackupJson (Join-Path $b 'D\d2.json') $od
+            # alter Stand: Fingerabdruck mit Zeitstempel (wie vor dem Fix)
+            $old = { param($o) $j = $o | ConvertTo-Json -Compress; "alt-$($j.GetHashCode())" }
+            Write-HUBackupJson (Join-Path $a 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Types = @('Defender-Connector'); Items = @(
+                        [pscustomobject]@{ Typ = 'Defender-Connector'; Name = 'd1'; Id = 'd1'; File = 'D\d1.json'; Hash = (& $old $oa); AHash = '' }
+                        [pscustomobject]@{ Typ = 'Defender-Connector'; Name = 'd2'; Id = 'd2'; File = 'D\d2.json'; Hash = (& $old $oc); AHash = '' }) })
+            Write-HUBackupJson (Join-Path $b 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Types = @('Defender-Connector'); Items = @(
+                        [pscustomobject]@{ Typ = 'Defender-Connector'; Name = 'd1'; Id = 'd1'; File = 'D\d1.json'; Hash = (Get-HUCompareHash $ob); AHash = '' }
+                        [pscustomobject]@{ Typ = 'Defender-Connector'; Name = 'd2'; Id = 'd2'; File = 'D\d2.json'; Hash = (Get-HUCompareHash $od); AHash = '' }) })
+            $rows = @(Compare-HUBackups -FolderA $a -FolderB $b)
+            ($rows | Where-Object Id -eq 'd1').Aenderung | Should -Be 'gleich'
+            ($rows | Where-Object Id -eq 'd2').Aenderung | Should -Be 'Einstellungen geaendert'
+            (Get-HUCompareHash $oa) | Should -Be (Get-HUCompareHash $ob)
+        }
+    }
+    It 'Backup-Dateinamen eindeutig, auch bei gleichem langem Namen und gleichem Kennungs-Anfang' {
+        InModuleScope HU.Intune {
+            $u = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+            $long = 'Unbekannte Rolle eb1d8c34-acf5-460d-8424-c1fa6fbdb85 - Microsoft '
+            $r1 = Get-HUBackupRelPath $u 'Entra-Rollenzuweisung' ($long + 'Office 365 Portal') 'abcdefgh-1111'
+            $r2 = Get-HUBackupRelPath $u 'Entra-Rollenzuweisung' ($long + 'Rights Management Services') 'abcdefgh-2222'
+            $r3 = Get-HUBackupRelPath $u 'Entra-Rollenzuweisung' ($long + 'Rights Management Services') 'abcdefgh-2222'
+            $r1 | Should -Not -Be $r2
+            $r2 | Should -Match 'abcdefgh-2222\.json$'
+            $r3 | Should -Match '_2\.json$'
+            Get-HUBackupRelPath $u 'Compliance' 'Win' 'c1234567890' | Should -Be 'Compliance\Win__c1234567.json'
+        }
+    }
+    It 'Rollenzuweisung: wechselnde Benutzerdaten des Mitglieds (Lizenzen, Plaene) gelten nicht als Aenderung' {
+        InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
+            param($Root)
+            $a = Join-Path $Root 'ra-alt'; $b = Join-Path $Root 'ra-neu'
+            New-Item -ItemType Directory -Path (Join-Path $a 'R'), (Join-Path $b 'R') -Force | Out-Null
+            $mk = { param($plan, $upn) [pscustomobject]@{ id = 'ra1'; roleDefinitionId = 'r1'; principalId = 'u1'; directoryScopeId = '/'
+                    principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.user'; id = 'u1'; displayName = 'Admin'; userPrincipalName = $upn; assignedPlans = @([pscustomobject]@{ service = $plan; capabilityStatus = 'Enabled' }) } } }
+            $oa = & $mk 'exchange' 'a@x'; $ob = & $mk 'SharePoint' 'a@x'; $oc = & $mk 'SharePoint' 'b@x'
+            Write-HUBackupJson (Join-Path $a 'R\ra.json') $oa; Write-HUBackupJson (Join-Path $a 'R\ra2.json') $oa; Write-HUBackupJson (Join-Path $b 'R\ra.json') $ob; Write-HUBackupJson (Join-Path $b 'R\rc.json') $oc
+            Write-HUBackupJson (Join-Path $a 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Types = @('Entra-Rollenzuweisung'); Items = @(
+                        [pscustomobject]@{ Typ = 'Entra-Rollenzuweisung'; Name = 'GA - a'; Id = 'ra1'; File = 'R\ra.json'; Hash = (Get-HUCompareHash $oa); AHash = '' }
+                        [pscustomobject]@{ Typ = 'Entra-Rollenzuweisung'; Name = 'GA - c'; Id = 'ra2'; File = 'R\ra2.json'; Hash = (Get-HUCompareHash $oa); AHash = '' }) })
+            Write-HUBackupJson (Join-Path $b 'index.json') ([pscustomobject]@{ Errors = 0; Complete = $true; FailedTypes = @(); Types = @('Entra-Rollenzuweisung'); Items = @(
+                        [pscustomobject]@{ Typ = 'Entra-Rollenzuweisung'; Name = 'GA - a'; Id = 'ra1'; File = 'R\ra.json'; Hash = (Get-HUCompareHash $ob); AHash = '' }
+                        [pscustomobject]@{ Typ = 'Entra-Rollenzuweisung'; Name = 'GA - c'; Id = 'ra2'; File = 'R\rc.json'; Hash = (Get-HUCompareHash $oc); AHash = '' }) })
+            $rows = @(Compare-HUBackups -FolderA $a -FolderB $b)
+            ($rows | Where-Object Id -eq 'ra1').Aenderung | Should -Be 'gleich'
+            # anderes Mitglied bleibt eine Aenderung
+            ($rows | Where-Object Id -eq 'ra2').Aenderung | Should -Be 'Einstellungen geaendert'
+            # Detailansicht ohne Benutzerdaten
+            @(Get-HUBackupItemDiff -FileA (Join-Path $a 'R\ra.json') -FileB (Join-Path $b 'R\ra.json')).Count | Should -Be 0
+            # gekuerztes Mitglied: nur Kennung, Art, Namen
+            $t = ConvertTo-HURoleAsgComparable $oa
+            @($t.principal.PSObject.Properties.Name | Sort-Object) -join ',' | Should -Be '@odata.type,displayName,id,userPrincipalName'
+            $oa.principal.PSObject.Properties['assignedPlans'] | Should -Not -BeNullOrEmpty
+            # andere Objekte unveraendert
+            $x = [pscustomobject]@{ id = 'p'; displayName = 'Pol' }
+            [object]::ReferenceEquals((ConvertTo-HURoleAsgComparable $x), $x) | Should -BeTrue
+        }
+    }
     It 'aelterer Stand ohne Entra-Arten: "erstmals gesichert" statt "neu"; Listen ueber Name bzw. sprechende Kennung' {
         InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
             param($Root)
@@ -1057,6 +1175,36 @@ Describe 'Backup: Entra-Einstellungen (Baseline)' {
             @($ix.FailedTypes).Count | Should -Be 0
         }
     }
+    It 'Tenant-Vergleich: weitere Arten und Entra-Einstellungen, GUIDs zaehlen nicht, fehlendes Recht = nicht lesbar' {
+        InModuleScope HU.Intune {
+            Mock Write-HULog { }
+            Mock Invoke-HUIntuneGraph {
+                switch -Wildcard ($Endpoint) {
+                    '/policies/authorizationPolicy' { return [pscustomobject]@{ id = 'authorizationPolicy'; allowInvitesFrom = $(if ($TenantKey -eq 'A') { 'everyone' } else { 'adminsAndGuestInviters' }) } }
+                    '/policies/identitySecurityDefaultsEnforcementPolicy' { $ex = New-Object System.Exception('Graph GET: 403'); $ex.Data['StatusCode'] = 403; throw $ex }
+                    default { return [pscustomobject]@{ id = 'x' } }
+                }
+            }
+            Mock Get-HUIntuneGraphAll {
+                switch -Wildcard ($Endpoint) {
+                    '/deviceManagement/assignmentFilters*' { return @([pscustomobject]@{ id = $(if ($TenantKey -eq 'A') { '11111111-1111-1111-1111-111111111111' } else { '22222222-2222-2222-2222-222222222222' }); displayName = 'Nur Windows'; rule = '(device.osVersion -startsWith "10")' }) }
+                    '/domains' { return @([pscustomobject]@{ id = "$TenantKey.example" }) }
+                    default { return @() }
+                }
+            }
+            $rows = @(foreach ($k in 'A', 'B') { Get-HUCompareInventory -TenantKey $k -Settings ([pscustomobject]@{}) -Types @('Zuweisungsfilter', 'Entra-Einstellung', 'Domain') })
+            $m = @(Get-HUCompareMatrix $rows @('A', 'B'))
+            $f = $m | Where-Object { $_.Typ -eq 'Zuweisungsfilter' }
+            $f.Status | Should -Be 'ueberall'
+            $f.Copy | Should -BeNullOrEmpty
+            @($f.Items)[0].Obj.rule | Should -Match 'startsWith'
+            ($m | Where-Object { $_.Name -eq 'Autorisierungsrichtlinie' }).Status | Should -Match 'Einstellungen abweichend'
+            ($m | Where-Object { $_.Name -eq 'Sicherheitsstandards' }) | Should -BeNullOrEmpty
+            @($rows | Where-Object { $_.PSObject.Properties['Error'] -and $_.Error -match 'Policy.Read.All' }).Count | Should -Be 2
+            @($m | Where-Object Typ -eq 'Domain').Count | Should -Be 0
+        }
+    }
+
     It 'Entra-Rest: eingebaute ausgelassen, Rollenzuweisung mit Rollen- und Mitgliedsname, optionales Recht ohne Warnung' {
         InModuleScope HU.Intune -Parameters @{ Root = $script:entraRoot } {
             param($Root)
@@ -1067,7 +1215,8 @@ Describe 'Backup: Entra-Einstellungen (Baseline)' {
                     '/policies/authenticationStrengthPolicies' { return @([pscustomobject]@{ id = 'b'; displayName = 'MFA'; policyType = 'builtIn' }, [pscustomobject]@{ id = 'c'; displayName = 'Lehrer-MFA'; policyType = 'custom' }) }
                     '/policies/permissionGrantPolicies' { return @([pscustomobject]@{ id = 'microsoft-user-default-low'; displayName = 'Standard' }, [pscustomobject]@{ id = 'eigen'; displayName = 'Eigene' }) }
                     '/roleManagement/directory/roleDefinitions?*' { return @([pscustomobject]@{ id = '62e9'; displayName = 'Global Administrator' }) }
-                    '/roleManagement/directory/roleAssignments*' { return @([pscustomobject]@{ id = 'ra1'; roleDefinitionId = '62e9'; directoryScopeId = '/'; principal = [pscustomobject]@{ userPrincipalName = 'admin@schule.example' } }) }
+                    '/roleManagement/directory/roleAssignments*' { return @([pscustomobject]@{ id = 'ra1'; roleDefinitionId = '62e9'; directoryScopeId = '/'; principal = [pscustomobject]@{ userPrincipalName = 'admin@schule.example' } }, [pscustomobject]@{ id = 'ra2'; roleDefinitionId = 'eb1d'; directoryScopeId = '/'; principal = [pscustomobject]@{ displayName = 'Dienst A' } }, [pscustomobject]@{ id = 'ra3'; roleDefinitionId = 'zz99'; directoryScopeId = '/'; principal = [pscustomobject]@{ displayName = 'Dienst B' } }) }
+                    '/directoryRoleTemplates' { return @([pscustomobject]@{ id = '62e9'; displayName = 'Vorlage GA' }, [pscustomobject]@{ id = 'eb1d'; displayName = 'Altrolle' }) }
                     '/groupLifecyclePolicies' { $ex = New-Object System.Exception('Graph GET: 403'); $ex.Data['StatusCode'] = 403; throw $ex }
                     default { return @() }
                 }
@@ -1077,7 +1226,7 @@ Describe 'Backup: Entra-Einstellungen (Baseline)' {
             $ix = Read-HUBackupJson (Join-Path $b.Folder 'index.json')
             @($ix.Items | Where-Object Typ -eq 'Authentifizierungsstaerke').Name | Should -Be @('Lehrer-MFA')
             @($ix.Items | Where-Object Typ -eq 'Zustimmungsrichtlinie').Name | Should -Be @('Eigene')
-            ($ix.Items | Where-Object Typ -eq 'Entra-Rollenzuweisung').Name | Should -Be 'Global Administrator - admin@schule.example'
+            @($ix.Items | Where-Object Typ -eq 'Entra-Rollenzuweisung' | ForEach-Object Name | Sort-Object) | Should -Be @('Altrolle - Dienst A', 'Global Administrator - admin@schule.example', 'Unbekannte Rolle zz99 - Dienst B')
             @($ix.Items | Where-Object Typ -eq 'Dienst-Einstellung').Count | Should -Be 2
             @($ix.FailedTypes) | Should -Contain 'Gruppen-Ablauf'
             @($b.MissingPerms).Count | Should -Be 0
