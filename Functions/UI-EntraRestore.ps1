@@ -23,6 +23,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <StackPanel Grid.Row="0">
             <TextBlock x:Name="lblTitle" Foreground="#E0E0E0" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
@@ -49,7 +50,11 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
         <ScrollViewer Grid.Row="3" MaxHeight="200" VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
             <StackPanel x:Name="pnlInfo"/>
         </ScrollViewer>
-        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+        <StackPanel x:Name="pnlType" Grid.Row="4" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
+            <TextBlock x:Name="lblType" Foreground="#FF8A65" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox x:Name="txtType" Width="220" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Zur Sicherheit den Namen des Ziel-Tenants eintippen"/>
+        </StackPanel>
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="btnWrite" Content="&#x21BA; Zurueckschreiben" Width="170" Background="#A65A28" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Liest den Tenant erneut, sichert den aktuellen Stand als Datei, schreibt nur die gezeigten Felder und prueft danach nach"/>
             <Button x:Name="btnCancel" Content="Abbrechen" Width="110" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
@@ -61,9 +66,11 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
     $w = $d.Window; $c = $d.C
-    $w.Title = if ($Plan.Kind -eq 'caNew') { 'Conditional Access wiederherstellen (Nur Bericht)' } else { 'Entra-Einstellung zurueckschreiben' }
-    $c.lblTitle.Text = "$($Plan.Typ): $($Plan.Name)  -  $TenantName"
-    $c.lblSub.Text = if ($Plan.Method -eq 'POST') { "Aus dem Stand $Stamp in denselben Tenant als NEUE Richtlinie, Schreibrecht: $($Plan.Perm). Die bestehende Richtlinie wird nicht veraendert." } else { "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert." }
+    $isTr = ("$($Plan.Kind)" -eq 'transferNew')
+    $w.Title = if ($isTr) { 'Uebertragen' } elseif ($Plan.Kind -eq 'caNew') { 'Conditional Access wiederherstellen (Nur Bericht)' } else { 'Entra-Einstellung zurueckschreiben' }
+    $c.lblTitle.Text = if ($isTr) { "$($Plan.Typ): $($Plan.Name)  -  $($Plan.SourceLabel) -> $TenantName" } else { "$($Plan.Typ): $($Plan.Name)  -  $TenantName" }
+    if ($isTr) { $c.gridChanges.Columns[3].Header = 'Danach (aus der Quelle)'; $c.btnWrite.Content = "$([char]0x2192) Neu anlegen" }
+    $c.lblSub.Text = if ($isTr) { "Wird in $TenantName NEU angelegt, ohne Zuweisungen. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird erneut geprueft, ob es den Namen dort inzwischen gibt; danach wird nachgelesen und eine Rueckgaengig-Datei angelegt." } elseif ($Plan.Method -eq 'POST') { "Aus dem Stand $Stamp in denselben Tenant als NEUE Richtlinie, Schreibrecht: $($Plan.Perm). Die bestehende Richtlinie wird nicht veraendert." } else { "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert." }
     # B1: gekuerzte Werte muessen vor dem Schreiben einmal voll angesehen werden (Zeile markieren, voller Wert klappt auf)
     $rows = @($Plan.Changes | ForEach-Object { [pscustomobject]@{ Feld = $_.Feld; Anzahl = $_.Anzahl; Jetzt = $_.Jetzt; Danach = $_.Danach; JetztVoll = $_.JetztVoll; DanachVoll = $_.DanachVoll; Gekuerzt = [bool]$_.Gekuerzt; Status = $(if ($_.Gekuerzt) { 'ansehen' } else { '' }) } })
     $c.gridChanges.ItemsSource = $rows
@@ -91,8 +98,12 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     if ($Plan.Dropped.Count) { & $add "Wird nicht geschrieben (nicht beschreibbar oder bewusst ausgelassen): $($Plan.Dropped -join ', ')" '#AAAAAA' }
     foreach ($n in $Plan.Notes) { & $add "Hinweis: $n" '#90CAF9' }
     $state = @{ Ok = $false }
-    $upd = { $c.btnWrite.IsEnabled = (-not $Plan.Blocks.Count) -and $Plan.Changes.Count -and -not @($checks | Where-Object { -not $_.IsChecked }).Count -and -not @($rows | Where-Object { $_.Gekuerzt -and $_.Status -ne 'gesehen' }).Count }
+    # 045 Ue-10: bei mehreren Zielen den Ziel-Tenant-Namen eintippen
+    $typeName = if ($Plan.PSObject.Properties['TypeToConfirm']) { "$($Plan.TypeToConfirm)" } else { '' }
+    if ($typeName) { $c.pnlType.Visibility = 'Visible'; $c.lblType.Text = "Zum Bestaetigen '$typeName' eintippen:" }
+    $upd = { $c.btnWrite.IsEnabled = (-not $Plan.Blocks.Count) -and $Plan.Changes.Count -and -not @($checks | Where-Object { -not $_.IsChecked }).Count -and -not @($rows | Where-Object { $_.Gekuerzt -and $_.Status -ne 'gesehen' }).Count -and (-not $typeName -or "$($c.txtType.Text)".Trim() -eq $typeName) }
     foreach ($cb in $checks) { $cb.Add_Checked($upd); $cb.Add_Unchecked($upd) }
+    $c.txtType.Add_TextChanged($upd)
     $c.gridChanges.Add_SelectionChanged({
             $r = $c.gridChanges.SelectedItem
             if (-not $r) { return }
@@ -106,7 +117,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     # nur eine Zeile: gleich markieren, damit der volle Wert sofort zu sehen ist
     if ($rows.Count -eq 1 -and -not $rows[0].Gekuerzt) { $c.gridChanges.SelectedIndex = 0 }
     $c.btnWrite.Add_Click({
-            $q = if ($Plan.Method -eq 'POST') { "'$($Plan.Body.displayName)' jetzt in $TenantName NEU anlegen ($(if ($Plan.Body.state -eq 'disabled') { 'ausgeschaltet' } else { 'Nur Bericht' }))?" } else { "Jetzt $($Plan.Changes.Count) Feld(er) von '$($Plan.Name)' in $TenantName zurueckschreiben?" }
+            $q = if ($isTr) { "'$($Plan.NewName)' jetzt in $TenantName NEU anlegen (ohne Zuweisungen)?" } elseif ($Plan.Method -eq 'POST') { "'$($Plan.Body.displayName)' jetzt in $TenantName NEU anlegen ($(if ($Plan.Body.state -eq 'disabled') { 'ausgeschaltet' } else { 'Nur Bericht' }))?" } else { "Jetzt $($Plan.Changes.Count) Feld(er) von '$($Plan.Name)' in $TenantName zurueckschreiben?" }
             if (-not (Confirm-HU $q -Warning -Owner $w)) { return }
             $state.Ok = $true; $w.Close()
         })

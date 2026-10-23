@@ -52,6 +52,7 @@ function Get-HUPermUsage {
 }
 
 function Get-HUTenantDisplayName([string]$Key) {
+    if ($Key -eq (Get-HUMusterKey)) { return (Get-HUAnaTenantName $Key) }
     $t = @($script:Settings.tenants) | Where-Object { "$($_.key)" -eq $Key } | Select-Object -First 1
     if ($t -and "$($t.displayName)") { return "$($t.displayName)" }
     return $Key

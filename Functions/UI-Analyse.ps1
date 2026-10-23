@@ -222,7 +222,7 @@ function Update-HUCmpHint {
     $all = @($script:CmpMatrix)
     $d = @($all | Where-Object Diff).Count
     $vis = @(Get-HUCmpVisibleRows).Count
-    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' fuer Profile, Compliance, Feature-Updates, Autopilot, Conditional Access (Zelle Ein, Aus oder Melden) und die weiteren Arten aus dem Backup; IDs von Gruppen, Apps und Orten zaehlen dabei nicht, die Namen zeigt der Doppelklick. Doppelklick zeigt die abweichenden Einstellungen. Kopieren ohne Zuweisungen, nur Intune-Grundarten."
+    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' fuer Profile, Compliance, Feature-Updates, Autopilot, Conditional Access (Zelle Ein, Aus oder Melden) und die weiteren Arten aus dem Backup; IDs von Gruppen, Apps und Orten zaehlen dabei nicht, die Namen zeigt der Doppelklick. Doppelklick zeigt die abweichenden Einstellungen. Uebertragen: einen Eintrag markieren, Quelle und Ziele waehlen, je Ziel Vorschau - neu angelegt ohne Zuweisungen, nur Intune-Grundarten."
 }
 
 function Get-HUCmpVisibleRows {
@@ -346,43 +346,147 @@ function Start-HUCmpRun {
     Update-HUCmpHint
 }
 
+# Uebertragen A (2.4.1, Konzept 045): genau ein Eintrag, Quelle waehlen (Tenant oder Muster), Ziele waehlen,
+# je Ziel Vorschau mit Pruefungen -> neu anlegen (ohne Zuweisungen) -> Nachpruefung, Rueckgaengig-Datei.
 function Start-HUCmpCopy {
     $c = $script:Controls
     $mk = Get-HUMusterKey
-    $sel = @($c['gridCmp'].SelectedItems | ForEach-Object { $_.Ref } | Where-Object { $r = $_; $r -and @($r.Missing | Where-Object { $_ -ne $mk }).Count -and @($r.Items | Where-Object { $_.Tenant -ne $mk }).Count })
-    if (-not $sel.Count) { Show-HUMessage 'Bitte Eintraege markieren, die in einem Tenant fehlen (Strg/Shift fuer mehrere).' -Icon Info; return }
-    $dupSel = @($sel | Where-Object { $_.Dupe })
-    if ($dupSel.Count) { Show-HUMessage "$($dupSel.Count) markierte(r) Eintrag/Eintraege ist in einem Tenant doppelt - wird nicht kopiert (unklar, welche Fassung die richtige ist):`n`n$(@($dupSel | ForEach-Object { "  $($_.Typ): $($_.Name)" }) -join "`n")" -Icon Warning }
-    $sel = @($sel | Where-Object { -not $_.Dupe })
-    if (-not $sel.Count) { return }
-    $no = @($sel | Where-Object { -not $_.Copy })
-    $todo = @($sel | Where-Object { $_.Copy })
-    if (-not $todo.Count) { Show-HUMessage "Diese Arten koennen nicht kopiert werden: $(@($no | ForEach-Object { $_.Typ } | Select-Object -Unique) -join ', ').`n`nApps ueber die Bibliothek verteilen; Conditional Access und Autopilot im Portal anlegen (Gruppen-IDs unterscheiden sich je Tenant). Die weiteren Arten (z. B. App-Schutz, Registrierung, Entra-Einstellungen) werden vorerst nur verglichen." -Icon Info; return }
-    $jobs = foreach ($m in $todo) {
-        # aus dem Muster wird nicht kopiert (Uebertragen kommt mit 2.4.1), ins Muster auch nicht
-        $srcItem = @($m.Items | Where-Object { $_.Tenant -ne $mk })[0]
-        foreach ($t in @($m.Missing | Where-Object { $_ -ne $mk })) { [pscustomobject]@{ Typ = $m.Typ; Name = $m.Name; From = $srcItem.Tenant; Id = $srcItem.Id; To = $t } }
+    $sel = @($c['gridCmp'].SelectedItems | ForEach-Object { $_.Ref } | Where-Object { $_ })
+    if ($sel.Count -ne 1) { Show-HUMessage 'Bitte genau einen Eintrag markieren - Uebertragen geht je Eintrag, mit Vorschau je Ziel-Tenant.' -Icon Info; return }
+    $m = $sel[0]
+    if ($m.Dupe) { Show-HUMessage "'$($m.Name)' ist in einem Tenant doppelt - wird nicht uebertragen (unklar, welche Fassung die richtige ist)." -Icon Warning; return }
+    if (-not (@(Get-HUCompareSources | Where-Object { $_.Typ -eq $m.Typ -and $_.Copy }).Count)) { Show-HUMessage "$($m.Typ) laesst sich (noch) nicht uebertragen.`n`nApps ueber die Bibliothek verteilen; Conditional Access, Autopilot und die weiteren Arten werden vorerst nur verglichen." -Icon Info; return }
+    $targets = @($m.Missing | Where-Object { $_ -ne $mk })
+    if (-not $targets.Count) { Show-HUMessage "'$($m.Name)' fehlt in keinem angehakten Tenant. Bestehende angleichen kommt mit 2.4.2." -Icon Info; return }
+    $have = @($m.Items | ForEach-Object { $_.Tenant } | Select-Object -Unique)
+    $srcKey = $have[0]
+    if ($have.Count -gt 1) {
+        $pick = @(Show-HUTenantChoice -Title 'Quelle' -Text "Von welchem Tenant soll '$($m.Name)' uebernommen werden? Genau einen anhaken." -Keys $have -OkText 'Weiter')
+        if (-not $pick.Count) { return }
+        if ($pick.Count -ne 1) { Show-HUMessage 'Bitte genau eine Quelle anhaken.' -Icon Warning; return }
+        $srcKey = $pick[0]
     }
-    $jobs = @($jobs)
-    $lines = @($jobs | Select-Object -First 15 | ForEach-Object { "  $($_.Typ): $($_.Name)  ($(Get-HUAnaTenantName $_.From) -> $(Get-HUAnaTenantName $_.To))" })
-    $more = if ($jobs.Count -gt 15) { "`n  ... und $($jobs.Count - 15) weitere" } else { '' }
-    $skip = if ($no.Count) { "`n`nNicht kopierbar (uebersprungen): $($no.Count)" } else { '' }
-    if (-not (Confirm-HU "$($jobs.Count) Kopie(n) anlegen - OHNE Zuweisungen (wirkt also noch auf keinem Geraet):`n`n$($lines -join "`n")$more$skip`n`nKennwoerter/Zertifikate in Profilen liefert Intune nicht mit - solche Profile danach im Portal pruefen.")) { return }
-    $c['btnCmpCopy'].IsEnabled = $false
-    $ok = Start-HUJob -Name 'CmpCopy' -Output $c['rtbAna'] -Vars @{ Jobs = $jobs } -Code {
-        foreach ($j in $Jobs) {
-            try {
-                [void](Copy-HUIntuneObject -Typ $j.Typ -SourceTenant $j.From -SourceId $j.Id -TargetTenant $j.To -Settings $Settings)
-                Write-HULog -Message "$($j.Typ) '$($j.Name)' kopiert (ohne Zuweisungen)" -Level 'OK' -Tenant $j.To
-            } catch { Write-HULog -Message "$($j.Typ) '$($j.Name)': $($_.Exception.Message)" -Level 'ERROR' -Tenant $j.To }
+    $tg = @(Show-HUTenantChoice -Title 'Uebertragen nach' -Text "'$($m.Name)' aus $(Get-HUAnaTenantName $srcKey) in welche Tenants neu anlegen (ohne Zuweisungen)? Je Tenant folgt eine eigene Vorschau." -Keys $targets -OkText 'Weiter')
+    if (-not $tg.Count) { return }
+    $srcItem = @($m.Items | Where-Object { $_.Tenant -eq $srcKey })[0]
+    $muster = $null; if ($srcKey -eq $mk) { try { $muster = Get-HUMuster $script:Settings } catch { } }
+    $script:TrQueue = New-Object System.Collections.Generic.Queue[object]
+    foreach ($t in $tg) { $script:TrQueue.Enqueue($t) }
+    $script:TrCtx = @{ Typ = $m.Typ; Name = $m.Name; Src = $srcKey; SrcLabel = (Get-HUAnaTenantName $srcKey); Resolve = $(if ($muster) { $muster.Source } else { $srcKey })
+        Obj = $(if ($srcItem.PSObject.Properties['Obj'] -and $null -ne $srcItem.Obj) { $srcItem.Obj } else { $null }); Id = $srcItem.Id; Multi = ($tg.Count -gt 1); Done = 0; DoneNames = (New-Object System.Collections.Generic.List[string]); Cur = '' }
+    Start-HUTransferNext
+}
+
+# naechstes Ziel aus der Warteschlange: Plan lesen -> Vorschau -> schreiben -> Ergebnis -> weiter
+function Start-HUTransferNext {
+    $c = $script:Controls
+    if (-not $script:TrQueue -or -not $script:TrQueue.Count) {
+        $x = $script:TrCtx
+        if ($x -and $x.Done) {
+            Add-HURtbLine $c['rtbAna'] 'Uebertragen fertig - Vergleich wird neu geladen.' '#90CAF9'
+            if ($x.Multi) { Show-HUMessage "'$($x.Name)' neu angelegt in: $(@($x.DoneNames) -join ', ').`n`nNoch OHNE Zuweisungen - zum Wirken im jeweiligen Tenant zuweisen (Zuweisungen werden nicht uebertragen)." -Icon Info }
+            Start-HUCmpRun
         }
-    } -OnDone {
-        param($Result, $Errors)
-        $script:Controls['btnCmpCopy'].IsEnabled = $true
-        Add-HURtbLine $script:Controls['rtbAna'] 'Fertig - Vergleich wird neu geladen.' '#90CAF9'
-        Start-HUCmpRun
+        return
     }
-    if (-not $ok) { $c['btnCmpCopy'].IsEnabled = $true }
+    $t = $script:TrQueue.Dequeue()
+    $script:TrCtx.Cur = (Get-HUAnaTenantName $t)
+    $x = $script:TrCtx
+    Add-HURtbLine $c['rtbAna'] "Pruefe '$($x.Name)' fuer $(Get-HUAnaTenantName $t) ..." '#90CAF9'
+    [void](Start-HUJob -Name 'TransferPlan' -Quiet -Output $c['rtbAna'] -Vars @{ X = $x; T = $t } -Code {
+            try {
+                $o = if ($null -ne $X.Obj) { $X.Obj } else { Get-HUCompareObject -TenantKey $X.Src -Settings $Settings -Typ $X.Typ -Id $X.Id }
+                [pscustomobject]@{ __Plan = (Get-HUTransferPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T) }
+            } catch { [pscustomobject]@{ __PlanError = "$($_.Exception.Message)" } }
+        } -OnDone {
+            param($Result, $Errors)
+            $r = @($Result | Where-Object { $_ -and ($_.PSObject.Properties['__Plan'] -or $_.PSObject.Properties['__PlanError']) }) | Select-Object -First 1
+            if (-not $r) { Show-HUMessage 'Vorschau fehlgeschlagen (siehe Protokoll).' -Icon Error; Start-HUTransferNext; return }
+            if ($r.PSObject.Properties['__PlanError']) { Show-HUMessage "Vorschau fehlgeschlagen: $($r.__PlanError)" -Icon Error; Start-HUTransferNext; return }
+            $plan = $r.__Plan
+            $tn = Get-HUAnaTenantName $plan.TenantKey
+            if ($script:TrCtx.Multi) { $plan | Add-Member -NotePropertyName TypeToConfirm -NotePropertyValue $tn -Force }
+            if (-not (Show-HUEntraRestorePreview $plan $tn '')) { Add-HURtbLine $script:Controls['rtbAna'] "$tn`: nicht uebertragen." '#AAAAAA'; Start-HUTransferNext; return }
+            [void](Start-HUJob -Name 'TransferWrite' -Output $script:Controls['rtbAna'] -Vars @{ Plan = $plan } -Code {
+                    try { [pscustomobject]@{ __Res = (Invoke-HUTransfer -Plan $Plan -Settings $Settings) } }
+                    catch { Write-HULog -Message "$($Plan.Typ) '$($Plan.Name)': $($_.Exception.Message)" -Level 'ERROR' -Tenant $Plan.TenantKey; [pscustomobject]@{ __ResError = "$($_.Exception.Message)" } }
+                } -OnDone {
+                    param($Result, $Errors)
+                    $r2 = @($Result | Where-Object { $_ -and ($_.PSObject.Properties['__Res'] -or $_.PSObject.Properties['__ResError']) }) | Select-Object -First 1
+                    if (-not $r2) { Show-HUMessage 'Uebertragen: kein Ergebnis (siehe Protokoll).' -Icon Error }
+                    elseif ($r2.PSObject.Properties['__ResError']) { Show-HUMessage "Nicht uebertragen:`n`n$($r2.__ResError)" -Icon Error }
+                    else {
+                        $res = $r2.__Res; $script:TrCtx.Done++; [void]$script:TrCtx.DoneNames.Add("$($script:TrCtx.Cur)")
+                        $txt = "Neu angelegt (Id $($res.NewId)), ohne Zuweisungen - zum Wirken im Ziel zuweisen. Rueckgaengig: Tenant-Vergleich > Rueckgaengig ..."
+                        if ($res.Mismatch.Count) { $txt += "`n`nNachpruefung - $($res.Mismatch.Count) Einstellung(en) weichen von der Quelle ab:`n$(@($res.Mismatch | Select-Object -First 12) -join "`n")$(if ($res.Mismatch.Count -gt 12) { "`n..." })" } else { $txt += "`n`nNachpruefung: alle Einstellungen wie in der Quelle." }
+                        if ($res.Dropped.Count) { $txt += "`n`nNicht uebernommen: $($res.Dropped -join '; ')" }
+                        if ($res.Ok) { Show-HUMessage $txt -Icon Info }
+                        # 047 F3: Abweichung deutlich melden und Rueckgaengig direkt anbieten (nicht automatisch)
+                        elseif (Confirm-HU "ACHTUNG - im Ziel ist nicht alles wie in der Quelle angekommen.`n`n$txt`n`nJetzt rueckgaengig machen (das neu angelegte Objekt wieder loeschen)?" -Warning) {
+                            [void](Start-HUJob -Name 'TransferUndo' -Output $script:Controls['rtbAna'] -Vars @{ F = $res.UndoFile } -Code {
+                                    try { $u = Undo-HUTransfer -Settings $Settings -File $F; Write-HULog -Message $u.Text -Level 'OK' }
+                                    catch { Write-HULog -Message "Rueckgaengig: $($_.Exception.Message)" -Level 'ERROR' }
+                                })
+                        }
+                    }
+                    Start-HUTransferNext
+                })
+        })
+}
+
+# Rueckgaengig: zuvor uebertragene (neu angelegte) Objekte wieder loeschen - nur wenn seitdem unveraendert
+function Start-HUTransferUndo {
+    $c = $script:Controls
+    $keys = @(Get-HUCheckedTenants $c['spAnaTenants'])
+    $list = @(Get-HUTransferUndoList -Settings $script:Settings -Keys $keys)
+    if (-not $list.Count) { Show-HUMessage 'In den angehakten Tenants gibt es nichts rueckgaengig zu machen (keine Uebertragungen gespeichert).' -Icon Info; return }
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="760" Height="460" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <DockPanel Margin="16">
+        <TextBlock DockPanel.Dock="Top" Foreground="#E0E0E0" TextWrapping="Wrap" Margin="0,0,0,10"
+                   Text="Uebertragene Objekte wieder loeschen. Geht nur, wenn das Objekt im Ziel seitdem unveraendert ist (auch nicht zugewiesen)."/>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="btnOk" Content="Rueckgaengig ..." Width="140" Background="#B71C1C" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
+            <Button x:Name="btnCancel" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+        </StackPanel>
+        <DataGrid x:Name="grid" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Tenant" Binding="{Binding TenantName}" Width="140"/>
+                <DataGridTextColumn Header="Art" Binding="{Binding Typ}" Width="140"/>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                <DataGridTextColumn Header="Uebertragen" Binding="{Binding Zeit}" Width="140"/>
+                <DataGridTextColumn Header="Quelle" Binding="{Binding Quelle}" Width="120"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>
+'@
+    $theme = Get-HUXaml 'Theme'
+    $mm = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+    $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $mm.Groups[1].Value))
+    $w = $d.Window; $dc = $d.C
+    $w.Title = 'Uebertragen rueckgaengig'
+    $dc.grid.ItemsSource = @($list | ForEach-Object { $_ | Add-Member -NotePropertyName TenantName -NotePropertyValue (Get-HUAnaTenantName $_.Tenant) -Force -PassThru })
+    $state = @{ Sel = @() }
+    $dc.btnOk.Add_Click({
+            $state.Sel = @($dc.grid.SelectedItems)
+            if (-not $state.Sel.Count) { Show-HUMessage 'Bitte Eintraege markieren.' -Icon Info -Owner $w; return }
+            if (-not (Confirm-HU "$($state.Sel.Count) Objekt(e) im Ziel LOESCHEN?`n`n$(@($state.Sel | Select-Object -First 10 | ForEach-Object { "  $($_.TenantName): $($_.Typ) '$($_.Name)'" }) -join "`n")" -Warning -Owner $w)) { $state.Sel = @(); return }
+            $w.Close()
+        })
+    [void]$w.ShowDialog()
+    if (-not $state.Sel.Count) { return }
+    $files = @($state.Sel | ForEach-Object { $_.Datei })
+    [void](Start-HUJob -Name 'TransferUndo' -Output $c['rtbAna'] -Vars @{ Files = $files } -Code {
+            foreach ($f in $Files) {
+                try { $r = Undo-HUTransfer -Settings $Settings -File $f; Write-HULog -Message $r.Text -Level 'OK' }
+                catch { Write-HULog -Message "Rueckgaengig: $($_.Exception.Message)" -Level 'ERROR' }
+            }
+        } -OnDone { param($Result, $Errors); if (@($script:CmpKeys).Count) { Start-HUCmpRun } })
 }
 
 # Namenszuordnung (nur lesen): Gruppen, Orte, Filter, Bereichsmarkierungen der Quelle in den Ziel-Tenants nach Name suchen.
@@ -470,6 +574,7 @@ function Register-HUCmpHandlers {
     $c['txtCmpFilter'].Add_TextChanged({ Update-HUCmpGrid })
     $c['btnCmpRun'].Add_Click({ Start-HUCmpRun })
     $c['btnCmpCopy'].Add_Click({ Start-HUCmpCopy })
+    $c['btnCmpUndo'].Add_Click({ Start-HUTransferUndo })
     $c['btnCmpMap'].Add_Click({ Start-HUCmpMap })
     $c['chkCmpMuster'].IsChecked = [bool](Get-HUStateValue 'cmpMuster' $false)
     $c['chkCmpMuster'].Add_Checked({ Set-HUStateValue 'cmpMuster' $true })

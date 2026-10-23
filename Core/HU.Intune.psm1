@@ -2568,7 +2568,8 @@ function ConvertTo-HUHashtable($Obj) {
 # -Name: anderer Name (z. B. "... (wiederhergestellt)"). Conditional Access nur mit -AllowCA (wird deaktiviert angelegt).
 function New-HUIntuneObject {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [Parameter(Mandatory)]$Obj, [string]$Name = '', [switch]$AllowCA)
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [Parameter(Mandatory)]$Obj, [string]$Name = '', [switch]$AllowCA, [string[]]$ScopeTagIds = @('0'))
+    if (-not @($ScopeTagIds | Where-Object { "$_" }).Count) { $ScopeTagIds = @('0') }
     $src = Get-HUCompareSources | Where-Object { $_.Typ -eq $Typ } | Select-Object -First 1
     if (-not $src) { throw "Unbekannte Art: $Typ" }
     $o = $Obj
@@ -2577,7 +2578,7 @@ function New-HUIntuneObject {
     switch ($Typ) {
         'Einstellungskatalog' {
             $body = @{
-                name = "$($o.name)"; description = "$($o.description)"; platforms = "$($o.platforms)"; technologies = "$($o.technologies)"; roleScopeTagIds = @('0')
+                name = "$($o.name)"; description = "$($o.description)"; platforms = "$($o.platforms)"; technologies = "$($o.technologies)"; roleScopeTagIds = [object[]]@($ScopeTagIds)
                 settings = @(@($o.settings) | ForEach-Object { @{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationSetting'; settingInstance = (ConvertTo-HUHashtable (ConvertTo-HUCleanObject $_.settingInstance @())) } })
             }
             if ($o.templateReference -and "$($o.templateReference.templateId)") { $body.templateReference = @{ templateId = "$($o.templateReference.templateId)" } }
@@ -2592,10 +2593,10 @@ function New-HUIntuneObject {
             $acts = @($acts | Where-Object { $_.actionType -ne 'notification' -and $_.actionType -ne 'pushNotification' })
             if (-not $acts.Count) { $acts = @(@{ actionType = 'block'; gracePeriodHours = 0; notificationTemplateId = ''; notificationMessageCCList = @() }) }
             $body.scheduledActionsForRule = @(@{ ruleName = 'PasswordRequired'; scheduledActionConfigurations = $acts })
-            $body.roleScopeTagIds = @('0')
+            $body.roleScopeTagIds = [object[]]@($ScopeTagIds)
         }
         'Administrative Vorlage' {
-            $body = @{ displayName = "$($o.displayName)"; description = "$($o.description)"; roleScopeTagIds = @('0') }
+            $body = @{ displayName = "$($o.displayName)"; description = "$($o.description)"; roleScopeTagIds = [object[]]@($ScopeTagIds) }
         }
         'Conditional Access' {
             if (-not $AllowCA) { throw 'Conditional Access wird nicht in andere Tenants kopiert (Gruppen-IDs verschieden)' }
@@ -2605,7 +2606,7 @@ function New-HUIntuneObject {
         default {
             if (-not $src.Copy) { throw "$Typ kann nicht angelegt werden" }
             $body = ConvertTo-HUHashtable (ConvertTo-HUCleanObject $o)
-            $body.roleScopeTagIds = @('0')
+            $body.roleScopeTagIds = [object[]]@($ScopeTagIds)
         }
     }
     if ($Typ -eq 'Conditional Access') { $body.Remove('roleScopeTagIds') }
@@ -2629,7 +2630,11 @@ function New-HUIntuneObject {
             catch { $dvFail++; Write-HULog -Message "Administrative Vorlage '$($o.displayName)': Einstellung '$($dv.definition.displayName)' nicht uebernommen ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey }
         }
         # halb fertig darf nicht als OK gelten
-        if ($dvFail) { throw "UNVOLLSTAENDIG angelegt: $dvFail von $dvTotal Einstellungen fehlen - '$(if ($Name) { $Name } else { $o.displayName })' NICHT zuweisen, im Portal pruefen oder loeschen" }
+        if ($dvFail) {
+            $ex = New-Object System.Exception("UNVOLLSTAENDIG angelegt: $dvFail von $dvTotal Einstellungen fehlen - '$(if ($Name) { $Name } else { $o.displayName })' NICHT zuweisen, im Portal pruefen oder loeschen")
+            $ex.Data['NewId'] = $newId; $ex.Data['Endpoint'] = "$base/$newId"
+            throw $ex
+        }
     }
     return $newId
 }
@@ -3103,8 +3108,9 @@ function Remove-HUOldBackups {
     foreach ($o in $old) { Remove-Item -LiteralPath $o.Folder -Recurse -Force -ErrorAction SilentlyContinue }
     $n = $old.Count
     if ($MaxDays -gt 0) {
-        $pre = Join-Path (Join-Path $Root (ConvertTo-HUSafeFileName $TenantKey)) '_vor-zurueckschreiben'
-        if (Test-Path -LiteralPath $pre) {
+        foreach ($sub in '_vor-zurueckschreiben', '_vor-uebertragen') {
+            $pre = Join-Path (Join-Path $Root (ConvertTo-HUSafeFileName $TenantKey)) $sub
+            if (-not (Test-Path -LiteralPath $pre)) { continue }
             # die juengste Sicherung bleibt immer (sonst ist das Rueckgaengigmachen weg, 046 B4)
             foreach ($f in @(Get-ChildItem -LiteralPath $pre -File -Filter '*.json' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 1 | Where-Object { $_.LastWriteTime -lt $Now.AddDays(-$MaxDays) })) { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue; $n++ }
         }
