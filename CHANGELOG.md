@@ -1,5 +1,20 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.3.5 (Testversion, 23.10.2026, Weg zu 2.4.0)
+
+### ⭐ Mustertenant als Soll-Stand
+- **Neu:** Backup & Verlauf › *Als Muster festhalten …*: Ein vollständiger Backup-Stand eines Tenants wird zum Soll-Stand. Er liegt unter `Backups\_Muster`, läuft nicht ab, und ein neues Muster schiebt das alte nach `_Muster\frueher`.
+- **Im Tenant-Vergleich:** Haken *Muster* – das Muster läuft als eigene Spalte mit, mit denselben Regeln für „abweichend“. Der Doppelklick zeigt die Einstellungen, Namen werden im Quell-Tenant des Musters nachgeschlagen. Aus dem Muster und ins Muster wird nicht kopiert.
+
+### 🔗 Namenszuordnung prüfen (nur lesen)
+- **Neu:** Tenant-Vergleich › *Zuordnung prüfen*: Welche Gruppen, benannten Orte, Zuweisungsfilter und Bereichsmarkierungen die Quelle verwendet (Muster, sonst der neueste vollständige Stand des ersten angehakten Tenants) – und ob es sie in den anderen Tenants unter demselben Namen genau einmal gibt: *ok*, *fehlt*, *mehrfach* oder *nicht prüfbar*.
+- **Benutzer und Notfallkonten:** Einzelne Benutzer sind nicht zuordenbar; Notfallkonten werden beim Übertragen durch die des Ziels ersetzt. Dazu je Tenant, ob Notfallkonten hinterlegt und aktiv sind.
+- **Grundlage** für das Übertragen ab 2.4.1; es wird nichts geschrieben.
+
+### 🎨 Tenant-Vergleich: Farben
+- **Schalter „Farben“** (wie im Sicherheitskatalog, bleibt gespeichert): grün = vorhanden und gleich wie das Muster (ohne Muster: wie die Mehrheit), orange = Einstellungen abweichend, rot = fehlt, grau = nicht lesbar.
+- **Muster und Apps:** Apps stehen im Backup nur mit Namen; im Muster gelten sie jetzt als vorhanden statt „nicht lesbar“. Im Status steht „Muster“ statt der internen Kennung.
+
 ## v2.3.4 (Testversion, 23.10.2026, Weg zu 2.4.0)
 
 ### 🛡️ Conditional Access zurückschreiben – nur als „Nur Bericht“

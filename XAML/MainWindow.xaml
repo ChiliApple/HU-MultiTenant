@@ -1123,6 +1123,12 @@
                                         <Button x:Name="btnCmpCopy" Content="&#x1F4CB; Fehlendes kopieren ..." Background="#A65A28" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
                                                 ToolTip="Markierte Eintraege in die angehakten Tenants kopieren, in denen sie fehlen - ohne Zuweisungen"/>
                                         <Button x:Name="btnCmpTable" Content="&#x1F4CA; Tabelle / Export" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
+                                        <CheckBox x:Name="chkCmpMuster" Content="Muster" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
+                                                  ToolTip="Den festgehaltenen Mustertenant (Soll-Stand aus Backup &amp; Verlauf) als eigene Spalte mitvergleichen"/>
+                                        <CheckBox x:Name="chkCmpColor" Content="Farben" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
+                                                  ToolTip="Zeichen farbig: gruen = vorhanden und gleich wie das Muster (ohne Muster: wie die Mehrheit), orange = Einstellungen abweichend, rot = fehlt, grau = nicht lesbar"/>
+                                        <Button x:Name="btnCmpMap" Content="&#x1F517; Zuordnung pruefen" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
+                                                ToolTip="Nur lesen: Gruppen, benannte Orte, Filter und Bereichsmarkierungen der Quelle (Muster, sonst erster angehakter Tenant) in den anderen Tenants nach Name suchen - ok, fehlt oder mehrfach; dazu die Notfallkonten je Tenant"/>
                                     </WrapPanel>
                                 </StackPanel>
                                 <StackPanel x:Name="pnlAnaBak" Visibility="Collapsed">
@@ -1145,6 +1151,8 @@
                                         <Button x:Name="btnBakRestore" Content="&#x21BA; Wiederherstellen ..." Background="#A65A28" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
                                                 ToolTip="Intune: markierte Eintraege aus dem aelteren Stand neu anlegen (Zusatz im Namen, ohne Zuweisungen). Einzeln mit Vorschau: Entra-Einstellungen (Autorisierung, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen) zurueckschreiben, Conditional Access neu als 'Nur Bericht'"/>
                                         <Button x:Name="btnBakTable" Content="&#x1F4CA; Tabelle / Export" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
+                                        <Button x:Name="btnBakMuster" Content="&#x2B50; Als Muster festhalten ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,4"
+                                                ToolTip="Den linken (aelteren) Stand als Mustertenant festhalten: Soll-Stand, laeuft nicht ab, im Tenant-Vergleich als Spalte 'Muster'"/>
                                     </WrapPanel>
                                 </StackPanel>
                                 <StackPanel x:Name="pnlAnaSec" Visibility="Collapsed">
