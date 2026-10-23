@@ -172,7 +172,7 @@ $script:Version = '0.0.0'
 try { $script:Version = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
 
 Set-HUSplashStatus 'Module werden geladen ...'
-foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs', 'HU.Setup', 'HU.SecCatalog', 'HU.EntraRestore')) {
+foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs', 'HU.Setup', 'HU.SecCatalog', 'HU.EntraRestore', 'HU.Muster')) {
     $modPath = Join-Path $script:AppRoot "Core\$mod.psm1"
     if (-not (Test-Path -LiteralPath $modPath)) { Show-HUFatal "Core-Modul fehlt: $modPath`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     Import-Module $modPath -Force -DisableNameChecking

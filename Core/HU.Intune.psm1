@@ -2472,6 +2472,43 @@ function Get-HUCompareInventory {
     foreach ($t in @($extraN.Keys | Sort-Object)) { Write-HULog -Message "$t`: $($extraN[$t])" -Level 'INFO' -Tenant $TenantKey }
 }
 
+# Bestand aus einem Backup-Stand statt live (z. B. Mustertenant als Spalte im Vergleich). Gleiche Zeilen wie
+# Get-HUCompareInventory: Fingerabdruck nach denselben Regeln, das gelesene Objekt kommt immer mit (Obj), Kopieren aus
+# einem Backup-Stand gibt es nicht (Copy leer). Arten, die im Stand nicht lesbar waren, kommen als Fehlerzeile.
+function Get-HUBackupInventory {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Folder, [Parameter(Mandatory)][string]$TenantKey, [string[]]$Types = @())
+    $ix = Read-HUBackupJson (Join-Path $Folder 'index.json')
+    $base = @{}; foreach ($s in Get-HUCompareSources) { $base[$s.Typ] = $s }
+    $extra = @{}; foreach ($s in @(Get-HUBackupMoreSources) + @(Get-HUBackupEntraSources)) { $extra[$s.Typ] = $s }
+    foreach ($t in @($ix.FailedTypes)) {
+        if (-not "$t" -or $script:HUCmpNoExtra -contains "$t") { continue }
+        if (@($Types).Count -and $Types -notcontains "$t") { continue }
+        [pscustomobject]@{ Tenant = $TenantKey; Typ = "$t"; Name = ''; Id = ''; Hash = ''; Copy = ''; Error = 'im Backup-Stand nicht lesbar' }
+    }
+    foreach ($it in @($ix.Items)) {
+        $typ = "$($it.Typ)"
+        if ($script:HUCmpNoExtra -contains $typ) { continue }
+        if (@($Types).Count -and $Types -notcontains $typ) { continue }
+        if (-not "$($it.Name)") { continue }
+        # Arten ohne Datei im Stand (Apps: nur Name und Kennung gesichert) - vorhanden, ohne Einstellungsvergleich
+        if (-not "$($it.File)" -and $base.ContainsKey($typ) -and -not $base[$typ].Hash) {
+            [pscustomobject]@{ Tenant = $TenantKey; Typ = $typ; Name = "$($it.Name)"; Id = "$($it.Id)"; Hash = ''; Copy = ''; Info = '' }
+            continue
+        }
+        $o = $null
+        if ("$($it.File)") { try { $o = Read-HUBackupJson (Join-Path $Folder $it.File) } catch { $o = $null } }
+        if ($null -eq $o) { [pscustomobject]@{ Tenant = $TenantKey; Typ = $typ; Name = ''; Id = ''; Hash = ''; Copy = ''; Error = "Datei fehlt: $($it.File)" }; continue }
+        if ($base.ContainsKey($typ)) {
+            $src = $base[$typ]; $isCa = ($typ -eq 'Conditional Access')
+            $h = if ($src.Hash) { if ($isCa) { Get-HUCompareHash (ConvertTo-HUCaComparable $o) } else { Get-HUCompareHash $o } } else { '' }
+            [pscustomobject]@{ Tenant = $TenantKey; Typ = $typ; Name = "$($it.Name)"; Id = "$($it.Id)"; Hash = $h; Copy = ''; Info = $(if ($isCa) { Get-HUCaStateLabel $o } else { '' }); Obj = $o }
+        } elseif ($extra.ContainsKey($typ)) {
+            [pscustomobject]@{ Tenant = $TenantKey; Typ = $typ; Name = "$($it.Name)"; Id = "$($it.Id)"; Hash = (Get-HUCompareHashNeutral $o); Copy = ''; Info = ''; Obj = $o }
+        }
+    }
+}
+
 # flache Einstellungen ohne Kennungen (GUIDs -> #id) - wie der Fingerabdruck des Tenant-Vergleichs, aber Feld fuer Feld
 function ConvertTo-HUNeutralFlatMap($Obj) {
     $m = ConvertTo-HUFlatMap $Obj
@@ -3185,7 +3222,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'New-HUIntuneObject', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUBackupRoot', 'Get-HUBackupEntraSources', 'Get-HUBackupMoreSources', 'Get-HUSourceItems', 'Get-HUCompareHashNeutral', 'Test-HUGraphForbidden', 'Test-HUGraphNotAvailable', 'ConvertTo-HUSafeFileName', 'Write-HUBackupJson', 'Read-HUBackupJson', 'Get-HUAssignmentHash', 'Save-HUTenantBackup', 'Get-HUBackupList', 'Remove-HUOldBackups', 'Compare-HUBackups', 'Get-HUBackupItemDiff', 'Restore-HUBackupItem', 'Get-HUAuditEvents', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUBackupInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'New-HUIntuneObject', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUBackupRoot', 'Get-HUBackupEntraSources', 'Get-HUBackupMoreSources', 'Get-HUSourceItems', 'Get-HUCompareHashNeutral', 'Test-HUGraphForbidden', 'Test-HUGraphNotAvailable', 'ConvertTo-HUSafeFileName', 'Write-HUBackupJson', 'Read-HUBackupJson', 'Get-HUAssignmentHash', 'Save-HUTenantBackup', 'Get-HUBackupList', 'Remove-HUOldBackups', 'Compare-HUBackups', 'Get-HUBackupItemDiff', 'Restore-HUBackupItem', 'Get-HUAuditEvents', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

@@ -61,7 +61,7 @@ function Start-HUJob {
     $ps = [powershell]::Create()
     $ps.Runspace = $rs
     [void]$ps.AddScript({
-            foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Intune', 'HU.Winget', 'HU.SecCatalog', 'HU.EntraRestore') {
+            foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Intune', 'HU.Winget', 'HU.SecCatalog', 'HU.EntraRestore', 'HU.Muster') {
                 Import-Module (Join-Path $AppRoot "Core\$m.psm1") -Force -DisableNameChecking -ErrorAction Stop
             }
             Initialize-Logging -LogFilePath $__JobLog -MinLevel 'INFO'
