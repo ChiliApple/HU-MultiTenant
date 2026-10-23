@@ -1,5 +1,36 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.3.3 (Testversion, 23.10.2026, Weg zu 2.4.0)
+
+### ↩️ Entra-Einstellungen zurückschreiben (Etappe 1)
+- **Neu:** Autorisierungsrichtlinie, Administratorzustimmung (Anfragen), benannte Orte und Verzeichniseinstellungen lassen sich aus einem Backup-Stand in denselben Tenant zurückschreiben – einzeln, unter *Backup & Verlauf* › *Wiederherstellen …*.
+- **Vorschau:** je Feld „jetzt“ und „danach“, Sperren, Warnungen und einzeln abzuhakende Punkte; nicht geschriebene Felder werden genannt.
+- **Sicher geschrieben:** nur dokumentiert beschreibbare Felder; unmittelbar davor erneut lesen (Abbruch bei Änderung), Live-Stand als Datei sichern, danach nachprüfen.
+- **Vorschau zeigt alles:** bei Listen die Anzahl vorher → nachher; gekürzte Werte lassen sich aufklappen, geschrieben wird erst, wenn alle angesehen sind. Eine Sperre stoppt den ganzen Vorgang.
+- **Vorschau lesbarer:** IP-Bereiche benannter Orte stehen als Adresse da (`192.0.2.0/24 → 198.51.100.0/24`) statt als JSON, auch im Protokoll; gibt es nur eine Zeile, ist sie gleich markiert und der volle Wert aufgeklappt (außer bei gekürzten Werten, die bewusst angesehen werden müssen).
+- **Schutzregeln:** nur in denselben Tenant (Backups speichern jetzt auch die Tenant-ID); Kennwortliste nie im Klartext im Protokoll; Notfallkonten müssen hinterlegt und aktiv sein (Autorisierung, Orte); `allowedToReadOtherUsers = false` und fremde Gast-Rollen gesperrt; gelöschte Orte und fehlende Verzeichniseinstellungen werden nicht neu angelegt; Kennwortliste und Sperrschwelle nur mit Entra ID P1.
+- **Neue Rechte (kein Standard, rot markiert):** `Policy.ReadWrite.Authorization`, `Policy.ReadWrite.ConsentRequest`, `GroupSettings.ReadWrite.All`; für Orte `Policy.ReadWrite.ConditionalAccess`.
+
+### 🔍 Tenant-Vergleich: nicht mehr nur Intune
+- **Neu verglichen:** alle weiteren Arten aus dem Backup – App-Schutz und App-Konfiguration, Registrierung, Zuweisungsfilter, ältere Endpunktsicherheit, Qualitäts- und Treiber-Updates, Intune-Rollen, Bereichsmarkierungen u. a. – und die Entra-Einstellungen (Autorisierungsrichtlinie, Sicherheitsstandards, Authentifizierungsmethoden, Cross-Tenant-Zugriff, benannte Orte, Verzeichniseinstellungen, Token- und Zustimmungsrichtlinien, SharePoint/OneDrive u. a.).
+- **Einstellungen abweichend:** auch für diese Arten; IDs von Gruppen, Apps und Orten zählen dabei nicht. Doppelklick zeigt die Unterschiede ohne erneuten Abruf.
+- **Bewusst nicht verglichen:** Domains, Organisation und Rollenzuweisungen – je Tenant naturgemäß verschieden.
+- **Kopieren:** weiterhin nur die Intune-Grundarten; die neuen Arten werden vorerst nur verglichen.
+
+### 💾 Backup
+- **Rollenzuweisungen:** Rollen ohne Namen werden über die Rollenvorlagen benannt; sonst steht „Unbekannte Rolle“ mit Kennung da.
+- **Rollenzuweisungen im Verlauf:** Vom Mitglied werden nur Kennung, Art und Name gesichert und verglichen. Wechselnde Benutzerdaten (Lizenzen, Dienstpläne) gelten nicht mehr als „Einstellungen geändert“ – auch beim Vergleich mit älteren Ständen.
+- **Eindeutige Dateinamen im Stand:** Zwei Einträge mit gleichem langem Namen und gleichem Kennungs-Anfang (z. B. zwei Zuweisungen derselben Rolle) überschrieben sich gegenseitig die Datei. Jetzt bekommt jeder Eintrag seine eigene Datei; betroffene ältere Stände werden beim Vergleich nicht nachgerechnet.
+- **Keine Fehlalarme durch Statuswerte:** `lastHeartbeatDateTime` (z. B. Defender-Connector) zählt nicht mehr als Änderung. Weichen zwei Stände ab, rechnet der Verlauf den Fingerabdruck aus den gespeicherten Dateien mit den heutigen Regeln nach – so verschwinden solche Fehlalarme auch gegenüber älteren Ständen.
+- **Administrative Vorlagen:** Graph liefert die Werte einer Einstellung in wechselnder Reihenfolge. Sie werden jetzt über ihre Beschriftung zugeordnet; eine andere Reihenfolge gilt nicht mehr als Änderung, die Detailansicht zeigt nur echte Unterschiede.
+- **Liste und Detailansicht sagen dasselbe:** Findet der Doppelklick keinen Unterschied (z. B. nur andere Reihenfolge einer einfachen Liste), steht der Eintrag auch in der Liste nicht mehr als „Einstellungen geändert“. Lange Werte werden nach 200 Zeichen mit Prüfsumme gekürzt, damit eine Änderung weiter hinten sichtbar bleibt.
+
+### 🔧 Verbesserungen
+- **Knöpfe, die in den Tenant schreiben,** sind jetzt gedämpft orange (Wiederherstellen, Fehlendes kopieren, Soll speichern); *Tabelle / Export* einheitlich violettblau.
+- **Was bekommt …?:** Suche, Filter und Art in einer Zeile, solange der Platz reicht.
+- **Tenant-Vergleich:** „Einstellungen abweichend“ nur noch, wenn auch der Doppelklick einen Unterschied zeigt (nicht mehr bei bloß anderer Reihenfolge oder anderen Kennungen).
+- **Analyse, Lauf-Anzeige:** Der grüne Punkt pulsiert bei jedem Auftrag, der in die Analyse-Ausgabe schreibt – auch beim Nachladen per Doppelklick.
+
 ## v2.3.2 (Testversion, 22.10.2026, Weg zu 2.4.0)
 
 ### 💾 Backup: weitere Intune-Arten

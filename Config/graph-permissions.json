@@ -1,4 +1,4 @@
-{
+﻿{
   "version": 1,
   "_info": "Rechte (Microsoft Graph, Anwendungsberechtigungen) fuer die Einrichtung je Tenant. default = bei der Einrichtung vorausgewaehlt. Die IDs werden zur Laufzeit am Graph-Service-Principal des Tenants nachgeschlagen (per Name).",
   "permissions": [
@@ -24,7 +24,10 @@
     { "name": "Application.Read.All", "default": true, "why": "Enterprise-App-Inventur, Sicherheitskatalog (Secret-Ablauf, App-Rechte)" },
     { "name": "RoleManagement.Read.Directory", "default": true, "why": "Rollennamen im Tenant-Vergleich, Sicherheitskatalog (Admin-Rollen)" },
     { "name": "DeviceManagementConfiguration.ReadWrite.All", "default": false, "why": "Analyse: Profile/Richtlinien kopieren und aus Backup wiederherstellen" },
-    { "name": "Policy.ReadWrite.ConditionalAccess", "default": false, "why": "Conditional Access aus Backup wiederherstellen" },
+    { "name": "Policy.ReadWrite.ConditionalAccess", "default": false, "why": "Conditional Access und benannte Orte aus dem Backup zurueckschreiben" },
+    { "name": "Policy.ReadWrite.Authorization", "default": false, "why": "Backup: Autorisierungsrichtlinie zurueckschreiben (Gaeste, Benutzerrechte, Zustimmung)" },
+    { "name": "Policy.ReadWrite.ConsentRequest", "default": false, "why": "Backup: Administratorzustimmung (Anfragen) zurueckschreiben" },
+    { "name": "GroupSettings.ReadWrite.All", "default": false, "why": "Backup: Verzeichniseinstellungen zurueckschreiben (Kennwortschutz, Sperrschwelle, Gruppen)" },
     { "name": "Directory.Read.All", "default": false, "why": "aeltere Extensions (Enterprise-App-Inventur: Berechtigungen), Sicherheitskatalog A45 (Zustimmungen fuer alle Benutzer - laut Microsoft nur mit diesem Recht lesbar)" },
     { "name": "SecurityEvents.Read.All", "default": true, "why": "Sicherheitskatalog: Microsoft Secure Score (A32)" },
     { "name": "IdentityRiskyUser.Read.All", "default": false, "why": "Sicherheitskatalog: gefaehrdete Benutzer (K06) - nur mit Entra ID P2 sinnvoll, mit P1 verweigert Graph den Abruf" }
@@ -33,7 +36,7 @@
     "Application.ReadWrite.All", "Application.ReadWrite.OwnedBy", "AppRoleAssignment.ReadWrite.All",
     "RoleManagement.ReadWrite.Directory", "Directory.ReadWrite.All", "DelegatedPermissionGrant.ReadWrite.All",
     "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All",
-    "Mail.*", "Files.*", "Sites.*", "Policy.ReadWrite.*", "RoleManagement.ReadWrite.*", "PrivilegedAccess.ReadWrite.*",
+    "Mail.*", "Files.*", "Sites.*", "Policy.ReadWrite.*", "GroupSettings.ReadWrite.All", "RoleManagement.ReadWrite.*", "PrivilegedAccess.ReadWrite.*",
     "UserAuthenticationMethod.ReadWrite.All", "Domain.ReadWrite.All",
     "DeviceManagementManagedDevices.PrivilegedOperations.All", "DeviceManagementScripts.ReadWrite.All",
     "DeviceManagementRBAC.ReadWrite.All", "Organization.ReadWrite.All", "User-PasswordProfile.ReadWrite.All",

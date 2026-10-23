@@ -30,7 +30,7 @@ function Invoke-HUIntuneGraph {
         [Parameter(Mandatory)][string]$TenantKey,
         [Parameter(Mandatory)]$Settings,
         [Parameter(Mandatory)][string]$Endpoint,
-        [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string]$Method = 'GET',
+        [ValidateSet('GET', 'POST', 'PATCH', 'PUT', 'DELETE')][string]$Method = 'GET',
         [hashtable]$Body,
         [switch]$V1,
         [switch]$NoRetry
@@ -63,7 +63,7 @@ function Invoke-HUGraphRaw {
     param([string]$Token, [string]$Endpoint, [string]$Method = 'GET', [hashtable]$Body, [string]$Version = 'beta')
     $uri = if ($Endpoint.StartsWith('https://')) { $Endpoint } else { "https://graph.microsoft.com/$Version/$($Endpoint.TrimStart('/'))" }
     $p = @{ Uri = $uri; Method = $Method; Headers = @{ Authorization = "Bearer $Token"; Accept = 'application/json' }; ErrorAction = 'Stop'; UseBasicParsing = $true }
-    if ($Method -in 'POST', 'PATCH') {
+    if ($Method -in 'POST', 'PATCH', 'PUT') {
         $json = if ($Body) { $Body | ConvertTo-Json -Depth 50 -Compress } else { '{}' }
         $p.Body = [Text.Encoding]::UTF8.GetBytes($json)
         $p.ContentType = 'application/json; charset=utf-8'
@@ -2334,7 +2334,20 @@ function Get-HUCompareSources {
 $script:HUCmpSkip = @('id', 'createdDateTime', 'lastModifiedDateTime', 'version', 'assignments', 'roleScopeTagIds', 'supportsScopeTags', 'isAssigned',
     'deviceManagementApplicabilityRuleOsEdition', 'deviceManagementApplicabilityRuleOsVersion', 'deviceManagementApplicabilityRuleDeviceMode',
     'settingCount', 'creationSource', 'priorityMetaData', 'isGlobalScript', 'highestAvailableVersion', 'deviceHealthScriptType', 'detectionScriptParameters',
-    'remediationScriptParameters', 'scheduledActionsForRule', 'deployableContentDisplayName', 'endOfSupportDate', 'templateId', 'modifiedDateTime')
+    'remediationScriptParameters', 'scheduledActionsForRule', 'deployableContentDisplayName', 'endOfSupportDate', 'templateId', 'modifiedDateTime',
+    # Statuswerte, die sich ohne Aenderung laufend bewegen (z. B. Defender-Connector meldet sich regelmaessig)
+    'lastHeartbeatDateTime')
+
+# Administrative Vorlagen: Graph liefert definitionValues und presentationValues in wechselnder Reihenfolge. Diese Listen
+# werden ueber den Namen der Einstellung bzw. die Beschriftung des Werts sortiert, damit die Reihenfolge nicht als Aenderung zaehlt.
+function Get-HUListOrderKey($e) {
+    if ($null -eq $e -or $e -is [string] -or $e -is [ValueType]) { return '' }
+    $pr = $e.PSObject.Properties['presentation']
+    if ($pr -and $pr.Value -and $pr.Value.PSObject.Properties['label'] -and "$($pr.Value.label)") { return "p|$($pr.Value.label)" }
+    $df = $e.PSObject.Properties['definition']
+    if ($df -and $df.Value -and $df.Value.PSObject.Properties['displayName'] -and "$($df.Value.displayName)") { return "d|$($df.Value.displayName)|$($df.Value.classType)|$($df.Value.categoryPath)" }
+    return ''
+}
 
 function ConvertTo-HUCleanObject($Obj, [string[]]$Skip = $script:HUCmpSkip) {
     if ($null -eq $Obj) { return $null }
@@ -2348,7 +2361,14 @@ function ConvertTo-HUCleanObject($Obj, [string[]]$Skip = $script:HUCmpSkip) {
         }
         return $h
     }
-    if ($Obj -is [System.Collections.IEnumerable]) { return ,@($Obj | ForEach-Object { ConvertTo-HUCleanObject $_ $Skip }) }
+    if ($Obj -is [System.Collections.IEnumerable]) {
+        $list = @($Obj)
+        if ($list.Count -gt 1) {
+            $keys = @($list | ForEach-Object { Get-HUListOrderKey $_ })
+            if (@($keys | Where-Object { -not $_ }).Count -eq 0) { $list = @($list | Sort-Object { Get-HUListOrderKey $_ }) }
+        }
+        return ,@($list | ForEach-Object { ConvertTo-HUCleanObject $_ $Skip })
+    }
     $h = [ordered]@{}
     foreach ($p in @($Obj.PSObject.Properties | Sort-Object Name)) {
         if ($p.Name -in $Skip -or $p.Name -match '@odata\.(navigationLink|associationLink|etag)$|^@odata\.(context|etag)$|@odata\.context$') { continue }
@@ -2420,6 +2440,45 @@ function Get-HUCompareInventory {
         }
         Write-HULog -Message "$($src.Typ): $n" -Level 'INFO' -Tenant $TenantKey
     }
+    # weitere Intune-Arten und Entra-Einstellungen (wie im Backup, nur anzeigen - kein Kopieren). Das gelesene Objekt kommt mit (Obj),
+    # der Doppelklick braucht dann keinen zweiten Abruf. Fehlt ein Recht oder ist die Art nicht lesbar: '?' statt 'fehlt'.
+    $extraN = @{}
+    foreach ($src in @(Get-HUBackupMoreSources) + @(Get-HUBackupEntraSources)) {
+        if ($script:HUCmpNoExtra -contains $src.Typ) { continue }
+        if (@($Types).Count -and $Types -notcontains $src.Typ) { continue }
+        $items = $null
+        try { $items = @(Get-HUSourceItems -TenantKey $TenantKey -Settings $Settings -Src $src) }
+        catch {
+            if (Test-HUGraphNotAvailable $_) { if (-not $extraN.ContainsKey($src.Typ)) { $extraN[$src.Typ] = 0 }; continue }
+            $why = if (Test-HUGraphForbidden $_) { "Recht $($src.Perm) fehlt" } else { "$($_.Exception.Message)" }
+            Write-HULog -Message "$($src.Typ): nicht lesbar ($why)" -Level $(if ($src.Optional) { 'INFO' } else { 'WARN' }) -Tenant $TenantKey
+            [pscustomobject]@{ Tenant = $TenantKey; Typ = $src.Typ; Name = ''; Id = ''; Hash = ''; Copy = ''; Error = $why }
+            continue
+        }
+        $base = $src.Ep -replace '\?.*$', ''
+        foreach ($it in $items) {
+            if ($null -eq $it.Obj -or -not $it.Name) { continue }
+            $o = $it.Obj
+            # Teil-Listen (z. B. Einstellungen alter Endpunktsicherheit) gehoeren zum Inhalt; Zuweisungen vergleicht der Tenant-Vergleich nicht
+            foreach ($sub in @($src.Sub | Where-Object { $_ })) {
+                try { $o | Add-Member -NotePropertyName $sub -NotePropertyValue @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$($it.Id)/$sub" -V1:([bool]$src.V1)) -Force }
+                catch { Write-HULog -Message "$($src.Typ) '$($it.Name)': $sub nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey }
+            }
+            [pscustomobject]@{ Tenant = $TenantKey; Typ = $src.Typ; Name = $it.Name; Id = $it.Id; Hash = (Get-HUCompareHashNeutral $o); Copy = ''; Info = ''; Obj = $o }
+            $extraN[$src.Typ] = [int]$extraN[$src.Typ] + 1
+        }
+        if (-not $extraN.ContainsKey($src.Typ)) { $extraN[$src.Typ] = 0 }
+    }
+    foreach ($t in @($extraN.Keys | Sort-Object)) { Write-HULog -Message "$t`: $($extraN[$t])" -Level 'INFO' -Tenant $TenantKey }
+}
+
+# flache Einstellungen ohne Kennungen (GUIDs -> #id) - wie der Fingerabdruck des Tenant-Vergleichs, aber Feld fuer Feld
+function ConvertTo-HUNeutralFlatMap($Obj) {
+    $m = ConvertTo-HUFlatMap $Obj
+    $n = @{}
+    $rx = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+    foreach ($k in $m.Keys) { $n[[regex]::Replace("$k", $rx, '#id')] = [regex]::Replace("$($m[$k])", $rx, '#id') }
+    return $n
 }
 
 # Matrix aus den Bestaenden: je Typ+Name eine Zeile, je Tenant vorhanden/fehlt, Status
@@ -2437,6 +2496,18 @@ function Get-HUCompareMatrix([object[]]$Rows, [string[]]$Keys) {
         $dupe = @($g.Group | Group-Object Tenant | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
         $st = if (-not $miss.Count -and -not $unk.Count) { 'ueberall' } elseif (-not $miss.Count) { 'vorhanden, wo lesbar' } elseif ($have.Count -eq 1 -and $Keys.Count -gt 1 -and -not $unk.Count) { 'nur in einem' } else { 'fehlt teilweise' }
         if ($unk.Count) { $st += ", nicht lesbar in $($unk -join ', ')" }
+        if ($hashes.Count -gt 1) {
+            # Fingerabdruck verschieden, Feld fuer Feld aber gleich (z. B. nur andere Reihenfolge einer einfachen Liste):
+            # nicht als abweichend melden - Liste und Doppelklick sollen dasselbe sagen. Geht nur, wenn die Objekte mitgeliefert sind.
+            $objs = @($g.Group | Where-Object { $_.Hash })
+            if (-not @($objs | Where-Object { -not ($_.PSObject.Properties['Obj'] -and $null -ne $_.Obj) }).Count) {
+                try {
+                    $maps = @{}; $ks = @()
+                    for ($i = 0; $i -lt $objs.Count; $i++) { $maps["o$i"] = ConvertTo-HUNeutralFlatMap $objs[$i].Obj; $ks += "o$i" }
+                    if (-not @(Get-HUCompareDiff $maps $ks).Count) { $hashes = @($hashes[0]) }
+                } catch { }
+            }
+        }
         if ($hashes.Count -gt 1) { $st += ', Einstellungen abweichend' }
         if ($dupe.Count) { $st += ', doppelt' }
         [pscustomobject]@{ Typ = $first.Typ; Name = $first.Name; Have = $have; Missing = $miss; Unknown = $unk; Status = $st; Copy = $first.Copy; Items = @($g.Group); Diff = ($miss.Count -gt 0 -or $unk.Count -gt 0 -or $hashes.Count -gt 1 -or $dupe.Count -gt 0); Dupe = ($dupe.Count -gt 0) }
@@ -2568,7 +2639,12 @@ function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null
             $sha = [System.Security.Cryptography.SHA256]::Create()
             try { $h = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($v))) -replace '-', '').Substring(0, 8) } finally { $sha.Dispose() }
             $v = "(Inhalt, $($v.Length) Zeichen, #$h)"
-        } elseif ($v.Length -gt 200) { $v = $v.Substring(0, 200) + ' ...' }
+        } elseif ($v.Length -gt 200) {
+            # gekuerzt, aber mit Pruefsumme: eine Aenderung hinter Zeichen 200 bleibt so sichtbar
+            $sha = [System.Security.Cryptography.SHA256]::Create()
+            try { $h = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($v))) -replace '-', '').Substring(0, 8) } finally { $sha.Dispose() }
+            $v = $v.Substring(0, 200) + " ... (#$h)"
+        }
         $Map[$(if ($Prefix) { $Prefix } else { '(Wert)' })] = $v
         return $Map
     }
@@ -2583,6 +2659,8 @@ function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null
             if ($e.PSObject.Properties['settingDefinitionId'] -and "$($e.settingDefinitionId)") { $k = "$($e.settingDefinitionId)" }
             elseif ($e.PSObject.Properties['settingInstance'] -and $e.settingInstance.settingDefinitionId) { $k = "$($e.settingInstance.settingDefinitionId)" }
             elseif ($e.PSObject.Properties['definition'] -and $e.definition.displayName) { $k = "$($e.definition.displayName)" }
+            # Werte einer Administrativen Vorlage ueber ihre Beschriftung (Reihenfolge von Graph wechselt)
+            elseif ($e.PSObject.Properties['presentation'] -and $e.presentation -and $e.presentation.PSObject.Properties['label'] -and "$($e.presentation.label)") { $k = "$($e.presentation.label)" }
             # Name/Wert-Paare (z. B. Verzeichniseinstellungen: LockoutThreshold = 10) ueber den Namen
             elseif ($e.PSObject.Properties['name'] -and $e.PSObject.Properties['value'] -and "$($e.name)") { $k = "$($e.name)" }
             # sprechende Kennungen (z. B. Anmeldemethoden: Fido2, MicrosoftAuthenticator); GUIDs nicht (je Tenant verschieden)
@@ -2721,9 +2799,14 @@ function Get-HUBackupEntraSources {
         @{ Typ = 'Zustimmungsrichtlinie'; Ep = '/policies/permissionGrantPolicies'; Name = 'displayName'; Skip = { param($o) "$($o.id)" -like 'microsoft-*' }; Perm = 'Policy.Read.PermissionGrant'; V1 = $true }
         # eigene Entra-Rollen und alle Rollenzuweisungen (Name: Rolle - Mitglied)
         @{ Typ = 'Entra-Rolle'; Ep = '/roleManagement/directory/roleDefinitions'; Name = 'displayName'; SkipBuiltIn = $true; Perm = 'RoleManagement.Read.Directory'; V1 = $true }
-        @{ Typ = 'Entra-Rollenzuweisung'; Ep = '/roleManagement/directory/roleAssignments?$expand=principal'; Perm = 'RoleManagement.Read.Directory'; V1 = $true
-            Ctx = { param($tk, $set) $m = @{}; foreach ($r in @(Get-HUIntuneGraphAll -TenantKey $tk -Settings $set -Endpoint '/roleManagement/directory/roleDefinitions?$select=id,displayName' -V1)) { $m["$($r.id)"] = "$($r.displayName)" }; $m }
-            Name = { param($o, $ctx) $r = $ctx["$($o.roleDefinitionId)"]; if (-not $r) { $r = "$($o.roleDefinitionId)" }; $p = if ($o.principal) { $(if ("$($o.principal.userPrincipalName)") { "$($o.principal.userPrincipalName)" } else { "$($o.principal.displayName)" }) } else { "$($o.principalId)" }; "$r - $p$(if ("$($o.directoryScopeId)" -and "$($o.directoryScopeId)" -ne '/') { " ($($o.directoryScopeId))" })" } }
+        @{ Typ = 'Entra-Rollenzuweisung'; Ep = '/roleManagement/directory/roleAssignments?$expand=principal'; Perm = 'RoleManagement.Read.Directory'; V1 = $true; TrimPrincipal = $true
+            # Namen aus den Rollendefinitionen (id und templateId); fehlt eine Rolle dort (aeltere/versteckte Rollen), aus den Rollenvorlagen
+            Ctx = { param($tk, $set)
+                $m = @{}
+                foreach ($r in @(Get-HUIntuneGraphAll -TenantKey $tk -Settings $set -Endpoint '/roleManagement/directory/roleDefinitions?$select=id,templateId,displayName' -V1)) { $m["$($r.id)"] = "$($r.displayName)"; if ("$($r.templateId)" -and -not $m.ContainsKey("$($r.templateId)")) { $m["$($r.templateId)"] = "$($r.displayName)" } }
+                try { foreach ($t in @(Get-HUIntuneGraphAll -TenantKey $tk -Settings $set -Endpoint '/directoryRoleTemplates' -V1)) { if (-not $m.ContainsKey("$($t.id)")) { $m["$($t.id)"] = "$($t.displayName)" } } } catch { Write-Verbose "Rollenvorlagen nicht lesbar: $($_.Exception.Message)" }
+                $m }
+            Name = { param($o, $ctx) $r = $ctx["$($o.roleDefinitionId)"]; if (-not $r) { $r = "Unbekannte Rolle $($o.roleDefinitionId)" }; $p = if ($o.principal) { $(if ("$($o.principal.userPrincipalName)") { "$($o.principal.userPrincipalName)" } else { "$($o.principal.displayName)" }) } else { "$($o.principalId)" }; "$r - $p$(if ("$($o.directoryScopeId)" -and "$($o.directoryScopeId)" -ne '/') { " ($($o.directoryScopeId))" })" } }
         # Ablauf von M365-Gruppen - braucht Directory.Read.All (kein Standard-Recht): ohne Recht nur Hinweis
         @{ Typ = 'Gruppen-Ablauf'; Ep = '/groupLifecyclePolicies'; Name = 'managedGroupTypes'; Perm = 'Directory.Read.All'; Optional = $true; V1 = $true }
         # Organisation und Dienste (nur lesbare Einstellungen per Graph)
@@ -2732,6 +2815,51 @@ function Get-HUBackupEntraSources {
         @{ Typ = 'Dienst-Einstellung'; Key = 'reportSettings'; Ep = '/admin/reportSettings'; Single = $true; Title = 'Berichte (Namen verbergen)'; Perm = 'ReportSettings.Read.All'; V1 = $true }
     )
 }
+# Rollenzuweisung: das per $expand mitgelieferte Mitglied (principal) bringt das ganze Benutzerobjekt mit (Lizenzen, Plaene,
+# Anmeldedaten ...), das sich laufend aendert und dessen Listen-Reihenfolge wechselt. Fuer Backup und Verlauf zaehlt nur, WER
+# die Rolle hat: Mitglied auf Kennung, Art und Namen kuerzen. Andere Objekte bleiben unveraendert.
+$script:HURoleAsgPrincipalKeep = @('id', '@odata.type', 'displayName', 'userPrincipalName', 'appId')
+function ConvertTo-HURoleAsgComparable($Obj) {
+    if ($null -eq $Obj -or -not $Obj.PSObject.Properties['roleDefinitionId'] -or -not $Obj.PSObject.Properties['principal'] -or $null -eq $Obj.principal) { return $Obj }
+    $pr = $Obj.principal
+    $small = [ordered]@{}
+    foreach ($k in $script:HURoleAsgPrincipalKeep) {
+        $v = if ($pr -is [System.Collections.IDictionary]) { if ($pr.Contains($k)) { $pr[$k] } else { $null } } elseif ($pr.PSObject.Properties[$k]) { $pr.$k } else { $null }
+        if ($null -ne $v -and "$v" -ne '') { $small[$k] = $v }
+    }
+    $copy = $Obj.PSObject.Copy()
+    $copy | Add-Member -NotePropertyName 'principal' -NotePropertyValue ([pscustomobject]$small) -Force
+    return $copy
+}
+
+# Eintraege einer Quelle aus Get-HUBackupMoreSources/Get-HUBackupEntraSources lesen -> Obj, Id, Name
+# (Einzelobjekt oder Liste, ohne eingebaute bzw. per Skip ausgelassene). Fehler gehen an den Aufrufer.
+function Get-HUSourceItems {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][hashtable]$Src)
+    $v1 = [bool]$Src.V1
+    if ($Src.Single) {
+        $o = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint $Src.Ep -V1:$v1
+        return @([pscustomobject]@{ Obj = $o; Id = $Src.Key; Name = $Src.Title })
+    }
+    $ctx = $null
+    if ($Src.Ctx) { $ctx = & $Src.Ctx $TenantKey $Settings }
+    return @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint $Src.Ep -V1:$v1 |
+        Where-Object { -not ($Src.SkipBuiltIn -and $_.PSObject.Properties['isBuiltIn'] -and $_.isBuiltIn) -and -not ($Src.Skip -and (& $Src.Skip $_)) } |
+        ForEach-Object { [pscustomobject]@{ Obj = $(if ($Src.TrimPrincipal) { ConvertTo-HURoleAsgComparable $_ } else { $_ }); Id = "$($_.id)"; Name = $(if ($Src.Name -is [scriptblock]) { "$(& $Src.Name $_ $ctx)" } else { "$($_.($Src.Name))" }) } })
+}
+
+# Fingerabdruck fuer den Tenant-Vergleich: GUIDs (Gruppen, Apps, Tenants) sind je Tenant verschieden und zaehlen nicht
+function Get-HUCompareHashNeutral($Obj) {
+    $j = ConvertTo-HUCleanObject $Obj ($script:HUCmpSkip + @('displayName', 'name', 'description')) | ConvertTo-Json -Depth 50 -Compress
+    $j = [regex]::Replace("$j", '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', '#id')
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($j))) -replace '-', '').Substring(0, 16) } finally { $sha.Dispose() }
+}
+
+# Arten aus dem Backup, die der Tenant-Vergleich auslaesst: je Tenant naturgemaess verschieden (Domains, Organisation, Personen in Rollen)
+$script:HUCmpNoExtra = @('Domain', 'Organisation', 'Entra-Rollenzuweisung')
+
 # Weitere Intune-Arten fuers Backup (beta, nur lesen). Mehrere Endpunkte koennen dieselbe Art fuellen.
 function Get-HUBackupMoreSources {
     return @(
@@ -2772,6 +2900,19 @@ function Test-HUGraphForbidden($Err) {
 }
 
 # Backup eines Tenants -> Ordner des Stands
+# Dateiname im Stand eindeutig machen: Name (gekuerzt) + Anfang der Kennung reicht nicht immer - lange gleiche Namen
+# (z. B. zwei Rollenzuweisungen derselben Rolle) mit gleichem Kennungs-Anfang wuerden sich sonst gegenseitig ueberschreiben
+function Get-HUBackupRelPath([System.Collections.Generic.HashSet[string]]$Used, [string]$Typ, [string]$Name, [string]$Id) {
+    $folder = ConvertTo-HUSafeFileName $Typ
+    $nm = ConvertTo-HUSafeFileName $Name 60
+    $rel = "$folder\$($nm)__$(ConvertTo-HUSafeFileName ($Id.Substring(0, [Math]::Min(8, $Id.Length)))).json"
+    if ($Used.Contains($rel)) { $rel = "$folder\$($nm)__$(ConvertTo-HUSafeFileName $Id 80).json" }
+    $n = 2; $base = $rel -replace '\.json$', ''
+    while ($Used.Contains($rel)) { $rel = "$($base)_$n.json"; $n++ }
+    [void]$Used.Add($rel)
+    return $rel
+}
+
 function Save-HUTenantBackup {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [string]$Root = '', [string[]]$Types = @())
@@ -2780,6 +2921,7 @@ function Save-HUTenantBackup {
     $dir = Join-Path (Join-Path $Root (ConvertTo-HUSafeFileName $TenantKey)) $stamp
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $index = New-Object System.Collections.Generic.List[object]
+    $usedRel = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     $errors = 0
     $failedTypes = New-Object System.Collections.Generic.List[string]
     $failedIds = New-Object System.Collections.Generic.List[string]
@@ -2808,7 +2950,7 @@ function Save-HUTenantBackup {
                     catch { $asgOk = $false; Write-HULog -Message "$($src.Typ) '$name': Zuweisungen nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey }
                 }
                 $full | Add-Member -NotePropertyName 'assignments' -NotePropertyValue $asg -Force
-                $rel = "$(ConvertTo-HUSafeFileName $src.Typ)\$(ConvertTo-HUSafeFileName $name 60)__$("$($it.id)".Substring(0, [Math]::Min(8, "$($it.id)".Length))).json"
+                $rel = Get-HUBackupRelPath $usedRel $src.Typ $name "$($it.id)"
                 Write-HUBackupJson (Join-Path $dir $rel) $full
                 $index.Add([pscustomobject]@{ Typ = $src.Typ; Name = $name; Id = "$($it.id)"; File = $rel; Hash = (Get-HUCompareHash $full); AHash = $(if ($asgOk) { Get-HUAssignmentHash $asg } else { '?' }); Desc = "$($full.description)" })
                 $n++
@@ -2828,15 +2970,7 @@ function Save-HUTenantBackup {
         $label = if ($src.Single) { "$($src.Typ) '$($src.Title)'" } else { "$($src.Typ) ($($src.Ep -replace '\?.*$', ''))" }
         $items = $null
         try {
-            if ($src.Single) {
-                $o = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint $src.Ep -V1:$v1
-                $items = @([pscustomobject]@{ Obj = $o; Id = $src.Key; Name = $src.Title })
-            } else {
-                if ($src.Ctx) { $ctx = & $src.Ctx $TenantKey $Settings }
-                $items = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint $src.Ep -V1:$v1 |
-                    Where-Object { -not ($src.SkipBuiltIn -and $_.PSObject.Properties['isBuiltIn'] -and $_.isBuiltIn) -and -not ($src.Skip -and (& $src.Skip $_)) } |
-                    ForEach-Object { [pscustomobject]@{ Obj = $_; Id = "$($_.id)"; Name = $(if ($src.Name -is [scriptblock]) { "$(& $src.Name $_ $ctx)" } else { "$($_.($src.Name))" }) } })
-            }
+            $items = @(Get-HUSourceItems -TenantKey $TenantKey -Settings $Settings -Src $src)
         } catch {
             if ((Test-HUGraphForbidden $_) -and $src.Optional) {
                 # Recht ist kein Standard-Recht (bewusst nicht erteilt): nur Hinweis
@@ -2869,8 +3003,7 @@ function Save-HUTenantBackup {
                 try { $full | Add-Member -NotePropertyName 'assignments' -NotePropertyValue @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$base/$id/assignments" -V1:$v1) -Force; $ah = Get-HUAssignmentHash $full.assignments }
                 catch { $ah = '?'; Write-HULog -Message "$($src.Typ) '$nm': Zuweisungen nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey }
             } elseif ($src.Asg -eq 'expand') { $ah = Get-HUAssignmentHash @($full.assignments) }
-            $short = ConvertTo-HUSafeFileName ($id.Substring(0, [Math]::Min(8, $id.Length)))
-            $rel = "$(ConvertTo-HUSafeFileName $src.Typ)\$(ConvertTo-HUSafeFileName $nm 60)__$short.json"
+            $rel = Get-HUBackupRelPath $usedRel $src.Typ $nm $id
             Write-HUBackupJson (Join-Path $dir $rel) $full
             $index.Add([pscustomobject]@{ Typ = $src.Typ; Name = $nm; Id = $id; File = $rel; Hash = (Get-HUCompareHash $full); AHash = $ah; Desc = "$(if ($full.PSObject.Properties['description']) { $full.description })" })
             $moreN[$src.Typ] = [int]$moreN[$src.Typ] + 1
@@ -2884,7 +3017,8 @@ function Save-HUTenantBackup {
         throw "Backup fehlgeschlagen - nichts lesbar ($errors Fehler). Secret und Berechtigungen pruefen"
     }
     $types = @(@(Get-HUCompareSources) + @(Get-HUBackupMoreSources) + @(Get-HUBackupEntraSources) | ForEach-Object { $_.Typ } | Where-Object { -not @($Types).Count -or $Types -contains $_ } | Select-Object -Unique)
-    Write-HUBackupJson (Join-Path $dir 'index.json') ([pscustomobject]@{ Tenant = $TenantKey; Time = (Get-Date).ToString('s'); Errors = $errors; Complete = ($errors -eq 0); Types = $types; FailedTypes = $failedTypes.ToArray(); FailedIds = $failedIds.ToArray(); MissingPerms = $missing.ToArray(); Items = $index.ToArray() })
+    $tid = "$(@($Settings.tenants | Where-Object { $_.key -eq $TenantKey } | ForEach-Object { $_.tenantId }) | Select-Object -First 1)"
+    Write-HUBackupJson (Join-Path $dir 'index.json') ([pscustomobject]@{ Tenant = $TenantKey; TenantId = $tid; Time = (Get-Date).ToString('s'); Errors = $errors; Complete = ($errors -eq 0); Types = $types; FailedTypes = $failedTypes.ToArray(); FailedIds = $failedIds.ToArray(); MissingPerms = $missing.ToArray(); Items = $index.ToArray() })
     return [pscustomobject]@{ Tenant = $TenantKey; Folder = $dir; Count = $index.Count; Errors = $errors; Complete = ($errors -eq 0); MissingPerms = $missing.ToArray() }
 }
 
@@ -2931,6 +3065,10 @@ function Compare-HUBackups {
     $typA = if ($ia.PSObject.Properties['Types']) { @($ia.Types) } else { $legacy }
     $typB = if ($ib.PSObject.Properties['Types']) { @($ib.Types) } else { $legacy }
     $byIdA = @{}; foreach ($x in $a) { $byIdA["$($x.Typ)|$($x.Id)"] = $x }
+    # Staende vor dem Fix: zwei Eintraege konnten dieselbe Datei haben (die zweite hat die erste ueberschrieben) - solche Dateien
+    # nicht zum Nachrechnen verwenden
+    $dupA = @($a | Where-Object { $_.File } | Group-Object File | Where-Object Count -gt 1 | ForEach-Object Name)
+    $dupB = @($b | Where-Object { $_.File } | Group-Object File | Where-Object Count -gt 1 | ForEach-Object Name)
     $seen = @{}
     foreach ($y in $b) {
         $k = "$($y.Typ)|$($y.Id)"; $seen[$k] = $true
@@ -2939,7 +3077,21 @@ function Compare-HUBackups {
             $c = @()
             if ("$($x.Name)" -ne "$($y.Name)") { $c += "umbenannt (vorher '$($x.Name)')" }
             if ($x.PSObject.Properties['Desc'] -and $y.PSObject.Properties['Desc'] -and "$($x.Desc)" -ne "$($y.Desc)") { $c += 'Beschreibung geaendert' }
-            if ("$($x.Hash)" -ne "$($y.Hash)") { $c += 'Einstellungen geaendert' }
+            $hx = "$($x.Hash)"; $hy = "$($y.Hash)"
+            if ($hx -ne $hy -and $x.File -and $y.File -and $dupA -notcontains $x.File -and $dupB -notcontains $y.File) {
+                # Fingerabdruck aus den Dateien neu rechnen: aeltere Staende zaehlten Felder mit, die heute nicht mehr zaehlen
+                # (Benutzerdaten des Rollenmitglieds, lastHeartbeatDateTime ...)
+                try {
+                    $hx = Get-HUCompareHash (ConvertTo-HURoleAsgComparable (Read-HUBackupJson (Join-Path $FolderA $x.File)))
+                    $hy = Get-HUCompareHash (ConvertTo-HURoleAsgComparable (Read-HUBackupJson (Join-Path $FolderB $y.File)))
+                } catch { $hx = "$($x.Hash)"; $hy = "$($y.Hash)" }
+            }
+            # Fingerabdruck verschieden, die Detailansicht findet aber keinen Unterschied (z. B. nur andere Reihenfolge einer
+            # einfachen Liste): nicht als Aenderung melden - Liste und Detailansicht sollen dasselbe sagen
+            if ($hx -ne $hy -and $x.File -and $y.File -and $dupA -notcontains $x.File -and $dupB -notcontains $y.File) {
+                try { if (@(Get-HUBackupItemDiff -FileA (Join-Path $FolderA $x.File) -FileB (Join-Path $FolderB $y.File)).Count -eq 0) { $hy = $hx } } catch { }
+            }
+            if ($hx -ne $hy) { $c += 'Einstellungen geaendert' }
             if ("$($x.AHash)" -eq '?' -or "$($y.AHash)" -eq '?') { $c += 'Zuweisungen nicht lesbar' }
             elseif ("$($x.AHash)" -ne "$($y.AHash)") { $c += 'Zuweisungen geaendert' }
             if ($c.Count) { $c -join ', ' } else { 'gleich' }
@@ -2956,8 +3108,8 @@ function Compare-HUBackups {
 # Unterschiede zwischen zwei Backup-Dateien desselben Objekts (inkl. Zuweisungen)
 function Get-HUBackupItemDiff {
     param([string]$FileA, [string]$FileB)
-    $oa = if ($FileA -and (Test-Path -LiteralPath $FileA)) { Read-HUBackupJson $FileA } else { $null }
-    $ob = if ($FileB -and (Test-Path -LiteralPath $FileB)) { Read-HUBackupJson $FileB } else { $null }
+    $oa = if ($FileA -and (Test-Path -LiteralPath $FileA)) { ConvertTo-HURoleAsgComparable (Read-HUBackupJson $FileA) } else { $null }
+    $ob = if ($FileB -and (Test-Path -LiteralPath $FileB)) { ConvertTo-HURoleAsgComparable (Read-HUBackupJson $FileB) } else { $null }
     $ma = if ($oa) { ConvertTo-HUFlatMap $oa -WithAssignments } else { @{} }
     $mb = if ($ob) { ConvertTo-HUFlatMap $ob -WithAssignments } else { @{} }
     # Name und Beschreibung zaehlen im Verlauf mit (im Tenant-Vergleich nicht)
@@ -3001,7 +3153,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'New-HUIntuneObject', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUBackupRoot', 'Get-HUBackupEntraSources', 'Get-HUBackupMoreSources', 'Test-HUGraphForbidden', 'Test-HUGraphNotAvailable', 'ConvertTo-HUSafeFileName', 'Write-HUBackupJson', 'Read-HUBackupJson', 'Get-HUAssignmentHash', 'Save-HUTenantBackup', 'Get-HUBackupList', 'Remove-HUOldBackups', 'Compare-HUBackups', 'Get-HUBackupItemDiff', 'Restore-HUBackupItem', 'Get-HUAuditEvents', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'New-HUIntuneObject', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUBackupRoot', 'Get-HUBackupEntraSources', 'Get-HUBackupMoreSources', 'Get-HUSourceItems', 'Get-HUCompareHashNeutral', 'Test-HUGraphForbidden', 'Test-HUGraphNotAvailable', 'ConvertTo-HUSafeFileName', 'Write-HUBackupJson', 'Read-HUBackupJson', 'Get-HUAssignmentHash', 'Save-HUTenantBackup', 'Get-HUBackupList', 'Remove-HUOldBackups', 'Compare-HUBackups', 'Get-HUBackupItemDiff', 'Restore-HUBackupItem', 'Get-HUAuditEvents', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )
