@@ -1,5 +1,45 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.5.0 (Stable, 24.10.2026)
+
+Stable-Release der Testversionen 2.4.1 bis 2.4.5 – „Angleichen und Übertragen“. Alle Punkte im Detail stehen in den Abschnitten darunter.
+
+### → Übertragen und Angleichen (Intune)
+- **Übertragen:** einen Intune-Eintrag aus einem Tenant oder dem Muster in Tenants neu anlegen, in denen er fehlt – ohne Zuweisungen, mit Vorschau je Ziel, Sperren (Geheimnisse, Quell-Verweise, WLAN/VPN/Zertifikate) und Nachprüfung.
+- **Angleichen:** bestehende Einträge gleichen Namens auf den Stand der Quelle bringen (Konfiguration, Compliance, Feature-Update). Felder, die nur das Ziel hat, werden geleert; Zuweisungen des Ziels bleiben unberührt; vorher wird das Ziel erneut gelesen und gesichert.
+
+### → Entra-Einstellungen und Conditional Access übertragen (aus dem Muster)
+- **Autorisierungsrichtlinie, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen** aus dem festgehaltenen Muster in andere Tenants – Gruppen über den Namen, Notfallkonten und Schreibrechte schon in der Vorschau geprüft.
+- **Conditional Access** kommt immer als **neue** Richtlinie im Modus „Nur Bericht“ an, ohne Konten und Gruppen (Benutzer „Alle“ und eingebaute Rollen per Haken), die Notfallkonten des Ziels immer ausgenommen. Bestehende Richtlinien werden nie geändert.
+
+### ↩️ Rückgängig
+- Übertragenes wird gelöscht, Angeglichenes auf den gesicherten Stand zurückgesetzt – jeweils nur, solange seitdem unverändert (und bei Conditional Access nicht eingeschaltet). Das Fenster prüft je Zeile live, ob das möglich ist.
+
+### 🔑 Entra-Schreibrechte nur zeitweise
+- *Berechtigungen* › **Entra-Schreibrechte an/aus** erteilt bzw. entzieht nur die 4 Rechte für Übertragen und Zurückschreiben, je Tenant; Erinnerung, wenn sie länger als 7 Tage an sind.
+
+### ⚡ Quick Script
+- `.ps1`-Dateien lassen sich ins Codefeld ziehen (Hinweis bei fremden Skripten, nichts wird ausgeführt); der Editor startet leer.
+
+### 🖥️ Oberfläche
+- Spalten in allen Tabellen nach Inhalt, Anfasser rechts unten in allen Fenstern, Vergleichs-Details zeigen immer alle Werte, die gewählte Art im Tenant-Vergleich bleibt gespeichert, nach Übertragen und Rückgängig lädt der Vergleich verzögert neu (Entra braucht einige Sekunden). Das Arten-Dropdown ist so breit wie sein längster Eintrag.
+
+### 🧪 Nach Live-Test korrigiert
+- **Benannte Orte mit genau einem Land** (z. B. nur AT) wurden beim Angleichen und Zurückschreiben abgelehnt – behoben.
+- **Rückgängig nach dem Angleichen** sperrte manchmal grundlos („geändert“), weil Entra direkt nach dem Schreiben noch den alten Stand lieferte – der Fingerabdruck stammt jetzt aus der Nachprüfung, Zeitstempel zählen nicht mehr.
+- **Administratorzustimmung:** Reviewer, die es nur im Ziel gibt, fallen nicht mehr still weg – Pflicht-Haken mit Namen.
+- **Kennwortregeln (Password Rule Settings)** lassen sich per App nicht schreiben (Microsoft lehnt trotz Berechtigung ab) – die Vorschau sperrt sie und verweist aufs Portal.
+- Abgelehnte Schreibversuche zeigen Microsofts Fehlertext und legen den gesendeten Inhalt unter `Backups\<Tenant>\_fehler` ab.
+- Conditional Access: Listen in Gewähren/Bedingungen werden immer als Liste geschickt; Namen der Reviewer-Rollen werden in der Vorschau aufgelöst.
+
+### ⚠️ Bekannte Grenzen
+- **Kennwortregeln** (Password Rule Settings) sind per App nicht schreibbar – im Portal unter *Schutz › Authentifizierungsmethoden › Kennwortschutz* einstellen.
+- **Administratorzustimmung** übertragen ist live nur bis zur Vorschau geprüft.
+- **Verzeichniseinstellung neu anlegen** ist nur durch automatische Tests abgedeckt; neu angelegte Verzeichniseinstellungen lassen sich nicht automatisch rückgängig machen.
+- **WLAN-, VPN- und Zertifikatsprofile** werden nicht übertragen (Geheimnisse).
+- **Einstellungskatalog und Administrative Vorlage** werden noch nicht angeglichen, nur neu angelegt.
+- Änderungen an Compliance-**Aktionen** erscheinen im Verlauf noch nicht als eigene Zeile.
+
 ## v2.4.5 (Testversion, Weg zu 2.5.0)
 
 ### → Conditional Access übertragen (aus dem Muster)

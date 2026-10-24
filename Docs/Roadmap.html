@@ -149,7 +149,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Roadmap <span class="ver">v2.4.0</span>
+      HU-MultiTenant · Roadmap <span class="ver">v2.5.0</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -202,19 +202,19 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
       </ul>
     </article>
     <article class="stage" style="--c: var(--teal)">
-      <div class="stage-head"><span class="when">Dann · 2.5.0</span><h3>Angleichen und Übertragen</h3></div>
+      <div class="stage-head"><span class="when">Fertig · 2.5.0</span><h3>Angleichen und Übertragen</h3></div>
       <ul>
-        <li><b>Übertragen A:</b> einen Intune-Eintrag aus einem Tenant oder dem Muster in Tenants neu anlegen, in denen er fehlt – als Testversion 2.4.1 veröffentlicht (Test-Kanal), Ziel Stable 2.5.0.</li>
-        <li><b>Übertragen B:</b> bestehende Einträge gleichen Namens angleichen (Konfiguration, Compliance, Feature-Update) – Testversion 2.4.2/2.4.3; Einstellungskatalog und Administrative Vorlage folgen nach Klärung im Test-Tenant.</li>
-        <li><b>Übertragen C:</b> Entra-Einstellungen aus dem Muster (Autorisierung, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen) – Testversion 2.4.4; Conditional Access als neue Richtlinie im Modus „Nur Bericht“ – Testversion 2.4.5.</li>
-        <li><b>Baseline-Einstellungen übertragen:</b> was in einem Tenant nach der Security Baseline eingestellt ist (z. B. Geoblock, Adminportale gesperrt, Gäste-Sitzungsdauer, Benutzerrechte, MSOL blockiert, Kennwortschutz), lässt sich auf die anderen Tenants übernehmen.</li>
-        <li>Vor jeder Änderung ein Backup (aus 2.4.0) und „Rückgängig“; Vorschau „vorher → nachher“ und doppelte Rückfrage.</li>
-        <li>Gruppen und Orte werden über den Namen zugeordnet; bedingter Zugriff kommt zuerst nur im Berichtsmodus an, Notfallkonten bleiben ausgenommen.</li>
-        <li>Schreibrechte als eigene Stufe, nur wenn man sie bewusst freigibt.</li>
+        <li><b>Übertragen A:</b> einen Intune-Eintrag aus einem Tenant oder dem Muster in Tenants neu anlegen, in denen er fehlt – <b>erledigt</b>.</li>
+        <li><b>Übertragen B:</b> bestehende Einträge gleichen Namens angleichen (Konfiguration, Compliance, Feature-Update) – <b>erledigt</b>; Einstellungskatalog und Administrative Vorlage folgen nach Klärung im Test-Tenant.</li>
+        <li><b>Übertragen C:</b> Entra-Einstellungen aus dem Muster (Autorisierung, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen) und Conditional Access als neue Richtlinie im Modus „Nur Bericht“ ohne Zuweisung – <b>erledigt</b>. Kennwortregeln lassen sich per App nicht schreiben (Portal).</li>
+        <li><b>Baseline-Einstellungen übertragen:</b> was in einem Tenant nach der Security Baseline eingestellt ist (z. B. Geoblock, Adminportale gesperrt, Gäste-Sitzungsdauer, Benutzerrechte, MSOL blockiert, Kennwortschutz), lässt sich auf die anderen Tenants übernehmen – <b>erledigt</b> über Übertragen aus dem Muster (Conditional Access, Autorisierung, Verzeichniseinstellungen); Kennwortschutz nur im Portal.</li>
+        <li>Vor jeder Änderung ein Backup (aus 2.4.0) und „Rückgängig“; Vorschau „vorher → nachher“ und doppelte Rückfrage – <b>erledigt</b>.</li>
+        <li>Gruppen und Orte werden über den Namen zugeordnet; bedingter Zugriff kommt zuerst nur im Berichtsmodus an, Notfallkonten bleiben ausgenommen – <b>erledigt</b>.</li>
+        <li>Schreibrechte als eigene Stufe, nur wenn man sie bewusst freigibt – <b>erledigt</b> („Entra-Schreibrechte an/aus“).</li>
       </ul>
     </article>
     <article class="stage" style="--c: var(--yellow)">
-      <div class="stage-head"><span class="when">Später · 2.6.0</span><h3>Mail und Teams</h3></div>
+      <div class="stage-head"><span class="when">Dann · 2.6.0</span><h3>Mail und Teams</h3></div>
       <ul>
         <li>Exchange- und Teams-Richtlinien: externe Weiterleitung, Überwachungsprotokoll, Mailschutz, externe Teams-Zugriffe – nur mit Leserolle.</li>
         <li>Eigene Technik außerhalb von Graph (Exchange Online und Teams), mit eigenen Rechten – deshalb als eigene Stufe.</li>

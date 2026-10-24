@@ -201,7 +201,15 @@ Describe 'Entra zurueckschreiben' {
                     values = @([pscustomobject]@{ name = 'LockoutThreshold'; value = '10' }, [pscustomobject]@{ name = 'LockoutDurationInSeconds'; value = '60' }, [pscustomobject]@{ name = 'EnableMSStandardBlockedWords'; value = 'true' }, [pscustomobject]@{ name = 'BannedPasswordList'; value = '' }) })
             $global:ErFx['/groupSettings/live1'] = $global:ErList['/groupSettings'][0]
         }
+        It 'Kennwortregeln (Password Rule Settings): per App gesperrt (403 trotz Recht, Live-Test 24.10.)' {
+            & (Get-Module HU.EntraRestore) { $script:HUErPwRuleBlocked = $true }
+            $bk = [pscustomobject]@{ templateId = '5cf42378-d67d-4f36-ba46-e8b86229381d'; values = @([pscustomobject]@{ name = 'LockoutThreshold'; value = '8' }) }
+            $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Verzeichniseinstellung' -Id 'x' -Name 'Password Rule Settings' -Backup $bk
+            @($p.Blocks | Where-Object { $_ -like '*per App nicht schreiben*' }).Count | Should -Be 1
+        }
+
         It 'Zuordnung ueber templateId, ganze Liste ohne EnableMSStandardBlockedWords, P1 fehlt -> gesperrt' {
+            & (Get-Module HU.EntraRestore) { $script:HUErPwRuleBlocked = $false }
             $global:ErList['/subscribedSkus'] = @([pscustomobject]@{ servicePlans = @([pscustomobject]@{ servicePlanName = 'EXCHANGE_S_STANDARD'; provisioningStatus = 'Success' }) })
             $bk = [pscustomobject]@{ id = 'alt-id'; templateId = '5cf42378-d67d-4f36-ba46-e8b86229381d'; values = @([pscustomobject]@{ name = 'LockoutThreshold'; value = '3' }, [pscustomobject]@{ name = 'EnableMSStandardBlockedWords'; value = 'false' }) }
             $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Verzeichniseinstellung' -Id 'alt-id' -Backup $bk
@@ -213,6 +221,7 @@ Describe 'Entra zurueckschreiben' {
             @($p.Warnings).Count | Should -Be 1
         }
         It 'mit P1 kein Sperren, Nachpruefung ueber values[Name]' {
+            & (Get-Module HU.EntraRestore) { $script:HUErPwRuleBlocked = $false }
             $global:ErList['/subscribedSkus'] = @([pscustomobject]@{ servicePlans = @([pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) })
             $bk = [pscustomobject]@{ templateId = '5cf42378-d67d-4f36-ba46-e8b86229381d'; values = @([pscustomobject]@{ name = 'LockoutThreshold'; value = '8' }) }
             $p = Get-HUEntraRestorePlan -TenantKey 'T' -Settings $script:Set -Typ 'Verzeichniseinstellung' -Backup $bk
@@ -278,6 +287,7 @@ Describe 'Entra zurueckschreiben' {
             $src | Should -Not -Match 'wird nicht geschrieben\.'
         }
         It 'B5: Kennwortliste landet nicht im Protokoll' {
+            & (Get-Module HU.EntraRestore) { $script:HUErPwRuleBlocked = $false }
             $global:ErList['/subscribedSkus'] = @([pscustomobject]@{ servicePlans = @([pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) })
             $global:ErList['/groupSettings'] = @([pscustomobject]@{ id = 'pw1'; templateId = '5cf42378-d67d-4f36-ba46-e8b86229381d'; values = @([pscustomobject]@{ name = 'BannedPasswordList'; value = '' }) })
             $global:ErFx['/groupSettings/pw1'] = $global:ErList['/groupSettings'][0]

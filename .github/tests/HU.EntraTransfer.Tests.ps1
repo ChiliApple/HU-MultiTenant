@@ -107,6 +107,9 @@ Describe 'Entra uebertragen (2.4.4)' {
         $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Benannter Ort' -Id 'q-loc' -Name 'Schulnetz' -Backup $src -ResolveKey 'Q'
         $p.Method | Should -Be 'PATCH'
         $p.Endpoint | Should -BeLike '*/z-loc'
+        # Anzahl: Liste mit einem Eintrag zaehlt 1, nicht 0
+        $c1 = @($p.Changes | Where-Object { $_.Feld -eq 'ipRanges' })[0]
+        $c1.Anzahl | Should -Be '1 -> 1'
         @($p.Confirms | Where-Object { $_ -like '*Block Ausland*' }).Count | Should -Be 1
         $src.id | Should -Be 'q-loc'
         # von keiner Richtlinie verwendet: keine Sperre (leere Liste ist nicht "nicht lesbar")
@@ -114,6 +117,16 @@ Describe 'Entra uebertragen (2.4.4)' {
         $p2 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Benannter Ort' -Id 'q-loc' -Name 'Schulnetz' -Backup $src -ResolveKey 'Q'
         $p2.Blocks.Count | Should -Be 0
         @($p2.Notes | Where-Object { $_ -like '*von keiner CA-Richtlinie*' }).Count | Should -Be 1
+    }
+
+    It 'Benannter Ort (Laender) angleichen auf genau ein Land: Liste mit einem Eintrag, kein Text (Graph 400)' {
+        $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @([pscustomobject]@{ id = 'z-c'; displayName = 'only Austria' })
+        $global:EtFx['Z|/identity/conditionalAccess/namedLocations/z-c'] = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.countryNamedLocation'; id = 'z-c'; displayName = 'only Austria'; countriesAndRegions = @('DE', 'AT'); includeUnknownCountriesAndRegions = $false }
+        $src = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.countryNamedLocation'; id = 'q-c'; displayName = 'only Austria'; countriesAndRegions = @('AT'); includeUnknownCountriesAndRegions = $false }
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Benannter Ort' -Id 'q-c' -Name 'only Austria' -Backup $src -ResolveKey 'Q'
+        $p.Method | Should -Be 'PATCH'
+        ($p.Body | ConvertTo-Json -Depth 10 -Compress) | Should -BeLike '*"countriesAndRegions":`["AT"`]*'
+        $p.Changes[0].Anzahl | Should -Be "2 -> 1"
     }
 
     It 'Administratorzustimmung: Benutzer-Reviewer sperrt, Gruppe wird ueber den Namen zugeordnet' {
@@ -125,6 +138,11 @@ Describe 'Entra uebertragen (2.4.4)' {
         $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Entra-Einstellung' -Id 'adminConsentRequestPolicy' -Name 'Administratorzustimmung' -Backup $src -ResolveKey 'Q'
         $p.Blocks.Count | Should -Be 0
         @($p.Body.reviewers)[0].query | Should -Be '/groups/bbbbbbbb-0000-0000-0000-000000000002/transitiveMembers'
+        # Reviewer nur im Ziel: Pflicht-Haken mit Namen (PUT ersetzt die Liste)
+        $global:EtFx['Z|/policies/adminConsentRequestPolicy'] = [pscustomobject]@{ isEnabled = $true; notifyReviewers = $false; remindersEnabled = $false; requestDurationInDays = 30; reviewers = @([pscustomobject]@{ query = '/v1.0/users/dddddddd-0000-0000-0000-000000000004'; queryType = 'MicrosoftGraph' }) }
+        $global:EtFx['Z|/users/dddddddd-0000-0000-0000-000000000004'] = [pscustomobject]@{ userPrincipalName = 'reviewer@ziel.example' }
+        $px = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Entra-Einstellung' -Id 'adminConsentRequestPolicy' -Name 'Administratorzustimmung' -Backup $src -ResolveKey 'Q'
+        @($px.Confirms | Where-Object { $_ -like '*fallen weg*reviewer@ziel.example*' }).Count | Should -Be 1
         $src2 = [pscustomobject]@{ isEnabled = $true; reviewers = @([pscustomobject]@{ query = '/users/cccccccc-0000-0000-0000-000000000003'; queryType = 'MicrosoftGraph' }) }
         $p2 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Entra-Einstellung' -Id 'adminConsentRequestPolicy' -Name 'Administratorzustimmung' -Backup $src2 -ResolveKey 'Q'
         @($p2.Blocks | Where-Object { $_ -like '*einzelner Benutzer*' }).Count | Should -Be 1
@@ -162,6 +180,9 @@ Describe 'Entra uebertragen (2.4.4)' {
         $r.Ok | Should -BeTrue
         $u = Read-HUBackupJson $r.UndoFile
         "$($u.Kind)" | Should -Be 'entraChanged'
+        (Undo-HUEntraTransfer -Settings $script:Set -File $r.UndoFile -U $u -CheckOnly).Text | Should -Be 'Zuruecksetzen moeglich'
+        # nur ein neuer Zeitstempel (von Entra gesetzt) sperrt nicht (053 B6)
+        $global:EtFx['Z|/policies/authorizationPolicy'] = [pscustomobject]@{ id = 'authorizationPolicy'; blockMsolPowerShell = $true; allowInvitesFrom = 'everyone'; modifiedDateTime = '2026-10-24T10:00:00Z' }
         (Undo-HUEntraTransfer -Settings $script:Set -File $r.UndoFile -U $u -CheckOnly).Text | Should -Be 'Zuruecksetzen moeglich'
         # inzwischen im Portal geaendert -> gesperrt
         $global:EtFx['Z|/policies/authorizationPolicy'] = [pscustomobject]@{ id = 'authorizationPolicy'; blockMsolPowerShell = $true; allowInvitesFrom = 'none' }
@@ -285,6 +306,11 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
         $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @([pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-0000000000c2'; displayName = 'Schulnetz' })
         $p4 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name 'x' -Backup $src4 -ResolveKey 'Q' -SourceLabel 'Muster'
         @($p4.Blocks | Where-Object { $_ -like '*Workload-Identitaeten*' }).Count | Should -Be 1
+        # 054 B1: ein einzelner Wert wird im Body zur Liste
+        $src7 = & $script:Ca
+        $src7.grantControls.builtInControls = 'mfa'
+        $p7 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name 'x' -Backup $src7 -ResolveKey 'Q' -SourceLabel 'Muster'
+        ($p7.Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike '*"builtInControls":`["mfa"`]*'
         # 053 B2/B3: eigene Steuerelemente und Dienstprinzipal-Filter sperren
         $src5 = & $script:Ca
         $src5.grantControls | Add-Member -NotePropertyName customAuthenticationFactors -NotePropertyValue @('MeinControl')
