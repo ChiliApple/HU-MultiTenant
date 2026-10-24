@@ -1,5 +1,18 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.4.3 (Testversion, Weg zu 2.5.0)
+
+### ⚡ Quick Script
+- **Neu:** Eine `.ps1`-, `.psm1`- oder `.txt`-Datei lässt sich direkt ins Codefeld ziehen – der Inhalt steht dann im Editor als neues Snippet (mit Strg+S speichern). Ungespeicherte Änderungen werden vorher abgefragt; ausgeführt wird nichts. Zeichenkodierung wird erkannt (UTF-8 mit/ohne BOM, UTF-16, ältere Windows-Dateien), höchstens 1 MB.
+- Im leeren Codefeld steht dezent „Code hier schreiben oder einfügen oder eine .ps1-Datei hierher ziehen“.
+- **Hinweis statt Sperre:** Sieht die Datei nicht nach einem HU-Snippet aus (kein `# @param`, `$Token` oder `Invoke-GraphRequest`), steht in der Ausgabe ein gelber Hinweis „Fremdes Skript“; auffällige Befehle (Löschen, Neustart, Invoke-Expression, Downloads, eigene Anmeldung, Start-Process, Datenträger, Ausführungsrichtlinie, HKLM) werden aufgelistet.
+
+### → Angleichen sicherer
+- **Gesperrt:** Hat das Objekt im **Ziel** einen geheimen Wert (z. B. verschlüsselter OMA-URI-Wert), wird nicht angeglichen – Rückgängig könnte ihn nicht wiederherstellen.
+- **Vollständiger:** Felder, die nur das Ziel hat, werden auch in Unterobjekten geleert; Listen werden als leere Liste geschickt; schreibgeschützte „…IsSet"-Felder nie.
+- **Compliance:** Unterschiede nur in den Aktionen (z. B. Kulanzfrist) sind jetzt in der Vorschau sichtbar und werden nachgeprüft; der Regelname kommt aus der Quelle.
+- **Fehlerfälle:** Lehnt Intune das Angleichen ab, bleibt keine Rückgängig-Datei zurück (es wurde nichts geändert). Wird nur halb angeglichen (Einstellungen ja, Aktionen nein), meldet das Programm das deutlich und Rückgängig bleibt möglich.
+
 ## v2.4.2 (Testversion, Weg zu 2.5.0)
 
 ### → Übertragen: Angleichen bestehender Objekte
