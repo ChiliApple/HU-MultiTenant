@@ -1,5 +1,21 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.4.5 (Testversion, Weg zu 2.5.0)
+
+### → Conditional Access übertragen (aus dem Muster)
+- **Neu:** Im Tenant-Vergleich lässt sich eine Conditional-Access-Richtlinie mit *Übertragen …* in andere Tenants bringen. Quelle ist **immer der festgehaltene Mustertenant** (Haken *Muster aus Backup*).
+- **Immer neu, immer „Nur Bericht“:** Im Ziel wird nie eine bestehende Richtlinie geändert. Es entsteht eine **neue** Richtlinie im Modus *Nur Bericht* – sie erzwingt nichts. Fehlt sie im Ziel, bekommt sie den Originalnamen; gibt es sie dort schon, heißt die neue „Name (von Muster)“ und läuft zum Vergleich neben der bestehenden. Richtlinien für Benutzeraktionen werden **ausgeschaltet** angelegt (Nur Bericht ist dort nicht möglich). Nach der Prüfung im Anmeldeprotokoll selbst einschalten und die alte entfernen.
+- **Ohne Zuweisung (wie bei Intune):** Konten, Gruppen und Gäste werden nicht übertragen – die Vorschau zeigt, wem die Richtlinie im Muster zugewiesen ist, im Ziel selbst zuweisen. Benutzer „Alle“ und eingebaute Rollen (in jedem Tenant gleich) sind per Haken wählbar (vorausgewählt); sonst Benutzer „Keine“.
+- **Notfallkonten:** Die Notfallkonten des Ziels werden immer als Ausnahme eingesetzt. Sind im Ziel keine hinterlegt oder ist eines deaktiviert, wird nicht übertragen.
+- **Bedingungen** (Apps, Orte, Plattformen, Gewähren, Sitzung) werden übertragen; benannte Orte und eigene Authentifizierungsstärken über den Namen – genau ein Treffer, sonst gesperrt. Fehlt ein Ort im Ziel, zuerst den Ort übertragen.
+- **Gesperrt:** eigene Rollen, Workload-Identitäten (Dienstprinzipale und Dienstprinzipal-Filter), Filterregeln mit Kennungen, Nutzungsbedingungen, eigene Steuerelemente, Apps, die es im Ziel nicht gibt, sowie von Microsoft verwaltete Richtlinien.
+- **Rückgängig** löscht die neue Richtlinie – nur solange sie unverändert und nicht eingeschaltet ist.
+
+### 🖥️ Oberfläche
+- **Spaltenbreiten überall nach Inhalt:** In jeder Tabelle des Programms ist jede Textspalte so breit wie ihr Inhalt bzw. ihr Kopf (plus Abstand) – nichts mehr abgeschnitten oder aufgebläht, auch in Vorschau und Rückgängig. Diese beiden Fenster öffnen so breit wie ihre Spalten.
+- **Anfasser rechts unten:** Jedes Fenster, dessen Größe sich ändern lässt, zeigt rechts unten den Anfasser zum Ziehen.
+- **Rückgängig ohne angehakte Tenants** nimmt die Tenants des geladenen Vergleichs (vorher passierte nichts).
+
 ## v2.4.4 (Testversion, Weg zu 2.5.0)
 
 ### → Entra-Einstellungen übertragen (aus dem Muster)
@@ -10,7 +26,6 @@
 - **Verzeichniseinstellungen:** Fehlt die Einstellung im Ziel, wird sie mit der kompletten Werteliste neu angelegt (`EnableMSStandardBlockedWords` nie).
 - **Rückgängig:** Geänderte Einstellungen werden mit derselben Logik wie beim Zurückschreiben auf den gesicherten Stand gesetzt (nur solange seitdem unverändert); neu angelegte Orte werden gelöscht, solange unverändert und von keiner Richtlinie verwendet. Neu angelegte Verzeichniseinstellungen werden nicht automatisch gelöscht.
 - **Schreibrecht schon in der Vorschau:** Fehlt im Ziel das nötige Schreibrecht, steht das bereits in der Vorschau (gelber Hinweis) statt erst beim Schreiben.
-- Conditional Access übertragen folgt mit 2.4.5.
 
 ### 🔑 Entra-Schreibrechte nur zeitweise
 - **Neu:** *Berechtigungen* › Tenant › **Entra-Schreibrechte an …** erteilt nur die 4 Rechte für Übertragen/Zurückschreiben (`Policy.ReadWrite.ConditionalAccess`, `Policy.ReadWrite.Authorization`, `Policy.ReadWrite.ConsentRequest`, `GroupSettings.ReadWrite.All`) nur für diesen Tenant; **Entra-Schreibrechte aus …** entzieht genau diese wieder (Admin-Anmeldung im Browser). Andere Schreibrechte (Intune, Benutzer, Apps) bleiben unberührt.

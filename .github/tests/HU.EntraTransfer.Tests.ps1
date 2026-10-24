@@ -41,7 +41,11 @@ BeforeAll {
         foreach ($k in @($global:EtList.Keys | Sort-Object { $_.Length } -Descending)) { if ("$TenantKey|$Endpoint" -like "*$k*") { return @($global:EtList[$k]) } }
         return @()
     }
-    Mock -ModuleName HU.EntraRestore Get-HUSecBaseline { [pscustomobject]@{ Values = @{ V1 = @{ accounts = @('11111111-1111-1111-1111-111111111111') } } } }
+    Mock -ModuleName HU.EntraRestore Get-HUSecBaseline {
+        param($TenantKey, $Rules)
+        $acc = if ($global:EtBg -and $global:EtBg.ContainsKey("$TenantKey")) { @($global:EtBg["$TenantKey"]) } else { @('11111111-1111-1111-1111-111111111111') }
+        [pscustomobject]@{ Values = @{ V1 = @{ accounts = $acc } } }
+    }
 }
 
 AfterAll {
@@ -52,7 +56,7 @@ AfterAll {
 
 Describe 'Entra uebertragen (2.4.4)' {
     BeforeEach {
-        $global:EtFx = @{}; $global:EtList = @{}; $global:EtWrites = @(); $global:EtAfter = $null; $global:EtAfterKey = ''
+        $global:EtFx = @{}; $global:EtList = @{}; $global:EtWrites = @(); $global:EtAfter = $null; $global:EtAfterKey = ''; $global:EtBg = @{}
         $global:EtFx['Z|/users/11111111-1111-1111-1111-111111111111'] = [pscustomobject]@{ id = '11111111-1111-1111-1111-111111111111'; accountEnabled = $true; userPrincipalName = 'notfall@ziel.example' }
     }
 
@@ -162,5 +166,134 @@ Describe 'Entra uebertragen (2.4.4)' {
         # inzwischen im Portal geaendert -> gesperrt
         $global:EtFx['Z|/policies/authorizationPolicy'] = [pscustomobject]@{ id = 'authorizationPolicy'; blockMsolPowerShell = $true; allowInvitesFrom = 'none' }
         { Undo-HUEntraTransfer -Settings $script:Set -File $r.UndoFile -U $u -CheckOnly } | Should -Throw '*geaendert*'
+    }
+}
+
+Describe 'Conditional Access uebertragen (2.4.5)' {
+    BeforeEach {
+        $global:EtFx = @{}; $global:EtList = @{}; $global:EtWrites = @(); $global:EtAfter = $null; $global:EtAfterKey = ''
+        # Notfallkonten: Quelle q-bg, Ziel z-bg (je Tenant verschieden)
+        $global:EtBg = @{ Q = @('aaaa0000-0000-0000-0000-00000000000b'); Z = @('bbbb0000-0000-0000-0000-00000000000b') }
+        $global:EtFx['Z|/users/bbbb0000-0000-0000-0000-00000000000b'] = [pscustomobject]@{ id = 'bbbb0000-0000-0000-0000-00000000000b'; accountEnabled = $true; userPrincipalName = 'notfall@ziel.example' }
+        $global:EtFx['Q|/groups/aaaaaaaa-0000-0000-0000-000000000001'] = [pscustomobject]@{ id = 'aaaaaaaa-0000-0000-0000-000000000001'; displayName = 'Lehrer' }
+        $global:EtList['Z|/groups?'] = @([pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-000000000002'; displayName = 'lehrer' })
+        $global:EtFx['Z|/groups/bbbbbbbb-0000-0000-0000-000000000002'] = [pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-000000000002' }
+        $global:EtFx['Q|/identity/conditionalAccess/namedLocations/aaaaaaaa-0000-0000-0000-0000000000c1'] = [pscustomobject]@{ id = 'aaaaaaaa-0000-0000-0000-0000000000c1'; displayName = 'Schulnetz' }
+        $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @([pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-0000000000c2'; displayName = 'Schulnetz' })
+        $global:EtFx['Z|/identity/conditionalAccess/namedLocations/bbbbbbbb-0000-0000-0000-0000000000c2'] = [pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-0000000000c2' }
+        $script:Ca = {
+            [pscustomobject]@{ id = 'q-pol'; displayName = '201 MFA Lehrer'; state = 'enabled'; createdDateTime = '2025-01-01T00:00:00Z'
+                conditions = [pscustomobject]@{
+                    users = [pscustomobject]@{ includeUsers = @(); excludeUsers = @('aaaa0000-0000-0000-0000-00000000000b'); includeGroups = @('aaaaaaaa-0000-0000-0000-000000000001'); excludeGroups = @(); includeRoles = @(); excludeRoles = @() }
+                    applications = [pscustomobject]@{ includeApplications = @('All'); excludeApplications = @() }
+                    locations = [pscustomobject]@{ includeLocations = @('All'); excludeLocations = @('aaaaaaaa-0000-0000-0000-0000000000c1') }
+                    clientAppTypes = @('all') }
+                grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @('mfa') } }
+        }
+    }
+
+    It 'Neu als Nur Bericht OHNE Zuweisung: Benutzer Keine, nur Notfallkonten des Ziels ausgenommen, Ort ueber den Namen, Rueckgaengig nur solange nicht eingeschaltet' {
+        $src = & $script:Ca
+        $src.conditions.users.excludeUsers = @('aaaa0000-0000-0000-0000-00000000000b', 'eeee0000-0000-0000-0000-000000000005')
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '201 MFA Lehrer' -Backup $src -ResolveKey 'Q' -SourceLabel 'Muster'
+        $p.Blocks | Should -BeNullOrEmpty
+        $p.Method | Should -Be 'POST'
+        # fehlt im Ziel -> Originalname
+        $p.Body.displayName | Should -Be '201 MFA Lehrer'
+        $p.Body.state | Should -Be 'enabledForReportingButNotEnforced'
+        @($p.Body.conditions.users.includeUsers) | Should -Be @('None')
+        @($p.Body.conditions.users.excludeUsers) | Should -Be @('bbbb0000-0000-0000-0000-00000000000b')
+        # keine Liste in der Liste (Graph 400 "does not match the schema")
+        ($p.Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike '*"excludeUsers":`["bbbb0000-0000-0000-0000-00000000000b"`]*'
+        @($p.Body.conditions.users.includeGroups | Where-Object { $_ }).Count | Should -Be 0
+        @($p.Body.conditions.locations.excludeLocations) | Should -Be @('bbbbbbbb-0000-0000-0000-0000000000c2')
+        @($p.Warnings | Where-Object { $_ -like '*NICHT uebertragen*Gruppen: Lehrer*' }).Count | Should -Be 1
+        @($p.Warnings | Where-Object { $_ -like '*Ausnahmen Konten*' }).Count | Should -Be 1
+        $p.BreakGlass.Ok | Should -BeTrue
+        # Quelle bleibt unberuehrt
+        @($src.conditions.users.includeGroups) | Should -Be @('aaaaaaaa-0000-0000-0000-000000000001')
+        $r = Invoke-HUEntraTransfer -Plan $p -Settings $script:Set
+        $r.Ok | Should -BeTrue
+        @($global:EtWrites | Where-Object Method -eq 'POST').Count | Should -Be 1
+        $u = Read-HUBackupJson $r.UndoFile
+        "$($u.Kind)" | Should -Be 'entraCreated'
+        "$($u.Typ)" | Should -Be 'Conditional Access'
+        (Undo-HUEntraTransfer -Settings $script:Set -File $r.UndoFile -U $u -CheckOnly).Text | Should -Be 'Loeschen moeglich'
+        # 045 F5: eingeschaltet -> nicht loeschen
+        $global:EtFx['/identity/conditionalAccess/policies/neu1'].state = 'enabled'
+        { Undo-HUEntraTransfer -Settings $script:Set -File $r.UndoFile -U $u -CheckOnly } | Should -Throw '*EINGESCHALTET*'
+    }
+
+    It "Gibt es die Richtlinie im Ziel schon: neue heisst '(von Muster)', die bestehende bleibt" {
+        $global:EtList['Z|/identity/conditionalAccess/policies'] = @([pscustomobject]@{ displayName = '201 mfa lehrer'; state = 'enabled' })
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '201 MFA Lehrer' -Backup (& $script:Ca) -ResolveKey 'Q' -SourceLabel 'Muster'
+        $p.Body.displayName | Should -Be '201 MFA Lehrer (von Muster)'
+    }
+
+    It 'Rollen: eingebaute werden angeboten (Haken), ohne Haken Benutzer Keine; eigene Rolle sperrt' {
+        $rid = '62e90394-69f5-4237-9190-012177145e10'
+        $global:EtFx["Z|/roleManagement/directory/roleDefinitions/$rid"] = [pscustomobject]@{ id = $rid; isBuiltIn = $true; displayName = 'Global Administrator' }
+        $src = & $script:Ca
+        $src.conditions.users.includeGroups = @(); $src.conditions.users.includeRoles = @($rid)
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '102' -Backup $src -ResolveKey 'Q' -SourceLabel 'Muster'
+        $p.Blocks | Should -BeNullOrEmpty
+        @($p.Options).Count | Should -Be 1
+        $p.Options[0].Text | Should -BeLike '*Global Administrator*'
+        @($p.Body.conditions.users.includeRoles) | Should -Be @($rid)
+        # 053 B1: Rollen-Pfad sendet eine leere Liste, nicht null
+        ($p.Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike '*"includeUsers":`[`]*'
+        [void](Invoke-HUEntraTransfer -Plan $p -Settings $script:Set)
+        (@($global:EtWrites | Where-Object Method -eq 'POST')[-1].Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike '*"includeUsers":`[`]*'
+        $global:EtWrites = @()
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '102' -Backup $src -ResolveKey 'Q' -SourceLabel 'Muster'
+        $p.Options[0].Value = $false
+        [void](Invoke-HUEntraTransfer -Plan $p -Settings $script:Set)
+        $w = @($global:EtWrites | Where-Object Method -eq 'POST')[0]
+        @($w.Body.conditions.users.includeUsers) | Should -Be @('None')
+        @($w.Body.conditions.users.includeRoles | Where-Object { $_ }).Count | Should -Be 0
+
+        $global:EtFx["Z|/roleManagement/directory/roleDefinitions/$rid"] = [pscustomobject]@{ id = $rid; isBuiltIn = $false; displayName = 'Eigene Rolle' }
+        $p2 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '102' -Backup $src -ResolveKey 'Q' -SourceLabel 'Muster'
+        @($p2.Blocks | Where-Object { $_ -like '*eigene Rolle*' }).Count | Should -Be 1
+    }
+
+    It "Benutzer 'Alle' ist waehlbar: mit Haken All, ohne Haken None" {
+        $src = & $script:Ca
+        $src.conditions.users.includeUsers = @('All'); $src.conditions.users.includeGroups = @()
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '901' -Backup $src -ResolveKey 'Q' -SourceLabel 'Muster'
+        @($p.Body.conditions.users.includeUsers) | Should -Be @('All')
+        @($p.Options | Where-Object Key -eq 'allUsers').Count | Should -Be 1
+        $p.Options[0].Value = $false
+        [void](Invoke-HUEntraTransfer -Plan $p -Settings $script:Set)
+        @(@($global:EtWrites | Where-Object Method -eq 'POST')[0].Body.conditions.users.includeUsers) | Should -Be @('None')
+        # Liste, kein einzelner Text (Graph 400)
+        (@($global:EtWrites | Where-Object Method -eq 'POST')[0].Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike '*"includeUsers":`["None"`]*'
+    }
+
+    It '045 F1/Ue-5: fehlende Notfallkonten im Ziel, Ort fehlt, Dienstprinzipale sperren' {
+        $global:EtBg['Z'] = @()
+        $p2 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name 'x' -Backup (& $script:Ca) -ResolveKey 'Q' -SourceLabel 'Muster'
+        @($p2.Blocks | Where-Object { $_ -like '*keine Notfallkonten*' }).Count | Should -Be 1
+        $global:EtBg['Z'] = @('bbbb0000-0000-0000-0000-00000000000b')
+
+        $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @()
+        $p3 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name 'x' -Backup (& $script:Ca) -ResolveKey 'Q' -SourceLabel 'Muster'
+        @($p3.Blocks | Where-Object { $_ -like "*Ort 'Schulnetz'*zuerst den Ort*" }).Count | Should -Be 1
+
+        $src4 = & $script:Ca
+        $src4.conditions | Add-Member -NotePropertyName clientApplications -NotePropertyValue ([pscustomobject]@{ includeServicePrincipals = @('dddd0000-0000-0000-0000-000000000004') })
+        $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @([pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-0000000000c2'; displayName = 'Schulnetz' })
+        $p4 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name 'x' -Backup $src4 -ResolveKey 'Q' -SourceLabel 'Muster'
+        @($p4.Blocks | Where-Object { $_ -like '*Workload-Identitaeten*' }).Count | Should -Be 1
+        # 053 B2/B3: eigene Steuerelemente und Dienstprinzipal-Filter sperren
+        $src5 = & $script:Ca
+        $src5.grantControls | Add-Member -NotePropertyName customAuthenticationFactors -NotePropertyValue @('MeinControl')
+        $p5 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name 'x' -Backup $src5 -ResolveKey 'Q' -SourceLabel 'Muster'
+        @($p5.Blocks | Where-Object { $_ -like '*customAuthenticationFactors*' }).Count | Should -Be 1
+        $src6 = & $script:Ca
+        $src6.conditions | Add-Member -NotePropertyName clientApplications -NotePropertyValue ([pscustomobject]@{ servicePrincipalFilter = [pscustomobject]@{ mode = 'include'; rule = 'CustomSecurityAttribute.Schule_Typ -eq "x"' } })
+        $p6 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name 'x' -Backup $src6 -ResolveKey 'Q' -SourceLabel 'Muster'
+        @($p6.Blocks | Where-Object { $_ -like '*servicePrincipalFilter*' }).Count | Should -Be 1
+        @($global:EtWrites).Count | Should -Be 0
     }
 }

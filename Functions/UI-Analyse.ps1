@@ -210,6 +210,7 @@ $script:AnaMode = 'asg'
 $script:CmpData = @{}
 $script:CmpWait = @{}
 $script:CmpKeys = @()
+$script:UndoEntra = $false
 $script:CmpGen = 0
 $script:CmpMatrix = @()
 
@@ -222,13 +223,14 @@ function Update-HUCmpHint {
     $all = @($script:CmpMatrix)
     $d = @($all | Where-Object Diff).Count
     $vis = @(Get-HUCmpVisibleRows).Count
-    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' fuer Profile, Compliance, Feature-Updates, Autopilot, Conditional Access (Zelle Ein, Aus oder Melden) und die weiteren Arten aus dem Backup; IDs von Gruppen, Apps und Orten zaehlen dabei nicht, die Namen zeigt der Doppelklick. Doppelklick zeigt die abweichenden Einstellungen. Uebertragen: einen Eintrag markieren, Quelle und Ziele waehlen, je Ziel Vorschau - neu angelegt ohne Zuweisungen, nur Intune-Grundarten."
+    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' fuer Profile, Compliance, Feature-Updates, Autopilot, Conditional Access (Zelle Ein, Aus oder Melden) und die weiteren Arten aus dem Backup; IDs von Gruppen, Apps und Orten zaehlen dabei nicht, die Namen zeigt der Doppelklick. Doppelklick zeigt die abweichenden Einstellungen. Uebertragen: einen Eintrag markieren, Quelle und Ziele waehlen, je Ziel Vorschau - Intune neu angelegt ohne Zuweisungen oder angeglichen; Entra-Einstellungen und Conditional Access (neu, als Nur Bericht) nur aus dem Muster."
 }
 
 # Arten-Dropdown: hinter jeder Art steht, was damit geht (uebertragen/angleichen/nur vergleichen)
 function Get-HUCmpTypeHint([string]$Typ) {
     if ($Typ -in 'Benannter Ort', 'Verzeichniseinstellung') { return 'uebertragen aus Muster' }
     if ($Typ -eq 'Entra-Einstellung') { return 'teils uebertragbar aus Muster' }
+    if ($Typ -eq 'Conditional Access') { return 'neu als Nur Bericht aus Muster' }
     $src = Get-HUCompareSources | Where-Object { $_.Typ -eq $Typ } | Select-Object -First 1
     if ($src -and $src.Copy) { if ($src.Copy -in @('generic', 'compliance') -and $src.Hash) { return 'uebertragen + angleichen' } else { return 'neu anlegen' } }
     return 'nur vergleichen'
@@ -293,13 +295,16 @@ function Update-HUCmpGrid {
     if ((@($cb.Items) -join '|') -ne ($types -join '|')) {
         $script:CmpTypeBusy = $true
         $cb.Items.Clear(); foreach ($t in $types) { [void]$cb.Items.Add($t) }
-        $cb.SelectedItem = $(if ($types -contains $cur) { $cur } else { '(alle Arten)' })
+        # gewaehlte Art bleibt auch ueber Neu-Laden (z. B. nach dem Uebertragen) und Neustart erhalten - Vergleich ueber den Namen ohne Hinweis
+        $want = "$($script:CmpTypeWanted)"; if (-not $want) { $want = ($cur -replace '\s+\([^)]*\)$', '') }
+        $hit = @($types | Where-Object { ($_ -replace '\s+\([^)]*\)$', '') -eq $want }) | Select-Object -First 1
+        $cb.SelectedItem = $(if ($hit) { $hit } else { '(alle Arten)' })
         $script:CmpTypeBusy = $false
     }
     $items = foreach ($m in @(Get-HUCmpVisibleRows)) {
         $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
         for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = $(if ($m.Have -contains $keys[$i]) { Get-HUCmpCellText $m $keys[$i] } elseif (@($m.Unknown) -contains $keys[$i]) { '?' } else { "$([char]0x2014)" }); $o["Fc$i"] = Get-HUCmpCellColor $m $keys[$i] }
-        $o.Status = ("$($m.Status)$(if ($m.Missing.Count -and -not $m.Copy -and $m.Typ -notin 'Benannter Ort', 'Verzeichniseinstellung') { ' (nur anzeigen)' })" -replace [regex]::Escape((Get-HUMusterKey)), 'Muster')
+        $o.Status = ("$($m.Status)$(if ($m.Missing.Count -and -not $m.Copy -and $m.Typ -notin 'Benannter Ort', 'Verzeichniseinstellung', 'Conditional Access') { ' (nur anzeigen)' })" -replace [regex]::Escape((Get-HUMusterKey)), 'Muster')
         $o.Ref = $m
         [pscustomobject]$o
     }
@@ -367,8 +372,8 @@ function Start-HUCmpCopy {
     # 2.4.4: Entra-Einstellungen (nur aus dem Muster, 045 F6)
     $ek = ''
     if (Get-Command Get-HUEntraTransferPlan -ErrorAction SilentlyContinue) { $ek = Get-HUEntraRestoreKind $m.Typ "$(@($m.Items)[0].Id)" }
-    if ($ek -in 'authz', 'consent', 'location', 'groupSetting') { Start-HUCmpEntraCopy $m; return }
-    if (-not (@(Get-HUCompareSources | Where-Object { $_.Typ -eq $m.Typ -and $_.Copy }).Count)) { Show-HUMessage "$($m.Typ) laesst sich (noch) nicht uebertragen.`n`nApps ueber die Bibliothek verteilen; Conditional Access, Autopilot und die weiteren Arten werden vorerst nur verglichen." -Icon Info; return }
+    if ($ek -in 'authz', 'consent', 'location', 'groupSetting', 'caNew') { Start-HUCmpEntraCopy $m; return }
+    if (-not (@(Get-HUCompareSources | Where-Object { $_.Typ -eq $m.Typ -and $_.Copy }).Count)) { Show-HUMessage "$($m.Typ) laesst sich (noch) nicht uebertragen.`n`nApps ueber die Bibliothek verteilen; Autopilot und die weiteren Arten werden vorerst nur verglichen." -Icon Info; return }
     $have = @($m.Items | ForEach-Object { $_.Tenant } | Select-Object -Unique)
     $srcKey = $have[0]
     if ($have.Count -gt 1) {
@@ -420,8 +425,15 @@ function Start-HUCmpEntraCopy($M) {
     $targets = @($missing + $diff | Select-Object -Unique)
     if (-not $targets.Count) { Show-HUMessage "'$($M.Name)' ist in allen angehakten Tenants schon wie im Muster (der Tenant, aus dem das Muster stammt, wird nicht angeboten)." -Icon Info; return }
     $txt = "'$($M.Name)' aus dem Muster uebertragen - je Tenant eine eigene Vorschau, Bestaetigung mit dem Tenant-Namen."
-    if ($missing.Count) { $txt += "`nFehlt (wird NEU angelegt): $(@($missing | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
-    if ($diff.Count) { $txt += "`nWeicht ab (wird ANGEGLICHEN): $(@($diff | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
+    if ($M.Typ -eq 'Conditional Access') {
+        # 045 Ue-7: nie eine bestehende Richtlinie aendern - immer eine NEUE im Modus Nur Bericht
+        $txt = "'$($M.Name)' aus dem Muster als NEUE Richtlinie im Modus NUR BERICHT anlegen, ohne Zuweisung - bestehende Richtlinien bleiben unveraendert. Je Tenant eine eigene Vorschau, Bestaetigung mit dem Tenant-Namen."
+        if ($missing.Count) { $txt += "`nFehlt (mit gleichem Namen anlegen): $(@($missing | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
+        if ($diff.Count) { $txt += "`nGibt es anders (zusaetzlich '$($M.Name) (von Muster)' zum Vergleichen): $(@($diff | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
+    } else {
+        if ($missing.Count) { $txt += "`nFehlt (wird NEU angelegt): $(@($missing | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
+        if ($diff.Count) { $txt += "`nWeicht ab (wird ANGEGLICHEN): $(@($diff | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
+    }
     $tg = @(Show-HUTenantChoice -Title 'Uebertragen nach' -Text $txt -Keys $targets -OkText 'Weiter')
     if (-not $tg.Count) { return }
     $modes = @{}; foreach ($t in $targets) { $modes[$t] = 'entra' }
@@ -432,15 +444,25 @@ function Start-HUCmpEntraCopy($M) {
     Start-HUTransferNext
 }
 
+# Vergleich neu laden; bei Entra/CA erst nach 10 s (neu Angelegtes/Geloeschtes steht erst dann richtig in der Liste)
+function Start-HUCmpRunDelayed([switch]$Entra) {
+    if (-not $Entra) { Start-HUCmpRun; return }
+    Add-HURtbLine $script:Controls['rtbAna'] 'Vergleich wird in 10 Sekunden neu geladen (Entra braucht kurz, bis die Aenderung in der Liste steht).' '#90CAF9'
+    $t = New-Object System.Windows.Threading.DispatcherTimer
+    $t.Interval = [TimeSpan]::FromSeconds(10)
+    $t.Add_Tick({ param($s, $e) try { $s.Stop() } catch { }; Start-HUCmpRun })
+    $t.Start()
+}
+
 # naechstes Ziel aus der Warteschlange: Plan lesen -> Vorschau -> schreiben -> Ergebnis -> weiter
 function Start-HUTransferNext {
     $c = $script:Controls
     if (-not $script:TrQueue -or -not $script:TrQueue.Count) {
         $x = $script:TrCtx
         if ($x -and $x.Done) {
-            Add-HURtbLine $c['rtbAna'] 'Uebertragen fertig - Vergleich wird neu geladen.' '#90CAF9'
             if ($x.Multi -and -not $x.Entra) { Show-HUMessage "'$($x.Name)' neu angelegt in: $(@($x.DoneNames) -join ', ').`n`nNoch OHNE Zuweisungen - zum Wirken im jeweiligen Tenant zuweisen (Zuweisungen werden nicht uebertragen)." -Icon Info }
-            Start-HUCmpRun
+            Add-HURtbLine $c['rtbAna'] 'Uebertragen fertig.' '#90CAF9'
+            Start-HUCmpRunDelayed -Entra:([bool]$x.Entra)
         }
         return
     }
@@ -470,7 +492,7 @@ function Start-HUTransferNext {
             [void](Start-HUJob -Name 'TransferWrite' -Output $script:Controls['rtbAna'] -Vars @{ Plan = $plan } -Code {
                     try {
                         $isE = [bool]$Plan.PSObject.Properties['Transfer']
-                        [pscustomobject]@{ __Res = $(if ($isE) { Invoke-HUEntraTransfer -Plan $Plan -Settings $Settings } elseif ("$($Plan.Kind)" -eq 'transferAlign') { Invoke-HUTransferAlign -Plan $Plan -Settings $Settings } else { Invoke-HUTransfer -Plan $Plan -Settings $Settings }); __Kind = $(if ($isE) { 'entra' } else { "$($Plan.Kind)" }); __New = ("$($Plan.Method)" -eq 'POST') }
+                        [pscustomobject]@{ __Res = $(if ($isE) { Invoke-HUEntraTransfer -Plan $Plan -Settings $Settings } elseif ("$($Plan.Kind)" -eq 'transferAlign') { Invoke-HUTransferAlign -Plan $Plan -Settings $Settings } else { Invoke-HUTransfer -Plan $Plan -Settings $Settings }); __Kind = $(if ($isE) { 'entra' } else { "$($Plan.Kind)" }); __New = ("$($Plan.Method)" -eq 'POST'); __Ca = ("$($Plan.Kind)" -eq 'caNew'); __State = "$(if ($Plan.Body) { $Plan.Body['state'] })" }
                     }
                     catch { Write-HULog -Message "$($Plan.Typ) '$($Plan.Name)': $($_.Exception.Message)" -Level 'ERROR' -Tenant $Plan.TenantKey; [pscustomobject]@{ __ResError = "$($_.Exception.Message)" } }
                 } -OnDone {
@@ -481,7 +503,8 @@ function Start-HUTransferNext {
                     else {
                         $res = $r2.__Res; $script:TrCtx.Done++; [void]$script:TrCtx.DoneNames.Add("$($script:TrCtx.Cur)")
                         $isAl = ("$($r2.__Kind)" -eq 'transferAlign' -or ("$($r2.__Kind)" -eq 'entra' -and -not $r2.__New))
-                        $txt = if ("$($r2.__Kind)" -eq 'entra') { "$(if ($r2.__New) { 'Im Ziel neu angelegt' } else { 'Im Ziel angeglichen (Stand davor gesichert)' }) - wie im Muster.$(if ($res.UndoFile) { ' Rueckgaengig: Tenant-Vergleich > Rueckgaengig ...' } else { ' Rueckgaengig ist hierfuer nicht vorgesehen.' })" }
+                        $txt = if ($r2.__Ca) { "Neue Richtlinie angelegt im Modus $(if ($r2.__State -eq 'disabled') { 'AUS (Benutzeraktionen)' } else { 'NUR BERICHT' }) - sie erzwingt nichts. Erst im Anmeldeprotokoll (Bericht) pruefen, dann im Portal selbst einschalten und die alte Richtlinie entfernen.$(if ($res.UndoFile) { ' Rueckgaengig (loeschen, solange nicht eingeschaltet): Tenant-Vergleich > Rueckgaengig ...' })" }
+                        elseif ("$($r2.__Kind)" -eq 'entra') { "$(if ($r2.__New) { 'Im Ziel neu angelegt' } else { 'Im Ziel angeglichen (Stand davor gesichert)' }) - wie im Muster.$(if ($res.UndoFile) { ' Rueckgaengig: Tenant-Vergleich > Rueckgaengig ...' } else { ' Rueckgaengig ist hierfuer nicht vorgesehen.' })" }
                         elseif ($isAl) { "Angeglichen - das Objekt im Ziel hat jetzt die Einstellungen der Quelle. Zuweisungen unveraendert. Rueckgaengig: Tenant-Vergleich > Rueckgaengig ..." }
                         else { "Neu angelegt (Id $($res.NewId)), ohne Zuweisungen - zum Wirken im Ziel zuweisen. Rueckgaengig: Tenant-Vergleich > Rueckgaengig ..." }
                         if ($res.Mismatch.Count) { $txt += "`n`nNachpruefung - $($res.Mismatch.Count) Einstellung(en) weichen von der Quelle ab:`n$(@($res.Mismatch | Select-Object -First 12) -join "`n")$(if ($res.Mismatch.Count -gt 12) { "`n..." })" } else { $txt += "`n`nNachpruefung: alle Einstellungen wie in der Quelle." }
@@ -504,7 +527,10 @@ function Start-HUTransferNext {
 # Rueckgaengig: zuvor uebertragene (neu angelegte) Objekte wieder loeschen - nur wenn seitdem unveraendert
 function Start-HUTransferUndo {
     $c = $script:Controls
-    $keys = @(Get-HUCheckedTenants $c['spAnaTenants'])
+    $keys = @(Get-HUCheckedTenants $c['spAnaTenants'] | Where-Object { $_ })
+    # nichts angehakt (z. B. nach Neustart): die Tenants des geladenen Vergleichs nehmen
+    if (-not $keys.Count) { $keys = @(@($script:CmpKeys) | Where-Object { $_ -and $_ -ne (Get-HUMusterKey) }) }
+    if (-not $keys.Count) { Show-HUMessage 'Bitte oben die Tenants anhaken, in denen rueckgaengig gemacht werden soll.' -Icon Info; return }
     $list = @(Get-HUTransferUndoList -Settings $script:Settings -Keys $keys)
     if (-not $list.Count) { Show-HUMessage 'In den angehakten Tenants gibt es nichts rueckgaengig zu machen (keine Uebertragungen gespeichert).' -Icon Info; return }
     # je Eintrag live pruefen, ob Rueckgaengig gerade moeglich ist (liest nur), dann erst das Fenster
@@ -545,7 +571,7 @@ function Show-HUTransferUndoDialog([object[]]$List) {
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Tenant" Binding="{Binding TenantName}" Width="140"/>
                 <DataGridTextColumn Header="Art" Binding="{Binding Typ}" Width="140"/>
-                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="Auto"/>
                 <DataGridTextColumn Header="Was" Binding="{Binding Was}" Width="95"/>
                 <DataGridTextColumn Header="Rueckgaengig =" Binding="{Binding Aktion}" Width="140"/>
                 <DataGridTextColumn Header="Jetzt moeglich" Binding="{Binding Moeglich}" Width="260"/>
@@ -561,6 +587,15 @@ function Show-HUTransferUndoDialog([object[]]$List) {
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $mm.Groups[1].Value))
     $w = $d.Window; $dc = $d.C
     $w.Title = 'Uebertragen rueckgaengig'
+    # Fenster so breit wie die Spalten (alle nach Inhalt), hoechstens 95 % des Bildschirms
+    $w.Add_ContentRendered({
+            try {
+                $sum = 0; foreach ($col in @($dc.grid.Columns)) { $sum += $col.ActualWidth }
+                $wa = [System.Windows.SystemParameters]::WorkArea
+                $w.Width = [Math]::Max(700, [Math]::Min([Math]::Floor($wa.Width * 0.95), $sum + 70))
+                $w.Left = $wa.Left + [Math]::Max(0, ($wa.Width - $w.Width) / 2)
+            } catch { }
+        })
     $dc.grid.ItemsSource = @($list | ForEach-Object { $_ | Add-Member -NotePropertyName TenantName -NotePropertyValue (Get-HUAnaTenantName $_.Tenant) -Force -PassThru })
     $state = @{ Sel = @() }
     $dc.btnOk.Add_Click({
@@ -574,6 +609,8 @@ function Show-HUTransferUndoDialog([object[]]$List) {
     [void]$w.ShowDialog()
     if (-not $state.Sel.Count) { return }
     $files = @($state.Sel | ForEach-Object { $_.Datei })
+    # Entra/CA (nicht Intune): nach dem Loeschen erst nach 10 s neu laden
+    $script:UndoEntra = [bool]@($state.Sel | Where-Object { $_.Typ -in 'Conditional Access', 'Benannter Ort', 'Verzeichniseinstellung', 'Entra-Einstellung' }).Count
     [void](Start-HUJob -Name 'TransferUndo' -Output $c['rtbAna'] -Vars @{ Files = $files } -Code {
             $out = New-Object System.Collections.Generic.List[string]
             foreach ($f in $Files) {
@@ -588,7 +625,7 @@ function Show-HUTransferUndoDialog([object[]]$List) {
                 $lines = @($d.__UndoDone)
                 Show-HUMessage ($lines -join "`n`n") -Icon $(if (@($lines | Where-Object { $_ -like 'NICHT*' }).Count) { 'Warning' } else { 'Info' })
             }
-            if (@($script:CmpKeys).Count) { Start-HUCmpRun }
+            if (@($script:CmpKeys).Count) { Start-HUCmpRunDelayed -Entra:([bool]$script:UndoEntra) }
         })
 }
 
@@ -626,7 +663,7 @@ function Start-HUCmpMap {
         })
 }
 
-# Doppelklick: Einstellungen der Tenants gegenueberstellen (nur abweichende)
+# Doppelklick: Einstellungen der Tenants gegenueberstellen - immer ALLE Werte, abweichende zuerst und markiert
 function Show-HUCmpDetail {
     $r = $script:Controls['gridCmp'].SelectedItem
     if (-not $r -or -not $r.Ref) { return }
@@ -649,22 +686,28 @@ function Show-HUCmpDetail {
                 }
                 catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $it.Tenant }
             }
-            [pscustomobject]@{ __Diff = @(Get-HUCompareDiff $maps @($Items | ForEach-Object { $_.Tenant })); Count = $maps.Count }
+            # zusaetzlich alle Einstellungen (auch gleiche), damit das Fenster immer die Werte zeigt
+            $tk = @($Items | ForEach-Object { $_.Tenant })
+            $allKeys = @($maps.Values | ForEach-Object { @($_.Keys) } | Sort-Object -Unique)
+            $all = foreach ($k in $allKeys) {
+                $o = [ordered]@{ Einstellung = "$k" }
+                for ($i = 0; $i -lt $tk.Count; $i++) { $mp = $maps[$tk[$i]]; $o["T$i"] = $(if ($mp -and $mp.Contains($k)) { "$($mp[$k])" } else { '' }) }
+                [pscustomobject]$o
+            }
+            [pscustomobject]@{ __Diff = @(Get-HUCompareDiff $maps $tk); __All = @($all); Count = $maps.Count }
         } -OnDone {
             param($Result, $Errors)
             $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__Diff'] }) | Select-Object -First 1
             if (-not $d) { return }
             $keys = @($script:CmpDetailKeys)
             if ($d.Count -lt 2) { Add-HURtbLine $script:Controls['rtbAna'] 'Nicht in allen Tenants lesbar - kein Vergleich.' '#FFB74D'; return }
-            $rows = foreach ($x in @($d.__Diff)) {
-                $o = [ordered]@{ Einstellung = $x.Einstellung }
-                for ($i = 0; $i -lt $keys.Count; $i++) { $o[(Get-HUAnaTenantName $keys[$i])] = $x."T$i" }
-                [pscustomobject]$o
-            }
-            $rows = @($rows)
-            if (-not $rows.Count) { Show-HUMessage "$($script:CmpDetailName)`n`nKeine Unterschiede in den Einstellungen (nur IDs, Zeitstempel oder Name/Beschreibung)." -Icon Info; return }
-            Add-HURtbLine $script:Controls['rtbAna'] "$($rows.Count) abweichende Einstellung(en)" '#81C784'
-            Show-HUQSTable -Title "Unterschiede - $($script:CmpDetailName)" -Objects $rows -FilePrefix 'Vergleich-Details'
+            $diffNames = @(@($d.__Diff) | ForEach-Object { "$($_.Einstellung)" })
+            $mk = { param($x, [string]$st) $o = [ordered]@{ Unterschied = $st; Einstellung = $x.Einstellung }; for ($i = 0; $i -lt $keys.Count; $i++) { $o[(Get-HUAnaTenantName $keys[$i])] = $x."T$i" }; [pscustomobject]$o }
+            # abweichende zuerst (Werte wie im Vergleich), danach alle gleichen
+            $rows = @(@(@($d.__Diff) | ForEach-Object { & $mk $_ 'abweichend' }) + @(@($d.__All) | Where-Object { $diffNames -notcontains "$($_.Einstellung)" } | ForEach-Object { & $mk $_ 'gleich' }))
+            if (-not $rows.Count) { Show-HUMessage "$($script:CmpDetailName)`n`nKeine Einstellungen gelesen." -Icon Info; return }
+            Add-HURtbLine $script:Controls['rtbAna'] "$($diffNames.Count) abweichende, $($rows.Count - $diffNames.Count) gleiche Einstellung(en)" '#81C784'
+            Show-HUQSTable -Title "Einstellungen - $($script:CmpDetailName) ($(if ($diffNames.Count) { "$($diffNames.Count) abweichend" } else { 'keine Unterschiede - nur IDs, Zeitstempel oder Name/Beschreibung' }))" -Objects $rows -FilePrefix 'Vergleich-Details'
         })
 }
 
@@ -673,7 +716,13 @@ function Register-HUCmpHandlers {
     $c['chkCmpDiff'].IsChecked = [bool](Get-HUStateValue 'cmpDiff' $true)
     $c['chkCmpDiff'].Add_Checked({ Set-HUStateValue 'cmpDiff' $true; Update-HUCmpGrid })
     $c['chkCmpDiff'].Add_Unchecked({ Set-HUStateValue 'cmpDiff' $false; Update-HUCmpGrid })
-    $c['cmbCmpType'].Add_SelectionChanged({ if (-not $script:CmpTypeBusy) { Update-HUCmpGrid } })
+    $script:CmpTypeWanted = "$(Get-HUStateValue 'cmpType' '')"
+    $c['cmbCmpType'].Add_SelectionChanged({
+            if ($script:CmpTypeBusy) { return }
+            $script:CmpTypeWanted = ("$($script:Controls['cmbCmpType'].SelectedItem)" -replace '\s+\([^)]*\)$', '')
+            Set-HUStateValue 'cmpType' $script:CmpTypeWanted
+            Update-HUCmpGrid
+        })
     $c['txtCmpFilter'].Add_TextChanged({ Update-HUCmpGrid })
     $c['btnCmpRun'].Add_Click({ Start-HUCmpRun })
     $c['btnCmpCopy'].Add_Click({ Start-HUCmpCopy })

@@ -41,8 +41,87 @@ function New-HUWindow([string]$Name, [string]$XamlText = '') {
         try { $w.Owner = $script:Window; $w.WindowStartupLocation = 'CenterOwner' } catch { }
     }
     if ($script:AppIcon) { try { $w.Icon = $script:AppIcon } catch { } }
+    # Tabellen: Spalten immer so breit wie der Inhalt - gilt fuer JEDE Tabelle im Programm (einmal registriert)
+    try { Register-HUGridFit } catch { }
+    # zusaetzlich direkt: alle Tabellen dieses Fensters (auch ohne Namen) - wirkt auch, falls der Klassen-Handler nicht greift
+    try { foreach ($g in @(Get-HUDataGrids $w)) { Set-HUGridFit $g } }
+    catch { try { Write-HULog -Message "Spaltenbreiten (Fenster): $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" -Level 'WARN' } catch { } }
+    # jedes groessenveraenderbare Fenster mit sichtbarem Anfasser rechts unten
+    try { if ($w.ResizeMode -eq [System.Windows.ResizeMode]::CanResize) { $w.ResizeMode = [System.Windows.ResizeMode]::CanResizeWithGrip } } catch { }
     $script:LastDialog = $w
     return @{ Window = $w; C = $c }
+}
+
+# Spaltenbreiten GLOBAL (Udo 24.10.): jede Text-Spalte jeder Tabelle ist so breit wie ihr Inhalt bzw. Kopf (+ Zellabstand
+# 6/12 aus dem Theme) - nie abgeschnitten, nie aufgeblaeht. Feste Pixelbreiten und Stern-Breiten (Rest fuellen) werden
+# zu "Auto". Greift ueber einen Klassen-Handler beim Laden jeder DataGrid und auch fuer Spalten, die der Code spaeter
+# hinzufuegt (Breite wird danach im Hintergrund nachgezogen, damit eine im Code gesetzte Breite nicht gewinnt).
+# Strict Mode: Variablen beim Laden anlegen
+$script:HUGridFitRegistered = $false
+$script:HUGridHookedList = New-Object System.Collections.ArrayList
+$script:HUColsPending = New-Object System.Collections.ArrayList
+function Set-HUColumnsFit($Columns) {
+    try {
+        $auto = New-Object System.Windows.Controls.DataGridLength(1, [System.Windows.Controls.DataGridLengthUnitType]::Auto)
+        foreach ($col in @($Columns)) {
+            if ($col -isnot [System.Windows.Controls.DataGridTextColumn]) { continue }
+            if (-not $col.Width.IsAuto) { $col.Width = $auto }
+        }
+    } catch { try { Write-HULog -Message "Spaltenbreiten: $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" -Level 'WARN' } catch { } }
+}
+function Set-HUGridFit($Grid) {
+    # darf NIE einen Fehler nach aussen geben (wird beim Laden jedes Fensters aufgerufen)
+    try {
+        if ($null -eq $Grid -or $Grid -isnot [System.Windows.Controls.DataGrid]) { return }
+        Set-HUColumnsFit $Grid.Columns
+        # jede Tabelle nur einmal verdrahten (Tag bleibt unberuehrt - den nutzen andere Fenster selbst)
+        foreach ($h in $script:HUGridHookedList) { if ([object]::ReferenceEquals($h, $Grid)) { return } }
+        [void]$script:HUGridHookedList.Add($Grid)
+        # spaeter vom Code angelegte Spalten: Ereignis der Spaltenliste ueber .NET anhaengen
+        # (PS 5.1 findet add_CollectionChanged an der Liste nicht und sucht dann an den einzelnen Spalten)
+        $cols = $Grid.Columns
+        $ev = $cols.GetType().GetEvent('CollectionChanged')
+        if ($null -eq $ev) { return }
+        $handler = [System.Collections.Specialized.NotifyCollectionChangedEventHandler] {
+            param($s, $e)
+            # erst nach dem Code, der die Spalte anlegt (der setzt evtl. noch eine Breite): im Hintergrund nachziehen
+            try {
+                if (-not $script:HUColsPending.Contains($s)) { [void]$script:HUColsPending.Add($s) }
+                [void][System.Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [Action] {
+                        try { $p = @($script:HUColsPending); $script:HUColsPending.Clear(); foreach ($x in $p) { Set-HUColumnsFit $x } } catch { }
+                    })
+            } catch { }
+        }
+        $ev.AddEventHandler($cols, $handler)
+    } catch { try { Write-HULog -Message "Spaltenbreiten (Tabelle): $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" -Level 'WARN' } catch { } }
+}
+# alle DataGrids im logischen Baum eines Fensters/Elements
+function Get-HUDataGrids($Root) {
+    $out = New-Object System.Collections.Generic.List[object]
+    $stack = New-Object System.Collections.Stack
+    if ($null -ne $Root) { $stack.Push($Root) }
+    while ($stack.Count) {
+        $n = $stack.Pop()
+        if ($n -is [System.Windows.Controls.DataGrid]) { $out.Add($n) }
+        if ($n -is [System.Windows.DependencyObject]) {
+            try { foreach ($ch in [System.Windows.LogicalTreeHelper]::GetChildren($n)) { if ($ch -is [System.Windows.DependencyObject]) { $stack.Push($ch) } } } catch { }
+        }
+    }
+    # ohne Komma: die Tabellen einzeln in die Pipeline (mit Komma + @() beim Aufrufer entstuende eine Liste in der Liste)
+    return $out.ToArray()
+}
+function Register-HUGridFit {
+    if ($script:HUGridFitRegistered) { return }
+    $script:HUGridFitRegistered = $true
+    try {
+        [System.Windows.EventManager]::RegisterClassHandler([System.Windows.Controls.DataGrid], [System.Windows.FrameworkElement]::LoadedEvent,
+            [System.Windows.RoutedEventHandler] { param($s, $e) Set-HUGridFit $s })
+    } catch { try { Write-HULog -Message "Spaltenbreiten global: Registrieren fehlgeschlagen ($($_.Exception.Message))" -Level 'WARN' } catch { } }
+    # GLOBAL: jedes groessenveraenderbare WPF-Fenster bekommt den sichtbaren Anfasser rechts unten (auch Fenster ausserhalb von New-HUWindow)
+    try {
+        [System.Windows.EventManager]::RegisterClassHandler([System.Windows.Window], [System.Windows.FrameworkElement]::LoadedEvent,
+            [System.Windows.RoutedEventHandler] { param($s, $e) try { if ($s.ResizeMode -eq [System.Windows.ResizeMode]::CanResize) { $s.ResizeMode = [System.Windows.ResizeMode]::CanResizeWithGrip } } catch { } })
+    } catch { }
 }
 
 function Show-HUMessage {
