@@ -235,11 +235,32 @@
       "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > SharePointTenantSettings.Read.All > Administratorzustimmung erteilen"
     },
     "Policy.ReadWrite.ConditionalAccess": {
-      "description": "Conditional-Access-Richtlinien anlegen (Analyse: aus Backup wiederherstellen, wird deaktiviert angelegt)",
+      "description": "Conditional Access und benannte Orte anlegen/aendern (Wiederherstellen, Uebertragen); Schreibpaket, nur zeitweise",
       "risk": "High",
       "category": "Security",
       "usedBy": [],
       "setupInstructions": "Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Berechtigung hinzufügen > Microsoft Graph > Anwendungsberechtigungen > Policy.ReadWrite.ConditionalAccess > Administratorzustimmung erteilen"
+    },
+    "Policy.ReadWrite.Authorization": {
+      "description": "Entra: Autorisierungsrichtlinie aendern (Gaeste, Benutzerrechte) - Zurueckschreiben/Uebertragen; Schreibpaket, nur zeitweise",
+      "risk": "High",
+      "category": "Security",
+      "usedBy": [],
+      "setupInstructions": "Berechtigungen > Tenant > Schreibrechte an ... (nur zeitweise) - oder Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Microsoft Graph > Anwendungsberechtigungen > Policy.ReadWrite.Authorization > Administratorzustimmung erteilen"
+    },
+    "Policy.ReadWrite.ConsentRequest": {
+      "description": "Entra: Administratorzustimmung (Anfragen) aendern - Zurueckschreiben/Uebertragen; Schreibpaket, nur zeitweise",
+      "risk": "High",
+      "category": "Security",
+      "usedBy": [],
+      "setupInstructions": "Berechtigungen > Tenant > Schreibrechte an ... (nur zeitweise) - oder Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Microsoft Graph > Anwendungsberechtigungen > Policy.ReadWrite.ConsentRequest > Administratorzustimmung erteilen"
+    },
+    "GroupSettings.ReadWrite.All": {
+      "description": "Entra: Verzeichniseinstellungen (Gruppen, Kennwortregeln) aendern - Zurueckschreiben/Uebertragen; Schreibpaket, nur zeitweise",
+      "risk": "High",
+      "category": "Directory",
+      "usedBy": [],
+      "setupInstructions": "Berechtigungen > Tenant > Schreibrechte an ... (nur zeitweise) - oder Entra Admin Center > App-Registrierungen > [App] > API-Berechtigungen > Microsoft Graph > Anwendungsberechtigungen > GroupSettings.ReadWrite.All > Administratorzustimmung erteilen"
     }
   },
   "categoriesMapping": {

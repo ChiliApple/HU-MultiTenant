@@ -559,12 +559,9 @@ function Initialize-HUQuickScript {
     Update-HUQSTenantChecks
     Clear-HUQSHistoryOld
     Update-HUSnippetCombo
-    $last = Get-HUStateValue 'lastSnippet'
-    if ($last -and @(Get-HUSnippets | Where-Object { $_.name -eq $last }).Count) {
-        $script:QS_SuppressSelect = $true
-        try { Open-HUQSSnippet $last } finally { $script:QS_SuppressSelect = $false }
-        $script:Controls['rtbQSOutput'].Document.Blocks.Clear()
-    } else { Update-HUQSSnippetInfo }
+    # Start immer mit leerem Editor (kein zuletzt geoeffnetes Snippet - sonst laeuft bei Strg+Enter versehentlich das alte)
+    $script:QS_Current = ''; $script:QS_SavedCode = $null
+    Update-HUQSSnippetInfo
     Update-HUQSMultiDisplay
 }
 

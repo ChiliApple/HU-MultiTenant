@@ -6,7 +6,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Berechtigungen"
-    Width="1100" Height="660" MinWidth="720" MinHeight="420"
+    Width="1500" Height="860" MinWidth="900" MinHeight="480"
     WindowStartupLocation="CenterOwner"
     Background="#1E1E1E"
     UseLayoutRounding="True"
@@ -31,16 +31,20 @@
         </DockPanel>
 
         <!-- Fuss -->
-        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" Margin="12,0,0,0">
-                <Button x:Name="btnGrant" Content="Fehlende Rechte erteilen ..." Background="#2E7D32" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <WrapPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,0">
+                <Button x:Name="btnWriteOn" Height="30" VerticalAlignment="Center" Content="&#x270E; Entra-Schreibrechte an ..." Background="#A65A28" Style="{StaticResource DarkButton}" Margin="0,4,8,0" ToolTipService.ShowOnDisabled="True"
+                        ToolTip="Nur diese 4 Rechte fuer Entra uebertragen/zurueckschreiben, nur fuer diesen Tenant:&#x0a;Policy.ReadWrite.ConditionalAccess&#x0a;Policy.ReadWrite.Authorization&#x0a;Policy.ReadWrite.ConsentRequest&#x0a;GroupSettings.ReadWrite.All&#x0a;&#x0a;Andere Schreibrechte (Intune, Benutzer, Apps) bleiben unberuehrt. Nach der Arbeit wieder ausschalten."/>
+                <Button x:Name="btnWriteOff" Height="30" VerticalAlignment="Center" Content="Entra-Schreibrechte aus ..." Background="#555555" Style="{StaticResource DarkButton}" Margin="0,4,8,0" ToolTipService.ShowOnDisabled="True"
+                        ToolTip="Genau diese 4 Rechte wieder entziehen (Admin-Anmeldung im Browser):&#x0a;Policy.ReadWrite.ConditionalAccess&#x0a;Policy.ReadWrite.Authorization&#x0a;Policy.ReadWrite.ConsentRequest&#x0a;GroupSettings.ReadWrite.All&#x0a;&#x0a;Andere Schreibrechte (Intune, Benutzer, Apps) bleiben."/>
+                <Button x:Name="btnGrant" Height="30" VerticalAlignment="Center" Content="Fehlende Rechte erteilen ..." Background="#2E7D32" Style="{StaticResource DarkButton}" Margin="0,4,8,0"
                         ToolTip="Admin-Anmeldung im Browser: fehlende Rechte (Standard, Extensions, eigene) der App erteilen"/>
-                <Button x:Name="btnEntra" Content="App im Entra Admin Center" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
-                <Button x:Name="btnClose" Content="Schlie&#xDF;en" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
-            </StackPanel>
-            <TextBlock x:Name="txtHint" Style="{StaticResource HintText}" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"
+                <Button x:Name="btnEntra" Height="30" VerticalAlignment="Center" Content="App im Entra Admin Center" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,4,8,0"/>
+                <Button x:Name="btnClose" Height="30" VerticalAlignment="Center" Margin="0,4,0,0" Content="Schlie&#xDF;en" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+            </WrapPanel>
+            <TextBlock x:Name="txtHint" Style="{StaticResource HintText}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
                        Text="Fehlt etwas: &#x201E;Fehlende Rechte erteilen &#x2026;&#x201C; (Admin-Anmeldung im Browser) - oder von Hand: Entra Admin Center &#x203A; App-Registrierung &#x203A; API-Berechtigungen &#x203A; Microsoft Graph &#x203A; Anwendungsberechtigungen hinzuf&#xFC;gen &#x203A; Administratorzustimmung erteilen &#x203A; hier &#x21BB; Neu lesen."/>
-        </DockPanel>
+        </StackPanel>
 
         <Grid>
             <Grid.RowDefinitions>

@@ -368,6 +368,8 @@ $script:Window.Add_ContentRendered({
     if (-not $script:SmokeTestFile) {
         Start-HULockTimer
         if ((Get-HULockConfig).Enabled -and (Get-HULockConfig).OnStart) { Lock-HUApp -AtStart }
+        # Schreibrechte fuer Uebertragen/Zurueckschreiben laenger als 7 Tage an? (einmal am Tag)
+        try { Test-HUWritePkgReminder } catch { }
     }
     if ($script:SmokeTestFile) {
         # automatischer Test (CI): Fenster laeuft, Ergebnis schreiben, beenden

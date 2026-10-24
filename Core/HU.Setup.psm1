@@ -396,6 +396,41 @@ function Add-HUAppPermissions {
     return $added
 }
 
+function Remove-HUAppPermissions {
+    <#
+    .SYNOPSIS
+        Entzieht der HU-MultiTenant-App eines Tenants genau die angegebenen Anwendungsrechte (nur diese, nie andere).
+        Rueckgabe: Liste der entzogenen Rechte. Admin-Anmeldung wie beim Erteilen (Global Admin oder Privileged Role Admin).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Login, [Parameter(Mandatory)][string]$AppId, [Parameter(Mandatory)][string[]]$Permissions)
+    $tok = $Login.Token
+    $gm = Get-HUGraphRoleMap $tok
+    $cur = Get-HUAppGrantedRoles -Token $tok -AppId $AppId
+    $removed = @()
+    foreach ($p in $Permissions) {
+        if (-not $gm.Roles.ContainsKey($p)) { continue }
+        $rid = "$($gm.Roles[$p])"
+        foreach ($a in @($cur.Assignments | Where-Object { "$($_.resourceId)" -eq $gm.SpId -and "$($_.appRoleId)" -eq $rid })) {
+            # Microsoft Learn: DELETE /servicePrincipals/{resource-SP}/appRoleAssignedTo/{assignment-id}
+            [void](Invoke-HUSetupGraph -Token $tok -Method DELETE -Path "/servicePrincipals/$($gm.SpId)/appRoleAssignedTo/$($a.id)" -Tries 4)
+            if ($removed -notcontains $p) { $removed += $p }
+        }
+    }
+    # angeforderte Rechte an der App mitziehen (Anzeige im Portal unter "API-Berechtigungen")
+    if ($removed.Count) {
+        try {
+            $ids = @($removed | ForEach-Object { "$($gm.Roles[$_])" })
+            $app = Invoke-HUSetupGraph -Token $tok -Path "/applications(appId='$AppId')?`$select=id,requiredResourceAccess"
+            $new = @(@($app.requiredResourceAccess) | ForEach-Object {
+                    $res = "$($_.resourceAppId)"
+                    @{ resourceAppId = $res; resourceAccess = @(@($_.resourceAccess) | Where-Object { -not ($res -eq $script:GraphAppId -and "$($_.type)" -eq 'Role' -and $ids -contains "$($_.id)") } | ForEach-Object { @{ id = "$($_.id)"; type = "$($_.type)" } }) } })
+            [void](Invoke-HUSetupGraph -Token $tok -Method PATCH -Path "/applications/$($app.id)" -Body @{ requiredResourceAccess = @($new) })
+        } catch { }
+    }
+    return $removed
+}
+
 # ============================================================================
 # Zertifikat erneuern
 # ============================================================================
@@ -479,5 +514,5 @@ Export-ModuleMember -Function @(
     'ConvertFrom-HUJwtPayload', 'Get-HUSetupErrorText', 'Invoke-HUSetupGraph', 'Get-HUPermissionCatalog', 'Test-HUPermissionRisky',
     'Start-HUAdminLogin', 'Receive-HUAdminLogin', 'Stop-HUAdminLogin', 'Test-HUAdminCanGrant',
     'Get-HUSetupOrganization', 'Get-HUGraphRoleMap', 'New-HUTenantCertificate', 'Get-HUAppTokenByCert', 'New-HUTenantSetup',
-    'Get-HUAppGrantedRoles', 'Add-HUAppPermissions', 'Update-HUTenantCertificate'
+    'Get-HUAppGrantedRoles', 'Add-HUAppPermissions', 'Remove-HUAppPermissions', 'Update-HUTenantCertificate'
 )

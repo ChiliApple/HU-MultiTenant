@@ -1,5 +1,25 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.4.4 (Testversion, Weg zu 2.5.0)
+
+### → Entra-Einstellungen übertragen (aus dem Muster)
+- **Neu:** Im Tenant-Vergleich lassen sich **Autorisierungsrichtlinie**, **Administratorzustimmung**, **benannte Orte** und **Verzeichniseinstellungen** mit *Übertragen …* in andere Tenants bringen. Quelle ist **immer der festgehaltene Mustertenant** (bewusster Soll-Stand) – Haken *Muster aus Backup* setzen. Der Tenant, aus dem das Muster stammt, wird nicht angeboten (dafür gibt es Zurückschreiben).
+- **Geprüft wird im Ziel:** Notfallkonten (hinterlegt und aktiv) für Autorisierungsrichtlinie und Orte, eigene Zustimmungsrichtlinien, Entra ID P1 für Kennwortregeln. Je Ziel eine Vorschau; bestätigt wird immer mit dem eingetippten Tenant-Namen.
+- **Zuordnung über Namen:** Gruppen (Reviewer der Administratorzustimmung, Gruppe für die Gruppenerstellung) werden im Ziel über den Namen gesucht – genau ein Treffer, sonst gesperrt. Einzelne Benutzer als Reviewer werden nie übertragen.
+- **Benannte Orte:** Fehlt der Ort im Ziel, wird er neu angelegt; gibt es ihn mit gleichem Namen, wird er nur nach bewusster Bestätigung geändert – die Vorschau nennt die Richtlinien, die ihn verwenden. „Vertrauenswürdig“ nennt die betroffenen Richtlinien mit „Alle vertrauenswürdigen Orte“; ist Conditional Access im Ziel nicht lesbar, wird es nicht gesetzt.
+- **Verzeichniseinstellungen:** Fehlt die Einstellung im Ziel, wird sie mit der kompletten Werteliste neu angelegt (`EnableMSStandardBlockedWords` nie).
+- **Rückgängig:** Geänderte Einstellungen werden mit derselben Logik wie beim Zurückschreiben auf den gesicherten Stand gesetzt (nur solange seitdem unverändert); neu angelegte Orte werden gelöscht, solange unverändert und von keiner Richtlinie verwendet. Neu angelegte Verzeichniseinstellungen werden nicht automatisch gelöscht.
+- **Schreibrecht schon in der Vorschau:** Fehlt im Ziel das nötige Schreibrecht, steht das bereits in der Vorschau (gelber Hinweis) statt erst beim Schreiben.
+- Conditional Access übertragen folgt mit 2.4.5.
+
+### 🔑 Entra-Schreibrechte nur zeitweise
+- **Neu:** *Berechtigungen* › Tenant › **Entra-Schreibrechte an …** erteilt nur die 4 Rechte für Übertragen/Zurückschreiben (`Policy.ReadWrite.ConditionalAccess`, `Policy.ReadWrite.Authorization`, `Policy.ReadWrite.ConsentRequest`, `GroupSettings.ReadWrite.All`) nur für diesen Tenant; **Entra-Schreibrechte aus …** entzieht genau diese wieder (Admin-Anmeldung im Browser). Andere Schreibrechte (Intune, Benutzer, Apps) bleiben unberührt.
+- Die Statuszeile zeigt, ob die Entra-Schreibrechte an sind und seit wann. Sind sie länger als 7 Tage an, erinnert das Programm beim Start (einmal am Tag).
+- Das Fenster *Berechtigungen* öffnet passend zur Bildschirmgröße, die Spalten sind ohne Scrollen lesbar; der Hinweistext steht unter den Knöpfen.
+
+### ⚡ Quick Script
+- **Geändert:** Beim Programmstart ist der Editor leer – das zuletzt geöffnete Snippet wird nicht mehr automatisch geladen.
+
 ## v2.4.3 (Testversion, Weg zu 2.5.0)
 
 ### ⚡ Quick Script
