@@ -34,8 +34,8 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Feld" Binding="{Binding Feld}" Width="200"/>
                 <DataGridTextColumn Header="Anzahl" Binding="{Binding Anzahl}" Width="70"/>
-                <DataGridTextColumn Header="Jetzt im Tenant" Binding="{Binding Jetzt}" Width="*"/>
-                <DataGridTextColumn Header="Danach (aus dem Backup)" Binding="{Binding Danach}" Width="*"/>
+                <DataGridTextColumn Header="Jetzt im Tenant" Binding="{Binding Jetzt}" Width="Auto"/>
+                <DataGridTextColumn Header="Danach (aus dem Backup)" Binding="{Binding Danach}" Width="Auto"/>
                 <DataGridTextColumn Header="Voll" Binding="{Binding Status}" Width="70"/>
             </DataGrid.Columns>
         </DataGrid>
@@ -55,7 +55,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
             <TextBox x:Name="txtType" Width="220" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Zur Sicherheit den Namen des Ziel-Tenants eintippen"/>
         </StackPanel>
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button x:Name="btnWrite" Content="&#x21BA; Zurueckschreiben" Width="170" Background="#A65A28" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
+            <Button x:Name="btnWrite" Content="&#x21BA; Zurueckschreiben" MinWidth="170" Padding="14,0,14,0" Background="#A65A28" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Liest den Tenant erneut, sichert den aktuellen Stand als Datei, schreibt nur die gezeigten Felder und prueft danach nach"/>
             <Button x:Name="btnCancel" Content="Abbrechen" Width="110" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
         </StackPanel>
@@ -69,11 +69,18 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     $isAl = ("$($Plan.Kind)" -eq 'transferAlign')
     $isTr = ("$($Plan.Kind)" -eq 'transferNew') -or $isAl
     $isEt = [bool]$Plan.PSObject.Properties['Transfer']   # 2.4.4 Entra aus dem Muster
-    $w.Title = if ($isEt) { 'Uebertragen (Entra, aus dem Muster)' } elseif ($isTr) { 'Uebertragen' } elseif ($Plan.Kind -eq 'caNew') { 'Conditional Access wiederherstellen (Nur Bericht)' } else { 'Entra-Einstellung zurueckschreiben' }
+    $isEtCa = $isEt -and "$($Plan.Kind)" -eq 'caNew'
+    $w.Title = if ($isEtCa) { 'Uebertragen (Conditional Access aus dem Muster, Nur Bericht)' } elseif ($isEt) { 'Uebertragen (Entra, aus dem Muster)' } elseif ($isTr) { 'Uebertragen' } elseif ($Plan.Kind -eq 'caNew') { 'Conditional Access wiederherstellen (Nur Bericht)' } else { 'Entra-Einstellung zurueckschreiben' }
     $c.lblTitle.Text = if ($isEt -or $isTr) { "$($Plan.Typ): $($Plan.Name)  -  $($Plan.SourceLabel) -> $TenantName" } else { "$($Plan.Typ): $($Plan.Name)  -  $TenantName" }
-    if ($isEt) { $c.gridChanges.Columns[3].Header = 'Danach (aus dem Muster)'; $c.btnWrite.Content = "$([char]0x2192) Uebertragen" }
+    if ($isEt) { $c.gridChanges.Columns[3].Header = 'Danach (aus dem Muster)'; $c.btnWrite.Content = $(if ($isEtCa) { "$([char]0x2192) Neu anlegen (Nur Bericht)" } else { "$([char]0x2192) Uebertragen" }) }
+    if ($isEtCa) { $c.btnWrite.ToolTip = 'Legt eine NEUE Richtlinie im Modus Nur Bericht an (erzwingt nichts), liest sie danach nach und legt eine Rueckgaengig-Datei an. Bestehende Richtlinien bleiben unveraendert.' }
+    elseif ($isEt -and "$($Plan.Method)" -eq 'POST') { $c.btnWrite.ToolTip = 'Legt im Ziel NEU an, liest danach nach und prueft jedes Feld.' }
+    elseif ($isEt) { $c.btnWrite.ToolTip = 'Liest das Ziel erneut, sichert den aktuellen Stand als Datei, schreibt nur die gezeigten Felder und prueft danach nach.' }
+    elseif ($isAl) { $c.btnWrite.ToolTip = 'Liest das Ziel erneut, sichert es als Rueckgaengig-Datei, gleicht an und prueft danach nach. Zuweisungen bleiben.' }
+    elseif ($isTr) { $c.btnWrite.ToolTip = 'Legt im Ziel NEU an (ohne Zuweisungen), liest danach nach und legt eine Rueckgaengig-Datei an.' }
+    elseif ($Plan.Method -eq 'POST') { $c.btnWrite.ToolTip = 'Legt eine NEUE Richtlinie im Modus Nur Bericht an; die bestehende bleibt unveraendert.' }
     if ($isTr) { $c.gridChanges.Columns[3].Header = 'Danach (aus der Quelle)'; $c.btnWrite.Content = $(if ($isAl) { "$([char]0x2192) Angleichen" } else { "$([char]0x2192) Neu anlegen" }) }
-    $c.lblSub.Text = if ($isEt) { "Entra-Einstellung aus dem festgehaltenen Muster nach $TenantName. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). $(if ($Plan.Method -eq 'POST') { 'Wird im Ziel NEU angelegt; danach nachgelesen und je Feld geprueft.' } else { 'Vor dem Schreiben wird das Ziel erneut gelesen und als Datei gesichert; danach nachgeprueft.' })" } elseif ($isAl) { "Das bestehende Objekt in $TenantName wird an die Quelle ANGEGLICHEN. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird das Ziel erneut gelesen (geaendert = Abbruch) und als Rueckgaengig-Datei gesichert; Zuweisungen bleiben unveraendert." } elseif ($isTr) { "Wird in $TenantName NEU angelegt, ohne Zuweisungen. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird erneut geprueft, ob es den Namen dort inzwischen gibt; danach wird nachgelesen und eine Rueckgaengig-Datei angelegt." } elseif ($Plan.Method -eq 'POST') { "Aus dem Stand $Stamp in denselben Tenant als NEUE Richtlinie, Schreibrecht: $($Plan.Perm). Die bestehende Richtlinie wird nicht veraendert." } else { "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert." }
+    $c.lblSub.Text = if ($isEtCa) { "Wird in $TenantName als NEUE Richtlinie '$(if ($Plan.Body) { $Plan.Body.displayName } else { "$($Plan.Name) (von Muster)" })' im Modus $(if ($Plan.Body -and "$($Plan.Body.state)" -eq 'disabled') { 'AUS' } else { 'NUR BERICHT' }) angelegt - bestehende Richtlinien bleiben unveraendert. Ohne Zuweisung (Konten, Gruppen), Orte ueber den Namen zugeordnet, Notfallkonten des Ziels ausgenommen. Schreibrecht: $($Plan.Perm)." } elseif ($isEt) { "Entra-Einstellung aus dem festgehaltenen Muster nach $TenantName. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). $(if ($Plan.Method -eq 'POST') { 'Wird im Ziel NEU angelegt; danach nachgelesen und je Feld geprueft.' } else { 'Vor dem Schreiben wird das Ziel erneut gelesen und als Datei gesichert; danach nachgeprueft.' })" } elseif ($isAl) { "Das bestehende Objekt in $TenantName wird an die Quelle ANGEGLICHEN. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird das Ziel erneut gelesen (geaendert = Abbruch) und als Rueckgaengig-Datei gesichert; Zuweisungen bleiben unveraendert." } elseif ($isTr) { "Wird in $TenantName NEU angelegt, ohne Zuweisungen. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird erneut geprueft, ob es den Namen dort inzwischen gibt; danach wird nachgelesen und eine Rueckgaengig-Datei angelegt." } elseif ($Plan.Method -eq 'POST') { "Aus dem Stand $Stamp in denselben Tenant als NEUE Richtlinie, Schreibrecht: $($Plan.Perm). Die bestehende Richtlinie wird nicht veraendert." } else { "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert." }
     # B1: gekuerzte Werte muessen vor dem Schreiben einmal voll angesehen werden (Zeile markieren, voller Wert klappt auf)
     $rows = @($Plan.Changes | ForEach-Object { [pscustomobject]@{ Feld = $_.Feld; Anzahl = $_.Anzahl; Jetzt = $_.Jetzt; Danach = $_.Danach; JetztVoll = $_.JetztVoll; DanachVoll = $_.DanachVoll; Gekuerzt = [bool]$_.Gekuerzt; Status = $(if ($_.Gekuerzt) { 'ansehen' } else { '' }) } })
     $c.gridChanges.ItemsSource = $rows
@@ -97,6 +104,15 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
         try { $cb.Style = $w.FindResource('DarkCheckBox') } catch { }
         $cb.ToolTip = 'Vor dem Zurueckschreiben bewusst bestaetigen'
         $checks.Add($cb); [void]$c.pnlInfo.Children.Add($cb)
+    }
+    # 2.4.5 waehlbare Uebernahmen (z. B. Rollen, 'Alle Benutzer'): Haken = uebernehmen
+    foreach ($op in @($(if ($Plan.PSObject.Properties['Options']) { $Plan.Options }) | Where-Object { $_ })) {
+        $ob = New-Object System.Windows.Controls.CheckBox
+        $ob.Content = "$($op.Text)"; $ob.IsChecked = [bool]$op.Value; $ob.Foreground = Get-HUBrush '#90CAF9'; $ob.Margin = '0,3,0,3'; $ob.FontSize = 12
+        try { $ob.Style = $w.FindResource('DarkCheckBox') } catch { }
+        $ob.Tag = $op
+        $ob.Add_Checked({ $this.Tag.Value = $true }); $ob.Add_Unchecked({ $this.Tag.Value = $false })
+        [void]$c.pnlInfo.Children.Add($ob)
     }
     if ($Plan.Dropped.Count) { & $add "Wird nicht geschrieben (nicht beschreibbar oder bewusst ausgelassen): $($Plan.Dropped -join ', ')" '#AAAAAA' }
     foreach ($n in $Plan.Notes) { & $add "Hinweis: $n" '#90CAF9' }
@@ -123,6 +139,15 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
             $q = if ($isEt) { "'$($Plan.Name)' jetzt aus dem Muster nach $TenantName uebertragen ($($Plan.Changes.Count) Feld(er), $(if ($Plan.Method -eq 'POST') { 'neu anlegen' } else { 'aendern' }))?" } elseif ($isAl) { "'$($Plan.Name)' jetzt in $TenantName an die Quelle ANGLEICHEN ($(@($Plan.Changes | Where-Object { $null -ne $_.Expected }).Count) Feld(er))?" } elseif ($isTr) { "'$($Plan.NewName)' jetzt in $TenantName NEU anlegen (ohne Zuweisungen)?" } elseif ($Plan.Method -eq 'POST') { "'$($Plan.Body.displayName)' jetzt in $TenantName NEU anlegen ($(if ($Plan.Body.state -eq 'disabled') { 'ausgeschaltet' } else { 'Nur Bericht' }))?" } else { "Jetzt $($Plan.Changes.Count) Feld(er) von '$($Plan.Name)' in $TenantName zurueckschreiben?" }
             if (-not (Confirm-HU $q -Warning -Owner $w)) { return }
             $state.Ok = $true; $w.Close()
+        })
+    # alle Spalten nach Inhalt; Fenster so breit wie die Spalten (mind. 880, hoechstens 95 % des Bildschirms)
+    $w.Add_ContentRendered({
+            try {
+                $sum = 0; foreach ($col in @($c.gridChanges.Columns)) { $sum += $col.ActualWidth }
+                $wa = [System.Windows.SystemParameters]::WorkArea
+                $nw = [Math]::Max(880, [Math]::Min([Math]::Floor($wa.Width * 0.95), $sum + 70))
+                if ($nw -gt $w.ActualWidth) { $w.Width = $nw; $w.Left = $wa.Left + [Math]::Max(0, ($wa.Width - $nw) / 2) }
+            } catch { }
         })
     [void]$w.ShowDialog()
     return [bool]$state.Ok

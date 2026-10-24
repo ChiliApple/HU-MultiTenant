@@ -424,9 +424,14 @@ function Remove-HUAppPermissions {
             $app = Invoke-HUSetupGraph -Token $tok -Path "/applications(appId='$AppId')?`$select=id,requiredResourceAccess"
             $new = @(@($app.requiredResourceAccess) | ForEach-Object {
                     $res = "$($_.resourceAppId)"
-                    @{ resourceAppId = $res; resourceAccess = @(@($_.resourceAccess) | Where-Object { -not ($res -eq $script:GraphAppId -and "$($_.type)" -eq 'Role' -and $ids -contains "$($_.id)") } | ForEach-Object { @{ id = "$($_.id)"; type = "$($_.type)" } }) } })
-            [void](Invoke-HUSetupGraph -Token $tok -Method PATCH -Path "/applications/$($app.id)" -Body @{ requiredResourceAccess = @($new) })
-        } catch { }
+                    $ra = @(@($_.resourceAccess) | Where-Object { -not ($res -eq $script:GraphAppId -and "$($_.type)" -eq 'Role' -and $ids -contains "$($_.id)") } | ForEach-Object { @{ id = "$($_.id)"; type = "$($_.type)" } })
+                    # 053 B7: einen Eintrag ohne Rechte weglassen (leeres resourceAccess lehnt Graph ab)
+                    if ($ra.Count) { @{ resourceAppId = $res; resourceAccess = [object[]]$ra } } })
+            [void](Invoke-HUSetupGraph -Token $tok -Method PATCH -Path "/applications/$($app.id)" -Body @{ requiredResourceAccess = [object[]]@($new) })
+        } catch {
+            # der Entzug selbst ist schon wirksam; nur die Anzeige unter "API-Berechtigungen" ist nicht nachgezogen
+            try { Write-HULog -Message "Rechte entzogen, aber 'API-Berechtigungen' der App nicht nachgezogen: $($_.Exception.Message)" -Level 'WARN' } catch { }
+        }
     }
     return $removed
 }
