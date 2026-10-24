@@ -117,6 +117,66 @@ function New-HUQSSnippet {
     $script:Controls['txtQSEditor'].Focus() | Out-Null
 }
 
+# Datei ins Codefeld gezogen: Text lesen (BOM wird erkannt, ohne BOM UTF-8). Nur .ps1/.psm1/.txt, hoechstens 1 MB.
+# Rueckgabe: Text; Fehler als Exception mit lesbarer Meldung. Ausgefuehrt wird nichts.
+function Read-HUQSDropFile([string]$Path) {
+    $ext = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+    if ($ext -notin @('.ps1', '.psm1', '.txt')) { throw "Nur .ps1, .psm1 oder .txt - '$([System.IO.Path]::GetFileName($Path))' wird nicht geladen." }
+    $fi = Get-Item -LiteralPath $Path -ErrorAction Stop
+    if ($fi.PSIsContainer) { throw 'Ein Ordner kann nicht geladen werden.' }
+    if ($fi.Length -gt 1MB) { throw "'$($fi.Name)' ist groesser als 1 MB - nicht geladen." }
+    $bytes = [System.IO.File]::ReadAllBytes($fi.FullName)
+    $enc = $null
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $enc = New-Object System.Text.UTF8Encoding($false); $bytes = $bytes[3..($bytes.Length - 1)] }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) { return [System.Text.Encoding]::Unicode.GetString($bytes, 2, $bytes.Length - 2) }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) { return [System.Text.Encoding]::BigEndianUnicode.GetString($bytes, 2, $bytes.Length - 2) }
+    if (-not $bytes.Length) { return '' }
+    if ($enc) { return $enc.GetString([byte[]]$bytes) }
+    # ohne BOM: gueltiges UTF-8? sonst Windows-1252 (alte Skripte aus dem Editor)
+    try { return (New-Object System.Text.UTF8Encoding($false, $true)).GetString($bytes) }
+    catch { return [System.Text.Encoding]::GetEncoding(1252).GetString($bytes) }
+}
+
+# Hinweise zu einer hineingezogenen Datei (keine Sperre): fremdes Skript? auffaellige Befehle (Kommentarzeilen zaehlen nicht).
+# Rueckgabe: @{ Foreign = bool; Risky = string[] }
+function Get-HUQSScriptHints([string]$Text) {
+    $code = (@("$Text" -split "`r?`n" | Where-Object { $_ -notmatch '^\s*#' }) -join "`n")
+    $foreign = -not ("$Text" -match '(?im)^\s*#\s*@param\b|\$Token\b|\$TenantKey\b|Invoke-GraphRequest')
+    $rules = [ordered]@{
+        'Loeschen (Remove-...)'                          = '(?i)\bRemove-[A-Za-z]+'
+        'Neustart/Herunterfahren'                         = '(?i)\b(Restart|Stop)-Computer\b|\bshutdown(\.exe)?\s'
+        'Code aus Text ausfuehren (Invoke-Expression)'    = '(?i)\bInvoke-Expression\b|\biex\b|-EncodedCommand\b'
+        'Herunterladen aus dem Netz'                     = '(?i)DownloadString|DownloadFile|Start-BitsTransfer|\b(Invoke-WebRequest|iwr|wget|curl)\b'
+        'Eigene Anmeldung (Connect-...)'                  = '(?i)\bConnect-(MgGraph|AzureAD|AzAccount|ExchangeOnline|MsolService|IPPSSession|MicrosoftTeams|PnPOnline)\b'
+        'Programme starten (Start-Process)'               = '(?i)\bStart-Process\b'
+        'Datentraeger/Formatieren'                       = '(?i)\b(Format-Volume|Clear-Disk|Initialize-Disk)\b'
+        'Ausfuehrungsrichtlinie aendern'                 = '(?i)\bSet-ExecutionPolicy\b'
+        'Registry HKLM schreiben'                        = '(?i)\b(Set|New)-ItemProperty\b[^\n]*HKLM:'
+    }
+    $risky = @(foreach ($k in $rules.Keys) { if ($code -match $rules[$k]) { $k } })
+    return [pscustomobject]@{ Foreign = $foreign; Risky = $risky }
+}
+
+function Import-HUQSDroppedFile([string]$Path) {
+    $text = $null
+    try { $text = Read-HUQSDropFile $Path } catch { Show-HUMessage "$($_.Exception.Message)" -Icon Info; return }
+    if (-not (Confirm-HUQSDiscard 'die Datei laden')) { return }
+    $script:QS_Current = ''
+    $script:QS_CurrentDesc = ''
+    $script:QS_CurrentFav = $false
+    $script:QS_CurrentCat = ''
+    $script:QS_SavedCode = $null
+    $script:Controls['txtQSEditor'].Text = $text
+    Update-HUSnippetCombo
+    Update-HUQSParamPanel -Force
+    Update-HUQSSnippetInfo
+    Write-QSOutput "Datei geladen (nicht ausgefuehrt): $([System.IO.Path]::GetFileName($Path)) - mit Strg+S als Snippet speichern." '#90CAF9'
+    $h = Get-HUQSScriptHints $text
+    if ($h.Foreign) { Write-QSOutput 'Fremdes Skript (kein HU-Snippet: kein # @param, $Token oder Invoke-GraphRequest) - vor dem Ausfuehren pruefen.' '#FFB74D' }
+    if (@($h.Risky).Count) { Write-QSOutput "Auffaellige Befehle: $(@($h.Risky) -join '; ') - vor dem Ausfuehren pruefen." '#FFB74D' }
+    $script:Controls['txtQSEditor'].Focus() | Out-Null
+}
+
 # Speichern (Strg+S). Ohne geladenes Snippet oder mit -As: Name + Beschreibung abfragen.
 function Save-HUQSSnippet([switch]$As) {
     $code = $script:Controls['txtQSEditor'].Text
@@ -451,7 +511,26 @@ function Register-HUQuickScriptHandlers {
         else { Update-HUSnippetCombo -Select $script:QS_Current }
     })
 
-    $c['txtQSEditor'].Add_TextChanged({ Update-HUQSSnippetInfo; if ($script:Controls['txtQSEditor'].Text -match '@param' -or $script:QSParamDefs.Count) { Start-HUQSParamRefresh } })
+    $c['txtQSEditor'].Add_TextChanged({
+            Update-HUQSSnippetInfo
+            if ($script:Controls['txtQSEditorHint']) { $script:Controls['txtQSEditorHint'].Visibility = $(if ($script:Controls['txtQSEditor'].Text) { 'Collapsed' } else { 'Visible' }) }
+            if ($script:Controls['txtQSEditor'].Text -match '@param' -or $script:QSParamDefs.Count) { Start-HUQSParamRefresh }
+        })
+    if ($c['txtQSEditorHint']) { $c['txtQSEditorHint'].Visibility = $(if ($c['txtQSEditor'].Text) { 'Collapsed' } else { 'Visible' }) }
+    # .ps1 ins Codefeld ziehen (Preview-Ereignisse: die TextBox behandelt Ziehen sonst selbst; Text ziehen bleibt wie bisher)
+    $c['txtQSEditor'].AllowDrop = $true
+    $c['txtQSEditor'].Add_PreviewDragOver({
+            param($s, $e)
+            if ($e.Data.GetDataPresent([System.Windows.DataFormats]::FileDrop)) { $e.Effects = 'Copy'; $e.Handled = $true }
+        })
+    $c['txtQSEditor'].Add_PreviewDrop({
+            param($s, $e)
+            if (-not $e.Data.GetDataPresent([System.Windows.DataFormats]::FileDrop)) { return }
+            $e.Handled = $true
+            $files = @($e.Data.GetData([System.Windows.DataFormats]::FileDrop))
+            if ($files.Count -ne 1) { Show-HUMessage 'Bitte genau eine Datei ins Codefeld ziehen.' -Icon Info; return }
+            Import-HUQSDroppedFile "$($files[0])"
+        })
     $c['txtQSEditor'].Add_PreviewMouseWheel({
         param($s, $e)
         if ([System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control) {

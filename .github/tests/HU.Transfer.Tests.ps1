@@ -96,6 +96,53 @@ Describe 'Uebertragen B - Angleichen (2.4.2)' {
         Test-Path ($r.UndoFile -replace '\.json$', '.rueckgaengig.json') | Should -BeTrue
     }
     AfterAll { Get-ChildItem -LiteralPath $script:Tmp -Recurse -File -Filter '*.json' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue }
+    It '050 B7/B12: Body leert Listen mit [], Unterobjekte rekursiv, IsSet nie' {
+        InModuleScope HU.Transfer {
+            $src = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.x'; displayName = 'A'; roll = [pscustomobject]@{ start = '1' }; keyIsSet = $false }
+            $tgt = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.x'; displayName = 'A'; roll = [pscustomobject]@{ start = '2'; interval = 7 }; liste = @('a', 'b'); extra = 5; keyIsSet = $true }
+            $b = Get-HUTrAlignBody $src $tgt
+            $b.extra | Should -BeNullOrEmpty
+            $b.ContainsKey('extra') | Should -BeTrue
+            ,$b.liste | Should -BeOfType [object[]]
+            @($b.liste).Count | Should -Be 0
+            $b.roll.start | Should -Be '1'
+            $b.roll.ContainsKey('interval') | Should -BeTrue
+            $b.roll.interval | Should -BeNullOrEmpty
+            $b.ContainsKey('keyIsSet') | Should -BeFalse
+        }
+    }
+    It '050 B2: Geheimnis im ZIEL sperrt das Angleichen' {
+        $global:TrObj['Z|t5'] = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CustomConfiguration'; id = 't5'; displayName = 'Win Basis'; omaSettings = @([pscustomobject]@{ '@odata.type' = '#microsoft.graph.omaSettingString'; omaUri = './x'; isEncrypted = $true; secretReferenceValueId = 'ref' }) }
+        $src = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CustomConfiguration'; id = 'q5'; displayName = 'Win Basis'; omaSettings = @() }
+        $p = Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Konfiguration' -SourceObj $src -SourceKey 'Q' -TargetKey 'Z' -TargetId 't5'
+        @($p.Blocks | Where-Object { $_ -like 'Geheimer Wert im Ziel*' }).Count | Should -BeGreaterThan 0
+    }
+    It '050 B9: PATCH abgelehnt -> nichts geaendert, keine Rueckgaengig-Datei' {
+        $global:TrObj['Z|t1'] = $script:TgtProf
+        $p = Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Konfiguration' -SourceObj $script:SrcProf -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1'
+        Mock -ModuleName HU.Transfer Invoke-HUIntuneGraph { throw '400 Bad Request' } -ParameterFilter { $Method -eq 'PATCH' }
+        { Invoke-HUTransferAlign -Plan $p -Settings $script:Set } | Should -Throw '*nichts veraendert*'
+        @(Get-HUTransferUndoList -Settings $script:Set -Keys @('Z') | Where-Object { $_.Was -eq 'angeglichen' }).Count | Should -Be 0
+    }
+    It '050 B8/B9/B10: Compliance - reine Aktions-Unterschiede sichtbar, ruleName aus der Quelle, halb angeglichen bleibt rueckgaengig machbar' {
+        $src = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CompliancePolicy'; id = 'q1'; displayName = 'Comp'; passwordRequired = $true
+            scheduledActionsForRule = @([pscustomobject]@{ ruleName = 'DeviceHealth'; scheduledActionConfigurations = @([pscustomobject]@{ actionType = 'block'; gracePeriodHours = 0 }) }) }
+        $tgt = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CompliancePolicy'; id = 't1'; displayName = 'Comp'; passwordRequired = $true
+            scheduledActionsForRule = @([pscustomobject]@{ ruleName = 'DeviceHealth'; scheduledActionConfigurations = @([pscustomobject]@{ actionType = 'block'; gracePeriodHours = 72 }) }) }
+        $global:TrObj['Z|t1'] = $tgt
+        $p = Get-HUTransferAlignPlan -Settings $script:Set -Typ 'Compliance' -SourceObj $src -SourceKey 'Q' -TargetKey 'Z' -TargetId 't1'
+        $p.Blocks.Count | Should -Be 0
+        $row = @($p.Changes | Where-Object Feld -eq 'Aktionen (nicht konform)')[0]
+        $row.Jetzt | Should -Be 'block:72h'
+        $row.Danach | Should -Be 'block:0h'
+        InModuleScope HU.Transfer -Parameters @{ S = $src } { param($S) Get-HUTrComplianceRuleName $S | Should -Be 'DeviceHealth'; Get-HUTrComplianceRuleName ([pscustomobject]@{ x = 1 }) | Should -Be 'PasswordRequired' }
+        $global:TrObjAfter['Z|t1'] = $src
+        Mock -ModuleName HU.Transfer Invoke-HUIntuneGraph { if ($Endpoint -like '*scheduleActionsForRules') { throw '500' }; $global:TrWrites += [pscustomobject]@{ Tenant = $TenantKey; Method = $Method; Endpoint = $Endpoint }; return $null } -ParameterFilter { $Method -ne 'GET' }
+        { Invoke-HUTransferAlign -Plan $p -Settings $script:Set } | Should -Throw 'HALB angeglichen*'
+        $u = @(Get-HUTransferUndoList -Settings $script:Set -Keys @('Z') | Where-Object { $_.Was -eq 'angeglichen' })[0]
+        (Read-HUBackupJson $u.Datei).HashAfter | Should -Not -BeNullOrEmpty
+        (Get-HUTransferUndoStatus -Settings $script:Set -File $u.Datei).Ok | Should -BeTrue
+    }
     It 'Rueckgaengig-Status: nur pruefen, nichts schreiben; Grund bei nicht moeglich' {
         $global:TrObj['Z|t1'] = $script:TgtProf
         $global:TrObjAfter['Z|t1'] = $script:SrcProf

@@ -184,12 +184,17 @@
 
                         <!-- Zeile 3: Editor -->
                         <Border Grid.Row="3" Background="#2D2D2D" CornerRadius="4" Padding="2" Margin="0,0,0,2">
+                            <Grid>
                             <TextBox x:Name="txtQSEditor"
                                      Background="#1E1E1E" Foreground="#D4D4D4" CaretBrush="#D4D4D4" SelectionBrush="#264F78"
                                      FontFamily="Consolas" FontSize="12"
                                      AcceptsReturn="True" AcceptsTab="True"
                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                                      BorderThickness="0" Padding="8" TextWrapping="NoWrap"/>
+                            <TextBlock x:Name="txtQSEditorHint" IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       TextAlignment="Center" Foreground="#5A5A5A" FontSize="13"
+                                       Text="Code hier schreiben oder einfuegen&#x0a;oder eine .ps1-Datei hierher ziehen"/>
+                            </Grid>
                         </Border>
 
                         <GridSplitter Grid.Row="4" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center"
