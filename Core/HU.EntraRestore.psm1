@@ -597,4 +597,292 @@ function Invoke-HUEntraRestore {
     return [pscustomobject]@{ Ok = (-not $bad.Count); Written = $Plan.Changes.Count; Mismatch = $bad; BackupFile = $file; Dropped = @($Plan.Dropped); Notes = @($Plan.Notes) }
 }
 
-Export-ModuleMember -Function Get-HUEntraRestoreKind, Get-HUEntraRestorePlan, Invoke-HUEntraRestore, Test-HUEntraBreakGlass, Format-HUErValue, Test-HUErEqual, Get-HUErPathValue
+# ============================================================================
+# 2.4.4 Uebertragen C (Konzept 045 Abschnitt 6, F6): Entra-Einstellungen aus dem MUSTER in andere Tenants.
+# Quelle = Backup-Stand des Mustertenants (ResolveKey = dessen Live-Tenant fuer Namen). Ziel wird live gelesen,
+# geprueft wird immer im ZIEL. Gruppen ueber den Namen (genau ein Treffer), Benutzer nie, eingebaute Rollen global.
+# ============================================================================
+$script:HUErTrKinds = @('authz', 'consent', 'location', 'groupSetting')
+
+function ConvertTo-HUErName([string]$N) { return ("$N".Trim()).ToLowerInvariant() }
+
+# Objekt flach kopieren (pscustomobject), damit Aenderungen die Quelle nicht beruehren
+function Copy-HUErObject($O) { return ((ConvertTo-HUCleanObject $O @()) | ConvertTo-Json -Depth 40 | ConvertFrom-Json) }
+
+# Gruppe der Quelle ueber den Namen im Ziel finden -> @{ Id; Name; Error }
+function Resolve-HUErGroupToTarget([string]$ResolveKey, $Settings, [string]$TargetKey, [string]$GroupId) {
+    $g = $null
+    try { $g = Invoke-HUErGraph $ResolveKey $Settings "/groups/$GroupId`?`$select=id,displayName" } catch { return @{ Error = "Gruppe $GroupId ist in der Quelle nicht (mehr) lesbar" } }
+    $n = "$($g.displayName)"
+    if (-not $n) { return @{ Error = "Gruppe $GroupId hat in der Quelle keinen Namen" } }
+    $f = [uri]::EscapeDataString("displayName eq '$($n.Replace("'", "''"))'")
+    $hits = @()
+    try { $hits = @(Get-HUIntuneGraphAll -TenantKey $TargetKey -Settings $Settings -Endpoint "/groups?`$filter=$f&`$select=id,displayName" -V1 | Where-Object { (ConvertTo-HUErName $_.displayName) -eq (ConvertTo-HUErName $n) }) }
+    catch { return @{ Error = "Gruppe '$n' im Ziel nicht suchbar ($($_.Exception.Message))" } }
+    if ($hits.Count -ne 1) { return @{ Error = "Gruppe '$n' gibt es im Ziel $(if ($hits.Count) { "$($hits.Count)-mal" } else { 'nicht' })"; Name = $n } }
+    return @{ Id = "$($hits[0].id)"; Name = $n }
+}
+
+# eingeschaltete CA-Richtlinien im Ziel, die "Alle vertrauenswuerdigen Orte" bzw. einen bestimmten Ort verwenden -> Namen ($null = nicht lesbar)
+function Get-HUErCaUsingLocation([string]$TargetKey, $Settings, [string]$LocationId) {
+    $pol = $null
+    try { $pol = @(Get-HUIntuneGraphAll -TenantKey $TargetKey -Settings $Settings -Endpoint '/identity/conditionalAccess/policies' -V1) } catch { return $null }
+    # Komma: eine leere Liste darf nicht zu $null werden ($null bedeutet hier "nicht lesbar")
+    return , [string[]]@($pol | Where-Object {
+            $l = Get-HUErProp (Get-HUErProp $_ 'conditions') 'locations'
+            @(@(Get-HUErProp $l 'includeLocations') + @(Get-HUErProp $l 'excludeLocations') | ForEach-Object { "$_" }) -contains $LocationId
+        } | ForEach-Object { "$($_.displayName) ($($_.state))" })
+}
+
+function Get-HUErTrPlanConsent($Plan, [string]$TargetKey, $Settings, $Backup, [string]$ResolveKey) {
+    $b = Copy-HUErObject $Backup
+    $g = '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'
+    $revs = New-Object System.Collections.Generic.List[object]
+    foreach ($r in @(Get-HUErProp $b 'reviewers' | Where-Object { $_ })) {
+        $q = "$(Get-HUErProp $r 'query')"
+        if ($q -match "^(/v1\.0|/beta)?/users/$g") { $Plan.Blocks.Add("Reviewer ist ein einzelner Benutzer ($q) - Benutzer werden zwischen Tenants nie zugeordnet (Ue-3). Im Muster eine Gruppe oder Rolle verwenden."); continue }
+        $m = [regex]::Match($q, "^((/v1\.0|/beta)?/groups/)$g(.*)$")
+        if ($m.Success) {
+            $t = Resolve-HUErGroupToTarget $ResolveKey $Settings $TargetKey $m.Groups[3].Value
+            if ($t.Error) { $Plan.Blocks.Add("Reviewer: $($t.Error)."); continue }
+            $q = "$($m.Groups[1].Value)$($t.Id)$($m.Groups[4].Value)"
+            $Plan.Notes.Add("Reviewer-Gruppe '$($t.Name)' zugeordnet ($($m.Groups[3].Value) -> $($t.Id)).")
+        }
+        $revs.Add([pscustomobject]@{ query = $q; queryType = "$(Get-HUErProp $r 'queryType')"; queryRoot = (Get-HUErProp $r 'queryRoot') })
+    }
+    $b | Add-Member -NotePropertyName reviewers -NotePropertyValue $revs.ToArray() -Force
+    if ((ConvertTo-HUErBool (Get-HUErProp $b 'isEnabled')) -and -not $revs.Count -and -not $Plan.Blocks.Count) { $Plan.Blocks.Add('Eingeschaltet ohne Reviewer ist nicht moeglich.') }
+    Get-HUErPlanConsent $Plan $TargetKey $Settings $b
+}
+
+function Get-HUErTrPlanLocation($Plan, [string]$TargetKey, $Settings, $Backup) {
+    $type = "$(Get-HUErProp $Backup '@odata.type')"
+    $name = "$(Get-HUErProp $Backup 'displayName')"
+    if ($type -notin '#microsoft.graph.ipNamedLocation', '#microsoft.graph.countryNamedLocation') { $Plan.Blocks.Add("Ortstyp '$type' wird nicht uebertragen."); return }
+    $all = $null
+    try { $all = @(Get-HUIntuneGraphAll -TenantKey $TargetKey -Settings $Settings -Endpoint '/identity/conditionalAccess/namedLocations' -V1) } catch { $Plan.Blocks.Add("Orte im Ziel nicht lesbar ($($_.Exception.Message))."); return }
+    $hits = @($all | Where-Object { (ConvertTo-HUErName $_.displayName) -eq (ConvertTo-HUErName $name) })
+    if ($hits.Count -gt 1) { $Plan.Blocks.Add("Den Ort '$name' gibt es im Ziel $($hits.Count)-mal - nicht eindeutig."); return }
+    $fields = if ($type -eq '#microsoft.graph.ipNamedLocation') { @('displayName', 'ipRanges', 'isTrusted') } else { @('displayName', 'countriesAndRegions', 'includeUnknownCountriesAndRegions') }
+    if ($hits.Count -eq 1) {
+        # 045 B1: gleicher Name ist nicht derselbe Inhalt - Aenderung zeigen, betroffene Richtlinien nennen, bewusst bestaetigen
+        $b = Copy-HUErObject $Backup
+        $b | Add-Member -NotePropertyName id -NotePropertyValue "$($hits[0].id)" -Force
+        Get-HUErPlanLocation $Plan $TargetKey $Settings $b
+        if ($Plan.Changes.Count) {
+            $use = Get-HUErCaUsingLocation $TargetKey $Settings "$($hits[0].id)"
+            if ($null -eq $use) { $Plan.Blocks.Add('Conditional Access im Ziel nicht lesbar - ohne zu wissen, welche Richtlinien den Ort verwenden, wird er nicht geaendert.') }
+            elseif ($use.Count) { $Plan.Confirms.Add("Der Ort '$name' im Ziel wird geaendert und wirkt sofort auf $($use.Count) Richtlinie(n): $($use -join ', ').") }
+            else { $Plan.Notes.Add("Der Ort '$name' wird im Ziel von keiner CA-Richtlinie verwendet.") }
+        }
+    } else {
+        # neu anlegen (POST); Kennung entsteht im Ziel neu
+        $Plan.Method = 'POST'; $Plan.Endpoint = '/identity/conditionalAccess/namedLocations'; $Plan.ReadEndpoint = ''; $Plan.Perm = 'Policy.ReadWrite.ConditionalAccess (und Policy.Read.All)'
+        $body = @{ '@odata.type' = $type }
+        foreach ($f in $fields) {
+            $v = Get-HUErProp $Backup $f
+            if ($null -eq $v) { continue }
+            if ($f -eq 'ipRanges') {
+                $v = [object[]]@(@($v) | ForEach-Object {
+                        $cidr = "$(Get-HUErProp $_ 'cidrAddress')"; $t = "$(Get-HUErProp $_ '@odata.type')"
+                        if (-not $t) { $t = if ($cidr.Contains(':')) { '#microsoft.graph.iPv6CidrRange' } else { '#microsoft.graph.iPv4CidrRange' } }
+                        @{ '@odata.type' = $t; cidrAddress = $cidr } })
+                if (-not $v.Count) { $Plan.Blocks.Add('Die Bereichsliste im Muster ist leer.'); continue }
+            } elseif ($f -eq 'countriesAndRegions') { $v = [object[]]@($v) }
+            $body[$f] = $v
+            Add-HUErChange $Plan $f '(neu)' $v
+        }
+        $Plan.Body = $body
+        $Plan.Notes.Add("Den Ort '$name' gibt es im Ziel noch nicht - er wird NEU angelegt (neue Kennung). Rueckgaengig = loeschen, solange unveraendert und von keiner Richtlinie verwendet.")
+        $Plan.BreakGlass = $true
+    }
+    # 045 B1: vertrauenswuerdig wirkt sofort auf Richtlinien mit "Alle vertrauenswuerdigen Orte" - zaehlen und nennen; nicht lesbar = nicht setzen
+    if ($Plan.Body -and $Plan.Body.ContainsKey('isTrusted') -and @($Plan.Changes | Where-Object { $_.Feld -eq 'isTrusted' }).Count) {
+        $use = Get-HUErCaUsingLocation $TargetKey $Settings 'AllTrusted'
+        # allgemeinen Haken aus dem Zurueckschreiben durch den genaueren mit Anzahl ersetzen
+        foreach ($x in @($Plan.Confirms | Where-Object { "$_" -like 'Vertrauenswuerdig wird*' })) { [void]$Plan.Confirms.Remove($x) }
+        if ($null -eq $use) {
+            $Plan.Body.Remove('isTrusted')
+            foreach ($x in @($Plan.Changes | Where-Object { $_.Feld -eq 'isTrusted' })) { [void]$Plan.Changes.Remove($x) }
+            $Plan.Warnings.Add("'Vertrauenswuerdig' wird NICHT gesetzt: Conditional Access im Ziel ist nicht lesbar.")
+        }
+        else { $Plan.Confirms.Add("'Vertrauenswuerdig' = $(Get-HUErProp $Backup 'isTrusted') wirkt sofort auf $($use.Count) Richtlinie(n) mit 'Alle vertrauenswuerdigen Orte'$(if ($use.Count) { ": $($use -join ', ')" }).") }
+    }
+}
+
+function Get-HUErTrPlanGroupSetting($Plan, [string]$TargetKey, $Settings, $Backup, [string]$ResolveKey) {
+    $tpl = "$(Get-HUErProp $Backup 'templateId')"
+    if (-not $tpl) { $Plan.Blocks.Add('Der Muster-Eintrag hat keine Vorlagen-Kennung (templateId).'); return }
+    $b = Copy-HUErObject $Backup
+    # GroupCreationAllowedGroupId: Gruppe der Quelle ueber den Namen im Ziel (045 B4)
+    $vals = @(Get-HUErProp $b 'values' | Where-Object { $_ })
+    foreach ($v in $vals) {
+        if ("$(Get-HUErProp $v 'name')" -ne 'GroupCreationAllowedGroupId' -or -not "$(Get-HUErProp $v 'value')") { continue }
+        $t = Resolve-HUErGroupToTarget $ResolveKey $Settings $TargetKey "$(Get-HUErProp $v 'value')"
+        if ($t.Error) { $Plan.Blocks.Add("GroupCreationAllowedGroupId: $($t.Error)."); return }
+        $v.value = $t.Id
+        $Plan.Notes.Add("Gruppe fuer die Gruppenerstellung '$($t.Name)' zugeordnet.")
+    }
+    $live = $null
+    try { $live = @(Get-HUIntuneGraphAll -TenantKey $TargetKey -Settings $Settings -Endpoint '/groupSettings' -V1 | Where-Object { "$($_.templateId)" -eq $tpl }) | Select-Object -First 1 }
+    catch { $Plan.Blocks.Add("Verzeichniseinstellungen im Ziel nicht lesbar ($($_.Exception.Message))."); return }
+    if ($live) { Get-HUErPlanGroupSetting $Plan $TargetKey $Settings $b; return }
+    # 045 B4: fehlt im Ziel -> POST mit kompletter Werteliste; EnableMSStandardBlockedWords nie
+    $Plan.Method = 'POST'; $Plan.Endpoint = '/groupSettings'; $Plan.ReadEndpoint = ''; $Plan.Perm = 'GroupSettings.ReadWrite.All'
+    $list = @($vals | Where-Object { "$(Get-HUErProp $_ 'name')" -and "$(Get-HUErProp $_ 'name')" -ne 'EnableMSStandardBlockedWords' -and $null -ne (Get-HUErProp $_ 'value') })
+    if (-not $list.Count) { $Plan.Blocks.Add('Die Werteliste im Muster ist leer.'); return }
+    $Plan.Body = @{ templateId = $tpl; values = [object[]]@($list | ForEach-Object { @{ name = "$(Get-HUErProp $_ 'name')"; value = "$(Get-HUErProp $_ 'value')" } }) }
+    foreach ($v in $list) { Add-HUErChange $Plan "values[$(Get-HUErProp $v 'name')]" '(neu)' "$(Get-HUErProp $v 'value')" }
+    if (@($vals | Where-Object { "$(Get-HUErProp $_ 'name')" -eq 'EnableMSStandardBlockedWords' }).Count) { $Plan.Dropped.Add('EnableMSStandardBlockedWords (von Microsoft eingestellt)') }
+    $names = @($list | ForEach-Object { "$(Get-HUErProp $_ 'name')" })
+    if ($tpl -eq $script:HUErPwRuleTpl -and @($names | Where-Object { $script:HUErPwRuleP1 -contains $_ }).Count) {
+        $p1 = $false
+        try { foreach ($s in @(Get-HUIntuneGraphAll -TenantKey $TargetKey -Settings $Settings -Endpoint '/subscribedSkus?$select=servicePlans' -V1)) { if (@($s.servicePlans | Where-Object { "$($_.servicePlanName)" -in 'AAD_PREMIUM', 'AAD_PREMIUM_P2' -and "$($_.provisioningStatus)" -eq 'Success' }).Count) { $p1 = $true; break } } } catch { }
+        if (-not $p1) { $Plan.Blocks.Add('Kennwortliste und Sperrschwelle brauchen Microsoft Entra ID P1 - im Ziel nicht gefunden.') }
+    }
+    $ec = @($list | Where-Object { "$(Get-HUErProp $_ 'name')" -eq 'EnableGroupCreation' -and "$(Get-HUErProp $_ 'value')" -eq 'false' })
+    if ($ec.Count) { $Plan.Confirms.Add('EnableGroupCreation = false: Nicht-Admins koennen danach keine Microsoft-365-Gruppen und keine Teams mehr anlegen.') }
+    $Plan.Notes.Add('Diese Verzeichniseinstellung gibt es im Ziel noch nicht - sie wird NEU angelegt. Rueckgaengig durch Loeschen ist nicht vorgesehen (045 B4); zuruecksetzen bei Bedarf im Portal oder per Zurueckschreiben.')
+    $Plan.BreakGlass = $false
+}
+
+# Schreibrecht im Ziel schon in der Vorschau zeigen (045 Ue-11): Rollen aus dem App-Token lesen (Anwendungsberechtigungen).
+# Rueckgabe: fehlende Rechte; $null = nicht pruefbar. Nur Hinweis, keine Sperre (frisch erteilte Rechte stehen erst im naechsten Token).
+$script:HUErTrPerms = @{
+    authz = @('Policy.ReadWrite.Authorization'); consent = @('Policy.ReadWrite.ConsentRequest', 'Directory.ReadWrite.All')
+    location = @('Policy.ReadWrite.ConditionalAccess'); groupSetting = @('GroupSettings.ReadWrite.All', 'Directory.ReadWrite.All')
+}
+function Get-HUErTokenRoles([string]$TenantKey, $Settings) {
+    try {
+        $tok = "$(Get-GraphToken -TenantKey $TenantKey -Settings $Settings -ErrorAction Stop)"
+        $part = ($tok -split '\.')[1]
+        if (-not $part) { return $null }
+        $part = $part.Replace('-', '+').Replace('_', '/'); switch ($part.Length % 4) { 2 { $part += '==' } 3 { $part += '=' } }
+        $j = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($part)) | ConvertFrom-Json
+        return @($j.roles | ForEach-Object { "$_" })
+    } catch { return $null }
+}
+
+# Plan je Ziel (liest nur): Entra-Einstellung aus dem Muster uebertragen
+function Get-HUEntraTransferPlan {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TargetKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [string]$Id = '', [string]$Name = '',
+        [Parameter(Mandatory)]$Backup, [Parameter(Mandatory)][string]$ResolveKey, [string]$SourceLabel = 'Muster')
+    $kind = Get-HUEntraRestoreKind $Typ $Id
+    if ($script:HUErTrKinds -notcontains $kind) { throw "$Typ '$Name' wird (noch) nicht uebertragen" }
+    $plan = New-HUErPlan $kind $TargetKey $Typ $Name
+    $plan | Add-Member -NotePropertyName Transfer -NotePropertyValue $true
+    $plan | Add-Member -NotePropertyName SourceLabel -NotePropertyValue $SourceLabel
+    $plan | Add-Member -NotePropertyName EntraId -NotePropertyValue $Id
+    if ($TargetKey -eq $ResolveKey) { $plan.Blocks.Add('Ziel ist der Tenant, aus dem das Muster stammt - dafuer gibt es Zurueckschreiben.'); return $plan }
+    switch ($kind) {
+        'authz' { Get-HUErPlanAuthz $plan $TargetKey $Settings $Backup }
+        'consent' { Get-HUErTrPlanConsent $plan $TargetKey $Settings $Backup $ResolveKey }
+        'location' { Get-HUErTrPlanLocation $plan $TargetKey $Settings $Backup }
+        'groupSetting' { Get-HUErTrPlanGroupSetting $plan $TargetKey $Settings $Backup $ResolveKey }
+    }
+    if ($plan.BreakGlass -eq $true -and $plan.Changes.Count) {
+        $bg = Test-HUEntraBreakGlass -TenantKey $TargetKey -Settings $Settings
+        $plan.BreakGlass = $bg
+        if (-not $bg.Ok) { $plan.Blocks.Add("Ziel: $($bg.Text)") }
+    }
+    if (-not $plan.Changes.Count -and -not $plan.Blocks.Count) { $plan.Blocks.Add('Im Ziel schon gleich wie im Muster - nichts zu uebertragen.') }
+    if (-not $plan.Blocks.Count) {
+        $roles = Get-HUErTokenRoles $TargetKey $Settings
+        $need = @($script:HUErTrPerms[$kind])
+        if ($null -ne $roles -and $need.Count -and -not @($need | Where-Object { $roles -contains $_ }).Count) {
+            $plan.Warnings.Add("Schreibrecht $($need[0]) ist im Ziel nicht erteilt (Berechtigungen > Tenant > 'Entra-Schreibrechte an ...') - so wuerde Intune/Entra das Schreiben ablehnen. Gerade erst erteilt? Dann gilt es erst mit dem naechsten Token (Trennen/Verbinden).")
+        }
+    }
+    $plan.Notes.Add("Quelle: $SourceLabel (festgehaltener Stand). Geprueft wird im Ziel.")
+    return $plan
+}
+
+function Get-HUErTrUndoDir($Settings, [string]$TenantKey) { return (Join-Path (Join-Path (Get-HUBackupRoot $Settings) (ConvertTo-HUSafeFileName $TenantKey)) '_vor-uebertragen') }
+
+# Schreiben nach Bestaetigung. PATCH/PUT ueber Invoke-HUEntraRestore (erneut lesen, sichern, schreiben, nachpruefen);
+# POST (neuer Ort / neue Verzeichniseinstellung): anlegen, nachlesen, je Feld pruefen. Danach Rueckgaengig-Datei.
+function Invoke-HUEntraTransfer {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Plan, [Parameter(Mandatory)]$Settings, [string]$Actor = "$env:USERNAME", [datetime]$Now = (Get-Date))
+    if ($Plan.Blocks.Count) { throw "Nicht uebertragen: $($Plan.Blocks -join ' ')" }
+    $tk = $Plan.TenantKey
+    $dir = Get-HUErTrUndoDir $Settings $tk
+    $stamp = $Now.ToString('yyyy-MM-dd_HHmmss')
+    if ($Plan.Method -ne 'POST') {
+        $res = Invoke-HUEntraRestore -Plan $Plan -Settings $Settings -Actor "$Actor (Uebertragen aus $($Plan.SourceLabel))"
+        $before = $null; try { $before = Read-HUBackupJson $res.BackupFile } catch { }
+        $ha = ''; try { $ha = Get-HUErHash (Invoke-HUErGraph $tk $Settings $Plan.ReadEndpoint) } catch { }
+        $file = Join-Path $dir "$($stamp)_geaendert_$(ConvertTo-HUSafeFileName $Plan.Name 40).json"
+        Write-HUBackupJson $file ([pscustomobject]@{ Kind = 'entraChanged'; Tenant = $tk; Typ = $Plan.Typ; EntraId = "$($Plan.EntraId)"; Name = $Plan.Name; ReadEndpoint = $Plan.ReadEndpoint; HashAfter = $ha; Before = $before; Source = $Plan.SourceLabel; Time = $Now.ToString('s'); By = $Actor })
+        $res | Add-Member -NotePropertyName UndoFile -NotePropertyValue $file -Force
+        return $res
+    }
+    $r = $null
+    try { $r = Invoke-HUErGraph $tk $Settings $Plan.Endpoint 'POST' $Plan.Body }
+    catch { if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm). Nichts angelegt." }; throw }
+    $id = "$($r.id)"
+    if (-not $id) { throw 'Angelegt, aber ohne Kennung zurueckgemeldet - bitte im Portal pruefen.' }
+    Write-HULog -Message "Uebertragen: $($Plan.Typ) '$($Plan.Name)' aus $($Plan.SourceLabel) neu angelegt (Id $id, durch $Actor)" -Level 'OK' -Tenant $tk
+    $after = $null; $readErr = ''
+    foreach ($wait in @(@(0) + @($script:HUErReadDelays))) {
+        if ($wait -gt 0) { Start-Sleep -Seconds $wait }
+        try { $after = Invoke-HUErGraph $tk $Settings "$($Plan.Endpoint)/$id"; $readErr = ''; break }
+        catch { $readErr = "$($_.Exception.Message)"; if ($_.Exception.Data['StatusCode'] -ne 404) { break } }
+    }
+    $bad = New-Object System.Collections.Generic.List[string]
+    if ($null -eq $after) { $bad.Add("Angelegt (Id $id), aber nicht nachlesbar ($readErr) - bitte im Portal pruefen und NICHT erneut anlegen.") }
+    else {
+        foreach ($c in $Plan.Changes) {
+            if ($c.Feld -eq 'displayName' -and $Plan.Kind -eq 'groupSetting') { continue }
+            # beide Seiten als Liste: eine Liste mit einem Eintrag kommt aus Funktionen ausgepackt zurueck
+            if (-not (Test-HUErEqual @(Get-HUErPathValue $after $c.Feld) @($c.Expected))) { $bad.Add("$($c.Feld): erwartet $($c.Danach), gelesen $(Format-HUErValue (Get-HUErPathValue $after $c.Feld))") }
+        }
+    }
+    foreach ($b in $bad) { Write-HULog -Message "Nachpruefung $($Plan.Typ) '$($Plan.Name)': $b" -Level 'WARN' -Tenant $tk }
+    $file = ''
+    if ($Plan.Kind -eq 'location' -and $null -ne $after) {
+        $file = Join-Path $dir "$($stamp)_neu_$(ConvertTo-HUSafeFileName $Plan.Name 40).json"
+        Write-HUBackupJson $file ([pscustomobject]@{ Kind = 'entraCreated'; Tenant = $tk; Typ = $Plan.Typ; Name = $Plan.Name; Id = $id; Endpoint = "$($Plan.Endpoint)/$id"; Hash = (Get-HUErHash $after); Source = $Plan.SourceLabel; Time = $Now.ToString('s'); By = $Actor })
+    }
+    return [pscustomobject]@{ Ok = (-not $bad.Count); Written = 1; Mismatch = @($bad); BackupFile = ''; NewId = $id; UndoFile = $file; Dropped = @($Plan.Dropped); Notes = @($Plan.Notes) }
+}
+
+# Rueckgaengig fuer Entra-Uebertragungen (045 F5): geaendert -> gesicherten Stand mit derselben Logik wie Zurueckschreiben
+# (dieselben Sperren, u. a. Notfallkonten); neu angelegter Ort -> loeschen, nur unveraendert und von keiner Richtlinie verwendet.
+function Undo-HUEntraTransfer {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$File, [Parameter(Mandatory)]$U, [switch]$CheckOnly)
+    $tk = "$($U.Tenant)"
+    if ("$($U.Kind)" -eq 'entraCreated') {
+        $cur = $null
+        try { $cur = Invoke-HUErGraph $tk $Settings "$($U.Endpoint)" }
+        catch {
+            if ($_.Exception.Data['StatusCode'] -eq 404) { Move-Item -LiteralPath $File -Destination ($File -replace '\.json$', '.erledigt.json') -Force; return [pscustomobject]@{ Deleted = $false; Text = 'Gibt es im Ziel nicht mehr - nichts zu tun.' } }
+            throw
+        }
+        if ((Get-HUErHash $cur) -ne "$($U.Hash)") { throw "'$($U.Name)' wurde nach dem Uebertragen geaendert - nicht automatisch geloescht." }
+        $use = Get-HUErCaUsingLocation $tk $Settings "$($U.Id)"
+        if ($null -eq $use) { throw 'Conditional Access im Ziel nicht lesbar - nicht geloescht.' }
+        if ($use.Count) { throw "'$($U.Name)' wird inzwischen verwendet: $($use -join ', ') - nicht geloescht." }
+        if ($CheckOnly) { return [pscustomobject]@{ Deleted = $false; Text = 'Loeschen moeglich' } }
+        [void](Invoke-HUErGraph $tk $Settings "$($U.Endpoint)" 'DELETE')
+        Write-HULog -Message "Rueckgaengig: $($U.Typ) '$($U.Name)' im Ziel geloescht (uebertragen $($U.Time) aus $($U.Source))" -Level 'OK' -Tenant $tk
+        Move-Item -LiteralPath $File -Destination ($File -replace '\.json$', '.rueckgaengig.json') -Force
+        return [pscustomobject]@{ Deleted = $true; Text = "'$($U.Name)' geloescht." }
+    }
+    # entraChanged
+    if ($null -eq $U.Before) { throw "Fuer '$($U.Name)' fehlt der gesicherte Stand - bitte im Portal pruefen." }
+    $now = $null
+    try { $now = Invoke-HUErGraph $tk $Settings "$($U.ReadEndpoint)" } catch { throw "'$($U.Name)' im Ziel nicht lesbar ($($_.Exception.Message))." }
+    if (-not "$($U.HashAfter)" -or (Get-HUErHash $now) -ne "$($U.HashAfter)") { throw "'$($U.Name)' wurde nach dem Uebertragen geaendert - nicht automatisch zurueckgesetzt." }
+    $plan = Get-HUEntraRestorePlan -TenantKey $tk -Settings $Settings -Typ "$($U.Typ)" -Id "$($U.EntraId)" -Name "$($U.Name)" -Backup $U.Before
+    if ($plan.Blocks.Count) { throw "Zuruecksetzen gesperrt: $($plan.Blocks -join ' ')" }
+    if ($CheckOnly) { return [pscustomobject]@{ Deleted = $false; Text = 'Zuruecksetzen moeglich' } }
+    if (-not $plan.Changes.Count) { Move-Item -LiteralPath $File -Destination ($File -replace '\.json$', '.erledigt.json') -Force; return [pscustomobject]@{ Deleted = $false; Text = 'Schon auf dem gesicherten Stand - nichts zu tun.' } }
+    $r = Invoke-HUEntraRestore -Plan $plan -Settings $Settings -Actor "$env:USERNAME (Rueckgaengig Uebertragen)"
+    Move-Item -LiteralPath $File -Destination ($File -replace '\.json$', '.rueckgaengig.json') -Force
+    return [pscustomobject]@{ Deleted = $false; Text = "'$($U.Name)' auf den Stand vor dem Uebertragen zurueckgesetzt$(if (-not $r.Ok) { ' - ACHTUNG Nachpruefung: ' + (@($r.Mismatch) -join '; ') })." }
+}
+
+Export-ModuleMember -Function Get-HUEntraRestoreKind, Get-HUEntraRestorePlan, Invoke-HUEntraRestore, Test-HUEntraBreakGlass, Format-HUErValue, Test-HUErEqual, Get-HUErPathValue, Get-HUEntraTransferPlan, Invoke-HUEntraTransfer, Undo-HUEntraTransfer

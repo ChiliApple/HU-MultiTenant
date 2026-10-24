@@ -227,6 +227,8 @@ function Update-HUCmpHint {
 
 # Arten-Dropdown: hinter jeder Art steht, was damit geht (uebertragen/angleichen/nur vergleichen)
 function Get-HUCmpTypeHint([string]$Typ) {
+    if ($Typ -in 'Benannter Ort', 'Verzeichniseinstellung') { return 'uebertragen aus Muster' }
+    if ($Typ -eq 'Entra-Einstellung') { return 'teils uebertragbar aus Muster' }
     $src = Get-HUCompareSources | Where-Object { $_.Typ -eq $Typ } | Select-Object -First 1
     if ($src -and $src.Copy) { if ($src.Copy -in @('generic', 'compliance') -and $src.Hash) { return 'uebertragen + angleichen' } else { return 'neu anlegen' } }
     return 'nur vergleichen'
@@ -297,7 +299,7 @@ function Update-HUCmpGrid {
     $items = foreach ($m in @(Get-HUCmpVisibleRows)) {
         $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
         for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = $(if ($m.Have -contains $keys[$i]) { Get-HUCmpCellText $m $keys[$i] } elseif (@($m.Unknown) -contains $keys[$i]) { '?' } else { "$([char]0x2014)" }); $o["Fc$i"] = Get-HUCmpCellColor $m $keys[$i] }
-        $o.Status = ("$($m.Status)$(if ($m.Missing.Count -and -not $m.Copy) { ' (nur anzeigen)' })" -replace [regex]::Escape((Get-HUMusterKey)), 'Muster')
+        $o.Status = ("$($m.Status)$(if ($m.Missing.Count -and -not $m.Copy -and $m.Typ -notin 'Benannter Ort', 'Verzeichniseinstellung') { ' (nur anzeigen)' })" -replace [regex]::Escape((Get-HUMusterKey)), 'Muster')
         $o.Ref = $m
         [pscustomobject]$o
     }
@@ -362,6 +364,10 @@ function Start-HUCmpCopy {
     if ($sel.Count -ne 1) { Show-HUMessage 'Bitte genau einen Eintrag markieren - Uebertragen geht je Eintrag, mit Vorschau je Ziel-Tenant.' -Icon Info; return }
     $m = $sel[0]
     if ($m.Dupe) { Show-HUMessage "'$($m.Name)' ist in einem Tenant doppelt - wird nicht uebertragen (unklar, welche Fassung die richtige ist)." -Icon Warning; return }
+    # 2.4.4: Entra-Einstellungen (nur aus dem Muster, 045 F6)
+    $ek = ''
+    if (Get-Command Get-HUEntraTransferPlan -ErrorAction SilentlyContinue) { $ek = Get-HUEntraRestoreKind $m.Typ "$(@($m.Items)[0].Id)" }
+    if ($ek -in 'authz', 'consent', 'location', 'groupSetting') { Start-HUCmpEntraCopy $m; return }
     if (-not (@(Get-HUCompareSources | Where-Object { $_.Typ -eq $m.Typ -and $_.Copy }).Count)) { Show-HUMessage "$($m.Typ) laesst sich (noch) nicht uebertragen.`n`nApps ueber die Bibliothek verteilen; Conditional Access, Autopilot und die weiteren Arten werden vorerst nur verglichen." -Icon Info; return }
     $have = @($m.Items | ForEach-Object { $_.Tenant } | Select-Object -Unique)
     $srcKey = $have[0]
@@ -400,6 +406,32 @@ function Start-HUCmpCopy {
     Start-HUTransferNext
 }
 
+# Entra-Einstellung aus dem Muster in andere Tenants (045 Abschnitt 6, F6): Quelle ist immer der festgehaltene Muster-Stand
+function Start-HUCmpEntraCopy($M) {
+    $mk = Get-HUMusterKey
+    $mi = @($M.Items | Where-Object { $_.Tenant -eq $mk })
+    if (-not $mi.Count -or $null -eq $mi[0].Obj) { Show-HUMessage "Entra-Einstellungen werden nur aus dem Mustertenant uebertragen (bewusst festgehaltener Soll-Stand).`n`nHaken 'Muster aus Backup' setzen und Vergleich einlesen - das Muster muss '$($M.Name)' enthalten." -Icon Info; return }
+    $muster = $null; try { $muster = Get-HUMuster $script:Settings } catch { }
+    if (-not $muster) { Show-HUMessage 'Kein Mustertenant festgehalten.' -Icon Info; return }
+    $src = "$($muster.Source)"
+    $mh = "$($mi[0].Hash)"
+    $missing = @($M.Missing | Where-Object { $_ -ne $mk -and $_ -ne $src })
+    $diff = @($M.Items | Where-Object { $_.Tenant -ne $mk -and $_.Tenant -ne $src -and "$($_.Hash)" -ne $mh } | ForEach-Object { $_.Tenant } | Select-Object -Unique)
+    $targets = @($missing + $diff | Select-Object -Unique)
+    if (-not $targets.Count) { Show-HUMessage "'$($M.Name)' ist in allen angehakten Tenants schon wie im Muster (der Tenant, aus dem das Muster stammt, wird nicht angeboten)." -Icon Info; return }
+    $txt = "'$($M.Name)' aus dem Muster uebertragen - je Tenant eine eigene Vorschau, Bestaetigung mit dem Tenant-Namen."
+    if ($missing.Count) { $txt += "`nFehlt (wird NEU angelegt): $(@($missing | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
+    if ($diff.Count) { $txt += "`nWeicht ab (wird ANGEGLICHEN): $(@($diff | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
+    $tg = @(Show-HUTenantChoice -Title 'Uebertragen nach' -Text $txt -Keys $targets -OkText 'Weiter')
+    if (-not $tg.Count) { return }
+    $modes = @{}; foreach ($t in $targets) { $modes[$t] = 'entra' }
+    $script:TrQueue = New-Object System.Collections.Generic.Queue[object]
+    foreach ($t in $tg) { $script:TrQueue.Enqueue($t) }
+    $script:TrCtx = @{ Typ = $M.Typ; Name = $M.Name; Src = $mk; SrcLabel = (Get-HUAnaTenantName $mk); Resolve = $src; Obj = $mi[0].Obj; Id = "$($mi[0].Id)"
+        Multi = ($tg.Count -gt 1); Done = 0; DoneNames = (New-Object System.Collections.Generic.List[string]); Cur = ''; Modes = $modes; TIds = @{}; Entra = $true }
+    Start-HUTransferNext
+}
+
 # naechstes Ziel aus der Warteschlange: Plan lesen -> Vorschau -> schreiben -> Ergebnis -> weiter
 function Start-HUTransferNext {
     $c = $script:Controls
@@ -407,7 +439,7 @@ function Start-HUTransferNext {
         $x = $script:TrCtx
         if ($x -and $x.Done) {
             Add-HURtbLine $c['rtbAna'] 'Uebertragen fertig - Vergleich wird neu geladen.' '#90CAF9'
-            if ($x.Multi) { Show-HUMessage "'$($x.Name)' neu angelegt in: $(@($x.DoneNames) -join ', ').`n`nNoch OHNE Zuweisungen - zum Wirken im jeweiligen Tenant zuweisen (Zuweisungen werden nicht uebertragen)." -Icon Info }
+            if ($x.Multi -and -not $x.Entra) { Show-HUMessage "'$($x.Name)' neu angelegt in: $(@($x.DoneNames) -join ', ').`n`nNoch OHNE Zuweisungen - zum Wirken im jeweiligen Tenant zuweisen (Zuweisungen werden nicht uebertragen)." -Icon Info }
             Start-HUCmpRun
         }
         return
@@ -420,7 +452,8 @@ function Start-HUTransferNext {
     [void](Start-HUJob -Name 'TransferPlan' -Quiet -Output $c['rtbAna'] -Vars @{ X = $x; T = $t; Mode = $mode; Tid = $tid } -Code {
             try {
                 $o = if ($null -ne $X.Obj) { $X.Obj } else { Get-HUCompareObject -TenantKey $X.Src -Settings $Settings -Typ $X.Typ -Id $X.Id }
-                $p = if ($Mode -eq 'align') { Get-HUTransferAlignPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T -TargetId $Tid }
+                $p = if ($Mode -eq 'entra') { Get-HUEntraTransferPlan -TargetKey $T -Settings $Settings -Typ $X.Typ -Id $X.Id -Name $X.Name -Backup $o -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel }
+                elseif ($Mode -eq 'align') { Get-HUTransferAlignPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T -TargetId $Tid }
                 else { Get-HUTransferPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T }
                 [pscustomobject]@{ __Plan = $p }
             } catch { [pscustomobject]@{ __PlanError = "$($_.Exception.Message)" } }
@@ -431,10 +464,14 @@ function Start-HUTransferNext {
             if ($r.PSObject.Properties['__PlanError']) { Show-HUMessage "Vorschau fehlgeschlagen: $($r.__PlanError)" -Icon Error; Start-HUTransferNext; return }
             $plan = $r.__Plan
             $tn = Get-HUAnaTenantName $plan.TenantKey
-            if ($script:TrCtx.Multi) { $plan | Add-Member -NotePropertyName TypeToConfirm -NotePropertyValue $tn -Force }
+            # 045 Ue-10: bei mehreren Zielen und bei Entra immer den Ziel-Tenant-Namen eintippen
+            if ($script:TrCtx.Multi -or $plan.PSObject.Properties['Transfer']) { $plan | Add-Member -NotePropertyName TypeToConfirm -NotePropertyValue $tn -Force }
             if (-not (Show-HUEntraRestorePreview $plan $tn '')) { Add-HURtbLine $script:Controls['rtbAna'] "$tn`: nicht uebertragen." '#AAAAAA'; Start-HUTransferNext; return }
             [void](Start-HUJob -Name 'TransferWrite' -Output $script:Controls['rtbAna'] -Vars @{ Plan = $plan } -Code {
-                    try { [pscustomobject]@{ __Res = $(if ("$($Plan.Kind)" -eq 'transferAlign') { Invoke-HUTransferAlign -Plan $Plan -Settings $Settings } else { Invoke-HUTransfer -Plan $Plan -Settings $Settings }); __Kind = "$($Plan.Kind)" } }
+                    try {
+                        $isE = [bool]$Plan.PSObject.Properties['Transfer']
+                        [pscustomobject]@{ __Res = $(if ($isE) { Invoke-HUEntraTransfer -Plan $Plan -Settings $Settings } elseif ("$($Plan.Kind)" -eq 'transferAlign') { Invoke-HUTransferAlign -Plan $Plan -Settings $Settings } else { Invoke-HUTransfer -Plan $Plan -Settings $Settings }); __Kind = $(if ($isE) { 'entra' } else { "$($Plan.Kind)" }); __New = ("$($Plan.Method)" -eq 'POST') }
+                    }
                     catch { Write-HULog -Message "$($Plan.Typ) '$($Plan.Name)': $($_.Exception.Message)" -Level 'ERROR' -Tenant $Plan.TenantKey; [pscustomobject]@{ __ResError = "$($_.Exception.Message)" } }
                 } -OnDone {
                     param($Result, $Errors)
@@ -443,12 +480,14 @@ function Start-HUTransferNext {
                     elseif ($r2.PSObject.Properties['__ResError']) { Show-HUMessage "Nicht uebertragen:`n`n$($r2.__ResError)" -Icon Error }
                     else {
                         $res = $r2.__Res; $script:TrCtx.Done++; [void]$script:TrCtx.DoneNames.Add("$($script:TrCtx.Cur)")
-                        $isAl = ("$($r2.__Kind)" -eq 'transferAlign')
-                        $txt = if ($isAl) { "Angeglichen - das Objekt im Ziel hat jetzt die Einstellungen der Quelle. Zuweisungen unveraendert. Rueckgaengig: Tenant-Vergleich > Rueckgaengig ..." }
+                        $isAl = ("$($r2.__Kind)" -eq 'transferAlign' -or ("$($r2.__Kind)" -eq 'entra' -and -not $r2.__New))
+                        $txt = if ("$($r2.__Kind)" -eq 'entra') { "$(if ($r2.__New) { 'Im Ziel neu angelegt' } else { 'Im Ziel angeglichen (Stand davor gesichert)' }) - wie im Muster.$(if ($res.UndoFile) { ' Rueckgaengig: Tenant-Vergleich > Rueckgaengig ...' } else { ' Rueckgaengig ist hierfuer nicht vorgesehen.' })" }
+                        elseif ($isAl) { "Angeglichen - das Objekt im Ziel hat jetzt die Einstellungen der Quelle. Zuweisungen unveraendert. Rueckgaengig: Tenant-Vergleich > Rueckgaengig ..." }
                         else { "Neu angelegt (Id $($res.NewId)), ohne Zuweisungen - zum Wirken im Ziel zuweisen. Rueckgaengig: Tenant-Vergleich > Rueckgaengig ..." }
                         if ($res.Mismatch.Count) { $txt += "`n`nNachpruefung - $($res.Mismatch.Count) Einstellung(en) weichen von der Quelle ab:`n$(@($res.Mismatch | Select-Object -First 12) -join "`n")$(if ($res.Mismatch.Count -gt 12) { "`n..." })" } else { $txt += "`n`nNachpruefung: alle Einstellungen wie in der Quelle." }
                         if ($res.Dropped.Count) { $txt += "`n`nNicht uebernommen: $($res.Dropped -join '; ')" }
                         if ($res.Ok) { Show-HUMessage $txt -Icon Info }
+                        elseif (-not "$($res.UndoFile)") { Show-HUMessage "ACHTUNG - im Ziel ist nicht alles wie in der Quelle angekommen.`n`n$txt" -Icon Warning }
                         # 047 F3: Abweichung deutlich melden und Rueckgaengig direkt anbieten (nicht automatisch)
                         elseif (Confirm-HU "ACHTUNG - im Ziel ist nicht alles wie in der Quelle angekommen.`n`n$txt`n`nJetzt rueckgaengig machen ($(if ($isAl) { 'den Stand vor dem Angleichen wiederherstellen' } else { 'das neu angelegte Objekt wieder loeschen' }))?" -Warning) {
                             [void](Start-HUJob -Name 'TransferUndo' -Output $script:Controls['rtbAna'] -Vars @{ F = $res.UndoFile } -Code {

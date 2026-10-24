@@ -306,6 +306,26 @@ Describe 'Rechte erweitern: Add-HUAppPermissions' {
     }
 }
 
+Describe 'Schreibrechte entziehen: Remove-HUAppPermissions' {
+    It 'entzieht genau die angegebenen Rechte, andere bleiben; App-Liste wird nachgezogen' {
+        $script:Deleted = New-Object System.Collections.Generic.List[string]
+        $script:Patched = $null
+        Mock -ModuleName HU.Setup Get-HUGraphRoleMap { [pscustomobject]@{ SpId = 'graph-sp'; Roles = @{ 'Policy.ReadWrite.ConditionalAccess' = 'rCA'; 'User.Read.All' = 'rU'; 'Policy.ReadWrite.Authorization' = 'rA' } } }
+        Mock -ModuleName HU.Setup Get-HUAppGrantedRoles { [pscustomobject]@{ SpId = 'sp-1'; Assignments = @(
+                    [pscustomobject]@{ id = 'a1'; resourceId = 'graph-sp'; appRoleId = 'rCA' }, [pscustomobject]@{ id = 'a2'; resourceId = 'graph-sp'; appRoleId = 'rU' }) } }
+        Mock -ModuleName HU.Setup Invoke-HUSetupGraph {
+            if ($Method -eq 'DELETE') { $script:Deleted.Add("$Path") }
+            if ($Method -eq 'PATCH') { $script:Patched = $Body }
+            if ($Method -eq 'GET' -or -not $Method) { return [pscustomobject]@{ id = 'app-obj'; requiredResourceAccess = @([pscustomobject]@{ resourceAppId = '00000003-0000-0000-c000-000000000000'; resourceAccess = @([pscustomobject]@{ id = 'rCA'; type = 'Role' }, [pscustomobject]@{ id = 'rU'; type = 'Role' }) }) } }
+            return $null
+        }
+        $r = @(Remove-HUAppPermissions -Login ([pscustomobject]@{ Token = 'adm' }) -AppId '44444444-4444-4444-4444-444444444444' -Permissions @('Policy.ReadWrite.ConditionalAccess', 'Policy.ReadWrite.Authorization'))
+        $r | Should -Be @('Policy.ReadWrite.ConditionalAccess')
+        @($script:Deleted) | Should -Be @('/servicePrincipals/graph-sp/appRoleAssignedTo/a1')
+        @($script:Patched.requiredResourceAccess[0].resourceAccess | ForEach-Object { $_.id }) | Should -Be @('rU')
+    }
+}
+
 Describe 'Alte Secrets nach Umstellung loeschen (Remove-HUObsoleteSecret)' {
     BeforeAll {
         function Write-HULogInfo { param($Message, $Tenant) }

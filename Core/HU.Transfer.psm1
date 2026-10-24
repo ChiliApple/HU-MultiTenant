@@ -444,7 +444,7 @@ function Get-HUTransferUndoList {
         if (-not (Test-Path -LiteralPath $d)) { continue }
         foreach ($f in @(Get-ChildItem -LiteralPath $d -File -Filter '*.json' | Where-Object { $_.Name -match '_(neu|geaendert)_' -and $_.Name -notmatch '\.(rueckgaengig|erledigt)\.json$' })) {
             try { $u = Read-HUBackupJson $f.FullName } catch { continue }
-            [pscustomobject]@{ Tenant = "$($u.Tenant)"; Typ = "$($u.Typ)"; Name = "$($u.Name)"; Zeit = "$($u.Time)"; Quelle = "$($u.Source)"; Was = $(if ("$($u.Kind)" -eq 'changed') { 'angeglichen' } else { 'neu angelegt' }); Datei = $f.FullName }
+            [pscustomobject]@{ Tenant = "$($u.Tenant)"; Typ = "$($u.Typ)"; Name = "$($u.Name)"; Zeit = "$($u.Time)"; Quelle = "$($u.Source)"; Was = $(if ("$($u.Kind)" -in 'changed', 'entraChanged') { 'angeglichen' } else { 'neu angelegt' }); Datei = $f.FullName }
         }
     }
     return @($rows | Sort-Object Zeit -Descending)
@@ -455,6 +455,8 @@ function Undo-HUTransfer {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$File, [switch]$Force, [switch]$CheckOnly)
     $u = Read-HUBackupJson $File
+    # Entra-Uebertragungen (2.4.4) macht HU.EntraRestore rueckgaengig (dieselben Sperren wie beim Zurueckschreiben)
+    if ("$($u.Kind)" -in 'entraChanged', 'entraCreated') { return (Undo-HUEntraTransfer -Settings $Settings -File $File -U $u -CheckOnly:$CheckOnly) }
     if ("$($u.Kind)" -eq 'changed') { return (Undo-HUTransferChange -Settings $Settings -File $File -U $u -Force:$Force -CheckOnly:$CheckOnly) }
     if ("$($u.Kind)" -ne 'created') { throw 'Unbekannte Rueckgaengig-Datei.' }
     $tk = "$($u.Tenant)"

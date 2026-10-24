@@ -14,6 +14,31 @@
 $script:PermCache = @{}      # TenantKey -> @{ Roles = string[]; Error = ''; Time = datetime }
 $script:PermUi = $null       # offenes Fenster (fuer die Rueckmeldung aus dem Hintergrund)
 $script:PermRegistry = $null
+# Schreibpaket fuer Uebertragen/Zurueckschreiben (Entra, Conditional Access): nie Standard, nur zeitweise je Tenant (045 Ue-11)
+$script:HUWritePackage = @('Policy.ReadWrite.ConditionalAccess', 'Policy.ReadWrite.Authorization', 'Policy.ReadWrite.ConsentRequest', 'GroupSettings.ReadWrite.All')
+$script:HUWritePkgDays = 7
+$script:HUWriteRevoke = $null
+
+function Get-HUWritePkgSince([string]$Key) {
+    $v = "$(Get-HUStateValue "writePkg_$Key" '')"
+    if (-not $v) { return $null }
+    try { return [datetime]::Parse($v, [Globalization.CultureInfo]::InvariantCulture) } catch { return $null }
+}
+function Set-HUWritePkgSince([string]$Key, $When) {
+    Set-HUStateValue "writePkg_$Key" $(if ($When) { ([datetime]$When).ToString('s') } else { '' })
+    try { Save-HUUIState } catch { }
+}
+
+# Beim Start: Schreibpaket laenger als 7 Tage an? -> einmal am Tag erinnern (nicht blockierend fuer die Arbeit)
+function Test-HUWritePkgReminder {
+    $old = @(foreach ($t in @($script:Settings.tenants)) { $d = Get-HUWritePkgSince "$($t.key)"; if ($d -and ((Get-Date) - $d).TotalDays -ge $script:HUWritePkgDays) { "$($t.displayName) (seit $($d.ToString('dd.MM.yyyy')))" } })
+    if (-not $old.Count) { return }
+    $today = (Get-Date).ToString('yyyy-MM-dd')
+    if ("$(Get-HUStateValue 'writePkgReminded' '')" -eq $today) { return }
+    Set-HUStateValue 'writePkgReminded' $today; try { Save-HUUIState } catch { }
+    Write-HULogWarn "Entra-Schreibrechte (Uebertragen/Zurueckschreiben) seit ueber $($script:HUWritePkgDays) Tagen an: $($old -join ', ')"
+    Show-HUMessage "Die Entra-Schreibrechte fuer Uebertragen/Zurueckschreiben sind seit ueber $($script:HUWritePkgDays) Tagen an:`n`n$($old -join "`n")`n`nWenn nicht mehr gebraucht: Berechtigungen > Tenant waehlen > 'Entra-Schreibrechte aus ...'." -Icon Warning
+}
 
 function Get-HUPermRegistry {
     if ($null -eq $script:PermRegistry) {
@@ -141,6 +166,7 @@ function Update-HUPermView {
             $o['Genutzt von'] = $(if ($usage[$p]) { @($usage[$p]) -join ', ' } else { '' })
             [pscustomobject]$o
         }
+        $c.btnWriteOff.IsEnabled = $false; $c.btnWriteOn.IsEnabled = $false   # im Vergleich kein einzelner Tenant gewaehlt
         $c.lblGranted.Text = "Vergleich aller Tenants  ($([char]0x2714) erteilt, - nicht erteilt, ? kein Token)"
         $c.gridGranted.ItemsSource = @($rows)
         $errs = @($keys | Where-Object { $script:PermCache[$_] -and $script:PermCache[$_].Error } | ForEach-Object { "$(Get-HUTenantDisplayName $_): $($script:PermCache[$_].Error)" })
@@ -151,13 +177,63 @@ function Update-HUPermView {
                 $i = Get-HUPermInfo $p
                 [pscustomobject][ordered]@{ Berechtigung = $p; Risiko = $i.Risk; Beschreibung = $i.Desc; 'Genutzt von' = $(if ($usage[$p]) { @($usage[$p]) -join ', ' } else { '' }) }
             })
-        $c.txtStatus.Text = $(if (-not $entry) { 'Lese ...' } elseif ($entry.Error) { $entry.Error } else { "$($roles.Count) Berechtigungen, gelesen $($entry.Time.ToString('HH:mm'))" })
+        $wp = @($script:HUWritePackage | Where-Object { $roles -contains $_ })
+        $since = Get-HUWritePkgSince $key
+        $wpTxt = if (-not $entry -or $entry.Error) { '' } elseif ($wp.Count) { " | Entra-Schreibrechte AN ($($wp.Count)/$($script:HUWritePackage.Count))$(if ($since) { " seit $($since.ToString('dd.MM. HH:mm'))" })" } else { ' | Entra-Schreibrechte aus' }
+        $c.txtStatus.Text = $(if (-not $entry) { 'Lese ...' } elseif ($entry.Error) { $entry.Error } else { "$($roles.Count) Berechtigungen, gelesen $($entry.Time.ToString('HH:mm'))$wpTxt" })
+        if ($entry -and -not $entry.Error -and -not $wp.Count -and $since) { Set-HUWritePkgSince $key $null }
+        # Knoepfe nur, wenn es etwas zu tun gibt (Stand unbekannt: beide frei)
+        $known = ($entry -and -not $entry.Error)
+        $c.btnWriteOff.IsEnabled = (-not $known) -or [bool]$wp.Count
+        $c.btnWriteOn.IsEnabled = (-not $known) -or ($wp.Count -lt $script:HUWritePackage.Count)
+        $c.btnWriteOff.ToolTip = $(if ($known -and -not $wp.Count) { "Entra-Schreibrechte sind nicht erteilt - nichts zu entziehen:`n$($script:HUWritePackage -join "`n")" } else { "Genau diese 4 Rechte wieder entziehen (Admin-Anmeldung im Browser):`n$($script:HUWritePackage -join "`n")`n`nAndere Schreibrechte (Intune, Benutzer, Apps) bleiben." })
+
     }
+}
+
+# Schreibpaket entziehen: Admin-Anmeldung im Browser, dann genau diese Rechte entfernen (Remove-HUAppPermissions)
+function Start-HUWritePkgRevoke([string]$Key) {
+    $ui = $script:PermUi
+    $t = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $Key })[0]
+    if (-not $t -or -not "$($t.appId)" -or -not "$($t.tenantId)") { Show-HUMessage 'Tenant-ID bzw. Anwendungs-ID fehlen.' -Icon Warning; return }
+    if ($script:HUWriteRevoke) { Show-HUMessage 'Eine Anmeldung zum Entziehen laeuft schon - bitte im Browser abschliessen.' -Icon Info; return }
+    if (-not (Confirm-HU "Entra-Schreibrechte fuer $(Get-HUTenantDisplayName $Key) entziehen?`n`n$($script:HUWritePackage -join "`n")`n`nAndere Schreibrechte (Intune, Benutzer, Apps) bleiben. Es oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $(if ($ui) { $ui.Window } else { $null }))) { return }
+    $ctx = $null
+    try { $ctx = Start-HUAdminLogin -TenantId "$($t.tenantId)" } catch { Show-HUMessage "Anmeldung nicht gestartet: $($_.Exception.Message)" -Icon Error; return }
+    if ($ui) { $ui.C.txtStatus.Text = 'Bitte im Browser als Admin anmelden ...' }
+    $tm = New-Object System.Windows.Threading.DispatcherTimer
+    $tm.Interval = [TimeSpan]::FromMilliseconds(500)
+    $script:HUWriteRevoke = @{ Ctx = $ctx; Timer = $tm; Key = $Key; AppId = "$($t.appId)" }
+    $tm.Add_Tick({
+            $r = $script:HUWriteRevoke
+            if (-not $r) { return }
+            $res = $null
+            try { $res = Receive-HUAdminLogin -Context $r.Ctx } catch { $res = [pscustomobject]@{ Ok = $false; Error = "$($_.Exception.Message)" } }
+            if ($null -eq $res) { return }
+            $r.Timer.Stop(); $script:HUWriteRevoke = $null
+            if (-not $res.Ok) { Show-HUMessage "Nicht entzogen: $($res.Error)" -Icon Error; return }
+            if (-not (Test-HUAdminCanGrant $res)) { Show-HUMessage 'Das angemeldete Konto darf keine App-Rechte entziehen (Global Admin oder Privileged Role Admin noetig). Nichts geaendert.' -Icon Warning; return }
+            $removed = @()
+            try { $removed = @(Remove-HUAppPermissions -Login $res -AppId $r.AppId -Permissions $script:HUWritePackage) }
+            catch { Show-HUMessage "Entziehen fehlgeschlagen: $(Get-HUSetupErrorText $_)" -Icon Error; return }
+            Set-HUWritePkgSince $r.Key $null
+            Write-HULog -Message "Entra-Schreibrechte entzogen ($(Get-HUTenantDisplayName $r.Key)): $(if ($removed.Count) { $removed -join ', ' } else { 'waren nicht erteilt' }) (durch $($res.Upn))" -Level 'OK'
+            $script:PermCache.Remove($r.Key)
+            if ($script:PermUi) { Update-HUPermView; Start-HUPermFetch -Keys @($r.Key) -Force }
+            Show-HUMessage "$(if ($removed.Count) { "Entzogen: $($removed -join ', ')." } else { 'Die Entra-Schreibrechte waren nicht erteilt - nichts zu tun.' })`n`nEin schon geholtes Token kann sie noch bis zu einer Stunde enthalten; Schreiben wird danach abgelehnt." -Icon Info
+        })
+    $tm.Start()
 }
 
 function Show-HUPermissions([string]$TenantKey = '') {
     $d = New-HUWindow 'PermissionsWindow'
     $w = $d.Window; $c = $d.C
+    # Gross genug oeffnen, dass Beschreibung und 'Genutzt von' ohne Scrollen lesbar sind (an Bildschirm angepasst)
+    try {
+        $wa = [System.Windows.SystemParameters]::WorkArea
+        $w.Width = [Math]::Max($w.MinWidth, [Math]::Min(1700, [Math]::Floor($wa.Width * 0.92)))
+        $w.Height = [Math]::Max($w.MinHeight, [Math]::Min(1000, [Math]::Floor($wa.Height * 0.9)))
+    } catch { }
     $script:PermUi = @{ Window = $w; C = $c; Key = ''; Compare = $false }
     foreach ($t in @($script:Settings.tenants)) {
         $it = New-Object System.Windows.Controls.ComboBoxItem
@@ -207,6 +283,21 @@ function Show-HUPermissions([string]$TenantKey = '') {
                 if ($added.Count) { $script:PermUi.C.txtStatus.Text = "Erteilt: $($added -join ', ') - erscheint nach etwa 1 Minute im Token (dann Neu lesen)." }
                 else { Start-HUPermFetch -Keys @($k) -Force }
             }
+        })
+    $c.btnWriteOn.Add_Click({
+            $ui = $script:PermUi; $k = $ui.Key
+            if (-not (Confirm-HU "Entra-Schreibrechte fuer Uebertragen/Zurueckschreiben NUR fuer $(Get-HUTenantDisplayName $k) erteilen?`n`n$($script:HUWritePackage -join "`n")`n`nDamit kann die App Conditional Access und Entra-Einstellungen aendern. Andere Schreibrechte bleiben wie sie sind. Nach der Arbeit bitte wieder 'Entra-Schreibrechte aus ...' (Erinnerung nach $($script:HUWritePkgDays) Tagen)." -Warning -Owner $ui.Window)) { return }
+            $added = @(Show-HUTenantSetupDialog -TenantKey $k -Preselect $script:HUWritePackage -Owner $ui.Window)
+            if (-not $script:PermUi) { return }
+            $have = @(); if ($script:PermCache[$k] -and -not $script:PermCache[$k].Error) { $have = @($script:PermCache[$k].Roles) }
+            if ($added.Count -or -not @($script:HUWritePackage | Where-Object { $have -notcontains $_ }).Count) { Set-HUWritePkgSince $k (Get-Date) }
+            $script:PermCache.Remove($k); Update-HUPermView
+            if ($added.Count) { $script:PermUi.C.txtStatus.Text = "Erteilt: $($added -join ', ') - erscheint nach etwa 1 Minute im Token (dann Neu lesen)." } else { Start-HUPermFetch -Keys @($k) -Force }
+        })
+    $c.btnWriteOff.Add_Click({
+            $k = $script:PermUi.Key; $e = $script:PermCache[$k]
+            if ($e -and -not $e.Error -and -not @($script:HUWritePackage | Where-Object { @($e.Roles) -contains $_ }).Count) { Show-HUMessage "Fuer $(Get-HUTenantDisplayName $k) sind keine Entra-Schreibrechte erteilt - nichts zu entziehen." -Icon Info -Owner $script:PermUi.Window; return }
+            Start-HUWritePkgRevoke $k
         })
     $c.btnClose.Add_Click({ $script:PermUi.Window.Close() })
     $w.Add_Loaded({ Update-HUPermView })
