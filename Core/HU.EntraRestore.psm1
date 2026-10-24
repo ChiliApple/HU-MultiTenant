@@ -22,6 +22,8 @@ $script:HUErConsent = @('isEnabled', 'notifyReviewers', 'remindersEnabled', 'req
 # assignments: das Backup haengt sie an jedes Objekt an (bei Entra-Arten und CA leer) - kein Feld der Richtlinie
 $script:HUErIgnore = @('id', 'displayName', 'description', 'createdDateTime', 'modifiedDateTime', 'lastModifiedDateTime', 'version', 'deletedDateTime', 'templateId', 'assignments')
 $script:HUErPwRuleTpl = '5cf42378-d67d-4f36-ba46-e8b86229381d'
+# Kennwortregeln per App gesperrt (Live-Test 24.10., 403 trotz Recht); Tests schalten es fuer die Logik dahinter ab
+$script:HUErPwRuleBlocked = $true
 $script:HUErPwRuleP1 = @('BannedPasswordList', 'EnableBannedPasswordCheck', 'LockoutThreshold', 'LockoutDurationInSeconds')
 # Felder, deren Inhalt nie ins Protokoll kommt (nur "geaendert")
 $script:HUErNoLog = @('values[BannedPasswordList]')
@@ -112,7 +114,8 @@ function Format-HUErValue($V, [switch]$Full) {
 
 # Fingerabdruck des Live-Stands (fuer "hat sich seit der Vorschau etwas geaendert?")
 function Get-HUErHash($Obj) {
-    $j = (ConvertTo-HUCleanObject $Obj @('@odata.context')) | ConvertTo-Json -Depth 40 -Compress
+    # 053 B6: Zeitstempel zaehlen nicht - Entra setzt sie selbst (auch zeitversetzt); nur eine echte Inhaltsaenderung soll sperren
+    $j = (ConvertTo-HUCleanObject $Obj @('@odata.context', 'modifiedDateTime', 'createdDateTime', 'lastModifiedDateTime')) | ConvertTo-Json -Depth 40 -Compress
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("$j"))) -replace '-', '').Substring(0, 20) } finally { $sha.Dispose() }
 }
@@ -173,6 +176,9 @@ function New-HUErPlan([string]$Kind, [string]$TenantKey, [string]$Typ, [string]$
 function Add-HUErChange($Plan, [string]$Path, $Now, $Then) {
     $jf = Format-HUErValue $Now -Full; $df = Format-HUErValue $Then -Full
     $nj = Get-HUErCount $Now; $nd = Get-HUErCount $Then
+    # Liste mit einem Eintrag kommt als einzelner Text an (PS entpackt): ist die andere Seite eine Liste, zaehlt ein nicht leerer Text als 1
+    if ($nd -and -not $nj -and $null -ne $Now -and "$Now" -and "$Now" -ne '(neu)') { $nj = 1 }
+    if ($nj -and -not $nd -and $null -ne $Then -and "$Then") { $nd = 1 }
     $Plan.Changes.Add([pscustomobject]@{
             Feld = $Path; Jetzt = (Format-HUErValue $Now); Danach = (Format-HUErValue $Then); Expected = $Then
             JetztVoll = $jf; DanachVoll = $df
@@ -319,7 +325,8 @@ function Get-HUErPlanLocation($Plan, [string]$TenantKey, $Settings, $Backup) {
             continue
         }
         if (Test-HUErEqual $b $l) { continue }
-        $body[$f] = $(if ($f -eq 'countriesAndRegions') { [object[]]@($b) } else { $b })
+        # ohne $( ): eine Liste mit einem Land (z. B. nur AT) wuerde darin zum Text "AT" (Graph 400 "does not match the schema")
+        if ($f -eq 'countriesAndRegions') { $body[$f] = [object[]]@($b) } else { $body[$f] = $b }
         Add-HUErChange $Plan $f $l $b
         if ($f -eq 'isTrusted') { $Plan.Confirms.Add("Vertrauenswuerdig wird $(if (ConvertTo-HUErBool $b) { 'EIN' } else { 'AUS' })geschaltet - wirkt auf alle Richtlinien mit 'Alle vertrauenswuerdigen Orte'.") }
         if ($f -eq 'includeUnknownCountriesAndRegions') { $Plan.Confirms.Add('Unbekannte Laender/Regionen werden geaendert - bei blockierenden Richtlinien koennen Benutzer ausgesperrt werden.') }
@@ -335,6 +342,9 @@ function Get-HUErPlanGroupSetting($Plan, [string]$TenantKey, $Settings, $Backup)
     $tpl = "$(Get-HUErProp $Backup 'templateId')"
     $Plan.Method = 'PATCH'; $Plan.Perm = 'GroupSettings.ReadWrite.All'
     if (-not $tpl) { $Plan.Blocks.Add('Der Backup-Eintrag hat keine Vorlagen-Kennung (templateId).'); return }
+    # Live-Test 24.10.: PATCH auf "Password Rule Settings" mit Anwendungsrecht GroupSettings.ReadWrite.All -> 403 Authorization_RequestDenied,
+    # obwohl Learn das Recht nennt (Konfidenz U). Bis das geklaert ist: nicht schreiben, im Portal setzen.
+    if ($tpl -eq $script:HUErPwRuleTpl -and $script:HUErPwRuleBlocked) { $Plan.Blocks.Add('Kennwortregeln (Password Rule Settings) lassen sich per App nicht schreiben - Microsoft lehnt trotz GroupSettings.ReadWrite.All ab. Bitte im Entra Admin Center setzen: Schutz > Authentifizierungsmethoden > Kennwortschutz.'); return }
     $all = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/groupSettings' -V1)
     $live = @($all | Where-Object { "$($_.templateId)" -eq $tpl }) | Select-Object -First 1
     if (-not $live) { $Plan.Blocks.Add('Zu dieser Vorlage gibt es im Tenant kein Einstellungsobjekt. Neu anlegen ist in dieser Version nicht vorgesehen.'); return }
@@ -448,6 +458,18 @@ function Get-HUErPlanCaNew($Plan, [string]$TenantKey, $Settings, $Backup, [strin
         if ($f -eq 'grantControls') { if ($h.ContainsKey('authenticationStrength')) { $h.Remove('authenticationStrength') }; if ($asId) { $h['authenticationStrength'] = @{ id = $asId } } }
         if ($h.Count) { $body[$f] = $h }
     }
+    # 054 B1 (Gemini): bekannte Listenfelder immer als Liste senden - Absicherung gegen PS-5.1-Auspacken (eine Liste mit einem Eintrag -> Text -> Graph 400)
+    $asList = { param($d, [string[]]$names) if ($d -is [System.Collections.IDictionary]) { foreach ($n in $names) { if ($d.Contains($n) -and $null -ne $d[$n]) { $d[$n] = [object[]]@($d[$n]) } } } }
+    if ($body.ContainsKey('grantControls')) { & $asList $body['grantControls'] @('builtInControls', 'customAuthenticationFactors', 'termsOfUse') }
+    if ($body.ContainsKey('conditions')) {
+        $c0 = $body['conditions']
+        & $asList $c0 @('clientAppTypes', 'signInRiskLevels', 'userRiskLevels', 'servicePrincipalRiskLevels', 'insiderRiskLevels')
+        & $asList $c0['users'] @('includeUsers', 'excludeUsers', 'includeGroups', 'excludeGroups', 'includeRoles', 'excludeRoles')
+        & $asList $c0['applications'] @('includeApplications', 'excludeApplications', 'includeUserActions', 'includeAuthenticationContextClassReferences')
+        & $asList $c0['locations'] @('includeLocations', 'excludeLocations')
+        & $asList $c0['platforms'] @('includePlatforms', 'excludePlatforms')
+        & $asList $c0['clientApplications'] @('includeServicePrincipals', 'excludeServicePrincipals')
+    }
     # "Nur Bericht" gibt es nicht fuer Benutzeraktionen (Learn: report-only "except for items included in the User Actions scope")
     # nur Eintraege mit Wert zaehlen: @($null) hat die Anzahl 1 (046 B1)
     if (@(Get-HUErProp (Get-HUErProp (Get-HUErProp $Backup 'conditions') 'applications') 'includeUserActions' | Where-Object { "$_" }).Count) {
@@ -522,7 +544,7 @@ function Invoke-HUErCreate($Plan, $Settings, [string]$Actor) {
     $r = $null
     try { $r = Invoke-HUErGraph $tk $Settings $Plan.Endpoint 'POST' $Plan.Body }
     catch {
-        if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm) (unter Berechtigungen fuer diesen Tenant erteilen). Nichts angelegt." }
+        if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm) (unter Berechtigungen fuer diesen Tenant erteilen). Nichts angelegt. Microsoft meldet: $($_.Exception.Message)" }
         # abgelehnt (z. B. 400): gesendeten Inhalt zur Fehlersuche ablegen (keine Geheimnisse - CA-Richtlinie)
         $err = $_
         try {
@@ -589,21 +611,37 @@ function Invoke-HUEntraRestore {
     Write-HUBackupJson $file $now
     try { [void](Invoke-HUErGraph $tk $Settings $Plan.Endpoint $Plan.Method $Plan.Body) }
     catch {
-        if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm) (unter Berechtigungen fuer diesen Tenant erteilen). Nichts geschrieben." }
-        throw
+        if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm) (unter Berechtigungen fuer diesen Tenant erteilen). Nichts geschrieben. Microsoft meldet: $($_.Exception.Message)" }
+        # abgelehnt (z. B. 400): gesendeten Inhalt zur Fehlersuche ablegen (Kennwortliste nicht)
+        $err = $_
+        try {
+            if (-not @($Plan.Changes | Where-Object { $script:HUErNoLog -contains $_.Feld }).Count) {
+                $df = Join-Path (Join-Path (Join-Path (Get-HUBackupRoot $Settings) (ConvertTo-HUSafeFileName $tk)) '_fehler') ("$((Get-Date).ToString('yyyy-MM-dd_HHmmss'))_abgelehnt_$(ConvertTo-HUSafeFileName $Plan.Name 40).json")
+                $dd = Split-Path $df -Parent; if (-not (Test-Path -LiteralPath $dd)) { New-Item -ItemType Directory -Path $dd -Force | Out-Null }
+                [IO.File]::WriteAllText($df, ($Plan.Body | ConvertTo-Json -Depth 50), (New-Object System.Text.UTF8Encoding($false)))
+                Write-HULog -Message "Abgelehnter Inhalt gespeichert: $df" -Level 'WARN' -Tenant $tk
+            }
+        } catch { }
+        throw $err
     }
     foreach ($c in $Plan.Changes) {
         $what = if ($script:HUErNoLog -contains $c.Feld) { 'geaendert (Inhalt nicht protokolliert)' } else { "$($c.Jetzt) -> $($c.Danach)" }
         Write-HULog -Message "Zurueckgeschrieben $($Plan.Typ) '$($Plan.Name)': $($c.Feld): $what (durch $Actor)" -Level 'OK' -Tenant $tk
     }
-    # Nachpruefung
-    $after = Invoke-HUErGraph $tk $Settings $Plan.ReadEndpoint
-    $bad = @($Plan.Changes | Where-Object { -not (Test-HUErEqual (Get-HUErPathValue $after $_.Feld) $_.Expected) } | ForEach-Object {
-            if ($script:HUErNoLog -contains $_.Feld) { "$($_.Feld): weicht nach dem Schreiben ab (Inhalt nicht protokolliert)" }
-            else { "$($_.Feld): erwartet $($_.Danach), gelesen $(Format-HUErValue (Get-HUErPathValue $after $_.Feld))" }
-        })
+    # Nachpruefung - Entra liefert kurz nach dem Schreiben manchmal noch den alten Stand (Replikation): bei Abweichung nachlesen
+    $after = $null; $bad = @()
+    foreach ($wait in @(0, 2, 3, 5)) {
+        if ($wait) { Start-Sleep -Seconds $wait }
+        $after = Invoke-HUErGraph $tk $Settings $Plan.ReadEndpoint
+        $bad = @($Plan.Changes | Where-Object { -not (Test-HUErEqual @(Get-HUErPathValue $after $_.Feld) @($_.Expected)) } | ForEach-Object {
+                if ($script:HUErNoLog -contains $_.Feld) { "$($_.Feld): weicht nach dem Schreiben ab (Inhalt nicht protokolliert)" }
+                else { "$($_.Feld): erwartet $($_.Danach), gelesen $(Format-HUErValue (Get-HUErPathValue $after $_.Feld))" }
+            })
+        if (-not $bad.Count) { break }
+    }
     foreach ($b in $bad) { Write-HULog -Message "Nachpruefung $($Plan.Typ) '$($Plan.Name)': $b" -Level 'WARN' -Tenant $tk }
-    return [pscustomobject]@{ Ok = (-not $bad.Count); Written = $Plan.Changes.Count; Mismatch = $bad; BackupFile = $file; Dropped = @($Plan.Dropped); Notes = @($Plan.Notes) }
+    # After: genau der Stand der Nachpruefung (fuer den Fingerabdruck der Rueckgaengig-Datei - kein zweites, evtl. veraltetes Lesen)
+    return [pscustomobject]@{ Ok = (-not $bad.Count); Written = $Plan.Changes.Count; Mismatch = $bad; BackupFile = $file; After = $after; Dropped = @($Plan.Dropped); Notes = @($Plan.Notes) }
 }
 
 # ============================================================================
@@ -662,6 +700,23 @@ function Get-HUErTrPlanConsent($Plan, [string]$TargetKey, $Settings, $Backup, [s
     $b | Add-Member -NotePropertyName reviewers -NotePropertyValue $revs.ToArray() -Force
     if ((ConvertTo-HUErBool (Get-HUErProp $b 'isEnabled')) -and -not $revs.Count -and -not $Plan.Blocks.Count) { $Plan.Blocks.Add('Eingeschaltet ohne Reviewer ist nicht moeglich.') }
     Get-HUErPlanConsent $Plan $TargetKey $Settings $b
+    # Reviewer, die es nur im Ziel gibt, fallen weg (PUT ersetzt die Liste): nicht still, sondern mit Namen und Pflicht-Haken
+    if (-not $Plan.Blocks.Count -and $null -ne $Plan.Live) {
+        $newQ = @($revs | ForEach-Object { "$($_.query)".ToLowerInvariant() })
+        $gone = @(@(Get-HUErProp $Plan.Live 'reviewers' | Where-Object { $_ }) | Where-Object { $newQ -notcontains "$(Get-HUErProp $_ 'query')".ToLowerInvariant() })
+        if ($gone.Count) {
+            $names = @($gone | ForEach-Object {
+                    $q = "$(Get-HUErProp $_ 'query')"
+                    $mu = [regex]::Match($q, "/users/$g"); $mg = [regex]::Match($q, "/groups/$g")
+                    if ($mu.Success) { try { "Benutzer $((Invoke-HUErGraph $TargetKey $Settings "/users/$($mu.Groups[1].Value)?`$select=userPrincipalName").userPrincipalName)" } catch { "Benutzer $($mu.Groups[1].Value)" } }
+                    elseif ($mg.Success) { try { "Gruppe $((Invoke-HUErGraph $TargetKey $Settings "/groups/$($mg.Groups[1].Value)?`$select=displayName").displayName)" } catch { "Gruppe $($mg.Groups[1].Value)" } }
+                    # 054 B3 (Gemini): Rollen-Reviewer mit Namen statt rohem Abfragepfad
+                    elseif ($q -match "roleDefinition(s/|Id eq ')$g") { $rid = $Matches[2]; try { "Rolle $((Invoke-HUErGraph $TargetKey $Settings "/roleManagement/directory/roleDefinitions/$rid`?`$select=displayName").displayName)" } catch { "Rolle $rid" } }
+                    else { $q }
+                })
+            $Plan.Confirms.Add("Im Ziel eingetragene Reviewer fallen weg (nur im Ziel, nicht im Muster): $($names -join ', ').")
+        }
+    }
 }
 
 function Get-HUErTrPlanLocation($Plan, [string]$TargetKey, $Settings, $Backup) {
@@ -722,6 +777,9 @@ function Get-HUErTrPlanLocation($Plan, [string]$TargetKey, $Settings, $Backup) {
 function Get-HUErTrPlanGroupSetting($Plan, [string]$TargetKey, $Settings, $Backup, [string]$ResolveKey) {
     $tpl = "$(Get-HUErProp $Backup 'templateId')"
     if (-not $tpl) { $Plan.Blocks.Add('Der Muster-Eintrag hat keine Vorlagen-Kennung (templateId).'); return }
+    # Live-Test 24.10.: PATCH auf "Password Rule Settings" mit Anwendungsrecht GroupSettings.ReadWrite.All -> 403 Authorization_RequestDenied,
+    # obwohl Learn das Recht nennt (Konfidenz U). Bis das geklaert ist: nicht schreiben, im Portal setzen.
+    if ($tpl -eq $script:HUErPwRuleTpl -and $script:HUErPwRuleBlocked) { $Plan.Blocks.Add('Kennwortregeln (Password Rule Settings) lassen sich per App nicht schreiben - Microsoft lehnt trotz GroupSettings.ReadWrite.All ab. Bitte im Entra Admin Center setzen: Schutz > Authentifizierungsmethoden > Kennwortschutz.'); return }
     $b = Copy-HUErObject $Backup
     # GroupCreationAllowedGroupId: Gruppe der Quelle ueber den Namen im Ziel (045 B4)
     $vals = @(Get-HUErProp $b 'values' | Where-Object { $_ })
@@ -953,7 +1011,7 @@ function Invoke-HUEntraTransfer {
     if ($Plan.Method -ne 'POST') {
         $res = Invoke-HUEntraRestore -Plan $Plan -Settings $Settings -Actor "$Actor (Uebertragen aus $($Plan.SourceLabel))"
         $before = $null; try { $before = Read-HUBackupJson $res.BackupFile } catch { }
-        $ha = ''; try { $ha = Get-HUErHash (Invoke-HUErGraph $tk $Settings $Plan.ReadEndpoint) } catch { }
+        $ha = ''; try { $ha = Get-HUErHash $(if ($null -ne $res.After) { $res.After } else { Invoke-HUErGraph $tk $Settings $Plan.ReadEndpoint }) } catch { }
         $file = Join-Path $dir "$($stamp)_geaendert_$(ConvertTo-HUSafeFileName $Plan.Name 40).json"
         Write-HUBackupJson $file ([pscustomobject]@{ Kind = 'entraChanged'; Tenant = $tk; Typ = $Plan.Typ; EntraId = "$($Plan.EntraId)"; Name = $Plan.Name; ReadEndpoint = $Plan.ReadEndpoint; HashAfter = $ha; Before = $before; Source = $Plan.SourceLabel; Time = $Now.ToString('s'); By = $Actor })
         $res | Add-Member -NotePropertyName UndoFile -NotePropertyValue $file -Force
@@ -990,7 +1048,7 @@ function Invoke-HUEntraTransfer {
     }
     $r = $null
     try { $r = Invoke-HUErGraph $tk $Settings $Plan.Endpoint 'POST' $Plan.Body }
-    catch { if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm). Nichts angelegt." }; throw }
+    catch { if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm). Nichts angelegt. Microsoft meldet: $($_.Exception.Message)" }; throw }
     $id = "$($r.id)"
     if (-not $id) { throw 'Angelegt, aber ohne Kennung zurueckgemeldet - bitte im Portal pruefen.' }
     Write-HULog -Message "Uebertragen: $($Plan.Typ) '$($Plan.Name)' aus $($Plan.SourceLabel) neu angelegt (Id $id, durch $Actor)" -Level 'OK' -Tenant $tk

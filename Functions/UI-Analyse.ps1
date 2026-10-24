@@ -300,6 +300,16 @@ function Update-HUCmpGrid {
         $hit = @($types | Where-Object { ($_ -replace '\s+\([^)]*\)$', '') -eq $want }) | Select-Object -First 1
         $cb.SelectedItem = $(if ($hit) { $hit } else { '(alle Arten)' })
         $script:CmpTypeBusy = $false
+        # Breite nach laengstem Eintrag (plus Abstand und Pfeil), damit nichts abgeschnitten wird
+        try {
+            $tf = New-Object System.Windows.Media.Typeface($cb.FontFamily, $cb.FontStyle, $cb.FontWeight, $cb.FontStretch)
+            $wMax = 0.0
+            foreach ($t in $types) {
+                $ft = New-Object System.Windows.Media.FormattedText($t, [System.Globalization.CultureInfo]::CurrentUICulture, [System.Windows.FlowDirection]::LeftToRight, $tf, $cb.FontSize, [System.Windows.Media.Brushes]::White)
+                if ($ft.WidthIncludingTrailingWhitespace -gt $wMax) { $wMax = $ft.WidthIncludingTrailingWhitespace }
+            }
+            $cb.Width = [Math]::Max(190, [Math]::Ceiling($wMax) + 44)
+        } catch { }
     }
     $items = foreach ($m in @(Get-HUCmpVisibleRows)) {
         $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
@@ -371,7 +381,7 @@ function Start-HUCmpCopy {
     if ($m.Dupe) { Show-HUMessage "'$($m.Name)' ist in einem Tenant doppelt - wird nicht uebertragen (unklar, welche Fassung die richtige ist)." -Icon Warning; return }
     # 2.4.4: Entra-Einstellungen (nur aus dem Muster, 045 F6)
     $ek = ''
-    if (Get-Command Get-HUEntraTransferPlan -ErrorAction SilentlyContinue) { $ek = Get-HUEntraRestoreKind $m.Typ "$(@($m.Items)[0].Id)" }
+    if (Get-Command Get-HUEntraTransferPlan -ErrorAction SilentlyContinue) { $ek = Get-HUEntraRestoreKind $m.Typ (Get-HUCmpEntraId $m) }
     if ($ek -in 'authz', 'consent', 'location', 'groupSetting', 'caNew') { Start-HUCmpEntraCopy $m; return }
     if (-not (@(Get-HUCompareSources | Where-Object { $_.Typ -eq $m.Typ -and $_.Copy }).Count)) { Show-HUMessage "$($m.Typ) laesst sich (noch) nicht uebertragen.`n`nApps ueber die Bibliothek verteilen; Autopilot und die weiteren Arten werden vorerst nur verglichen." -Icon Info; return }
     $have = @($m.Items | ForEach-Object { $_.Tenant } | Select-Object -Unique)
@@ -411,6 +421,16 @@ function Start-HUCmpCopy {
     Start-HUTransferNext
 }
 
+# Kennung einer Entra-Einzeleinstellung fuer die Zeile: erst die Kennungen der Eintraege (Live = Schluessel wie 'authorizationPolicy'),
+# sonst ueber den Anzeigenamen der Backup-Quelle (das Muster aus dem Backup kann eine andere Kennung tragen)
+function Get-HUCmpEntraId($M) {
+    foreach ($it in @($M.Items)) { $id = "$($it.Id)"; if ($id -and (Get-HUEntraRestoreKind $M.Typ $id)) { return $id } }
+    if ($M.Typ -eq 'Entra-Einstellung') {
+        try { $src = @(Get-HUBackupEntraSources | Where-Object { $_.Typ -eq $M.Typ -and "$($_.Title)" -eq "$($M.Name)" }) | Select-Object -First 1; if ($src) { return "$($src.Key)" } } catch { }
+    }
+    return "$(@($M.Items)[0].Id)"
+}
+
 # Entra-Einstellung aus dem Muster in andere Tenants (045 Abschnitt 6, F6): Quelle ist immer der festgehaltene Muster-Stand
 function Start-HUCmpEntraCopy($M) {
     $mk = Get-HUMusterKey
@@ -439,7 +459,7 @@ function Start-HUCmpEntraCopy($M) {
     $modes = @{}; foreach ($t in $targets) { $modes[$t] = 'entra' }
     $script:TrQueue = New-Object System.Collections.Generic.Queue[object]
     foreach ($t in $tg) { $script:TrQueue.Enqueue($t) }
-    $script:TrCtx = @{ Typ = $M.Typ; Name = $M.Name; Src = $mk; SrcLabel = (Get-HUAnaTenantName $mk); Resolve = $src; Obj = $mi[0].Obj; Id = "$($mi[0].Id)"
+    $script:TrCtx = @{ Typ = $M.Typ; Name = $M.Name; Src = $mk; SrcLabel = (Get-HUAnaTenantName $mk); Resolve = $src; Obj = $mi[0].Obj; Id = $(if ($M.Typ -eq 'Entra-Einstellung') { Get-HUCmpEntraId $M } else { "$($mi[0].Id)" })
         Multi = ($tg.Count -gt 1); Done = 0; DoneNames = (New-Object System.Collections.Generic.List[string]); Cur = ''; Modes = $modes; TIds = @{}; Entra = $true }
     Start-HUTransferNext
 }
