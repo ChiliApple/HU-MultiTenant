@@ -108,9 +108,9 @@ function Show-HUMusterApply {
         <Grid Grid.Row="2">
             <!-- 1 Tenant -->
             <StackPanel x:Name="pg1">
-                <TextBlock Text="Ziel-Tenant (genau einer)" Style="{StaticResource FieldLabel}"/>
-                <ComboBox x:Name="cmbTenant" Style="{StaticResource DarkComboBox}" Width="320" HorizontalAlignment="Left" Margin="0,4,0,8"
-                          ToolTip="In diesen Tenant werden die angehakten Pakete uebertragen. Fuer einen Tenant laeuft der Assistent nur einmal gleichzeitig."/>
+                <TextBlock Text="Ziel-Tenants (einer oder mehrere - werden nacheinander abgearbeitet, je Tenant eigene Rechte, Zuordnung und Vorschau)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                <WrapPanel x:Name="pnlTenants" Margin="0,6,0,10"
+                           ToolTip="In diese Tenants werden die angehakten Pakete uebertragen - einer nach dem anderen. Fuer einen Tenant laeuft der Assistent nur einmal gleichzeitig."/>
                 <TextBlock x:Name="lblT1" Foreground="#CCCCCC" FontSize="12" TextWrapping="Wrap"/>
             </StackPanel>
             <!-- 2 Rechte -->
@@ -172,7 +172,9 @@ function Show-HUMusterApply {
                             ToolTip="Alles aus diesem Durchgang in umgekehrter Reihenfolge zuruecknehmen - nur, was seitdem unveraendert, nicht zugewiesen und nicht eingeschaltet ist"/>
                     <Button x:Name="btnRevoke" Content="Rechte zurueckgeben" Background="#A65A28" Style="{StaticResource DarkButton}" Padding="12,0" Margin="0,0,8,0"
                             ToolTip="Genau die Rechte entziehen, die dieser Ablauf erteilt hat - auch nach Fehler oder Abbruch"/>
-                    <Button x:Name="btnCopy" Content="Bericht kopieren" Style="{StaticResource ToolButton}" Padding="10,2" ToolTip="Ergebnis als Text in die Zwischenablage"/>
+                    <Button x:Name="btnCopy" Content="Bericht kopieren" Style="{StaticResource ToolButton}" Padding="10,2" Margin="0,0,8,0" ToolTip="Ergebnis als Text in die Zwischenablage"/>
+                    <Button x:Name="btnNextTenant" Background="#1976D2" Style="{StaticResource DarkButton}" Padding="12,0" Visibility="Collapsed"
+                            ToolTip="Mit dem naechsten Tenant weitermachen - vorher werden die hier erteilten Rechte zurueckgegeben"/>
                 </StackPanel>
                 <DataGrid x:Name="gridRun" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column">
                     <DataGrid.Columns>
@@ -185,7 +187,10 @@ function Show-HUMusterApply {
             </DockPanel>
         </Grid>
         <DockPanel Grid.Row="3" Margin="0,12,0,0" LastChildFill="False">
-            <TextBlock x:Name="lblBusy" DockPanel.Dock="Left" Foreground="#81C784" FontSize="12" VerticalAlignment="Center"/>
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock x:Name="dotBusy" Text="&#x25CF;" Foreground="#4CAF50" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                <TextBlock x:Name="lblBusy" Foreground="#81C784" FontSize="12" VerticalAlignment="Center"/>
+            </StackPanel>
             <Button x:Name="btnClose" DockPanel.Dock="Right" Content="Schliessen" Width="110" Background="#555555" Style="{StaticResource DarkButton}"/>
             <Button x:Name="btnNext" DockPanel.Dock="Right" Content="Weiter &#x2192;" MinWidth="130" Padding="12,0" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
             <Button x:Name="btnBack" DockPanel.Dock="Right" Content="&#x2190; Zurueck" Width="110" Style="{StaticResource ToolButton}" Margin="0,0,8,0"/>
@@ -209,7 +214,12 @@ function Show-HUMusterApply {
     # Schrittleiste
     $names = @('1 Tenant', '2 Rechte', '3 Zuordnen', '4 Vorschau', '5 Ausfuehren', '6 Abschluss')
     $S.StepLbl = @(foreach ($n in $names) { $t = New-Object System.Windows.Controls.TextBlock; $t.Text = $n; $t.Margin = '0,0,18,0'; $t.FontSize = 12; [void]$c.pnlSteps.Children.Add($t); $t })
-    foreach ($t in @($script:Settings.tenants | Where-Object { $_ -and "$($_.key)" })) { [void]$c.cmbTenant.Items.Add((New-Object System.Windows.Controls.ComboBoxItem -Property @{ Content = (Get-HUAnaTenantName "$($t.key)"); Tag = "$($t.key)" })) }
+    $S.TenantChecks = @(foreach ($t in @($script:Settings.tenants | Where-Object { $_ -and "$($_.key)" })) {
+            $ch = New-Object System.Windows.Controls.CheckBox; try { $ch.Style = $w.FindResource('DarkCheckBox') } catch { }
+            $ch.Content = (Get-HUAnaTenantName "$($t.key)"); $ch.Tag = "$($t.key)"; $ch.Margin = '0,2,18,2'; $ch.Foreground = Get-HUBrush '#E0E0E0'
+            $ch.Add_Checked({ & $script:MA.Upd }); $ch.Add_Unchecked({ & $script:MA.Upd })
+            [void]$c.pnlTenants.Children.Add($ch); $ch })
+    $S.Queue = @(); $S.QIndex = 0
     $c.lblT1.Text = "Es werden $(@($sel.Packages | ForEach-Object { @($_.Items) }).Count) Eintraege aus $(@($sel.Packages).Count) Paket(en) geprueft. Conditional Access kommt immer NEU im Modus 'Nur Bericht' an, Intune ohne Zuweisungen; die Notfallkonten des Ziels werden ausgenommen.`n`nBenoetigte Schreibrechte: $(if ($S.Needed.Count) { $S.Needed -join ', ' } else { 'keine' })."
 
     $S.ShowStep = {
@@ -231,7 +241,7 @@ function Show-HUMusterApply {
     $S.Upd = {
         $S = $script:MA; $c = $S.C; $w = $S.W
         $ok = switch ($S.Step) {
-            1 { [bool]$c.cmbTenant.SelectedItem }
+            1 { [bool]@($S.TenantChecks | Where-Object { $_.IsChecked }).Count }
             2 { $S.RightsOk -and (-not $S.NeedBg -or ($S.Bg -and $S.Bg.Ok)) }
             3 { [bool]@($S.Rows).Count }
             4 { [bool]@($S.Prev | Where-Object { $_.Take }).Count -and "$($c.txtType.Text)".Trim() -eq (Get-HUAnaTenantName $S.Tenant) }
@@ -241,7 +251,22 @@ function Show-HUMusterApply {
         $c.btnBack.IsEnabled = -not $S.Busy
     }
     $S.Busy = $false
-    $S.SetBusy = { param([string]$t) $S = $script:MA; $c = $S.C; $S.Busy = [bool]$t; $c.lblBusy.Text = $(if ($t) { "$([char]0x25CF) $t" } else { '' }); & $S.Upd }
+    $S.SetBusy = {
+        param([string]$t)
+        $S = $script:MA; $c = $S.C
+        $S.Busy = [bool]$t; $c.lblBusy.Text = $t
+        # pulsierender gruener Punkt, solange gelesen/geschrieben wird (wie in der Analyse)
+        $d = $c.dotBusy
+        if ($t) {
+            if ($d.Visibility -ne 'Visible') {
+                $an = New-Object System.Windows.Media.Animation.DoubleAnimation
+                $an.From = 1.0; $an.To = 0.2; $an.Duration = [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(700))
+                $an.AutoReverse = $true; $an.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+                $d.Visibility = 'Visible'; $d.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $an)
+            }
+        } else { $d.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null); $d.Opacity = 1.0; $d.Visibility = 'Collapsed' }
+        & $S.Upd
+    }
 
     # ---- Schritt 2: Rechte und Notfallkonten lesen
     $S.CheckRights = {
@@ -402,6 +427,7 @@ function Show-HUMusterApply {
         $S.Prog.Lines.Clear(); $S.Prog.Total = $todo.Count; $S.Prog.Done = $false
         $c.prg.Maximum = $todo.Count; $c.prg.Value = 0
         $c.btnStop.Visibility = 'Visible'; $c.btnClose.IsEnabled = $false
+        & $S.SetBusy 'Wird angewendet ...'
         $c.lblT5.Text = "Wird angewendet: $($todo.Count) Eintraege nach $(Get-HUAnaTenantName $S.Tenant) ..."
         try { [void](Write-HUMaMarker -TenantKey $S.Tenant -Stage 'laeuft') } catch { }
         $rows = @($todo | ForEach-Object { [pscustomobject]@{ Order = $_.Order; Typ = $_.Typ; Name = $_.Name; Paket = $_.Paket; PaketId = $_.PaketId; Folder = $_.Folder; File = $_.File; Id = $_.Id; Source = $_.Source } })
@@ -431,6 +457,7 @@ function Show-HUMusterApply {
                 $S2.Prog.Done = $true
                 $r = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__Ma'] }) | Select-Object -First 1
                 $S2.Running = $false
+                & $S2.SetBusy ''
                 $S2.C.btnStop.Visibility = 'Collapsed'; $S2.C.btnClose.IsEnabled = $true
                 $S2.C.gridRun.ItemsSource = @($S2.Prog.Lines.ToArray())
                 $S2.RunFile = $(if ($r) { $r.RunFile } else { '' })
@@ -439,6 +466,10 @@ function Show-HUMusterApply {
                 for ($i = 0; $i -lt $S2.StepLbl.Count; $i++) { $S2.StepLbl[$i].Foreground = Get-HUBrush $(if ($i -lt 5) { '#81C784' } else { '#E0E0E0' }) }
                 $S2.C.pnlDone.Visibility = 'Visible'
                 $S2.C.btnUndo.IsEnabled = [bool]$S2.RunFile
+                if ($S2.QIndex -lt @($S2.Queue).Count - 1) {
+                    $S2.C.btnNextTenant.Content = "Weiter mit $(Get-HUAnaTenantName "$($S2.Queue[$S2.QIndex + 1])") $([char]0x2192)"
+                    $S2.C.btnNextTenant.Visibility = 'Visible'
+                }
             })
     }
     $c.btnStop.Add_Click({ $script:MA.Cancel.Stop = $true; $script:MA.C.btnStop.IsEnabled = $false; $script:MA.C.lblT5.Text = 'Wird nach dem laufenden Eintrag beendet ...' })
@@ -468,20 +499,46 @@ function Show-HUMusterApply {
             try { [System.Windows.Clipboard]::SetText($txt) } catch { }
         })
 
+    # ---- naechster Tenant der Warteschlange: Sperre, Zustand je Tenant zuruecksetzen (Laenderwahl bleibt), dann Rechte
+    $S.StartTenant = {
+        $S = $script:MA; $c = $S.C
+        $tk = "$($S.Queue[$S.QIndex])"
+        if ($S.Tenant -and $S.Tenant -ne $tk) { Exit-HUMaLock $S.Tenant }
+        try { Enter-HUMaLock $tk } catch { Show-HUMessage "$($_.Exception.Message)" -Icon Warning -Owner $S.W; return $false }
+        $S.Tenant = $tk; $S.Rows = @(); $S.Groups = @{}; $S.RightsOk = $false; $S.Bg = $null; $S.Login = $null; $S.RunFile = ''; $S.Missing = @()
+        $S.Prog.Lines.Clear(); $S.Prog.Total = 0; $S.Prog.Done = $false
+        $c.gridRun.ItemsSource = $null; $c.gridRights.ItemsSource = $null; $c.pnlMap.Children.Clear(); $c.lblBg.Text = ''
+        $c.pnlDone.Visibility = 'Collapsed'; $c.btnNextTenant.Visibility = 'Collapsed'; $c.prg.Value = 0
+        foreach ($ch in @($S.TenantChecks)) { $ch.IsEnabled = $false }
+        $c.lblTitle.Text = "Muster anwenden - $(Get-HUAnaTenantName $tk)$(if (@($S.Queue).Count -gt 1) { "  (Tenant $($S.QIndex + 1) von $(@($S.Queue).Count))" })"
+        & $S.ShowStep 2
+        & $S.CheckRights
+        return $true
+    }
+    $c.btnNextTenant.Add_Click({
+            $S2 = $script:MA
+            $m = Get-HUMaMarker $S2.Tenant
+            if ($m -and @($m.Added | Where-Object { $_ }).Count) {
+                Start-HUMaRevoke $S2.Tenant $S2.Login {
+                    param($ok, $txt)
+                    $S3 = $script:MA; if (-not $S3) { return }
+                    if (-not $ok -and -not (Confirm-HU "$txt`n`nTrotzdem mit dem naechsten Tenant weitermachen? Die Rechte bleiben gemerkt (Erinnerung beim naechsten Start)." -Owner $S3.W)) { return }
+                    $S3.QIndex++; [void](& $S3.StartTenant)
+                } $S2.W
+                return
+            }
+            if ($m) { Remove-HUMaMarker $S2.Tenant }
+            $S2.QIndex++; [void](& $S2.StartTenant)
+        })
+
     # ---- Navigation
-    $c.cmbTenant.Add_SelectionChanged({ & $script:MA.Upd })
     $c.btnNext.Add_Click({
             $S2 = $script:MA
             switch ($S2.Step) {
                 1 {
-                    $tk = "$($S2.C.cmbTenant.SelectedItem.Tag)"
-                    if ($S2.Tenant -and $S2.Tenant -ne $tk) { Exit-HUMaLock $S2.Tenant }
-                    try { Enter-HUMaLock $tk } catch { Show-HUMessage "$($_.Exception.Message)" -Icon Warning -Owner $S2.W; return }
-                    if ($S2.Tenant -ne $tk) { $S2.Rows = @(); $S2.Groups = @{}; $S2.Countries = @{}; $S2.RightsOk = $false; $S2.Bg = $null }
-                    $S2.Tenant = $tk
-                    $S2.C.cmbTenant.IsEnabled = $false
-                    & $S2.ShowStep 2
-                    & $S2.CheckRights
+                    $S2.Queue = @($S2.TenantChecks | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" })
+                    $S2.QIndex = 0
+                    [void](& $S2.StartTenant)
                 }
                 2 { & $S2.ShowStep 3; if (-not @($S2.Rows).Count) { & $S2.LoadPlan } }
                 3 { & $S2.BuildPrev; & $S2.ShowStep 4 }
@@ -493,7 +550,17 @@ function Show-HUMusterApply {
                 }
             }
         })
-    $c.btnBack.Add_Click({ $S2 = $script:MA; if ($S2.Step -eq 2) { $S2.C.cmbTenant.IsEnabled = $true }; & $S2.ShowStep ($S2.Step - 1) })
+    $c.btnBack.Add_Click({
+            $S2 = $script:MA
+            if ($S2.Step -eq 2) {
+                # zurueck zur Tenant-Auswahl nur vor dem ersten Tenant; danach geht es nur vorwaerts (Abschluss -> naechster Tenant)
+                if ($S2.QIndex -gt 0) { return }
+                $m = Get-HUMaMarker $S2.Tenant
+                if (-not ($m -and @($m.Added | Where-Object { $_ }).Count)) { if ($m) { Remove-HUMaMarker $S2.Tenant }; Exit-HUMaLock $S2.Tenant; $S2.Tenant = '' }
+                foreach ($ch in @($S2.TenantChecks)) { $ch.IsEnabled = $true }
+            }
+            & $S2.ShowStep ($S2.Step - 1)
+        })
     $c.btnClose.Add_Click({ $script:MA.W.Close() })
     $w.Add_Closing({
             param($sd, $e)

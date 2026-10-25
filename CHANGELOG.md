@@ -3,12 +3,13 @@
 ## v2.5.2 (Testversion, Weg zu 2.6.0)
 
 ### 🧭 Muster anwenden (Assistent)
-- **Neuer Knopf im Reiter Muster:** *Muster anwenden …* überträgt die angehakten Pakete in genau einen Tenant – in 6 Schritten: Tenant, Rechte, Zuordnen, Vorschau, Ausführen, Abschluss.
+- **Neuer Knopf im Reiter Muster:** *Muster anwenden …* überträgt die angehakten Pakete in einen oder mehrere Tenants – in 6 Schritten: Tenant, Rechte, Zuordnen, Vorschau, Ausführen, Abschluss.
 - **Rechte nur für die Dauer des Ablaufs:** Der Assistent zeigt, welche Schreibrechte die Pakete brauchen, erteilt nach Admin-Anmeldung **nur die fehlenden** und gibt am Ende **genau diese** wieder zurück – auch nach Fehler oder Abbruch. Eine Markierung wird vor dem Erteilen geschrieben; stürzt das Programm ab, fragt es beim nächsten Start nach.
 - **Zuordnen an einer Stelle:** Gruppen-Plätze aller Richtlinien und die Länderwahl einmal für das ganze Paket.
 - **Eine Vorschau für alles:** Neu / Angleichen / schon gleich / gesperrt, Haken je Eintrag (Angleichen nur bewusst), Bestätigung mit dem Tenant-Namen.
 - **Ausführen in fester Reihenfolge** (Orte → Entra → Intune → Conditional Access), vor jedem Eintrag erneut geprüft; Abbrechen nach dem laufenden Eintrag; **Paket rückgängig** nimmt alles in umgekehrter Reihenfolge zurück.
-- Pro Tenant läuft der Assistent nur einmal gleichzeitig.
+- **Mehrere Tenants nacheinander:** in Schritt 1 mehrere anhaken – je Tenant eigene Rechte, Zuordnung, Vorschau und Bestätigung; am Abschluss *Weiter mit …* (die Rechte des fertigen Tenants werden vorher zurückgegeben).
+- Pro Tenant läuft der Assistent nur einmal gleichzeitig; ein pulsierender Punkt zeigt, solange gelesen oder geschrieben wird.
 
 ### 🖥️ Oberfläche
 - **Ablauf des Secrets in der Kopfzeile** neben Version und Kanal (Tenant des offenen Reiters) – in den Reitern Extensions und Quick Script entfernt.
