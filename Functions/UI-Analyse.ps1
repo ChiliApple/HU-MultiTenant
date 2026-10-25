@@ -535,7 +535,14 @@ function Start-HUTransferNext {
             $tn = Get-HUAnaTenantName $plan.TenantKey
             # 045 Ue-10: bei mehreren Zielen und bei Entra immer den Ziel-Tenant-Namen eintippen
             if ($script:TrCtx.Multi -or $plan.PSObject.Properties['Transfer']) { $plan | Add-Member -NotePropertyName TypeToConfirm -NotePropertyValue $tn -Force }
-            if (-not (Show-HUEntraRestorePreview $plan $tn '')) { Add-HURtbLine $script:Controls['rtbAna'] "$tn`: nicht uebertragen." '#AAAAAA'; Start-HUTransferNext; return }
+            $rest = $(if ($script:TrQueue) { $script:TrQueue.Count } else { 0 })
+            if (-not (Show-HUEntraRestorePreview $plan $tn '' -Remaining $rest)) {
+                # 2.5.1: Abbrechen beendet das ganze Uebertragen (vorher kamen alle weiteren Ziele trotzdem nacheinander); Ueberspringen = naechstes Ziel
+                if ("$script:ErPreviewChoice" -eq 'skip') { Add-HURtbLine $script:Controls['rtbAna'] "$tn`: uebersprungen." '#AAAAAA'; Start-HUTransferNext; return }
+                $n = $rest; if ($script:TrQueue) { $script:TrQueue.Clear() }
+                Add-HURtbLine $script:Controls['rtbAna'] "$tn`: nicht uebertragen - Uebertragen abgebrochen$(if ($n) { " ($n weitere Ziel(e) nicht mehr vorbereitet)" })." '#AAAAAA'
+                Start-HUTransferNext; return
+            }
             [void](Start-HUJob -Name 'TransferWrite' -Output $script:Controls['rtbAna'] -Vars @{ Plan = $plan } -Code {
                     try {
                         $isE = [bool]$Plan.PSObject.Properties['Transfer']
@@ -734,6 +741,17 @@ function Show-HUCmpDetail {
                     # IDs im Muster gehoeren zum Quell-Tenant des Eintrags - Namen dort nachschlagen
                     $rk = if ($it.Tenant -eq $MK) { Get-HUMusterResolveKey $Settings "$(if ($it.PSObject.Properties['Origin']) { $it.Origin })" } else { $it.Tenant }
                     $maps[$it.Tenant] = $(if ($rk) { Resolve-HUFlatMapIds -TenantKey $rk -Settings $Settings -Map (ConvertTo-HUFlatMap $o) } else { ConvertTo-HUFlatMap $o })
+                    # 2.5.1 mitgelieferte Muster: Werte, die erst beim Uebertragen aus dem Ziel kommen, als Text zeigen statt "(leer)"
+                    if ($it.Tenant -eq $MK -and $o) {
+                        $mp = $maps[$it.Tenant]
+                        if ("$(if ($o.PSObject.Properties['huRollen']) { $o.huRollen })" -eq 'alleEingebautenAusnehmen') { $mp['conditions.users.excludeRoles'] = '(beim Uebertragen: alle eingebauten Admin-Rollen des Ziels)' }
+                        if ($o.PSObject.Properties['huGruppen']) {
+                            foreach ($gf in 'includeGroups', 'excludeGroups') {
+                                $sl = @(@($o.huGruppen) | Where-Object { $_ -and "$($_.feld)" -eq $gf } | ForEach-Object { "$($_.name)" })
+                                if ($sl.Count) { $mp["conditions.users.$gf"] = "(Platz: $($sl -join ', ') - beim Uebertragen waehlen)" }
+                            }
+                        }
+                    }
                 }
                 catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $it.Tenant }
             }

@@ -9,7 +9,10 @@
 #>
 
 # Vorschau-Dialog. Rueckgabe $true = zurueckschreiben.
-function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) {
+# 2.5.1: -Remaining = Anzahl weiterer Ziele in der Warteschlange -> zusaetzlich Knopf 'Ueberspringen';
+# Abbrechen beendet dann das ganze Uebertragen ($script:ErPreviewChoice = 'skip' | 'cancel' | 'write')
+$script:ErPreviewChoice = ''
+function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp, [int]$Remaining = 0) {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Width="880" Height="640" MinWidth="640" MinHeight="420" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False">
@@ -57,6 +60,8 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="btnWrite" Content="&#x21BA; Zurueckschreiben" MinWidth="170" Padding="14,0,14,0" Background="#A65A28" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Liest den Tenant erneut, sichert den aktuellen Stand als Datei, schreibt nur die gezeigten Felder und prueft danach nach"/>
+            <Button x:Name="btnSkip" Content="Ueberspringen" Width="130" Background="#555555" Style="{StaticResource DarkButton}" Margin="0,0,8,0" Visibility="Collapsed"
+                    ToolTip="Diesen Tenant auslassen und mit dem naechsten Ziel weitermachen"/>
             <Button x:Name="btnCancel" Content="Abbrechen" Width="110" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
         </StackPanel>
     </Grid>
@@ -158,7 +163,13 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     if (@($allOps | Where-Object { "$($_.Kind)" -eq 'group' }).Count) { [void]$c.pnlInfo.Children.Add($grpHint); & $grpUpd }
     if ($Plan.Dropped.Count) { & $add "Wird nicht geschrieben (nicht beschreibbar oder bewusst ausgelassen): $($Plan.Dropped -join ', ')" '#AAAAAA' }
     foreach ($n in $Plan.Notes) { & $add "Hinweis: $n" '#90CAF9' }
-    $state = @{ Ok = $false }
+    $state = @{ Ok = $false; Skip = $false }
+    $script:ErPreviewChoice = 'cancel'
+    if ($Remaining -gt 0) {
+        $c.btnSkip.Visibility = 'Visible'
+        $c.btnCancel.ToolTip = "Uebertragen ganz beenden - auch die $Remaining weiteren Ziele werden nicht mehr vorbereitet"
+        $c.btnSkip.Add_Click({ $state.Skip = $true; $w.Close() })
+    }
     # 045 Ue-10: bei mehreren Zielen den Ziel-Tenant-Namen eintippen
     $typeName = if ($Plan.PSObject.Properties['TypeToConfirm']) { "$($Plan.TypeToConfirm)" } else { '' }
     if ($typeName) { $c.pnlType.Visibility = 'Visible'; $c.lblType.Text = "Zum Bestaetigen '$typeName' eintippen:" }
@@ -199,6 +210,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
             } catch { }
         })
     [void]$w.ShowDialog()
+    $script:ErPreviewChoice = $(if ($state.Ok) { 'write' } elseif ($state.Skip) { 'skip' } else { 'cancel' })
     return [bool]$state.Ok
 }
 

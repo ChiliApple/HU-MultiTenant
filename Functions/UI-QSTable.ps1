@@ -132,7 +132,8 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
     $wrap.Setters.Add((New-Object System.Windows.Setter([System.Windows.Controls.TextBlock]::TextWrappingProperty, [System.Windows.TextWrapping]::Wrap)))
     $c.grid.Tag = $wrap
     $c.grid.Add_AutoGeneratingColumn({ param($s0, $e) $e.Column.Header = $map[$e.PropertyName]; $e.Column.MaxWidth = 600; if ($e.Column -is [System.Windows.Controls.DataGridTextColumn]) { $e.Column.ElementStyle = $s0.Tag } })
-    $c.grid.Add_Loaded({ param($s0, $e) foreach ($col in @($s0.Columns)) { $aw = $col.ActualWidth; $col.MaxWidth = [double]::PositiveInfinity; if ($aw -gt 0) { $col.Width = New-Object System.Windows.Controls.DataGridLength($aw) } }
+    # Spalten nach Inhalt, aber hoechstens 600 breit (lange Listen wie 134 Rollen sonst bildschirmbreit); danach von Hand breiter ziehbar
+    $c.grid.Add_Loaded({ param($s0, $e) foreach ($col in @($s0.Columns)) { $aw = [Math]::Min(600, $col.ActualWidth); if ($aw -gt 0) { $col.MaxWidth = [double]::PositiveInfinity; $col.Width = New-Object System.Windows.Controls.DataGridLength($aw) } }
         # Fenster an die Spalten anpassen (hoechstens bis zum Bildschirmrand; wenige schmale Spalten -> schmaler, mind. 700)
         try {
             $win = [System.Windows.Window]::GetWindow($s0)

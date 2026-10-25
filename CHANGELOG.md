@@ -39,13 +39,15 @@
 - **Zuordnung prüfen** und **Doppelklick-Details** arbeiten mit den angehakten Paketen.
 - *Backup & Verlauf* › **Als Muster festhalten …** legt den Stand als Paket „Gesamtstand“ in der Bibliothek ab (Name frei wählbar).
 - **Nur Muster-Einträge:** neuer Haken neben „Nur Unterschiede“ – zeigt nur die Zeilen der angehakten Pakete; bei Teilpaketen automatisch an.
-- **Doppelklick-Details:** Die Muster-Spalte steht immer ganz links, die Tenants folgen in der Reihenfolge der Vergleichstabelle.
+- **Doppelklick-Details:** Die Muster-Spalte steht immer ganz links, die Tenants folgen in der Reihenfolge der Vergleichstabelle; Werte, die erst beim Übertragen aus dem Ziel kommen (Rollen, Gruppen-Plätze), stehen als Text statt „(leer)“.
+- **Übertragen in mehrere Tenants:** *Abbrechen* beendet jetzt das ganze Übertragen; mit *Überspringen* geht es mit dem nächsten Ziel weiter.
 - Steht derselbe Eintrag in mehreren angehakten Paketen, zählt die Fassung aus dem ersten Paket (Hinweis im Protokoll) – er wird nicht als „doppelt“ gemeldet.
 
 ### 🖥️ Oberfläche
 - Reiter Muster: wird beim Start wiederhergestellt (Startreiter „Zuletzt“), die Extension-Liste links ist dort ausgeblendet; Bibliothek links (Breite ziehbar), Paket rechts, Protokoll unten (Höhe ziehbar), pulsierender Punkt bei laufenden Aufträgen, Tooltips an allen Steuerelementen; der Paket-Editor ist größenveränderbar mit Anfasser und öffnet so breit wie seine Spalten.
 
 - **Kopfzeile zeigt den Update-Kanal** statt „Standardbenutzer“: *Kanal Stabil* (grün), *Kanal Test* (orange), bei Entwicklungsstand rot – ändert sich sofort mit der Einstellung.
+- **Ergebnis-Tabellen:** Spalten höchstens 600 breit (von Hand breiter ziehbar), wenige schmale Spalten öffnen ein schmales Fenster; Tooltips der Bibliothek kürzen lange Notizen.
 - **Oberflächengröße für alle Fenster:** Die Größe aus *Strg + Mausrad* (bzw. Einstellungen) gilt jetzt auch für alle weiteren Fenster (Tabellen, Vorschau, Dialoge) – vorher nur für das Hauptfenster. Fenster wachsen mit und bleiben ganz auf dem Bildschirm.
 
 ### ✅ Qualität
