@@ -67,6 +67,29 @@ Describe 'Muster anwenden (2.5.2): Rechte, Reihenfolge, Markierung, Sperre' {
         Remove-HUMaMarker 'T1'
         Get-HUMaMarker 'T1' | Should -BeNullOrEmpty
     }
+    It 'Offene Rechte (060 B1): geplante zaehlen bis zum Nachtragen mit, vorher vorhandene nie' {
+        [void](Write-HUMaMarker -TenantKey 'T3' -Planned @('A', 'B') -Before @('C'))
+        @(Get-HUMaOpenRights (Get-HUMaMarker 'T3')) | Should -Be @('A', 'B')
+        # Absturz zwischen Erteilen und Nachtragen: Markierung ohne Added bleibt offen
+        @(Get-HUMaOpenRights (Get-HUMaMarker 'T3')).Count | Should -Be 2
+        # erfolgreich erteilt, B war schon da (kommt nicht zurueck) -> offen nur A
+        [void](Write-HUMaMarker -TenantKey 'T3' -Added @('A') -ClearPlanned -Stage 'erteilt')
+        @(Get-HUMaOpenRights (Get-HUMaMarker 'T3')) | Should -Be @('A')
+        # spaeterer Durchgang plant C (war vorher da) und D -> offen A, D
+        [void](Write-HUMaMarker -TenantKey 'T3' -Planned @('C', 'D'))
+        @(Get-HUMaOpenRights (Get-HUMaMarker 'T3')) | Should -Be @('A', 'D')
+        @(Get-HUMaOpenRights $null).Count | Should -Be 0
+        Remove-HUMaMarker 'T3'
+    }
+    It 'Sperre (060 B4): fremder PC wird nicht still uebernommen, alte Sperre nach 12 Stunden schon' {
+        $lf = Join-Path (Get-HUMaStateRoot) 'muster-sperre-T4.lock'
+        [IO.File]::WriteAllText($lf, (@{ Tenant = 'T4'; Pid = 1; Host = 'ANDERER-PC'; Time = (Get-Date).ToString('s') } | ConvertTo-Json))
+        { Enter-HUMaLock 'T4' } | Should -Throw '*ANDERER-PC*'
+        [IO.File]::WriteAllText($lf, (@{ Tenant = 'T4'; Pid = 1; Host = 'ANDERER-PC'; Time = (Get-Date).AddHours(-13).ToString('s') } | ConvertTo-Json))
+        { Enter-HUMaLock 'T4' } | Should -Not -Throw
+        (Get-Content $lf -Raw | ConvertFrom-Json).Pid | Should -Be $PID
+        Exit-HUMaLock 'T4'
+    }
     It 'Sperre: zweite Instanz mit lebendem Prozess abgelehnt, verwaiste Sperre uebernommen' {
         Enter-HUMaLock 'T1'
         Test-Path (Join-Path (Get-HUMaStateRoot) 'muster-sperre-T1.lock') | Should -BeTrue
@@ -156,6 +179,30 @@ Describe 'Muster anwenden (2.5.2): Ausfuehren und Paket-Rueckgaengig' {
         $saved = Read-HUBackupJson $run.File
         @($saved.Steps).Count | Should -Be 2
         $saved.Steps[0].UndoFile | Should -Be 'C:\undo\win.json'
+    }
+    It 'Stand seit der Vorschau geaendert (060 B2): neu -> angleichen bzw. CA-Zusatzkopie wird nicht geschrieben; wartet -> neu schon' {
+        $run = New-HUMaRun -Settings $script:Set -TenantKey 'Z' -Packages @('Testpaket')
+        Mock -ModuleName HU.MusterApply Invoke-HUTransfer { [pscustomobject]@{ Ok = $true; UndoFile = ''; Mismatch = @() } }
+        Mock -ModuleName HU.MusterApply Invoke-HUTransferAlign { [pscustomobject]@{ Ok = $true; UndoFile = ''; Mismatch = @() } }
+        Mock -ModuleName HU.MusterApply Invoke-HUEntraTransfer { [pscustomobject]@{ Ok = $true; UndoFile = ''; Mismatch = @() } }
+        # Intune: in der Vorschau neu, jetzt gibt es den Namen -> angleichen
+        Mock -ModuleName HU.MusterApply Get-HUTransferPlan { New-MaPlan -Blocks @("'Win' gibt es im Ziel schon (Angleichen bestehender Objekte kommt mit 2.4.2).") }
+        Mock -ModuleName HU.MusterApply Get-HUIntuneGraphAll { @([pscustomobject]@{ id = 'z-win'; displayName = 'win' }) }
+        Mock -ModuleName HU.MusterApply Get-HUTransferAlignPlan { $p = New-MaPlan -Kind 'transferAlign'; $p.Changes = @([pscustomobject]@{ Expected = 'x' }); $p }
+        $row = [pscustomobject]@{ Typ = 'Compliance'; Name = 'Win'; Paket = 'Testpaket'; PaketId = 'p1'; Folder = $script:Pk; File = 'Compliance/003.json'; Id = 'c-1'; Source = 'mitgeliefert'; Status = 'neu'; Reason = '' }
+        $r = Invoke-HUMaStep -Settings $script:Set -TargetKey 'Z' -Row $row -Run $run
+        $r.Ok | Should -BeFalse; $r.Text | Should -BeLike '*seit der Vorschau*'
+        Should -Invoke -ModuleName HU.MusterApply Invoke-HUTransferAlign -Times 0
+        # CA: in der Vorschau neu, jetzt Zusatzkopie (von Muster)
+        Mock -ModuleName HU.MusterApply Get-HUEntraTransferPlan { New-MaPlan -Kind 'caNew' -Name '903 - Geoblock (von Muster)' }
+        $ca = [pscustomobject]@{ Typ = 'Conditional Access'; Name = '903 - Geoblock'; Paket = 'Testpaket'; PaketId = 'p1'; Folder = $script:Pk; File = 'Conditional_Access/002.json'; Id = 'ca-1'; Source = 'mitgeliefert'; Status = 'neu'; Reason = '' }
+        (Invoke-HUMaStep -Settings $script:Set -TargetKey 'Z' -Row $ca -Run $run).Text | Should -BeLike '*Zusatzkopie*'
+        Should -Invoke -ModuleName HU.MusterApply Invoke-HUEntraTransfer -Times 0
+        # wartet -> neu (Ort inzwischen angelegt) wird geschrieben
+        Mock -ModuleName HU.MusterApply Get-HUEntraTransferPlan { New-MaPlan -Kind 'caNew' -Name '903 - Geoblock' }
+        $ca.Status = 'wartet'
+        (Invoke-HUMaStep -Settings $script:Set -TargetKey 'Z' -Row $ca -Run $run).Ok | Should -BeTrue
+        Should -Invoke -ModuleName HU.MusterApply Invoke-HUEntraTransfer -Times 1
     }
     It 'Paket rueckgaengig in umgekehrter Reihenfolge; Fehler in einem Schritt = Rest trotzdem, Durchgang bleibt offen' {
         $run = New-HUMaRun -Settings $script:Set -TenantKey 'Z2' -Packages @('Testpaket') -Now (Get-Date).AddMinutes(1)

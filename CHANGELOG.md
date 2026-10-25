@@ -10,7 +10,11 @@
 - **Ausführen in fester Reihenfolge** (Orte → Entra → Intune → Conditional Access), vor jedem Eintrag erneut geprüft; Abbrechen nach dem laufenden Eintrag; **Paket rückgängig** nimmt alles in umgekehrter Reihenfolge zurück.
 - **Mehrere Tenants nacheinander:** in Schritt 1 mehrere anhaken – je Tenant eigene Rechte, Zuordnung, Vorschau und Bestätigung; am Abschluss *Weiter mit …*. Was beim ersten Tenant abgewählt wurde, bleibt bei den folgenden abgewählt. **Rechte gesammelt zurück:** am Ende für alle Tenants auf einmal, mit den Admin-Anmeldungen des Durchgangs (ohne neue Anmeldung, solange diese gelten).
 - **Fix:** Richtlinien mit Authentifizierungsstärke (z. B. 101) waren in der Vorschau gesperrt – die Stärke wird jetzt ohne nicht unterstützte Abfrage-Parameter gelesen.
+- **Sicherer:** Rechte, die beim Erteilen schon geplant waren, gelten bis zur Bestätigung als offen – auch nach Absturz oder Fehler mittendrin kommt die Erinnerung. Hat sich das Ziel seit der Vorschau geändert (z. B. aus Neu wurde Angleichen), wird der Eintrag nicht geschrieben.
 - Pro Tenant läuft der Assistent nur einmal gleichzeitig; ein pulsierender Punkt zeigt, solange gelesen oder geschrieben wird.
+
+### 🛡️ Sicherheitskatalog
+- **A17 Benutzer-Consent per Sollwert:** *keine* (Standard), *gering* (verifizierte Herausgeber, schwach eingestufte Berechtigungen) oder *empfohlen* (zusätzlich von Microsoft verwaltet) gilt als ok – alles andere mit Admin-Freigabe (A41).
 
 ### 🖥️ Oberfläche
 - **Ablauf von Secret/Zertifikat in der Kopfzeile** in Höhe des Titels (Extensions und Quick Script: der gewählte Tenant; alle anderen Reiter: Sammelanzeige aller Tenants bzw. die zuerst ablaufende Schule) – in den Reitern Extensions und Quick Script entfernt.

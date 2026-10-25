@@ -41,10 +41,21 @@ function Test-HUMaLoginValid($Login) {
     try { $p = ConvertFrom-HUJwtPayload "$($Login.Token)"; return ([DateTimeOffset]::FromUnixTimeSeconds([long]$p.exp).UtcDateTime -gt [datetime]::UtcNow.AddMinutes(3)) } catch { return $false }
 }
 
+# Sicher nichts erteilt (Anmeldung abgebrochen, Konto ohne Recht): geplante Rechte verwerfen, Markierung nur behalten, wenn schon etwas erteilt ist
+function Clear-HUMaPlannedRights([string]$TenantKey) {
+    try {
+        $m = Get-HUMaMarker $TenantKey
+        if (-not $m) { return }
+        if (@($m.Added | Where-Object { "$_" }).Count) { [void](Write-HUMaMarker -TenantKey $TenantKey -ClearPlanned -Stage 'nichts erteilt') }
+        else { Remove-HUMaMarker $TenantKey }
+    } catch { }
+}
+
 # Rechte zurueckgeben (genau die selbst erteilten laut Markierung). Mit gueltigem Admin-Token sofort, sonst neue Anmeldung.
 function Start-HUMaRevoke([string]$TenantKey, $Login = $null, [scriptblock]$Done = $null, $Owner = $null) {
     $m = Get-HUMaMarker $TenantKey
-    $added = @($(if ($m) { $m.Added }) | Where-Object { "$_" })
+    # offen = erteilte plus geplante, die vorher nicht da waren (060 B1: auch nach Absturz zwischen Erteilen und Nachtragen)
+    $added = @(Get-HUMaOpenRights $m)
     if (-not $added.Count) { Remove-HUMaMarker $TenantKey; if ($Done) { & $Done $true 'Es wurden keine Rechte dazugegeben - nichts zurueckzugeben.' }; return }
     $t = Get-HUMaTenant $TenantKey
     # Zustand fuer die Rueckmeldung (kein GetNewClosure: Funktionen des Programms waeren darin nicht sichtbar)
@@ -70,7 +81,7 @@ function Start-HUMaRevoke([string]$TenantKey, $Login = $null, [scriptblock]$Done
 # Rechte mehrerer Tenants nacheinander zurueckgeben - mit den gemerkten Admin-Anmeldungen (gueltig ~60 Min), ohne neue Anmeldung.
 # Abgelaufene Anmeldung -> fuer diesen Tenant Browser-Anmeldung. $Then bekommt ($alleOk, $berichtText).
 function Start-HUMaRevokeAll([string[]]$Tenants, [hashtable]$Logins, [scriptblock]$Then = $null, $Owner = $null) {
-    $list = @($Tenants | Where-Object { "$_" } | Select-Object -Unique | Where-Object { $m = Get-HUMaMarker $_; $m -and @($m.Added | Where-Object { "$_" }).Count })
+    $list = @($Tenants | Where-Object { "$_" } | Select-Object -Unique | Where-Object { @(Get-HUMaOpenRights (Get-HUMaMarker $_)).Count })
     if (-not $list.Count) { if ($Then) { & $Then $true 'Es sind keine erteilten Rechte offen.' }; return }
     $script:MaRevAll = @{ List = $list; I = 0; Logins = $(if ($Logins) { $Logins } else { @{} }); Lines = New-Object System.Collections.Generic.List[string]; AllOk = $true; Then = $Then; Owner = $Owner }
     Invoke-HUMaRevokeAllNext
@@ -97,7 +108,7 @@ function Invoke-HUMaRevokeAllNext {
 # Beim Programmstart: noch erteilte Rechte aus einem abgebrochenen Ablauf melden (Absturz-Sicherung)
 function Test-HUMaMarkerReminder {
     foreach ($m in @(Get-HUMaMarkers)) {
-        $added = @($m.Added | Where-Object { "$_" })
+        $added = @(Get-HUMaOpenRights $m)
         $tk = "$($m.Tenant)"
         if (-not $added.Count) { Remove-HUMaMarker $tk; continue }
         $since = $null; try { $since = [datetime]::Parse("$($m.Since)", [Globalization.CultureInfo]::InvariantCulture) } catch { }
@@ -317,6 +328,7 @@ function Show-HUMusterApply {
                 $rows = Get-HUMaRightsRows @($S2.Needed) $r.Roles
                 $S2.C.gridRights.ItemsSource = @($rows)
                 $S2.Missing = @($rows | Where-Object { $_.Status -ne 'vorhanden' } | ForEach-Object { $_.Recht })
+                $S2.Present = @($rows | Where-Object { $_.Status -eq 'vorhanden' } | ForEach-Object { $_.Recht })
                 $S2.RightsOk = -not $S2.Missing.Count
                 $S2.Bg = $r.Bg
                 $S2.C.lblBg.Text = "Notfallkonten: $($r.Bg.Text)$(if (-not $S2.NeedBg) { ' (fuer diese Pakete nicht noetig)' })"
@@ -332,20 +344,22 @@ function Show-HUMusterApply {
             if (-not $miss.Count) { return }
             if (-not (Confirm-HU "Fuer $(Get-HUAnaTenantName $S2.Tenant) diese Rechte erteilen?`n`n$($miss -join "`n")`n`nNur fuer diesen Ablauf: am Ende 'Rechte zurueckgeben' entzieht genau diese wieder. Es oeffnet sich der Browser zur Admin-Anmeldung." -Owner $S2.W)) { return }
             # Markierung VOR dem Erteilen (Absturz-Sicherung)
-            try { [void](Write-HUMaMarker -TenantKey $S2.Tenant -TenantName (Get-HUAnaTenantName $S2.Tenant) -Planned $miss -Stage 'vor dem Erteilen') } catch { Show-HUMessage "Markierung nicht schreibbar - es wird nichts erteilt: $($_.Exception.Message)" -Icon Error -Owner $S2.W; return }
+            try { [void](Write-HUMaMarker -TenantKey $S2.Tenant -TenantName (Get-HUAnaTenantName $S2.Tenant) -Planned $miss -Before @($S2.Present) -Stage 'vor dem Erteilen') } catch { Show-HUMessage "Markierung nicht schreibbar - es wird nichts erteilt: $($_.Exception.Message)" -Icon Error -Owner $S2.W; return }
             & $S2.SetBusy 'Bitte im Browser als Admin anmelden ...'
             $ok = Start-HUMaAdminLogin $S2.Tenant {
                 param($L)
                 $S3 = $script:MA; if (-not $S3) { return }
                 & $S3.SetBusy ''
-                if (-not $L.Ok) { Show-HUMessage "Nicht erteilt: $($L.Error)" -Icon Error -Owner $S3.W; return }
-                if (-not (Test-HUAdminCanGrant $L)) { Show-HUMessage 'Das angemeldete Konto darf keine App-Rechte erteilen (Global Admin oder Privileged Role Admin noetig). Nichts geaendert.' -Icon Warning -Owner $S3.W; return }
+                if (-not $L.Ok) { Clear-HUMaPlannedRights $S3.Tenant; Show-HUMessage "Nicht erteilt: $($L.Error)" -Icon Error -Owner $S3.W; return }
+                if (-not (Test-HUAdminCanGrant $L)) { Clear-HUMaPlannedRights $S3.Tenant; Show-HUMessage 'Das angemeldete Konto darf keine App-Rechte erteilen (Global Admin oder Privileged Role Admin noetig). Nichts geaendert.' -Icon Warning -Owner $S3.W; return }
                 $S3.Login = $L; $S3.Logins[$S3.Tenant] = $L
                 $t = Get-HUMaTenant $S3.Tenant
                 $added = @()
                 try { $added = @(Add-HUAppPermissions -Login $L -AppId "$($t.appId)" -Permissions @($S3.Missing)) }
-                catch { Show-HUMessage "Erteilen fehlgeschlagen: $(Get-HUSetupErrorText $_)" -Icon Error -Owner $S3.W; return }
-                try { [void](Write-HUMaMarker -TenantKey $S3.Tenant -Added $added -Stage 'erteilt') } catch { }
+                # Fehler mittendrin: Markierung mit den geplanten Rechten bleibt (Teil kann erteilt sein) -> Zurueckgeben/Erinnerung greift
+                catch { try { [void](Write-HUMaMarker -TenantKey $S3.Tenant -Stage 'Fehler beim Erteilen') } catch { }; Show-HUMessage "Erteilen fehlgeschlagen: $(Get-HUSetupErrorText $_)`n`nWas schon erteilt ist, gibt 'Rechte zurueckgeben' wieder zurueck." -Icon Error -Owner $S3.W; return }
+                # geklappt: offen bleibt genau, was wirklich dazugekommen ist
+                try { [void](Write-HUMaMarker -TenantKey $S3.Tenant -Added $added -ClearPlanned -Stage 'erteilt') } catch { }
                 Write-HULog -Message "Muster anwenden: Rechte erteilt ($(Get-HUAnaTenantName $S3.Tenant)): $(if ($added.Count) { $added -join ', ' } else { 'schon vorhanden' }) (durch $($L.Upn))" -Level 'OK'
                 try { Clear-TokenCache -TenantKey $S3.Tenant } catch { }
                 # neues App-Token: erteilte Rechte stehen erst nach kurzer Zeit darin - bis zu 3 Minuten nachfragen
@@ -365,7 +379,7 @@ function Show-HUMusterApply {
                         & $S4.CheckRights
                     })
             }
-            if (-not $ok) { & $S2.SetBusy '' }
+            if (-not $ok) { Clear-HUMaPlannedRights $S2.Tenant; & $S2.SetBusy '' }
         })
 
     # ---- Schritt 3: Plan lesen und Zuordnen aufbauen
@@ -533,7 +547,7 @@ function Show-HUMusterApply {
         $v = @(if ($q.Count) { $q[0..$n] }); if ($S.Tenant -and $v -notcontains $S.Tenant) { $v += $S.Tenant }
         return , @($v | Where-Object { "$_" })
     }
-    $S.OpenRights = { $S = $script:MA; return , @(@(& $S.Visited) | Where-Object { $m = Get-HUMaMarker $_; $m -and @($m.Added | Where-Object { "$_" }).Count }) }
+    $S.OpenRights = { $S = $script:MA; return , @(@(& $S.Visited) | Where-Object { @(Get-HUMaOpenRights (Get-HUMaMarker $_)).Count }) }
     $c.btnRevoke.Add_Click({
             $S2 = $script:MA
             & $S2.SetBusy 'Rechte werden zurueckgegeben ...'
@@ -573,7 +587,7 @@ function Show-HUMusterApply {
         $tk = "$($S.Queue[$S.QIndex])"
         if ($S.Tenant -and $S.Tenant -ne $tk) { Exit-HUMaLock $S.Tenant }
         try { Enter-HUMaLock $tk } catch { Show-HUMessage "$($_.Exception.Message)" -Icon Warning -Owner $S.W; return $false }
-        $S.Tenant = $tk; $S.Rows = @(); $S.Groups = @{}; $S.RightsOk = $false; $S.Bg = $null; $S.Login = $null; $S.RunFile = ''; $S.Missing = @()
+        $S.Tenant = $tk; $S.Rows = @(); $S.Groups = @{}; $S.RightsOk = $false; $S.Bg = $null; $S.Login = $null; $S.RunFile = ''; $S.Missing = @(); $S.Present = @()
         $S.Prog.Lines.Clear(); $S.Prog.Total = 0; $S.Prog.Done = $false
         $c.gridRun.ItemsSource = $null; $c.gridRights.ItemsSource = $null; $c.pnlMap.Children.Clear(); $c.lblBg.Text = ''
         $c.pnlDone.Visibility = 'Collapsed'; $c.btnNextTenant.Visibility = 'Collapsed'; $c.prg.Value = 0
@@ -587,7 +601,7 @@ function Show-HUMusterApply {
             # Rechte bleiben (Markierung + gemerkte Anmeldung) und werden am Ende fuer alle Tenants gesammelt zurueckgegeben
             $S2 = $script:MA
             $m = Get-HUMaMarker $S2.Tenant
-            if ($m -and -not @($m.Added | Where-Object { $_ }).Count) { Remove-HUMaMarker $S2.Tenant }
+            if ($m -and -not @(Get-HUMaOpenRights $m).Count) { Remove-HUMaMarker $S2.Tenant }
             $S2.QIndex++; [void](& $S2.StartTenant)
         })
 
@@ -616,7 +630,7 @@ function Show-HUMusterApply {
                 # zurueck zur Tenant-Auswahl nur vor dem ersten Tenant; danach geht es nur vorwaerts (Abschluss -> naechster Tenant)
                 if ($S2.QIndex -gt 0) { return }
                 $m = Get-HUMaMarker $S2.Tenant
-                if (-not ($m -and @($m.Added | Where-Object { $_ }).Count)) { if ($m) { Remove-HUMaMarker $S2.Tenant }; Exit-HUMaLock $S2.Tenant; $S2.Tenant = '' }
+                if (-not @(Get-HUMaOpenRights $m).Count) { if ($m) { Remove-HUMaMarker $S2.Tenant }; Exit-HUMaLock $S2.Tenant; $S2.Tenant = '' }
                 foreach ($ch in @($S2.TenantChecks)) { $ch.IsEnabled = $true }
             }
             & $S2.ShowStep ($S2.Step - 1)
@@ -628,7 +642,7 @@ function Show-HUMusterApply {
             if ($S2.Running) { Show-HUMessage 'Es wird gerade angewendet - erst abbrechen (Knopf Abbrechen) und das Ende abwarten.' -Icon Warning -Owner $S2.W; $e.Cancel = $true; return }
             $open = @(& $S2.OpenRights)
             if ($open.Count) {
-                $lst = ($open | ForEach-Object { "$(Get-HUAnaTenantName $_): $(@((Get-HUMaMarker $_).Added) -join ', ')" }) -join "`n"
+                $lst = ($open | ForEach-Object { "$(Get-HUAnaTenantName $_): $(@(Get-HUMaOpenRights (Get-HUMaMarker $_)) -join ', ')" }) -join "`n"
                 $a = Confirm-HUYesNoCancel "Die erteilten Rechte sind noch nicht zurueckgegeben:`n`n$lst`n`nJa = jetzt alle zurueckgeben, Nein = spaeter (Erinnerung beim naechsten Start), Abbrechen = Fenster offen lassen." -Owner $S2.W
                 if ($a -eq 'Cancel') { $e.Cancel = $true; return }
                 if ($a -eq 'Yes') {
@@ -638,7 +652,7 @@ function Show-HUMusterApply {
                     return
                 }
             }
-            if ($S2.Tenant) { $m = Get-HUMaMarker $S2.Tenant; if ($m -and -not @($m.Added | Where-Object { $_ }).Count) { Remove-HUMaMarker $S2.Tenant } }
+            if ($S2.Tenant) { $m = Get-HUMaMarker $S2.Tenant; if ($m -and -not @(Get-HUMaOpenRights $m).Count) { Remove-HUMaMarker $S2.Tenant } }
             if ($S2.Tenant) { Exit-HUMaLock $S2.Tenant }
             $script:MA = $null
         })

@@ -63,7 +63,7 @@ function Get-HUMaRightsRows([string[]]$Needed, $Roles) {
 function Get-HUMaMarkerFile([string]$TenantKey) { return (Join-Path $script:HUMaStateRoot "muster-rechte-$(ConvertTo-HUMaSafe $TenantKey).json") }
 function Write-HUMaMarker {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$TenantKey, [string]$TenantName = '', [string[]]$Planned = @(), [string[]]$Added = @(), [string]$Stage = 'vor dem Erteilen')
+    param([Parameter(Mandatory)][string]$TenantKey, [string]$TenantName = '', [string[]]$Planned = @(), [string[]]$Added = @(), [string[]]$Before = @(), [string]$Stage = 'vor dem Erteilen', [switch]$ClearPlanned)
     $f = Get-HUMaMarkerFile $TenantKey
     $old = Get-HUMaMarker $TenantKey
     # PS 7 macht aus ISO-Datumstexten beim Lesen DateTime - immer als ISO-Text weitergeben
@@ -71,10 +71,23 @@ function Write-HUMaMarker {
     # schon gemerkte (hinzugefuegte) Rechte nie verlieren - auch wenn ein zweiter Durchgang weniger meldet
     $add = @(@($(if ($old) { $old.Added })) + @($Added) | Where-Object { "$_" } | ForEach-Object { "$_" } | Sort-Object -Unique)
     $pl = @(@($(if ($old) { $old.Planned })) + @($Planned) | Where-Object { "$_" } | ForEach-Object { "$_" } | Sort-Object -Unique)
+    # nach erfolgreichem Erteilen (oder wenn sicher nichts erteilt wurde): geplante Rechte erledigt - offen bleibt nur Added
+    if ($ClearPlanned) { $pl = @() }
+    # vor dem Erteilen schon vorhandene Rechte: werden nie zurueckgegeben (nur ergaenzen, nie verlieren)
+    $bf = @(@($(if ($old -and $old.PSObject.Properties['Before']) { $old.Before })) + @($Before) | Where-Object { "$_" } | ForEach-Object { "$_" } | Sort-Object -Unique)
     if (-not (Test-Path -LiteralPath $script:HUMaStateRoot)) { New-Item -ItemType Directory -Path $script:HUMaStateRoot -Force | Out-Null }
-    $o = [pscustomobject]@{ Format = 1; Tenant = $TenantKey; TenantName = $TenantName; Since = $since; Changed = (Get-Date).ToString('s'); Planned = [object[]]$pl; Added = [object[]]$add; Stage = $Stage; Pid = $PID; Host = "$env:COMPUTERNAME" }
+    $o = [pscustomobject]@{ Format = 1; Tenant = $TenantKey; TenantName = $TenantName; Since = $since; Changed = (Get-Date).ToString('s'); Planned = [object[]]$pl; Added = [object[]]$add; Before = [object[]]$bf; Stage = $Stage; Pid = $PID; Host = "$env:COMPUTERNAME" }
     [IO.File]::WriteAllText($f, ($o | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
     return $o
+}
+# Offene Rechte einer Markierung: sicher erteilte (Added) plus geplante, die vorher nicht da waren (Planned - Before).
+# Geplante zaehlen mit, weil ein Absturz oder Fehler zwischen Erteilen und Nachtragen von Added sie sonst verlieren wuerde (060 B1).
+function Get-HUMaOpenRights($Marker) {
+    if (-not $Marker) { return @() }
+    $bf = @($(if ($Marker.PSObject.Properties['Before']) { $Marker.Before }) | Where-Object { "$_" } | ForEach-Object { "$_" })
+    $pl = @($(if ($Marker.PSObject.Properties['Planned']) { $Marker.Planned }) | Where-Object { "$_" -and $bf -notcontains "$_" } | ForEach-Object { "$_" })
+    $ad = @($(if ($Marker.PSObject.Properties['Added']) { $Marker.Added }) | Where-Object { "$_" } | ForEach-Object { "$_" })
+    return @(@($ad) + @($pl) | Sort-Object -Unique)
 }
 function Get-HUMaMarker([string]$TenantKey) {
     $f = Get-HUMaMarkerFile $TenantKey
@@ -101,15 +114,26 @@ function Get-HUMaLockFile([string]$TenantKey) { return (Join-Path $script:HUMaSt
 # Sperre je Tenant: zweite Instanz im selben Tenant ablehnen; Sperre eines beendeten Prozesses gilt als verwaist
 function Enter-HUMaLock([string]$TenantKey) {
     $f = Get-HUMaLockFile $TenantKey
+    $l = $null
     if (Test-Path -LiteralPath $f) {
-        $l = $null; try { $l = Get-Content -LiteralPath $f -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
+        try { $l = Get-Content -LiteralPath $f -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
         $lp = 0; if ($l -and "$($l.Pid)" -match '^\d+$') { $lp = [int]$l.Pid }
         if ($lp -and $lp -ne $PID -and "$($l.Host)" -eq "$env:COMPUTERNAME" -and (Get-Process -Id $lp -ErrorAction SilentlyContinue)) {
             throw "Fuer diesen Tenant laeuft 'Muster anwenden' schon in einem anderen Fenster (Prozess $lp, seit $($l.Time))."
         }
     }
     if (-not (Test-Path -LiteralPath $script:HUMaStateRoot)) { New-Item -ItemType Directory -Path $script:HUMaStateRoot -Force | Out-Null }
-    [IO.File]::WriteAllText($f, ([pscustomobject]@{ Tenant = $TenantKey; Pid = $PID; Host = "$env:COMPUTERNAME"; Time = (Get-Date).ToString('s') } | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+    # Sperre eines anderen PCs (Roaming-Profil) nicht still ueberschreiben (060 B4)
+    if ($l -and "$($l.Host)" -and "$($l.Host)" -ne "$env:COMPUTERNAME") {
+        $age = $null; try { $age = (Get-Date) - [datetime]::Parse("$($l.Time)", [Globalization.CultureInfo]::InvariantCulture) } catch { }
+        if (-not $age -or $age.TotalHours -lt 12) { throw "Fuer diesen Tenant laeuft 'Muster anwenden' moeglicherweise auf $($l.Host) (seit $($l.Time)). Dort beenden oder in 12 Stunden erneut versuchen." }
+    }
+    # atomar: alte (tote/eigene) Sperre weg, dann CreateNew - laeuft ein zweites Fenster gleichzeitig, scheitert eines
+    if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes(([pscustomobject]@{ Tenant = $TenantKey; Pid = $PID; Host = "$env:COMPUTERNAME"; Time = (Get-Date).ToString('s') } | ConvertTo-Json))
+    try { $fs = [IO.File]::Open($f, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None) }
+    catch { throw "Fuer diesen Tenant laeuft 'Muster anwenden' gerade in einem anderen Fenster." }
+    try { $fs.Write($bytes, 0, $bytes.Length) } finally { $fs.Dispose() }
 }
 function Exit-HUMaLock([string]$TenantKey) {
     $f = Get-HUMaLockFile $TenantKey
@@ -277,6 +301,15 @@ function Invoke-HUMaStep {
     $pkg = [pscustomobject]@{ Title = $Row.Paket; Id = $Row.PaketId; Folder = $Row.Folder }
     $it = [pscustomobject]@{ Typ = $Row.Typ; Name = $Row.Name; Id = $Row.Id; File = $Row.File; Source = $Row.Source }
     $fresh = Get-HUMaRow -Settings $Settings -TargetKey $TargetKey -Package $pkg -Item $it -LocNames $LocNames
+    # Stand seit der Vorschau geaendert (z. B. neu -> angleichen, oder CA jetzt Zusatzkopie "(von Muster)")? Dann nicht schreiben (060 B2).
+    # Erlaubt: wartet -> neu (Ort im selben Durchgang angelegt) und -> gleich (nichts zu tun).
+    $was = "$($Row.Status)"; $now = "$($fresh.Status)"
+    $wasDup = ("$($Row.Reason)" -like '*(von Muster)*'); $nowDup = [bool]($fresh.Plan -and $fresh.Plan.Body -and "$($fresh.Plan.Body.displayName)" -like '*(von Muster)')
+    $changed = ($now -notin 'gleich', 'gesperrt') -and $was -and -not (($was -eq $now) -or ($was -eq 'wartet' -and $now -eq 'neu'))
+    if ($changed -or (-not $wasDup -and $nowDup)) {
+        $t = "Nicht angewendet: Stand im Ziel hat sich seit der Vorschau geaendert (vorher '$was', jetzt '$now$(if ($nowDup -and -not $wasDup) { ', als Zusatzkopie (von Muster)' })') - bitte neu planen."
+        Add-HUMaRunStep $Run $Row.Typ $Row.Name $false '' $t; return [pscustomobject]@{ Ok = $false; Text = $t }
+    }
     if (-not $fresh.Plan -or $fresh.Status -in 'gesperrt', 'wartet') { $t = "Nicht angewendet: $($fresh.Reason)"; Add-HUMaRunStep $Run $Row.Typ $Row.Name $false '' $t; return [pscustomobject]@{ Ok = $false; Text = $t } }
     if ($fresh.Status -eq 'gleich') { Add-HUMaRunStep $Run $Row.Typ $Row.Name $true '' 'Im Ziel schon gleich - nichts geschrieben.'; return [pscustomobject]@{ Ok = $true; Text = 'schon gleich' } }
     Set-HUMaChoices $fresh.Plan $Groups $Countries
@@ -297,5 +330,5 @@ function Invoke-HUMaStep {
 }
 
 Export-ModuleMember -Function Get-HUMaTokenRoles, Get-HUMaRightsRows, Set-HUMaStateRoot, Get-HUMaStateRoot, Get-HUMaItemKind, Get-HUMaPermission, Get-HUMaNeededPermissions, Get-HUMaOrder,
-    Get-HUMaMarkerFile, Write-HUMaMarker, Get-HUMaMarker, Get-HUMaMarkers, Remove-HUMaMarker, Enter-HUMaLock, Exit-HUMaLock,
+    Get-HUMaMarkerFile, Write-HUMaMarker, Get-HUMaOpenRights, Get-HUMaMarker, Get-HUMaMarkers, Remove-HUMaMarker, Enter-HUMaLock, Exit-HUMaLock,
     Get-HUMaRow, Get-HUMaPlan, Set-HUMaChoices, Get-HUMaSlots, Get-HUMaRunDir, New-HUMaRun, Save-HUMaRun, Add-HUMaRunStep, Complete-HUMaRun, Get-HUMaRuns, Undo-HUMaRun, Invoke-HUMaStep

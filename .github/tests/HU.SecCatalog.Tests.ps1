@@ -226,6 +226,19 @@ Describe 'C02 und A17-Detail' {
         $global:HUSecFx['userType'] = Fail 403
         (Run 'C02').Status | Should -Be 'NichtPruefbar'
     }
+    It 'A17: Sollwert gering erlaubt -low, aber nicht Legacy; Speichern prueft die Auswahl' {
+        $bl = Join-Path (Get-HUSecPath) 'baseline.json'
+        try {
+            @(Save-HUSecBaselineEdit -Values @{ 'A17.allowed' = 'GERING' }).Count | Should -Be 0
+            @(Save-HUSecBaselineEdit -Values @{ 'A17.allowed' = 'alles' }).Count | Should -Be 1
+            $global:HUSecFx['authorizationPolicy'].defaultUserRolePermissions.permissionGrantPoliciesAssigned = @('ManagePermissionGrantsForSelf.microsoft-user-default-low')
+            $r = Run 'A17'; $r.Status | Should -Be 'OK'; $r.Detail | Should -BeLike '*Sollwert A17*'
+            $global:HUSecFx['authorizationPolicy'].defaultUserRolePermissions.permissionGrantPoliciesAssigned = @('ManagePermissionGrantsForSelf.microsoft-user-default-legacy')
+            (Run 'A17').Status | Should -Be 'Abweichung'
+            $global:HUSecFx['authorizationPolicy'].defaultUserRolePermissions.permissionGrantPoliciesAssigned = @('ManagePermissionGrantsForSelf.microsoft-user-default-recommended')
+            (Run 'A17').Status | Should -Be 'Abweichung'
+        } finally { Remove-Item -LiteralPath $bl -Force -ErrorAction SilentlyContinue }
+    }
     It 'A17: Detail nennt die Richtlinie' {
         $global:HUSecFx['authorizationPolicy'].defaultUserRolePermissions.permissionGrantPoliciesAssigned = @('ManagePermissionGrantsForSelf.microsoft-user-default-low')
         (Run 'A17').Detail | Should -BeLike '*verifizierte Herausgeber*'
