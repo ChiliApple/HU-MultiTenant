@@ -139,6 +139,10 @@ function Show-HUMusterApply {
             <!-- 4 Vorschau -->
             <DockPanel x:Name="pg4" Visibility="Collapsed">
                 <TextBlock x:Name="lblT4" DockPanel.Dock="Top" Foreground="#CCCCCC" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button x:Name="btnAllOn" Content="Alle auswaehlen" Style="{StaticResource ToolButton}" Padding="10,2" Margin="0,0,8,0" ToolTip="Alle anwendbaren Eintraege anhaken (auch Angleichen und Zusatzrichtlinien - danach pruefen)"/>
+                    <Button x:Name="btnAllOff" Content="Alle abwaehlen" Style="{StaticResource ToolButton}" Padding="10,2" ToolTip="Alle Haken entfernen"/>
+                </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
                     <TextBlock x:Name="lblType" Foreground="#FF8A65" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBox x:Name="txtType" Width="240" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Zur Sicherheit den Namen des Ziel-Tenants eintippen"/>
@@ -416,6 +420,17 @@ function Show-HUMusterApply {
     $c.gridPrev.Add_CurrentCellChanged({ & $script:MA.Upd })
     $c.gridPrev.Add_PreviewMouseLeftButtonUp({ $t = $script:MA; if ($t) { [void]$t.W.Dispatcher.BeginInvoke([action]{ & $script:MA.Upd }) } })
     $c.txtType.Add_TextChanged({ & $script:MA.Upd })
+    # Alle an/aus: nur anwendbare Zeilen (gesperrt/gleich bleiben aus); Raster neu zeichnen, weil die Zeilen keine Aenderungsmeldung senden
+    $S.SetAll = {
+        param([bool]$On)
+        $S = $script:MA
+        [void]$S.C.gridPrev.CommitEdit()
+        foreach ($p in @($S.Prev)) { $p.Take = ($On -and $p.CanTake) }
+        $S.C.gridPrev.Items.Refresh()
+        & $S.Upd
+    }
+    $c.btnAllOn.Add_Click({ & $script:MA.SetAll $true })
+    $c.btnAllOff.Add_Click({ & $script:MA.SetAll $false })
 
     # ---- Schritt 5: Ausfuehren (im Hintergrund, Fortschritt ueber geteilte Tabelle, Abbruch nach dem laufenden Eintrag)
     $S.Run = {
