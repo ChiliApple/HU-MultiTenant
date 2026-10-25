@@ -183,7 +183,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 $uiFiles = @('Core-Async', 'Core-Update', 'Core-Addons', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
+             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
 # ohne Oberflaeche nur das Noetige (Einstellungen lesen/ergaenzen)
 if ($Headless) { $uiFiles = @('UI-Common', 'UI-Settings') }
 foreach ($f in $uiFiles) {
@@ -283,9 +283,17 @@ try {
 
 Initialize-AsyncPool -PoolSize 4
 
+# Kopfzeile: Version und Update-Kanal (Einstellungen > Update). Test = orange, Stabil = gruen, Entwicklungsstand (Branch) = rot.
+# Ob als Administrator gestartet, steht in der Support-Info.
 function Update-VersionDisplay {
-    $isAdmin = Test-AdminPrivilege
-    $script:Controls['txtVersion'].Text = "v$($script:Version)  |  $(if ($isAdmin) { 'Administrator' } else { 'Standardbenutzer' })"
+    $cfg = $null; try { $cfg = Update-UpdateConfig } catch { }
+    $txt = 'Kanal Stabil'; $col = '#4CAF50'
+    if ($cfg -and $cfg.UseBranch) { $txt = 'Entwicklungsstand'; $col = '#EF5350' }
+    elseif ($cfg -and "$($cfg.Channel)" -eq 'Test') { $txt = 'Kanal Test'; $col = '#FFA726' }
+    $t = $script:Controls['txtVersion']
+    $t.Text = "v$($script:Version)  |  $txt"
+    $t.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($col)
+    $t.ToolTip = $(if ($cfg -and $cfg.UseBranch) { "Updates kommen direkt aus dem Repo (Branch $($cfg.Branch)), ohne freigegebene Version" } elseif ($txt -eq 'Kanal Test') { 'Updates: auch Testversionen (Vorab-Releases). Umstellen unter Einstellungen > Update.' } else { 'Updates: nur freigegebene Versionen. Umstellen unter Einstellungen > Update.' })
     $script:Window.Title = "HU-MultiTenant v$($script:Version)"
 }
 
@@ -302,6 +310,7 @@ Register-HURemHandlers
 Register-HURintHandlers
 Register-HURemParamHandlers
 Register-HUAnaHandlers
+Register-HUMusterHandlers
 Register-HUUpdHandlers
 Register-HUTeamsHandlers
 

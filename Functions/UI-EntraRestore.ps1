@@ -9,7 +9,10 @@
 #>
 
 # Vorschau-Dialog. Rueckgabe $true = zurueckschreiben.
-function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) {
+# 2.5.1: -Remaining = Anzahl weiterer Ziele in der Warteschlange -> zusaetzlich Knopf 'Ueberspringen';
+# Abbrechen beendet dann das ganze Uebertragen ($script:ErPreviewChoice = 'skip' | 'cancel' | 'write')
+$script:ErPreviewChoice = ''
+function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp, [int]$Remaining = 0) {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Width="880" Height="640" MinWidth="640" MinHeight="420" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False">
@@ -57,6 +60,8 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="btnWrite" Content="&#x21BA; Zurueckschreiben" MinWidth="170" Padding="14,0,14,0" Background="#A65A28" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Liest den Tenant erneut, sichert den aktuellen Stand als Datei, schreibt nur die gezeigten Felder und prueft danach nach"/>
+            <Button x:Name="btnSkip" Content="Ueberspringen" Width="130" Background="#555555" Style="{StaticResource DarkButton}" Margin="0,0,8,0" Visibility="Collapsed"
+                    ToolTip="Diesen Tenant auslassen und mit dem naechsten Ziel weitermachen"/>
             <Button x:Name="btnCancel" Content="Abbrechen" Width="110" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
         </StackPanel>
     </Grid>
@@ -80,7 +85,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     elseif ($isTr) { $c.btnWrite.ToolTip = 'Legt im Ziel NEU an (ohne Zuweisungen), liest danach nach und legt eine Rueckgaengig-Datei an.' }
     elseif ($Plan.Method -eq 'POST') { $c.btnWrite.ToolTip = 'Legt eine NEUE Richtlinie im Modus Nur Bericht an; die bestehende bleibt unveraendert.' }
     if ($isTr) { $c.gridChanges.Columns[3].Header = 'Danach (aus der Quelle)'; $c.btnWrite.Content = $(if ($isAl) { "$([char]0x2192) Angleichen" } else { "$([char]0x2192) Neu anlegen" }) }
-    $c.lblSub.Text = if ($isEtCa) { "Wird in $TenantName als NEUE Richtlinie '$(if ($Plan.Body) { $Plan.Body.displayName } else { "$($Plan.Name) (von Muster)" })' im Modus $(if ($Plan.Body -and "$($Plan.Body.state)" -eq 'disabled') { 'AUS' } else { 'NUR BERICHT' }) angelegt - bestehende Richtlinien bleiben unveraendert. Ohne Zuweisung (Konten, Gruppen), Orte ueber den Namen zugeordnet, Notfallkonten des Ziels ausgenommen. Schreibrecht: $($Plan.Perm)." } elseif ($isEt) { "Entra-Einstellung aus dem festgehaltenen Muster nach $TenantName. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). $(if ($Plan.Method -eq 'POST') { 'Wird im Ziel NEU angelegt; danach nachgelesen und je Feld geprueft.' } else { 'Vor dem Schreiben wird das Ziel erneut gelesen und als Datei gesichert; danach nachgeprueft.' })" } elseif ($isAl) { "Das bestehende Objekt in $TenantName wird an die Quelle ANGEGLICHEN. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird das Ziel erneut gelesen (geaendert = Abbruch) und als Rueckgaengig-Datei gesichert; Zuweisungen bleiben unveraendert." } elseif ($isTr) { "Wird in $TenantName NEU angelegt, ohne Zuweisungen. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird erneut geprueft, ob es den Namen dort inzwischen gibt; danach wird nachgelesen und eine Rueckgaengig-Datei angelegt." } elseif ($Plan.Method -eq 'POST') { "Aus dem Stand $Stamp in denselben Tenant als NEUE Richtlinie, Schreibrecht: $($Plan.Perm). Die bestehende Richtlinie wird nicht veraendert." } else { "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert." }
+    $c.lblSub.Text = if ($isEtCa) { "Wird in $TenantName als NEUE Richtlinie '$(if ($Plan.Body) { $Plan.Body.displayName } else { "$($Plan.Name) (von Muster)" })' im Modus $(if ($Plan.Body -and "$($Plan.Body.state)" -eq 'disabled') { 'AUS' } else { 'NUR BERICHT' }) angelegt - bestehende Richtlinien bleiben unveraendert. Ohne Konten; Gruppen je Platz unten waehlbar, Orte ueber den Namen zugeordnet, Notfallkonten des Ziels ausgenommen. Schreibrecht: $($Plan.Perm)." } elseif ($isEt) { "Entra-Einstellung aus dem festgehaltenen Muster nach $TenantName. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). $(if ($Plan.Method -eq 'POST') { 'Wird im Ziel NEU angelegt; danach nachgelesen und je Feld geprueft.' } else { 'Vor dem Schreiben wird das Ziel erneut gelesen und als Datei gesichert; danach nachgeprueft.' })" } elseif ($isAl) { "Das bestehende Objekt in $TenantName wird an die Quelle ANGEGLICHEN. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird das Ziel erneut gelesen (geaendert = Abbruch) und als Rueckgaengig-Datei gesichert; Zuweisungen bleiben unveraendert." } elseif ($isTr) { "Wird in $TenantName NEU angelegt, ohne Zuweisungen. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird erneut geprueft, ob es den Namen dort inzwischen gibt; danach wird nachgelesen und eine Rueckgaengig-Datei angelegt." } elseif ($Plan.Method -eq 'POST') { "Aus dem Stand $Stamp in denselben Tenant als NEUE Richtlinie, Schreibrecht: $($Plan.Perm). Die bestehende Richtlinie wird nicht veraendert." } else { "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert." }
     # B1: gekuerzte Werte muessen vor dem Schreiben einmal voll angesehen werden (Zeile markieren, voller Wert klappt auf)
     $rows = @($Plan.Changes | ForEach-Object { [pscustomobject]@{ Feld = $_.Feld; Anzahl = $_.Anzahl; Jetzt = $_.Jetzt; Danach = $_.Danach; JetztVoll = $_.JetztVoll; DanachVoll = $_.DanachVoll; Gekuerzt = [bool]$_.Gekuerzt; Status = $(if ($_.Gekuerzt) { 'ansehen' } else { '' }) } })
     $c.gridChanges.ItemsSource = $rows
@@ -105,32 +110,87 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
         $cb.ToolTip = 'Vor dem Zurueckschreiben bewusst bestaetigen'
         $checks.Add($cb); [void]$c.pnlInfo.Children.Add($cb)
     }
+    # 059 B2: Hinweis, wenn eine gewaehlte Gruppe nichts aendert (Haken 'Alle') oder zugleich zugewiesen und ausgenommen ist
+    $allOps = @($(if ($Plan.PSObject.Properties['Options']) { $Plan.Options }) | Where-Object { $_ })
+    $grpHint = New-Object System.Windows.Controls.TextBlock
+    $grpHint.TextWrapping = 'Wrap'; $grpHint.Margin = '0,2,0,2'; $grpHint.FontSize = 12; $grpHint.Foreground = Get-HUBrush '#FFB74D'; $grpHint.Visibility = 'Collapsed'
+    $grpUpd = {
+        $gi = @($allOps | Where-Object { "$($_.Kind)" -eq 'group' -and "$($_.Feld)" -eq 'includeGroups' -and "$($_.Value)" })
+        $ge = @($allOps | Where-Object { "$($_.Kind)" -eq 'group' -and "$($_.Feld)" -eq 'excludeGroups' -and "$($_.Value)" })
+        $msg = New-Object System.Collections.Generic.List[string]
+        if ($gi.Count -and @($allOps | Where-Object { "$($_.Key)" -eq 'allUsers' -and [bool]$_.Value }).Count) { $msg.Add("Benutzer 'Alle' ist angehakt - die gewaehlte Gruppe aendert daran nichts.") }
+        $both = @($gi | Where-Object { @($ge | ForEach-Object { "$($_.Value)" }) -contains "$($_.Value)" })
+        if ($both.Count) { $msg.Add("Dieselbe Gruppe ist zugleich zugewiesen und ausgenommen ('$(@($both | ForEach-Object Slot) -join "', '")') - die Ausnahme gewinnt, die Richtlinie gilt fuer diese Gruppe nicht.") }
+        $grpHint.Text = "Achtung: $($msg -join ' ')"
+        $grpHint.Visibility = $(if ($msg.Count) { 'Visible' } else { 'Collapsed' })
+    }
     # 2.4.5 waehlbare Uebernahmen (z. B. Rollen, 'Alle Benutzer'): Haken = uebernehmen
     foreach ($op in @($(if ($Plan.PSObject.Properties['Options']) { $Plan.Options }) | Where-Object { $_ })) {
+        if ($op.PSObject.Properties['Kind'] -and "$($op.Kind)" -eq 'group') {
+            # 2.5.1 Gruppen-Platz: Gruppe des Ziels waehlen (Tippen springt zum Namen), leer = nicht zuweisen
+            $sp = New-Object System.Windows.Controls.StackPanel
+            $sp.Orientation = 'Horizontal'; $sp.Margin = '0,3,0,3'
+            $tb = New-Object System.Windows.Controls.TextBlock
+            $tb.Text = "$($op.Text)"; $tb.Foreground = Get-HUBrush '#90CAF9'; $tb.FontSize = 12; $tb.VerticalAlignment = 'Center'; $tb.Margin = '0,0,8,0'; $tb.MinWidth = 260
+            $cb2 = New-Object System.Windows.Controls.ComboBox
+            try { $cb2.Style = $w.FindResource('DarkComboBox') } catch { }
+            $cb2.MinWidth = 320; $cb2.FontSize = 12; $cb2.IsTextSearchEnabled = $true
+            # ComboBoxItem mit Text als Inhalt und Kennung im Tag (PSCustomObject + DisplayMemberPath zeigt '@{Id=...}' - Test 25.10.)
+            $mkItem = { param([string]$Id, [string]$Name) $ci = New-Object System.Windows.Controls.ComboBoxItem; $ci.Content = $Name; $ci.Tag = $Id; try { $ci.Style = $w.FindResource('DarkComboBoxItem') } catch { }; $ci }
+            [void]$cb2.Items.Add((& $mkItem '' '(nicht zuweisen)'))
+            $sel = 0; $ix = 0
+            foreach ($ch in @($op.Choices)) {
+                if (-not $ch) { continue }
+                $ix++
+                [void]$cb2.Items.Add((& $mkItem "$($ch.Id)" "$($ch.Name)"))
+                if ("$($op.Value)" -and "$($ch.Id)" -eq "$($op.Value)") { $sel = $ix }
+            }
+            $cb2.SelectedIndex = $sel
+            $cb2.Tag = $op
+            $cb2.ToolTip = "Platz '$($op.Slot)': Gruppe im Ziel, die die Richtlinie $(if ("$($op.Feld)" -eq 'includeGroups') { 'erhaelt' } else { 'ausnimmt' }). Gleichnamige Gruppe ist vorgewaehlt."
+            $cb2.Add_SelectionChanged({ $it = $this.SelectedItem; $this.Tag.Value = $(if ($it) { "$($it.Tag)" } else { '' }); & $grpUpd })
+            [void]$sp.Children.Add($tb); [void]$sp.Children.Add($cb2)
+            [void]$c.pnlInfo.Children.Add($sp)
+            continue
+        }
         $ob = New-Object System.Windows.Controls.CheckBox
         $ob.Content = "$($op.Text)"; $ob.IsChecked = [bool]$op.Value; $ob.Foreground = Get-HUBrush '#90CAF9'; $ob.Margin = '0,3,0,3'; $ob.FontSize = 12
         try { $ob.Style = $w.FindResource('DarkCheckBox') } catch { }
         $ob.Tag = $op
-        $ob.Add_Checked({ $this.Tag.Value = $true }); $ob.Add_Unchecked({ $this.Tag.Value = $false })
+        $ob.Add_Checked({ $this.Tag.Value = $true; & $grpUpd }); $ob.Add_Unchecked({ $this.Tag.Value = $false; & $grpUpd })
         [void]$c.pnlInfo.Children.Add($ob)
     }
+    if (@($allOps | Where-Object { "$($_.Kind)" -eq 'group' }).Count) { [void]$c.pnlInfo.Children.Add($grpHint); & $grpUpd }
     if ($Plan.Dropped.Count) { & $add "Wird nicht geschrieben (nicht beschreibbar oder bewusst ausgelassen): $($Plan.Dropped -join ', ')" '#AAAAAA' }
     foreach ($n in $Plan.Notes) { & $add "Hinweis: $n" '#90CAF9' }
-    $state = @{ Ok = $false }
+    $state = @{ Ok = $false; Skip = $false }
+    $script:ErPreviewChoice = 'cancel'
+    if ($Remaining -gt 0) {
+        $c.btnSkip.Visibility = 'Visible'
+        $c.btnCancel.ToolTip = "Uebertragen ganz beenden - auch die $Remaining weiteren Ziele werden nicht mehr vorbereitet"
+        $c.btnSkip.Add_Click({ $state.Skip = $true; $w.Close() })
+    }
     # 045 Ue-10: bei mehreren Zielen den Ziel-Tenant-Namen eintippen
     $typeName = if ($Plan.PSObject.Properties['TypeToConfirm']) { "$($Plan.TypeToConfirm)" } else { '' }
     if ($typeName) { $c.pnlType.Visibility = 'Visible'; $c.lblType.Text = "Zum Bestaetigen '$typeName' eintippen:" }
-    $upd = { $c.btnWrite.IsEnabled = (-not $Plan.Blocks.Count) -and $Plan.Changes.Count -and -not @($checks | Where-Object { -not $_.IsChecked }).Count -and -not @($rows | Where-Object { $_.Gekuerzt -and $_.Status -ne 'gesehen' }).Count -and (-not $typeName -or "$($c.txtType.Text)".Trim() -eq $typeName) }
+    # 2.5.1: angesehen je Zeilennummer merken (nicht nur am Zeilenobjekt - Test 25.10.: Knopf blieb trotz angesehener Zeile grau)
+    $seen = @{}
+    $unseen = { @(for ($i = 0; $i -lt $rows.Count; $i++) { if ($rows[$i].Gekuerzt -and -not $seen.ContainsKey($i)) { $i } }).Count }
+    $upd = { $c.btnWrite.IsEnabled = [bool]((-not $Plan.Blocks.Count) -and $Plan.Changes.Count -and -not @($checks | Where-Object { -not $_.IsChecked }).Count -and -not (& $unseen) -and (-not $typeName -or "$($c.txtType.Text)".Trim() -eq $typeName)) }
     foreach ($cb in $checks) { $cb.Add_Checked($upd); $cb.Add_Unchecked($upd) }
     $c.txtType.Add_TextChanged($upd)
     $c.gridChanges.Add_SelectionChanged({
-            $r = $c.gridChanges.SelectedItem
-            if (-not $r) { return }
+            $ri = $c.gridChanges.SelectedIndex
+            if ($ri -lt 0 -or $ri -ge $rows.Count) { return }
+            $r = $rows[$ri]
             $c.txtFullNow.Text = "Jetzt im Tenant:`r`n$($r.JetztVoll)"
             $c.txtFullThen.Text = "Danach (wird geschrieben):`r`n$($r.DanachVoll)"
             $c.expFull.IsExpanded = $true
-            if ($r.Gekuerzt -and $r.Status -ne 'gesehen') { $r.Status = 'gesehen'; $c.gridChanges.Items.Refresh() }
+            $wasNew = $r.Gekuerzt -and -not $seen.ContainsKey($ri)
+            if ($r.Gekuerzt) { $seen[$ri] = $true; $r.Status = 'gesehen' }
             & $upd
+            # Anzeige 'gesehen' erst nach dem Auswahl-Ereignis auffrischen (Refresh mitten im Ereignis kann scheitern)
+            if ($wasNew) { $gc = $c.gridChanges; [void]$w.Dispatcher.BeginInvoke([action]({ try { $gc.Items.Refresh() } catch { } }.GetNewClosure())) }
         })
     & $upd
     # nur eine Zeile: gleich markieren, damit der volle Wert sofort zu sehen ist
@@ -145,11 +205,12 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
             try {
                 $sum = 0; foreach ($col in @($c.gridChanges.Columns)) { $sum += $col.ActualWidth }
                 $wa = [System.Windows.SystemParameters]::WorkArea
-                $nw = [Math]::Max(880, [Math]::Min([Math]::Floor($wa.Width * 0.95), $sum + 70))
+                $nw = [Math]::Max(880, [Math]::Min([Math]::Floor($wa.Width * 0.95), ($sum + 70) * (Get-HUUiScaleValue)))
                 if ($nw -gt $w.ActualWidth) { $w.Width = $nw; $w.Left = $wa.Left + [Math]::Max(0, ($wa.Width - $nw) / 2) }
             } catch { }
         })
     [void]$w.ShowDialog()
+    $script:ErPreviewChoice = $(if ($state.Ok) { 'write' } elseif ($state.Skip) { 'skip' } else { 'cancel' })
     return [bool]$state.Ok
 }
 

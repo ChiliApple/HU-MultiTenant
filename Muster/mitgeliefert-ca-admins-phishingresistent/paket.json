@@ -1,0 +1,22 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-ca-admins-phishingresistent",
+  "Title": "CA Phishing-resistente MFA für Admins (Microsoft-Empfehlung)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Conditional Access",
+  "Tags": [
+    "Microsoft-Empfehlung",
+    "P1",
+    "Admins"
+  ],
+  "Note": "Microsoft-Vorlage \"Require phishing-resistant MFA for administrators\": 14 Admin-Rollen müssen sich mit FIDO2-Schlüssel, Windows Hello for Business oder Zertifikat anmelden (eingebaute Authentifizierungsstärke). Erst einschalten, wenn alle Admins eine solche Methode registriert haben - sonst sind sie ausgesperrt. Stärkere Alternative zu 102.",
+  "Learn": [
+    "https://learn.microsoft.com/entra/identity/conditional-access/policy-admin-phish-resistant-mfa"
+  ],
+  "Created": "2026-10-25T00:00:00",
+  "Changed": "2026-10-25T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false,
+  "Order": 50
+}

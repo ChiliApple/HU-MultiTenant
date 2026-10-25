@@ -1,0 +1,72 @@
+{
+  "Tenant": "__MUSTER__",
+  "Errors": 0,
+  "Complete": true,
+  "FailedTypes": [],
+  "Items": [
+    {
+      "Typ": "Conditional Access",
+      "Name": "100 - Admin-Portale nur für Admin-Rollen",
+      "Id": "mitgeliefert-ca-grundschutz-01",
+      "File": "Conditional_Access/001_100_-_Admin-Portale_nur_fuer_Admin-Rollen.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "102 - MFA für Administratoren",
+      "Id": "mitgeliefert-ca-grundschutz-02",
+      "File": "Conditional_Access/002_102_-_MFA_fuer_Administratoren.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "103 - MFA für Admin-Portale",
+      "Id": "mitgeliefert-ca-grundschutz-03",
+      "File": "Conditional_Access/003_103_-_MFA_fuer_Admin-Portale.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "104 - MFA für Azure-Verwaltung",
+      "Id": "mitgeliefert-ca-grundschutz-04",
+      "File": "Conditional_Access/004_104_-_MFA_fuer_Azure-Verwaltung.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "200 - MFA für alle Benutzer",
+      "Id": "mitgeliefert-ca-grundschutz-05",
+      "File": "Conditional_Access/005_200_-_MFA_fuer_alle_Benutzer.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "204 - MFA für Gäste und Externe + Anmeldung alle 10 h",
+      "Id": "mitgeliefert-ca-grundschutz-06",
+      "File": "Conditional_Access/006_204_-_MFA_fuer_Gaeste_und_Externe_Anmeldung_alle_10_h.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "210 - Registrierung der Sicherheitsinfos schützen",
+      "Id": "mitgeliefert-ca-grundschutz-07",
+      "File": "Conditional_Access/007_210_-_Registrierung_der_Sicherheitsinfos_schuetzen.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "901 - Legacy-Authentifizierung blockieren",
+      "Id": "mitgeliefert-ca-grundschutz-08",
+      "File": "Conditional_Access/008_901_-_Legacy-Authentifizierung_blockieren.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    }
+  ]
+}

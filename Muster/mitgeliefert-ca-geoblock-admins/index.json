@@ -1,0 +1,24 @@
+{
+  "Tenant": "__MUSTER__",
+  "Errors": 0,
+  "Complete": true,
+  "FailedTypes": [],
+  "Items": [
+    {
+      "Typ": "Benannter Ort",
+      "Name": "Erlaubte Länder (Geoblock)",
+      "Id": "a1b2c3d4-0903-4000-8000-000000000903",
+      "File": "Benannter_Ort/001_Erlaubte_Laender_Geoblock.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "903 - Geoblock Admins nur aus erlaubten Ländern",
+      "Id": "mitgeliefert-ca-geoblock-admins-02",
+      "File": "Conditional_Access/002_903_-_Geoblock_Admins_nur_aus_erlaubten_Laendern.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    }
+  ]
+}

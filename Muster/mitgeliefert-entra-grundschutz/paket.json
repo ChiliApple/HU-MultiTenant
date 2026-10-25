@@ -1,0 +1,23 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-entra-grundschutz",
+  "Title": "Entra-Grundschutz Benutzereinstellungen (BMB-Baseline)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Entra-Grundschutz",
+  "Tags": [
+    "BMB-Baseline",
+    "P1",
+    "Entra"
+  ],
+  "Note": "Security Baseline V2.1 Kap. 1.5, 1.7 und 1.14: Benutzer dürfen keine Apps registrieren, keine Sicherheitsgruppen und keine Tenants anlegen; Gäste mit eingeschränktem Zugriff; MSOL-PowerShell blockiert; Zustimmung zu Apps nur bei verifizierten Herstellern und Rechten mit geringer Auswirkung. Übertragen ändert nur diese Werte; vorhandene Zustimmungsrechte für eigene Ressourcen (z. B. Teams) bleiben. „Entra Admin Center beschränken“ und „LinkedIn“ gibt es nicht über Graph - im Portal setzen (Benutzer > Benutzereinstellungen).",
+  "Learn": [
+    "https://learn.microsoft.com/entra/identity/enterprise-apps/configure-user-consent",
+    "https://learn.microsoft.com/entra/identity/users/users-restrict-guest-permissions"
+  ],
+  "Created": "2026-10-25T00:00:00",
+  "Changed": "2026-10-25T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false,
+  "Order": 50
+}

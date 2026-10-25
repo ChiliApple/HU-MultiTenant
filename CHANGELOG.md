@@ -1,5 +1,58 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.5.1 (Testversion, Weg zu 2.6.0)
+
+### ⭐ Muster-Bibliothek (neuer Reiter „Muster“)
+- **Mehrere Muster:** Statt eines einzigen Mustertenants gibt es jetzt eine **Bibliothek von Paketen** – Teilpakete wie „Conditional Access komplett“ oder „Compliance Windows“ und ganze Stände.
+- **Zusammenstellen:** *+ Neues Paket …* – Einträge aus den Backup-Ständen wählen, auch **gemischt aus mehreren Tenants**; jeder Eintrag merkt sich seine Herkunft. Gleiche Art und Name kommt nur einmal ins Paket.
+- **Ordnen:** feste **Kategorien** (Conditional Access, Compliance, Entra-Grundschutz, Endpunktsicherheit/Defender, Updates, Gerätekonfiguration, Gesamtstand) und freie **Schlagwörter**; Suche nach Text oder `#Schlagwort`.
+- Von Microsoft verwaltete CA-Richtlinien sind in Paket und Editor grau als „nicht übertragbar“ gekennzeichnet.
+- **Bearbeiten, Duplizieren, Löschen** (Rechtsklick oder Knöpfe); Löschen verschiebt in den **Papierkorb** der Bibliothek – Knopf *Papierkorb (n)* unter der Liste: zurückholen oder endgültig löschen; nach 90 Tagen automatisch endgültig gelöscht (abschaltbar).
+- **Namenskatalog je Paket:** Gruppen, Orte, Filter, Bereichsmarkierungen und Authentifizierungsstärken werden beim Speichern mit Namen festgehalten – nie Benutzer.
+- **Übernahme:** Das bisherige Muster wird beim ersten Start einmalig als Paket „Gesamtstand … (bisheriges Muster)“ übernommen und ist angehakt, wenn noch nichts gewählt war.
+
+### 🔒 Mitgelieferte Muster (Microsoft-Empfehlung, BMB Security Baseline V2.1, Praxis-Set Schule)
+- **Neun fertige Pakete** kommen mit dem Programm und mit jedem Update – oben in der Bibliothek unter „Mitgeliefert“, einzeln anhakbar:
+  - **CA-Grundschutz:** 100 Admin-Portale nur für Admin-Rollen, 102/103 MFA für Administratoren und Admin-Portale, 104 MFA für Azure-Verwaltung, 200 MFA für alle Benutzer, 204 MFA für Gäste mit Anmeldung alle 10 Stunden, 210 Registrierung der Sicherheitsinfos schützen, 901 Legacy-Authentifizierung blockieren.
+  - **CA Phishing-resistente MFA für Admins (101):** FIDO2-Schlüssel, Windows Hello oder Zertifikat für 14 Admin-Rollen – erst einschalten, wenn alle Admins so eine Methode haben.
+  - **CA Geoblock für Admins (903, Baseline 1.13):** benannter Ort „Erlaubte Länder“ – beim Übertragen die Länder **per Haken wählen** (Österreich immer, Deutschland/Schweiz/Liechtenstein vorgewählt, weitere Nachbarländer wählbar).
+  - **CA Gerätekonformität (904/905):** „konformes Gerät oder MFA“ bzw. „konformes Gerät erforderlich“ (Gäste ausgenommen) – eine der beiden Varianten wählen.
+  - **CA Schule (Praxis-Set):** 15 Richtlinien aus dem Schulbetrieb (100–906: Admins, MFA für Administration, Lehrer, Schüler, Cloud-User und Gäste, MFA außerhalb Österreichs, Device-Code-Flow und Legacy blockieren, Geoblock als Blacklist oder Whitelist, konformes Windows-Gerät, App-Einschränkungen für Office) mit drei Länder-Orten.
+  - **Entra-Grundschutz Benutzereinstellungen (Baseline 1.5, 1.7, 1.14):** keine App-Registrierung, keine Sicherheitsgruppen und Tenants durch Benutzer, Gäste eingeschränkt, MSOL-PowerShell blockiert, Zustimmung zu Apps nur mit geringer Auswirkung.
+  - **Compliance Windows, Android (Arbeitsprofil) und iOS/iPadOS** nach den Zero-Trust-Beispielen von Microsoft.
+- **Sprechende Nummern:** 1xx Admins, 2xx MFA, 9xx Blockieren/Geräte – Namen dürfen im Ziel frei angepasst werden.
+- **„100 – Admin-Portale“ immer aktuell:** Ausgenommen werden beim Übertragen alle eingebauten Admin-Rollen, die das Ziel in dem Moment hat (ohne Benutzer-, Gast- und Geräte-Rollen) – die Liste ändert Microsoft laufend. Sind die Rollen nicht lesbar, wird gesperrt (sonst wären alle Admins ausgesperrt).
+- **Allgemein gehalten:** keine Tenant-Kennungen, Konten oder IP-Bereiche – nur Rollen, Microsoft-Apps, Länder und Schlüsselwörter. Alles läuft mit Entra ID P1.
+- **Sicher beim Übertragen:** Conditional Access kommt als neue Richtlinie im Modus „Nur Bericht“ an, die Notfallkonten des Ziels sind ausgenommen; Compliance ohne Zuweisung.
+- **Schreibgeschützt** (🔒): zum Anpassen *Duplizieren* – die Kopie landet unter ihrer echten Kategorie und ist frei bearbeitbar.
+
+### 👥 Conditional Access übertragen
+- **Gruppen gleich zuweisen:** In der Vorschau wählst du je Gruppen-Platz eine Gruppe des Ziels (z. B. Lehrer, Schüler, Ausnahmen) – gleichnamige Gruppen sind vorgewählt, leer = nicht zuweisen. Ein Hinweis erscheint, wenn eine Gruppe nichts ändert (Benutzer „Alle“) oder zugleich zugewiesen und ausgenommen ist. Gilt für die Plätze der mitgelieferten Pakete und für Gruppen in eigenen Mustern.
+- **Benannte Orte aus dem Paket:** Orte mitgelieferter Pakete werden über ihren Namen im Ziel zugeordnet – zuerst den Ort übertragen, dann die Richtlinie.
+- „alle Gäste und externen Benutzer“ bleibt als Ausnahme erhalten und ist als Benutzer per Haken wählbar; eine reine Rollen-Ausnahme (z. B. das Konto der Entra-Synchronisierung bei „Alle Benutzer“) geht nicht mehr verloren; eingebaute Authentifizierungsstärken werden im Ziel geprüft und mit Namen gezeigt.
+- **Autorisierungsrichtlinie übertragen:** Zustimmungsrechte des Ziels für eigene Ressourcen (z. B. Teams) bleiben erhalten.
+
+### 🔍 Tenant-Vergleich mit Paketen
+- **Haken „Muster“** vergleicht die im Reiter Muster **angehakten Pakete** (eines oder mehrere).
+- **Teilpakete** prüfen nur ihre eigenen Einträge – alles andere zählt nicht als Abweichung (Zelle „nicht im Paket“). Ein **Gesamtstand** prüft wie bisher alles.
+- **Übertragen aus dem Muster** schlägt Namen (Gruppen, Orte, Bereichsmarkierungen) im Tenant nach, aus dem der jeweilige Eintrag stammt; Bereichsmarkierungen kommen aus dem Namenskatalog.
+- **Zuordnung prüfen** und **Doppelklick-Details** arbeiten mit den angehakten Paketen.
+- *Backup & Verlauf* › **Als Muster festhalten …** legt den Stand als Paket „Gesamtstand“ in der Bibliothek ab (Name frei wählbar).
+- **Nur Muster-Einträge:** neuer Haken neben „Nur Unterschiede“ – zeigt nur die Zeilen der angehakten Pakete; bei Teilpaketen automatisch an.
+- **Doppelklick-Details:** Die Muster-Spalte steht immer ganz links, die Tenants folgen in der Reihenfolge der Vergleichstabelle; Werte, die erst beim Übertragen aus dem Ziel kommen (Rollen, Gruppen-Plätze), stehen als Text statt „(leer)“.
+- **Übertragen in mehrere Tenants:** *Abbrechen* beendet jetzt das ganze Übertragen; mit *Überspringen* geht es mit dem nächsten Ziel weiter.
+- Steht derselbe Eintrag in mehreren angehakten Paketen, zählt die Fassung aus dem ersten Paket (Hinweis im Protokoll) – er wird nicht als „doppelt“ gemeldet.
+
+### 🖥️ Oberfläche
+- Reiter Muster: wird beim Start wiederhergestellt (Startreiter „Zuletzt“), die Extension-Liste links ist dort ausgeblendet; Bibliothek links (Breite ziehbar), Paket rechts, Protokoll unten (Höhe ziehbar), pulsierender Punkt bei laufenden Aufträgen, Tooltips an allen Steuerelementen; der Paket-Editor ist größenveränderbar mit Anfasser und öffnet so breit wie seine Spalten.
+
+- **Kopfzeile zeigt den Update-Kanal** statt „Standardbenutzer“: *Kanal Stabil* (grün), *Kanal Test* (orange), bei Entwicklungsstand rot – ändert sich sofort mit der Einstellung.
+- **Ergebnis-Tabellen:** Spalten höchstens 600 breit (von Hand breiter ziehbar), wenige schmale Spalten öffnen ein schmales Fenster; Tooltips der Bibliothek kürzen lange Notizen.
+- **Oberflächengröße für alle Fenster:** Die Größe aus *Strg + Mausrad* (bzw. Einstellungen) gilt jetzt auch für alle weiteren Fenster (Tabellen, Vorschau, Dialoge) – vorher nur für das Hauptfenster. Fenster wachsen mit und bleiben ganz auf dem Bildschirm.
+
+### ✅ Qualität
+- 785 automatische Tests.
+
 ## v2.5.0 (Stable, 24.10.2026)
 
 Stable-Release der Testversionen 2.4.1 bis 2.4.5 – „Angleichen und Übertragen“. Alle Punkte im Detail stehen in den Abschnitten darunter.

@@ -1,0 +1,16 @@
+{
+  "Tenant": "__MUSTER__",
+  "Errors": 0,
+  "Complete": true,
+  "FailedTypes": [],
+  "Items": [
+    {
+      "Typ": "Entra-Einstellung",
+      "Name": "Autorisierungsrichtlinie",
+      "Id": "authorizationPolicy",
+      "File": "Entra-Einstellung/001_Autorisierungsrichtlinie.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    }
+  ]
+}

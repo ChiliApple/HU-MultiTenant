@@ -125,7 +125,7 @@ function Save-HUWindowState {
         }
         Set-HUStateValue 'EditorFontSize' $c['txtQSEditor'].FontSize
         $sel = $c['tabMain'].SelectedItem
-        $last = if ($sel -eq $c['tabExtensions']) { 'Extensions' } elseif ($sel -eq $c['tabApps']) { 'Apps' } elseif ($sel -eq $c['tabMaint']) { 'Wartung' } elseif ($sel -eq $c['tabAnalyse']) { 'Analyse' } elseif ($sel -eq $c['tabTeams']) { 'Teams' } elseif ($sel -and "$($sel.Tag)" -eq 'addon' -and "$($sel.Name)") { "$($sel.Name)" } else { 'QuickScript' }
+        $last = if ($sel -eq $c['tabExtensions']) { 'Extensions' } elseif ($sel -eq $c['tabApps']) { 'Apps' } elseif ($sel -eq $c['tabMaint']) { 'Wartung' } elseif ($sel -eq $c['tabAnalyse']) { 'Analyse' } elseif ($sel -eq $c['tabTeams']) { 'Teams' } elseif ($sel -eq $c['tabMuster']) { 'Muster' } elseif ($sel -and "$($sel.Tag)" -eq 'addon' -and "$($sel.Name)") { "$($sel.Name)" } else { 'QuickScript' }
         Set-HUStateValue 'LastTab' $last
     } catch { Write-Verbose "[UIState] Erfassen: $_" }
     Save-HUUIState
@@ -230,7 +230,7 @@ function Select-HUStartTab {
     $mode = 'QuickScript'
     try { if ($script:Settings.ui.PSObject.Properties['startTab'] -and "$($script:Settings.ui.startTab)") { $mode = "$($script:Settings.ui.startTab)" } } catch { }
     if ($mode -eq 'Last') { $mode = Get-HUStateValue 'LastTab' 'QuickScript' }
-    $tab = switch ($mode) { 'Extensions' { 'tabExtensions' } 'Apps' { 'tabApps' } 'Wartung' { 'tabMaint' } 'Analyse' { 'tabAnalyse' } 'Teams' { 'tabTeams' } default { 'tabQuickScript' } }
+    $tab = switch ($mode) { 'Extensions' { 'tabExtensions' } 'Apps' { 'tabApps' } 'Wartung' { 'tabMaint' } 'Analyse' { 'tabAnalyse' } 'Teams' { 'tabTeams' } 'Muster' { 'tabMuster' } default { 'tabQuickScript' } }
     # Reiter eines Zusatzmoduls (gespeichert mit seinem Namen) - nur wenn das Modul geladen ist
     if ($mode -like 'tab*' -and $script:Controls[$mode] -and "$($script:Controls[$mode].Tag)" -eq 'addon') { $tab = $mode }
     $script:Controls['tabMain'].SelectedItem = $script:Controls[$tab]
@@ -245,7 +245,7 @@ function Update-HULeftPanel {
     $sel = $c['tabMain'].SelectedItem
     # Tenant-Leiste (Verbinden/Trennen) gilt nur fuer Extensions - Quick Script, Apps und Wartung waehlen Tenants selbst
     $c['pnlTenantBar'].Visibility = $(if ($sel -eq $c['tabExtensions']) { 'Visible' } else { 'Collapsed' })
-    $hide = ($sel -eq $c['tabApps'] -or $sel -eq $c['tabMaint'] -or $sel -eq $c['tabAnalyse'] -or $sel -eq $c['tabTeams'] -or ($sel -and "$($sel.Tag)" -eq 'addon'))
+    $hide = ($sel -eq $c['tabApps'] -or $sel -eq $c['tabMaint'] -or $sel -eq $c['tabAnalyse'] -or $sel -eq $c['tabTeams'] -or $sel -eq $c['tabMuster'] -or ($sel -and "$($sel.Tag)" -eq 'addon'))
     if ($hide -eq $script:LeftHidden) { Update-HUMainOverlay; return }
     if ($hide) {
         if ($c['colLeft'].ActualWidth -ge 200) { $script:LeftWidthSaved = $c['colLeft'].ActualWidth }

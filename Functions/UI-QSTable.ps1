@@ -132,16 +132,23 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
     $wrap.Setters.Add((New-Object System.Windows.Setter([System.Windows.Controls.TextBlock]::TextWrappingProperty, [System.Windows.TextWrapping]::Wrap)))
     $c.grid.Tag = $wrap
     $c.grid.Add_AutoGeneratingColumn({ param($s0, $e) $e.Column.Header = $map[$e.PropertyName]; $e.Column.MaxWidth = 600; if ($e.Column -is [System.Windows.Controls.DataGridTextColumn]) { $e.Column.ElementStyle = $s0.Tag } })
-    $c.grid.Add_Loaded({ param($s0, $e) foreach ($col in @($s0.Columns)) { $aw = $col.ActualWidth; $col.MaxWidth = [double]::PositiveInfinity; if ($aw -gt 0) { $col.Width = New-Object System.Windows.Controls.DataGridLength($aw) } }
-        # Fenster an die Spalten anpassen (nur vergroessern, hoechstens bis zum Bildschirmrand)
+    # Spalten nach Inhalt, aber hoechstens 600 breit (lange Listen wie 134 Rollen sonst bildschirmbreit); danach von Hand breiter ziehbar
+    $c.grid.Add_Loaded({ param($s0, $e) foreach ($col in @($s0.Columns)) { $aw = [Math]::Min(600, $col.ActualWidth); if ($aw -gt 0) { $col.MaxWidth = [double]::PositiveInfinity; $col.Width = New-Object System.Windows.Controls.DataGridLength($aw) } }
+        # Fenster an die Spalten anpassen (hoechstens bis zum Bildschirmrand; wenige schmale Spalten -> schmaler, mind. 700)
         try {
             $win = [System.Windows.Window]::GetWindow($s0)
             $need = 60; foreach ($col in @($s0.Columns)) { $need += $col.ActualWidth }
+            $need = $need * (Get-HUUiScaleValue)   # Oberflaechengroesse: Spalten sind im Fenster skaliert
             $wa = [System.Windows.SystemParameters]::WorkArea
             $target = [Math]::Min($need, $wa.Width - 20)
             if ($win -and $win.ActualWidth -gt 0 -and $target -gt $win.ActualWidth) {
                 $win.Width = $target
                 if (($win.Left + $target) -gt ($wa.Left + $wa.Width)) { $win.Left = [Math]::Max($wa.Left, $wa.Left + $wa.Width - $target - 10) }
+            } elseif ($win -and $win.ActualWidth -gt 0 -and [Math]::Max(700, $target) -lt ($win.ActualWidth - 40)) {
+                # 2.5.1: z. B. Einstellung/Wert eines Muster-Eintrags - nicht bildschirmbreit aufmachen
+                $nw = [Math]::Max(700, $target)
+                $win.Left = $win.Left + ($win.ActualWidth - $nw) / 2
+                $win.Width = $nw
             }
         } catch { }
     })

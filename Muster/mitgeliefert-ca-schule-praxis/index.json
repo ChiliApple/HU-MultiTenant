@@ -1,0 +1,152 @@
+{
+  "Tenant": "__MUSTER__",
+  "Errors": 0,
+  "Complete": true,
+  "FailedTypes": [],
+  "Items": [
+    {
+      "Typ": "Benannter Ort",
+      "Name": "Geblockte Standorte",
+      "Id": "a1b2c3d4-0902-4000-8000-000000000902",
+      "File": "Benannter_Ort/001_Geblockte_Standorte.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Benannter Ort",
+      "Name": "Erlaubte Standorte",
+      "Id": "a1b2c3d4-0903-4000-8000-000000000913",
+      "File": "Benannter_Ort/002_Erlaubte_Standorte.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Benannter Ort",
+      "Name": "Erlaubte Standorte ohne MFA",
+      "Id": "a1b2c3d4-0205-4000-8000-000000000205",
+      "File": "Benannter_Ort/003_Erlaubte_Standorte_ohne_MFA.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "100 - Adminportale nur für Admin Rollen",
+      "Id": "mitgeliefert-ca-schule-praxis-04",
+      "File": "Conditional_Access/004_100_-_Adminportale_nur_fuer_Admin_Rollen.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "101 - Phishing-resistente MFA für Administratoren + Frequency 10h",
+      "Id": "mitgeliefert-ca-schule-praxis-05",
+      "File": "Conditional_Access/005_101_-_Phishing-resistente_MFA_fuer_Administratoren_Frequency.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "102 - Multi-Faktor-Authentifizierung für Administratoren erfordern",
+      "Id": "mitgeliefert-ca-schule-praxis-06",
+      "File": "Conditional_Access/006_102_-_Multi-Faktor-Authentifizierung_fuer_Administratoren_er.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "200 - MFA Administration",
+      "Id": "mitgeliefert-ca-schule-praxis-07",
+      "File": "Conditional_Access/007_200_-_MFA_Administration.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "201 - MFA Lehrer",
+      "Id": "mitgeliefert-ca-schule-praxis-08",
+      "File": "Conditional_Access/008_201_-_MFA_Lehrer.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "202 - MFA Schüler",
+      "Id": "mitgeliefert-ca-schule-praxis-09",
+      "File": "Conditional_Access/009_202_-_MFA_Schueler.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "203 - MFA Cloud-User",
+      "Id": "mitgeliefert-ca-schule-praxis-10",
+      "File": "Conditional_Access/010_203_-_MFA_Cloud-User.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "204 - MFA Guests & Extern + Frequency 10h",
+      "Id": "mitgeliefert-ca-schule-praxis-11",
+      "File": "Conditional_Access/011_204_-_MFA_Guests_Extern_Frequency_10h.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "205 - MFA außerhalb von Österreich",
+      "Id": "mitgeliefert-ca-schule-praxis-12",
+      "File": "Conditional_Access/012_205_-_MFA_ausserhalb_von_Oesterreich.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "900 - Disable Device Codeflow",
+      "Id": "mitgeliefert-ca-schule-praxis-13",
+      "File": "Conditional_Access/013_900_-_Disable_Device_Codeflow.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "901 - Legacy-Authentifizierung blockieren",
+      "Id": "mitgeliefert-ca-schule-praxis-14",
+      "File": "Conditional_Access/014_901_-_Legacy-Authentifizierung_blockieren.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "902 - Geoblock mit Blacklist",
+      "Id": "mitgeliefert-ca-schule-praxis-15",
+      "File": "Conditional_Access/015_902_-_Geoblock_mit_Blacklist.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "903 - Geoblock mit Whitelist",
+      "Id": "mitgeliefert-ca-schule-praxis-16",
+      "File": "Conditional_Access/016_903_-_Geoblock_mit_Whitelist.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "905 - Require MDM-enrolled and compliant device to access cloud apps for all users (Preview)",
+      "Id": "mitgeliefert-ca-schule-praxis-17",
+      "File": "Conditional_Access/017_905_-_Require_MDM-enrolled_and_compliant_device_to_access_cl.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "906 - Verwenden von durch die Anwendung erzwungenen Einschränkungen für O365-Apps",
+      "Id": "mitgeliefert-ca-schule-praxis-18",
+      "File": "Conditional_Access/018_906_-_Verwenden_von_durch_die_Anwendung_erzwungenen_Einschra.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    }
+  ]
+}

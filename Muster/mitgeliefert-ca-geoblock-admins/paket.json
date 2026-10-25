@@ -1,0 +1,23 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-ca-geoblock-admins",
+  "Title": "CA Geoblock für Admins (BMB-Baseline)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Conditional Access",
+  "Tags": [
+    "BMB-Baseline",
+    "P1",
+    "Admins",
+    "Geoblock"
+  ],
+  "Note": "Security Baseline V2.1 Kap. 1.13 („DACH Access Only“, laut Baseline nur für privilegierte Konten - Schüler reisen in den Ferien). Zuerst den benannten Ort übertragen: beim Übertragen die erlaubten Länder ankreuzen (Österreich immer, Deutschland/Schweiz/Liechtenstein vorausgewählt, weitere Nachbarländer wählbar). Danach 903 übertragen: blockiert Admins außerhalb dieser Länder.",
+  "Learn": [
+    "https://learn.microsoft.com/entra/identity/conditional-access/concept-assignment-network"
+  ],
+  "Created": "2026-10-25T00:00:00",
+  "Changed": "2026-10-25T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false,
+  "Order": 50
+}

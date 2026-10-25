@@ -1,0 +1,10 @@
+{
+  "@odata.type": "#microsoft.graph.countryNamedLocation",
+  "id": "a1b2c3d4-0205-4000-8000-000000000205",
+  "displayName": "Erlaubte Standorte ohne MFA",
+  "countriesAndRegions": [
+    "AT"
+  ],
+  "includeUnknownCountriesAndRegions": false,
+  "countryLookupMethod": "clientIpAddress"
+}

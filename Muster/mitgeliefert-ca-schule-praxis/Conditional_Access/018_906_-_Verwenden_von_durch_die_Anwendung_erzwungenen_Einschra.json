@@ -1,0 +1,36 @@
+{
+  "displayName": "906 - Verwenden von durch die Anwendung erzwungenen Einschränkungen für O365-Apps",
+  "state": "enabledForReportingButNotEnforced",
+  "conditions": {
+    "users": {
+      "includeUsers": [
+        "All"
+      ],
+      "excludeUsers": [],
+      "includeGroups": [],
+      "excludeGroups": [],
+      "includeRoles": [],
+      "excludeRoles": []
+    },
+    "applications": {
+      "includeApplications": [
+        "Office365"
+      ],
+      "excludeApplications": [],
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
+    },
+    "clientAppTypes": [
+      "all"
+    ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": []
+  },
+  "grantControls": null,
+  "sessionControls": {
+    "applicationEnforcedRestrictions": {
+      "isEnabled": true
+    }
+  }
+}

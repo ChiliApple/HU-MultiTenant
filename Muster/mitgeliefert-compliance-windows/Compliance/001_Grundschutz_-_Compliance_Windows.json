@@ -1,0 +1,32 @@
+{
+  "@odata.type": "#microsoft.graph.windows10CompliancePolicy",
+  "displayName": "Grundschutz - Compliance Windows",
+  "description": "Mitgeliefertes Muster nach Microsoft-Empfehlung (Zero Trust).",
+  "bitLockerEnabled": true,
+  "secureBootEnabled": true,
+  "codeIntegrityEnabled": true,
+  "storageRequireEncryption": true,
+  "activeFirewallRequired": true,
+  "antivirusRequired": true,
+  "antiSpywareRequired": true,
+  "defenderEnabled": true,
+  "signatureOutOfDate": true,
+  "rtpEnabled": true,
+  "osMinimumVersion": "10.0.26100",
+  "roleScopeTagIds": [
+    "0"
+  ],
+  "scheduledActionsForRule": [
+    {
+      "ruleName": "PasswordRequired",
+      "scheduledActionConfigurations": [
+        {
+          "actionType": "block",
+          "gracePeriodHours": 0,
+          "notificationTemplateId": "",
+          "notificationMessageCCList": []
+        }
+      ]
+    }
+  ]
+}

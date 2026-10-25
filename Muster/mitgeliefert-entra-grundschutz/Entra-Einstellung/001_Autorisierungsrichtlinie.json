@@ -1,0 +1,13 @@
+{
+  "id": "authorizationPolicy",
+  "blockMsolPowerShell": true,
+  "guestUserRoleId": "10dae51f-b6af-4016-8d66-8c2a99b929b3",
+  "defaultUserRolePermissions": {
+    "allowedToCreateApps": false,
+    "allowedToCreateSecurityGroups": false,
+    "allowedToCreateTenants": false,
+    "permissionGrantPoliciesAssigned": [
+      "ManagePermissionGrantsForSelf.microsoft-user-default-low"
+    ]
+  }
+}
