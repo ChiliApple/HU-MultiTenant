@@ -235,7 +235,7 @@ function Show-HUMusterApply {
     $mt = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $mt.Groups[1].Value))
     $w = $d.Window; $c = $d.C
-    $S = @{ W = $w; C = $c; Sel = $sel; Step = 1; Tenant = ''; Needed = @(); Rights = $null; RightsOk = $false; Bg = $null; Login = $null; Logins = @{}; Queue = @()
+    $S = @{ W = $w; C = $c; Sel = $sel; Step = 1; Tenant = ''; Needed = @(); Rights = $null; RightsOk = $false; Bg = $null; Login = $null; Logins = @{}; Queue = @(); Off = @{}
         Rows = @(); Slots = $null; Groups = @{}; Countries = @{}; RunFile = ''; Running = $false; Cancel = [hashtable]::Synchronized(@{ Stop = $false }); Prog = [hashtable]::Synchronized(@{ Lines = [System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList)); Total = 0; Done = $false }) }
     $script:MA = $S
     $c.lblPkgs.Text = "Pakete: $($sel.Titles)"
@@ -433,12 +433,15 @@ function Show-HUMusterApply {
         $S = $script:MA; $c = $S.C; $w = $S.W
         foreach ($r in @($S.Rows | Where-Object { $_.Plan })) { Set-HUMaChoices $r.Plan $S.Groups $S.Countries }
         $map = @{ neu = 'Neu'; angleichen = 'Angleichen'; gleich = 'schon gleich'; wartet = 'Neu (nach Ort)'; gesperrt = 'GESPERRT' }
+        # beim vorigen Tenant abgewaehlte Eintraege bleiben aus (nur Abwahl wird uebernommen - Angleichen/Zusatzkopien nie automatisch an)
         $S.Prev = @(foreach ($r in @($S.Rows)) {
-                [pscustomobject]@{ Take = [bool]$r.Default; CanTake = ($r.Status -notin 'gesperrt', 'gleich'); StatusText = "$($map[$r.Status])"; Status = $r.Status; Typ = $r.Typ; Name = $r.Name; Paket = $r.Paket; Reason = $r.Reason; Row = $r }
+                $off = $S.Off.ContainsKey("$($r.Typ)|$($r.Name)".ToLowerInvariant())
+                [pscustomobject]@{ Take = ([bool]$r.Default -and -not $off); CanTake = ($r.Status -notin 'gesperrt', 'gleich'); StatusText = "$($map[$r.Status])"; Status = $r.Status; Typ = $r.Typ; Name = $r.Name; Paket = $r.Paket; Reason = $r.Reason; Row = $r }
             })
         $c.gridPrev.ItemsSource = $S.Prev
         $cnt = { param($st) @($script:MA.Rows | Where-Object { $_.Status -eq $st }).Count }
-        $c.lblT4.Text = "Neu: $((& $cnt 'neu') + (& $cnt 'wartet'))   |   Angleichen: $(& $cnt 'angleichen') (nur mit Haken - aendert Bestehendes)   |   schon gleich: $(& $cnt 'gleich')   |   gesperrt: $(& $cnt 'gesperrt')`nReihenfolge beim Anwenden: Orte -> Entra-Einstellungen -> Intune -> Conditional Access. Vor jedem Eintrag wird das Ziel erneut geprueft."
+        $nOff = @($S.Prev | Where-Object { $_.Row.Default -and -not $_.Take }).Count
+        $c.lblT4.Text = "$(if ($nOff) { "$nOff Eintrag/Eintraege wie beim vorigen Tenant abgewaehlt.   |   " })Neu: $((& $cnt 'neu') + (& $cnt 'wartet'))   |   Angleichen: $(& $cnt 'angleichen') (nur mit Haken - aendert Bestehendes)   |   schon gleich: $(& $cnt 'gleich')   |   gesperrt: $(& $cnt 'gesperrt')`nReihenfolge beim Anwenden: Orte -> Entra-Einstellungen -> Intune -> Conditional Access. Vor jedem Eintrag wird das Ziel erneut geprueft."
         $c.lblType.Text = "Zum Bestaetigen '$(Get-HUAnaTenantName $S.Tenant)' eintippen:"
         $c.txtType.Text = ''
         & $S.Upd
@@ -464,6 +467,11 @@ function Show-HUMusterApply {
         $S = $script:MA; $c = $S.C; $w = $S.W
         $todo = @($S.Prev | Where-Object { $_.Take -and $_.Status -notin 'gesperrt', 'gleich' } | ForEach-Object { $_.Row } | Sort-Object Order, Typ, Name)
         if (-not $todo.Count) { return }
+        # Abwahl fuer die naechsten Tenants merken; wieder angehakt -> vergessen
+        foreach ($p in @($S.Prev | Where-Object { $_.CanTake })) {
+            $k = "$($p.Typ)|$($p.Name)".ToLowerInvariant()
+            if ($p.Take) { [void]$S.Off.Remove($k) } elseif ($p.Row.Default) { $S.Off[$k] = $true }
+        }
         & $S.ShowStep 5
         $S.Running = $true; $S.Cancel.Stop = $false
         $S.Prog.Lines.Clear(); $S.Prog.Total = $todo.Count; $S.Prog.Done = $false; $S.Prog.Cur = ''

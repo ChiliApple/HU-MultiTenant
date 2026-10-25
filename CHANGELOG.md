@@ -6,13 +6,14 @@
 - **Neuer Knopf im Reiter Muster:** *Muster anwenden …* überträgt die angehakten Pakete in einen oder mehrere Tenants – in 6 Schritten: Tenant, Rechte, Zuordnen, Vorschau, Ausführen, Abschluss.
 - **Rechte nur für die Dauer des Ablaufs:** Der Assistent zeigt, welche Schreibrechte die Pakete brauchen, erteilt nach Admin-Anmeldung **nur die fehlenden** und gibt am Ende **genau diese** wieder zurück – auch nach Fehler oder Abbruch. Eine Markierung wird vor dem Erteilen geschrieben; stürzt das Programm ab, fragt es beim nächsten Start nach.
 - **Zuordnen an einer Stelle:** Gruppen-Plätze aller Richtlinien und die Länderwahl einmal für das ganze Paket.
-- **Eine Vorschau für alles:** Neu / Angleichen / schon gleich / gesperrt, Haken je Eintrag (Angleichen nur bewusst), Bestätigung mit dem Tenant-Namen.
+- **Eine Vorschau für alles:** Neu / Angleichen / schon gleich / gesperrt, Haken je Eintrag (Angleichen nur bewusst), *Alle auswählen* / *Alle abwählen*, Bestätigung mit dem Tenant-Namen.
 - **Ausführen in fester Reihenfolge** (Orte → Entra → Intune → Conditional Access), vor jedem Eintrag erneut geprüft; Abbrechen nach dem laufenden Eintrag; **Paket rückgängig** nimmt alles in umgekehrter Reihenfolge zurück.
-- **Mehrere Tenants nacheinander:** in Schritt 1 mehrere anhaken – je Tenant eigene Rechte, Zuordnung, Vorschau und Bestätigung; am Abschluss *Weiter mit …* (die Rechte des fertigen Tenants werden vorher zurückgegeben).
+- **Mehrere Tenants nacheinander:** in Schritt 1 mehrere anhaken – je Tenant eigene Rechte, Zuordnung, Vorschau und Bestätigung; am Abschluss *Weiter mit …*. Was beim ersten Tenant abgewählt wurde, bleibt bei den folgenden abgewählt. **Rechte gesammelt zurück:** am Ende für alle Tenants auf einmal, mit den Admin-Anmeldungen des Durchgangs (ohne neue Anmeldung, solange diese gelten).
+- **Fix:** Richtlinien mit Authentifizierungsstärke (z. B. 101) waren in der Vorschau gesperrt – die Stärke wird jetzt ohne nicht unterstützte Abfrage-Parameter gelesen.
 - Pro Tenant läuft der Assistent nur einmal gleichzeitig; ein pulsierender Punkt zeigt, solange gelesen oder geschrieben wird.
 
 ### 🖥️ Oberfläche
-- **Ablauf des Secrets in der Kopfzeile** neben Version und Kanal (Tenant des offenen Reiters) – in den Reitern Extensions und Quick Script entfernt.
+- **Ablauf von Secret/Zertifikat in der Kopfzeile** in Höhe des Titels (Tenant des offenen Reiters) – in den Reitern Extensions und Quick Script entfernt.
 - **Reiter Muster:** Die Breite der Bibliothek (Unterteilung Bibliothek | Paket) wird gemerkt.
 - **Notizen der Pakete** lesbarer: ein Punkt je Zeile, Quellen als anklickbare Links darunter.
 
