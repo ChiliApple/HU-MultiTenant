@@ -286,6 +286,13 @@ Describe 'Papierkorb der Bibliothek' {
         @(Get-HUMusterPackages $s).Count | Should -Be 2
         @(Get-HUMusterTrash $s).Count | Should -Be 0
         { Restore-HUMusterPackage $s $st } | Should -Throw '*Papierkorb*'
+        # 058 B6: '..' im Pfad wird nie als Papierkorb-Eintrag akzeptiert
+        $bin = Get-HUMusterTrashRoot $s
+        New-Item -ItemType Directory -Path (Join-Path $bin 'x') -Force | Out-Null
+        { Remove-HUMusterTrashItem $s (Join-Path $bin '..') } | Should -Throw '*Papierkorb*'
+        { Remove-HUMusterTrashItem $s (Join-Path (Join-Path $bin 'x') '..') } | Should -Throw '*Papierkorb*'
+        Test-Path -LiteralPath (Get-HUMusterRoot $s) | Should -BeTrue
+        Remove-Item -LiteralPath (Join-Path $bin 'x') -Force
         # Frist: alt weg, neu bleibt
         Remove-HUMusterPackage $s $r.Id -Now ([datetime]'2026-07-01 10:00')
         $q = @(Get-HUMusterPackages $s)[0]

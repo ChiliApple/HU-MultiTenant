@@ -9,7 +9,7 @@
     "P1",
     "Android"
   ],
-  "Note": "Microsoft-Beispiel Stufe 2 für private Geräte mit Arbeitsprofil: Root-Erkennung, Google Play-Dienste, Play Integrity (Basis + Gerät), Verschlüsselung, keine unbekannten Quellen, kein USB-Debugging, Kennwort numerisch komplex (6, 5 Min.), Mindestversion 13.0. Strenge Integritätsprüfung (Hardware) bewusst nicht gesetzt.",
+  "Note": "Microsoft-Beispiel Stufe 2 für private Geräte mit Arbeitsprofil: Root-Erkennung, Google Play-Dienste, Play Integrity (Basis + Gerät), Verschlüsselung, keine unbekannten Quellen, kein USB-Debugging, Kennwort-Komplexität Mittel (ab Android 12 ersetzt sie Kennworttyp und -länge; keine Folgen wie 1234/1111, mind. 4 Zeichen), Sperre nach 5 Min., Mindestversion 13.0. Strenge Integritätsprüfung (Hardware) bewusst nicht gesetzt.",
   "Learn": [
     "https://learn.microsoft.com/intune/intune-service/protect/android-personally-owned-security-configurations"
   ],

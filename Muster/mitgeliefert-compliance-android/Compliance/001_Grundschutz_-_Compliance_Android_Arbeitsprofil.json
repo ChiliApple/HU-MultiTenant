@@ -12,8 +12,7 @@
   "securityRequireCompanyPortalAppIntegrity": true,
   "securityDisableUsbDebugging": true,
   "passwordRequired": true,
-  "passwordRequiredType": "numericComplex",
-  "passwordMinimumLength": 6,
+  "requiredPasswordComplexity": "medium",
   "passwordMinutesOfInactivityBeforeLock": 5,
   "osMinimumVersion": "13.0",
   "roleScopeTagIds": [

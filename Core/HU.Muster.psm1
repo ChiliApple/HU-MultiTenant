@@ -490,7 +490,8 @@ function Remove-HUMusterPackage($Settings, [string]$Id, [datetime]$Now = (Get-Da
     if ($p.BuiltIn) { throw "'$($p.Title)' ist mitgeliefert und kann nicht geloescht werden." }
     $bin = Join-Path (Get-HUMusterRoot $Settings) 'papierkorb'
     New-Item -ItemType Directory -Path $bin -Force | Out-Null
-    Move-Item -LiteralPath $p.Folder -Destination (Join-Path $bin "$($Now.ToString('yyyy-MM-dd_HHmmss'))__$Id") -Force
+    # 058 B7: gesperrter Ordner -> Fehler statt "verschoben"
+    Move-Item -LiteralPath $p.Folder -Destination (Join-Path $bin "$($Now.ToString('yyyy-MM-dd_HHmmss'))__$Id") -Force -ErrorAction Stop
     Write-HULog -Message "Muster-Paket '$($p.Title)' in den Papierkorb der Bibliothek verschoben" -Level 'OK'
 }
 
@@ -513,7 +514,9 @@ function Get-HUMusterTrash($Settings) {
 
 # Ordner muss direkt im Papierkorb liegen (keine fremden Pfade)
 function Test-HUMusterTrashFolder($Settings, [string]$Folder) {
-    if (-not $Folder -or -not (Test-Path -LiteralPath $Folder)) { return $false }
+    if (-not $Folder -or -not (Test-Path -LiteralPath $Folder -PathType Container)) { return $false }
+    # '.'/'..' am Ende oder unterwegs ergeben einen Elternordner, der der Papierkorb ist - nie zulassen (058 B6)
+    if (@("$Folder" -split '[\\/]' | Where-Object { $_ -eq '.' -or $_ -eq '..' }).Count) { return $false }
     $bin = [IO.Path]::GetFullPath((Get-HUMusterTrashRoot $Settings)).TrimEnd('\', '/')
     $par = [IO.Path]::GetFullPath((Split-Path $Folder -Parent)).TrimEnd('\', '/')
     return ($par -eq $bin)
@@ -527,6 +530,8 @@ function Restore-HUMusterPackage($Settings, [string]$Folder, [datetime]$Now = (G
     $root = Get-HUMusterPkgRoot $Settings
     New-Item -ItemType Directory -Path $root -Force | Out-Null
     $id = $p.Id
+    # Kennung aus paket.json nur als einfacher Ordnername (058 B6)
+    if ($id -match '[\\/:*?"<>|]' -or $id -like '*..*' -or $id -like '_*') { $id = '' }
     if (-not $id -or (Test-Path -LiteralPath (Join-Path $root $id))) { $id = "$($Now.ToString('yyyyMMdd-HHmmss'))-$([guid]::NewGuid().ToString('N').Substring(0, 6))" }
     $titles = @(Get-HUMusterPackages $Settings | ForEach-Object { ConvertTo-HUMuName $_.Title })
     $title = $p.Title
