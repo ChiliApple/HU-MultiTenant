@@ -14,7 +14,7 @@
 
 ### 🖥️ Oberfläche
 - **Ablauf von Secret/Zertifikat in der Kopfzeile** in Höhe des Titels (Extensions und Quick Script: der gewählte Tenant; alle anderen Reiter: Sammelanzeige aller Tenants bzw. die zuerst ablaufende Schule) – in den Reitern Extensions und Quick Script entfernt.
-- **Abweichungen dezent eingefärbt:** In allen Tabellen sind Zeilen mit „abweichend“ (Unterschied, Status, Ergebnis) leicht hinterlegt.
+- **Abweichungen dezent eingefärbt:** In Detail- und Ergebnisfenstern sind Zeilen mit „abweichend“ leicht hinterlegt.
 - **Fenstergrößen** (z. B. Einstellungen) werden ohne Oberflächengröße gemerkt – das Fenster wächst beim Öffnen nicht mehr und bleibt auf dem Bildschirm.
 - **Tenant-Vergleich:** Muster-Haken aus = Muster-Spalte sofort weg; Conditional Access gilt als gleich wie im Muster, wenn nur Status, Notfallkonten oder eingesetzte Rollen/Gruppen aus dem Tenant abweichen.
 - **Reiter Muster:** Die Breite der Bibliothek (Unterteilung Bibliothek | Paket) wird gemerkt.

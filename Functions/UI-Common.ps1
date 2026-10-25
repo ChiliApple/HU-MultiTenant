@@ -87,6 +87,9 @@ function Set-HUDiffRowTint($Row) {
     try {
         if ($null -eq $Row) { return }
         if ($null -eq $script:HUDiffTintBrush) { $b = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#3A321F')); $b.Freeze(); $script:HUDiffTintBrush = $b }
+        # nur in Fenstern, die aufgehen (Detail/Ergebnis) - nicht im Hauptfenster (Udo 25.10.)
+        $win = [System.Windows.Window]::GetWindow($Row)
+        if ($null -eq $win -or ($script:Window -and [object]::ReferenceEquals($win, $script:Window))) { return }
         if (Test-HUDiffItem $Row.Item) { $Row.Background = $script:HUDiffTintBrush }
         elseif ([object]::ReferenceEquals($Row.Background, $script:HUDiffTintBrush)) { $Row.ClearValue([System.Windows.Controls.Control]::BackgroundProperty) }
     } catch { }
@@ -100,7 +103,7 @@ function Set-HUGridFit($Grid) {
         # jede Tabelle nur einmal verdrahten (Tag bleibt unberuehrt - den nutzen andere Fenster selbst)
         foreach ($h in $script:HUGridHookedList) { if ([object]::ReferenceEquals($h, $Grid)) { return } }
         [void]$script:HUGridHookedList.Add($Grid)
-        # GLOBAL (Udo 25.10.): Zeilen mit "abweichend" dezent einfaerben - beim Erzeugen jeder Zeile, auch wiederverwendete
+        # GLOBAL (Udo 25.10.): in aufgehenden Fenstern Zeilen mit "abweichend" dezent einfaerben - beim Erzeugen jeder Zeile, auch wiederverwendete
         try {
             $Grid.Add_LoadingRow({ param($s, $e) Set-HUDiffRowTint $e.Row })
             foreach ($it in @($Grid.Items)) { $r = $Grid.ItemContainerGenerator.ContainerFromItem($it); if ($r) { Set-HUDiffRowTint $r } }
