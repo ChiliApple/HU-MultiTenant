@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "102 - Multi-Faktor-Authentifizierung für Administratoren erfordern",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -32,11 +31,15 @@
         "All"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
-    ]
+    ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": []
   },
   "grantControls": {
     "operator": "OR",

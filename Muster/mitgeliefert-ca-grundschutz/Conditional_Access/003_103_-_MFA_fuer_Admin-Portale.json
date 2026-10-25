@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "103 - MFA für Admin-Portale",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -31,11 +30,15 @@
         "MicrosoftAdminPortals"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
-    ]
+    ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": []
   },
   "grantControls": {
     "operator": "OR",

@@ -2338,7 +2338,7 @@ $script:HUCmpSkip = @('id', 'createdDateTime', 'lastModifiedDateTime', 'version'
     # Statuswerte, die sich ohne Aenderung laufend bewegen (z. B. Defender-Connector meldet sich regelmaessig)
     'lastHeartbeatDateTime',
     # 2.5.1 Auswahl-Angaben mitgelieferter Muster (Laenderwahl, Gruppen-Plaetze) - kein Graph-Feld
-    'huLaenderwahl', 'huGruppen')
+    'huLaenderwahl', 'huGruppen', 'huRollen')
 
 # Administrative Vorlagen: Graph liefert definitionValues und presentationValues in wechselnder Reihenfolge. Diese Listen
 # werden ueber den Namen der Einstellung bzw. die Beschriftung des Werts sortiert, damit die Reihenfolge nicht als Aenderung zaehlt.

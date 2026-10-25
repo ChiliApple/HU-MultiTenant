@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "904 - Konformes Gerät oder MFA",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -20,11 +19,15 @@
         "All"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
-    ]
+    ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": []
   },
   "grantControls": {
     "operator": "OR",

@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "903 - Geoblock Admins nur aus erlaubten Ländern",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -31,11 +30,15 @@
         "All"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
     ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": [],
     "locations": {
       "includeLocations": [
         "All"

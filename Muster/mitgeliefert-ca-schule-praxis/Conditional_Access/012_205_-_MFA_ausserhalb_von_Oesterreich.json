@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "205 - MFA außerhalb von Österreich",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -18,11 +17,15 @@
         "All"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
     ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": [],
     "locations": {
       "includeLocations": [
         "All"

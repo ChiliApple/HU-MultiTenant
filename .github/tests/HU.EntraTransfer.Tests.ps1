@@ -399,6 +399,18 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
         $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @($ix.Items | Where-Object Typ -eq 'Benannter Ort' | ForEach-Object { [pscustomobject]@{ id = "z-$($_.Name)"; displayName = $_.Name } })
         $global:EtFx['Z|/roleManagement/directory/roleDefinitions/'] = [pscustomobject]@{ id = 'r'; isBuiltIn = $true; displayName = 'Rolle' }
         $global:EtFx['Z|/policies/authenticationStrengthPolicies/00000000-0000-0000-0000-000000000004'] = [pscustomobject]@{ id = '00000000-0000-0000-0000-000000000004'; displayName = 'Phishing-resistant MFA'; policyType = 'builtIn' }
+        # Live-Test 25.10.: Quelle mitgeliefert hat KEINE Notfallkonten (leere Liste) - darf nicht scheitern
+        $global:EtBg['mitgeliefert'] = @($null)
+        # 100: alle eingebauten Rollen des Ziels (eigene Rolle nicht)
+        $global:EtList['Z|/roleManagement/directory/roleDefinitions'] = @(
+            [pscustomobject]@{ id = '62e90394-69f5-4237-9190-012177145e10'; templateId = '62e90394-69f5-4237-9190-012177145e10'; displayName = 'Global Administrator'; isBuiltIn = $true },
+            [pscustomobject]@{ id = '3a2c62db-5318-420d-8d74-23affee5d9d5'; templateId = '3a2c62db-5318-420d-8d74-23affee5d9d5'; displayName = 'Intune Administrator'; isBuiltIn = $true },
+            [pscustomobject]@{ id = 'cccccccc-0000-0000-0000-000000000001'; templateId = 'cccccccc-0000-0000-0000-000000000001'; displayName = 'Eigene Rolle'; isBuiltIn = $false },
+            # 059 B1/B3: Benutzer-/Gast-Rollen nie ausnehmen, abgeschaltete nicht, ohne templateId -> id
+            [pscustomobject]@{ id = 'a0b1b346-4d3e-4e8b-98f8-753987be4970'; templateId = 'a0b1b346-4d3e-4e8b-98f8-753987be4970'; displayName = 'User'; isBuiltIn = $true },
+            [pscustomobject]@{ id = '10dae51f-b6af-4016-8d66-8c2a99b929b3'; templateId = '10dae51f-b6af-4016-8d66-8c2a99b929b3'; displayName = 'Guest User'; isBuiltIn = $true },
+            [pscustomobject]@{ id = 'dddddddd-0000-0000-0000-000000000001'; templateId = 'dddddddd-0000-0000-0000-000000000001'; displayName = 'Abgeschaltet'; isBuiltIn = $true; isEnabled = $false },
+            [pscustomobject]@{ id = '194ae4cb-b126-40b2-bd5b-6091b380977d'; displayName = 'Security Administrator'; isBuiltIn = $true })
         $n = 0
         foreach ($it in @($ix.Items | Where-Object Typ -eq 'Conditional Access')) {
             $src = Read-HUBackupJson (Join-Path $pk $it.File)
@@ -407,10 +419,21 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
             (Invoke-HUEntraTransfer -Plan $p -Settings $script:Set).Ok | Should -BeTrue -Because $it.Name
             $n++
             if ($it.Name -eq '201 - MFA Lehrer') { @($p.Options | Where-Object Kind -eq 'group' | ForEach-Object Slot) -join '|' | Should -Be 'Lehrer|Ausnahmen MFA Lehrer' }
+            if ($it.Name -like '100 *') {
+                @($p.Body.conditions.users.excludeRoles) -join ',' | Should -Be '62e90394-69f5-4237-9190-012177145e10,3a2c62db-5318-420d-8d74-23affee5d9d5,194ae4cb-b126-40b2-bd5b-6091b380977d'
+                @($p.Body.conditions.users.includeUsers) | Should -Be @('All')
+                ($p.Body | ConvertTo-Json -Depth 20 -Compress) | Should -Not -BeLike '*huRollen*'
+                @($p.Notes | Where-Object { $_ -like '*alle 3 eingebauten Admin-Rollen*' }).Count | Should -Be 1
+            }
             if ($it.Name -like '900 *') { $p.Body.conditions.authenticationFlows.transferMethods | Should -Be 'deviceCodeFlow' }
             if ($it.Name -like '902 *') { @($p.Body.conditions.locations.includeLocations) | Should -Be @('z-Geblockte Standorte') }
         }
         $n | Should -Be 15
+        # Rollen im Ziel nicht lesbar -> 100 gesperrt (sonst waeren alle Admins ausgesperrt)
+        Mock -ModuleName HU.EntraRestore Get-HUIntuneGraphAll -ParameterFilter { $Endpoint -like '/roleManagement/directory/roleDefinitions*' } { throw (New-EtFail 403) }
+        $i100 = @($ix.Items | Where-Object { $_.Name -like '100 *' })[0]
+        $p100 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id $i100.Id -Name $i100.Name -Backup (Read-HUBackupJson (Join-Path $pk $i100.File)) -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert' -SourceNames $names
+        @($p100.Blocks | Where-Object { $_ -like '*Rollen im Ziel nicht lesbar*' }).Count | Should -Be 1
     }
 
     It '2.5.1 Laenderwahl beim Ort: fest + angehakt wird geschrieben, vorhandener Ort sperrt' {

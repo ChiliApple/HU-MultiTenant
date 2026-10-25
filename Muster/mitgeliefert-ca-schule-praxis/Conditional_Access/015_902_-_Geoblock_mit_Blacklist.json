@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "902 - Geoblock mit Blacklist",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -18,11 +17,15 @@
         "All"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
     ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": [],
     "locations": {
       "includeLocations": [
         "a1b2c3d4-0902-4000-8000-000000000902"

@@ -105,6 +105,20 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
         $cb.ToolTip = 'Vor dem Zurueckschreiben bewusst bestaetigen'
         $checks.Add($cb); [void]$c.pnlInfo.Children.Add($cb)
     }
+    # 059 B2: Hinweis, wenn eine gewaehlte Gruppe nichts aendert (Haken 'Alle') oder zugleich zugewiesen und ausgenommen ist
+    $allOps = @($(if ($Plan.PSObject.Properties['Options']) { $Plan.Options }) | Where-Object { $_ })
+    $grpHint = New-Object System.Windows.Controls.TextBlock
+    $grpHint.TextWrapping = 'Wrap'; $grpHint.Margin = '0,2,0,2'; $grpHint.FontSize = 12; $grpHint.Foreground = Get-HUBrush '#FFB74D'; $grpHint.Visibility = 'Collapsed'
+    $grpUpd = {
+        $gi = @($allOps | Where-Object { "$($_.Kind)" -eq 'group' -and "$($_.Feld)" -eq 'includeGroups' -and "$($_.Value)" })
+        $ge = @($allOps | Where-Object { "$($_.Kind)" -eq 'group' -and "$($_.Feld)" -eq 'excludeGroups' -and "$($_.Value)" })
+        $msg = New-Object System.Collections.Generic.List[string]
+        if ($gi.Count -and @($allOps | Where-Object { "$($_.Key)" -eq 'allUsers' -and [bool]$_.Value }).Count) { $msg.Add("Benutzer 'Alle' ist angehakt - die gewaehlte Gruppe aendert daran nichts.") }
+        $both = @($gi | Where-Object { @($ge | ForEach-Object { "$($_.Value)" }) -contains "$($_.Value)" })
+        if ($both.Count) { $msg.Add("Dieselbe Gruppe ist zugleich zugewiesen und ausgenommen ('$(@($both | ForEach-Object Slot) -join "', '")') - die Ausnahme gewinnt, die Richtlinie gilt fuer diese Gruppe nicht.") }
+        $grpHint.Text = "Achtung: $($msg -join ' ')"
+        $grpHint.Visibility = $(if ($msg.Count) { 'Visible' } else { 'Collapsed' })
+    }
     # 2.4.5 waehlbare Uebernahmen (z. B. Rollen, 'Alle Benutzer'): Haken = uebernehmen
     foreach ($op in @($(if ($Plan.PSObject.Properties['Options']) { $Plan.Options }) | Where-Object { $_ })) {
         if ($op.PSObject.Properties['Kind'] -and "$($op.Kind)" -eq 'group') {
@@ -116,18 +130,20 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
             $cb2 = New-Object System.Windows.Controls.ComboBox
             try { $cb2.Style = $w.FindResource('DarkComboBox') } catch { }
             $cb2.MinWidth = 320; $cb2.FontSize = 12; $cb2.IsTextSearchEnabled = $true
-            [System.Windows.Controls.TextSearch]::SetTextPath($cb2, 'Name')
-            $cb2.DisplayMemberPath = 'Name'
-            $items = New-Object System.Collections.Generic.List[object]
-            $items.Add([pscustomobject]@{ Id = ''; Name = '(nicht zuweisen)' })
-            foreach ($ch in @($op.Choices)) { if ($ch) { $items.Add($ch) } }
-            $cb2.ItemsSource = $items
-            $sel = 0
-            for ($ix = 1; $ix -lt $items.Count; $ix++) { if ("$($items[$ix].Id)" -eq "$($op.Value)" -and "$($op.Value)") { $sel = $ix; break } }
+            # ComboBoxItem mit Text als Inhalt und Kennung im Tag (PSCustomObject + DisplayMemberPath zeigt '@{Id=...}' - Test 25.10.)
+            $mkItem = { param([string]$Id, [string]$Name) $ci = New-Object System.Windows.Controls.ComboBoxItem; $ci.Content = $Name; $ci.Tag = $Id; try { $ci.Style = $w.FindResource('DarkComboBoxItem') } catch { }; $ci }
+            [void]$cb2.Items.Add((& $mkItem '' '(nicht zuweisen)'))
+            $sel = 0; $ix = 0
+            foreach ($ch in @($op.Choices)) {
+                if (-not $ch) { continue }
+                $ix++
+                [void]$cb2.Items.Add((& $mkItem "$($ch.Id)" "$($ch.Name)"))
+                if ("$($op.Value)" -and "$($ch.Id)" -eq "$($op.Value)") { $sel = $ix }
+            }
             $cb2.SelectedIndex = $sel
             $cb2.Tag = $op
             $cb2.ToolTip = "Platz '$($op.Slot)': Gruppe im Ziel, die die Richtlinie $(if ("$($op.Feld)" -eq 'includeGroups') { 'erhaelt' } else { 'ausnimmt' }). Gleichnamige Gruppe ist vorgewaehlt."
-            $cb2.Add_SelectionChanged({ $it = $this.SelectedItem; $this.Tag.Value = $(if ($it) { "$($it.Id)" } else { '' }) })
+            $cb2.Add_SelectionChanged({ $it = $this.SelectedItem; $this.Tag.Value = $(if ($it) { "$($it.Tag)" } else { '' }); & $grpUpd })
             [void]$sp.Children.Add($tb); [void]$sp.Children.Add($cb2)
             [void]$c.pnlInfo.Children.Add($sp)
             continue
@@ -136,9 +152,10 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
         $ob.Content = "$($op.Text)"; $ob.IsChecked = [bool]$op.Value; $ob.Foreground = Get-HUBrush '#90CAF9'; $ob.Margin = '0,3,0,3'; $ob.FontSize = 12
         try { $ob.Style = $w.FindResource('DarkCheckBox') } catch { }
         $ob.Tag = $op
-        $ob.Add_Checked({ $this.Tag.Value = $true }); $ob.Add_Unchecked({ $this.Tag.Value = $false })
+        $ob.Add_Checked({ $this.Tag.Value = $true; & $grpUpd }); $ob.Add_Unchecked({ $this.Tag.Value = $false; & $grpUpd })
         [void]$c.pnlInfo.Children.Add($ob)
     }
+    if (@($allOps | Where-Object { "$($_.Kind)" -eq 'group' }).Count) { [void]$c.pnlInfo.Children.Add($grpHint); & $grpUpd }
     if ($Plan.Dropped.Count) { & $add "Wird nicht geschrieben (nicht beschreibbar oder bewusst ausgelassen): $($Plan.Dropped -join ', ')" '#AAAAAA' }
     foreach ($n in $Plan.Notes) { & $add "Hinweis: $n" '#90CAF9' }
     $state = @{ Ok = $false }

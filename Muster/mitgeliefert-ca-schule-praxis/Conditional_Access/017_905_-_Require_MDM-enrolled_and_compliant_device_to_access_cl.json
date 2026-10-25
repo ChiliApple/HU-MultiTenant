@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "905 - Require MDM-enrolled and compliant device to access cloud apps for all users (Preview)",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -21,11 +20,15 @@
         "All"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
     ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": [],
     "platforms": {
       "includePlatforms": [
         "windows"

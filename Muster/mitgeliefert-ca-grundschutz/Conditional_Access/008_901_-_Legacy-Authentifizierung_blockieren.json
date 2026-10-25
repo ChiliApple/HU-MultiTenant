@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "901 - Legacy-Authentifizierung blockieren",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -18,12 +17,16 @@
         "All"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "exchangeActiveSync",
       "other"
-    ]
+    ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": []
   },
   "grantControls": {
     "operator": "OR",

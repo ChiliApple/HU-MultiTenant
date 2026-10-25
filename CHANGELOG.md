@@ -21,12 +21,13 @@
   - **Entra-Grundschutz Benutzereinstellungen (Baseline 1.5, 1.7, 1.14):** keine App-Registrierung, keine Sicherheitsgruppen und Tenants durch Benutzer, Gäste eingeschränkt, MSOL-PowerShell blockiert, Zustimmung zu Apps nur mit geringer Auswirkung.
   - **Compliance Windows, Android (Arbeitsprofil) und iOS/iPadOS** nach den Zero-Trust-Beispielen von Microsoft.
 - **Sprechende Nummern:** 1xx Admins, 2xx MFA, 9xx Blockieren/Geräte – Namen dürfen im Ziel frei angepasst werden.
+- **„100 – Admin-Portale“ immer aktuell:** Ausgenommen werden beim Übertragen alle eingebauten Admin-Rollen, die das Ziel in dem Moment hat (ohne Benutzer-, Gast- und Geräte-Rollen) – die Liste ändert Microsoft laufend. Sind die Rollen nicht lesbar, wird gesperrt (sonst wären alle Admins ausgesperrt).
 - **Allgemein gehalten:** keine Tenant-Kennungen, Konten oder IP-Bereiche – nur Rollen, Microsoft-Apps, Länder und Schlüsselwörter. Alles läuft mit Entra ID P1.
 - **Sicher beim Übertragen:** Conditional Access kommt als neue Richtlinie im Modus „Nur Bericht“ an, die Notfallkonten des Ziels sind ausgenommen; Compliance ohne Zuweisung.
 - **Schreibgeschützt** (🔒): zum Anpassen *Duplizieren* – die Kopie landet unter ihrer echten Kategorie und ist frei bearbeitbar.
 
 ### 👥 Conditional Access übertragen
-- **Gruppen gleich zuweisen:** In der Vorschau wählst du je Gruppen-Platz eine Gruppe des Ziels (z. B. Lehrer, Schüler, Ausnahmen) – gleichnamige Gruppen sind vorgewählt, leer = nicht zuweisen. Gilt für die Plätze der mitgelieferten Pakete und für Gruppen in eigenen Mustern.
+- **Gruppen gleich zuweisen:** In der Vorschau wählst du je Gruppen-Platz eine Gruppe des Ziels (z. B. Lehrer, Schüler, Ausnahmen) – gleichnamige Gruppen sind vorgewählt, leer = nicht zuweisen. Ein Hinweis erscheint, wenn eine Gruppe nichts ändert (Benutzer „Alle“) oder zugleich zugewiesen und ausgenommen ist. Gilt für die Plätze der mitgelieferten Pakete und für Gruppen in eigenen Mustern.
 - **Benannte Orte aus dem Paket:** Orte mitgelieferter Pakete werden über ihren Namen im Ziel zugeordnet – zuerst den Ort übertragen, dann die Richtlinie.
 - „alle Gäste und externen Benutzer“ bleibt als Ausnahme erhalten und ist als Benutzer per Haken wählbar; eine reine Rollen-Ausnahme (z. B. das Konto der Entra-Synchronisierung bei „Alle Benutzer“) geht nicht mehr verloren; eingebaute Authentifizierungsstärken werden im Ziel geprüft und mit Namen gezeigt.
 - **Autorisierungsrichtlinie übertragen:** Zustimmungsrechte des Ziels für eigene Ressourcen (z. B. Teams) bleiben erhalten.
@@ -38,6 +39,7 @@
 - **Zuordnung prüfen** und **Doppelklick-Details** arbeiten mit den angehakten Paketen.
 - *Backup & Verlauf* › **Als Muster festhalten …** legt den Stand als Paket „Gesamtstand“ in der Bibliothek ab (Name frei wählbar).
 - **Nur Muster-Einträge:** neuer Haken neben „Nur Unterschiede“ – zeigt nur die Zeilen der angehakten Pakete; bei Teilpaketen automatisch an.
+- **Doppelklick-Details:** Die Muster-Spalte steht immer ganz links, die Tenants folgen in der Reihenfolge der Vergleichstabelle.
 - Steht derselbe Eintrag in mehreren angehakten Paketen, zählt die Fassung aus dem ersten Paket (Hinweis im Protokoll) – er wird nicht als „doppelt“ gemeldet.
 
 ### 🖥️ Oberfläche

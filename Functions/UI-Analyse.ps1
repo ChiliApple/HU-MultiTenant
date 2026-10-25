@@ -716,6 +716,10 @@ function Show-HUCmpDetail {
     if (-not $r -or -not $r.Ref) { return }
     $m = $r.Ref
     $items = @($m.Items | Group-Object Tenant | ForEach-Object { $_.Group[0] })
+    # 2.5.1 Muster immer ganz links, danach die Tenants in der Reihenfolge der Vergleichstabelle
+    $mkd = Get-HUMusterKey
+    $ord = @($script:CmpKeys)
+    $items = @(@($items | Where-Object { $_.Tenant -eq $mkd }) + @($items | Where-Object { $_.Tenant -ne $mkd } | Sort-Object { $ix = [array]::IndexOf($ord, "$($_.Tenant)"); if ($ix -lt 0) { 999 } else { $ix } }))
     if ($items.Count -lt 2) { Show-HUMessage "'$($m.Name)' gibt es nur in $(Get-HUAnaTenantName $items[0].Tenant) - nichts zu vergleichen." -Icon Info; return }
     if ($m.Typ -eq 'App') { Show-HUMessage 'Apps bitte unter Apps > In Intune vergleichen.' -Icon Info; return }
     $script:CmpDetailName = "$($m.Typ): $($m.Name)"

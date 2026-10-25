@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "204 - MFA für Gäste und Externe + Anmeldung alle 10 h",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -24,11 +23,15 @@
         "All"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
-    ]
+    ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": []
   },
   "grantControls": {
     "operator": "OR",

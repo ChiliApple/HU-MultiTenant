@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "900 - Disable Device Codeflow",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -18,11 +17,15 @@
         "All"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
     ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": [],
     "authenticationFlows": {
       "transferMethods": "deviceCodeFlow"
     }

@@ -1,5 +1,4 @@
 {
-  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
   "displayName": "906 - Verwenden von durch die Anwendung erzwungenen Einschränkungen für O365-Apps",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
@@ -18,11 +17,15 @@
         "Office365"
       ],
       "excludeApplications": [],
-      "includeUserActions": []
+      "includeUserActions": [],
+      "includeAuthenticationContextClassReferences": []
     },
     "clientAppTypes": [
       "all"
-    ]
+    ],
+    "servicePrincipalRiskLevels": [],
+    "signInRiskLevels": [],
+    "userRiskLevels": []
   },
   "grantControls": null,
   "sessionControls": {

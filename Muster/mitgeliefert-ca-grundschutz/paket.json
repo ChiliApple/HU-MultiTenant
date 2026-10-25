@@ -10,7 +10,7 @@
     "P1",
     "Grundschutz"
   ],
-  "Note": "Microsoft-Vorlagen \"Secure foundation\" und Security Baseline V2.1 (Bund, Kap. 1.8 und 1.14). Nummern ordnen nach Bereich: 1xx Admins, 2xx MFA, 9xx Blockieren. 100 sperrt die Admin-Portale für alle außer den häufigen Admin-Rollen - wer eine andere Admin-Rolle hat, muss ergänzt werden. 204 verlangt von Gästen MFA und alle 10 Stunden eine neue Anmeldung. Die Registrierungs-Richtlinie (210) ist eine Benutzeraktion - dafür gibt es kein „Nur Bericht“, sie steht deshalb auf „Aus“. Beim Übertragen: NEU, Nur Bericht, Notfallkonten des Ziels ausgenommen. Namen dürfen im Ziel frei angepasst werden.",
+  "Note": "Microsoft-Vorlagen \"Secure foundation\" und Security Baseline V2.1 (Bund, Kap. 1.8 und 1.14). Nummern ordnen nach Bereich: 1xx Admins, 2xx MFA, 9xx Blockieren. 100 sperrt die Admin-Portale für alle ohne Admin-Rolle - ausgenommen werden beim Übertragen alle eingebauten Rollen, die das Ziel in dem Moment hat (die Liste ändert Microsoft laufend; später neue Rollen im Portal ergänzen). 204 verlangt von Gästen MFA und alle 10 Stunden eine neue Anmeldung. Die Registrierungs-Richtlinie (210) ist eine Benutzeraktion - dafür gibt es kein „Nur Bericht“, sie steht deshalb auf „Aus“. Beim Übertragen: NEU, Nur Bericht, Notfallkonten des Ziels ausgenommen. Namen dürfen im Ziel frei angepasst werden.",
   "Learn": [
     "https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common",
     "https://learn.microsoft.com/entra/identity/conditional-access/policy-guests-mfa-strength"

@@ -20,6 +20,22 @@ $script:HUErDurp = @('allowedToCreateApps', 'allowedToCreateSecurityGroups', 'al
 $script:HUErConsent = @('isEnabled', 'notifyReviewers', 'remindersEnabled', 'requestDurationInDays', 'reviewers')
 # Felder, die nie gesendet werden und auch nicht als "verworfen" gelten (Verwaltung, Anzeige)
 # assignments: das Backup haengt sie an jedes Objekt an (bei Entra-Arten und CA leer) - kein Feld der Richtlinie
+# 2.5.1 (059 B1) Rollen, die keine Admin-Rollen sind bzw. jeder automatisch hat (User, Gast, Geraete, abgekuendigte Partner-Rollen):
+# nie als Ausnahme in "100 - Admin-Portale" - sonst wuerde die Richtlinie fuer normale Benutzer nicht greifen oder Graph lehnt ab.
+# Vorlagen-IDs: in der aktuellen Liste der eingebauten Rollen (Learn) nicht als zuweisbare Admin-Rolle gefuehrt.
+$script:HUErNoAdminRoles = @(
+    'a0b1b346-4d3e-4e8b-98f8-753987be4970',  # User
+    '10dae51f-b6af-4016-8d66-8c2a99b929b3',  # Guest User
+    '2af84b1e-32c8-42b7-82bc-daa82404023b',  # Restricted Guest User
+    'd405c6df-0af8-4e3b-95e4-4d06e542189e',  # Device Users
+    '9c094953-4995-41c8-84c8-3ebb9b32c93f',  # Device Join
+    'c34f683f-4d5a-4403-affd-6615e00e3a7f',  # Workplace Device Join
+    '2b499bcd-da44-4968-8aec-78e1674fa64d',  # nicht in der Learn-Liste
+    '4ba39ca4-527c-499a-b93d-d9b492c50246',  # Partner Tier1 Support (Learn: Do not use)
+    'e00e864a-17c5-4a4b-9c06-f5b95a8d5bd8',  # Partner Tier2 Support (Learn: Do not use)
+    'a92aed5d-d78a-4d16-b381-09adb37eb3b0',  # nicht in der Learn-Liste
+    'd35481f7-cda1-4fa2-8344-5a21f7f3724d'   # nicht in der Learn-Liste
+)
 $script:HUErIgnore = @('id', 'displayName', 'description', 'createdDateTime', 'modifiedDateTime', 'lastModifiedDateTime', 'version', 'deletedDateTime', 'templateId', 'assignments')
 $script:HUErPwRuleTpl = '5cf42378-d67d-4f36-ba46-e8b86229381d'
 # Kennwortregeln per App gesperrt (Live-Test 24.10., 403 trotz Recht); Tests schalten es fuer die Logik dahinter ab
@@ -189,7 +205,8 @@ function Add-HUErChange($Plan, [string]$Path, $Now, $Then) {
 # Felder im Backup, die nicht geschrieben werden (B4: in der Vorschau zeigen)
 function Add-HUErDropped($Plan, $Backup, [string[]]$Allowed) {
     foreach ($p in @($Backup.PSObject.Properties)) {
-        if ($p.Name -match '^@' -or $Allowed -contains $p.Name -or $script:HUErIgnore -contains $p.Name) { continue }
+        # 2.5.1 Auswahl-Angaben mitgelieferter Muster (huGruppen, huRollen, huLaenderwahl) sind kein Graph-Feld - nicht als "nicht geschrieben" nennen
+        if ($p.Name -match '^@' -or $p.Name -in 'huGruppen', 'huRollen', 'huLaenderwahl' -or $Allowed -contains $p.Name -or $script:HUErIgnore -contains $p.Name) { continue }
         if (-not $Plan.Dropped.Contains($p.Name)) { $Plan.Dropped.Add($p.Name) }
     }
 }
@@ -893,7 +910,10 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
     if (-not $u) { $Plan.Blocks.Add('Der Muster-Eintrag hat keine Benutzer-Bedingung.'); return }
     # Zuweisung wird NICHT uebertragen (wie Intune ohne Zuweisungen): Konten, Gruppen, Gaeste leer, "Keine" als Benutzer.
     # Nur die Notfallkonten des Ziels werden ausgenommen (045 F1), Rollen sind ueberall gleich und waehlbar (Udo 24.10.).
-    $srcBg = @(Get-HUErBreakGlassIds $ResolveKey | ForEach-Object { $_.ToLowerInvariant() })
+    # Liste ohne Pipeline auspacken: die Funktion gibt die Liste mit Komma zurueck - eine LEERE Liste (z. B. Quelle mitgeliefert)
+    # kaeme sonst als ein Objekt in ForEach an und ToLowerInvariant schluege fehl (Test 25.10.)
+    $srcBgRaw = [string[]](Get-HUErBreakGlassIds $ResolveKey)
+    $srcBg = @($srcBgRaw | Where-Object { "$_" } | ForEach-Object { "$_".ToLowerInvariant() })
     # ohne @(): die Funktion gibt die Liste mit Komma zurueck, @() wuerde eine Liste in der Liste daraus machen (Graph 400)
     $tgtBg = [string[]](Get-HUErBreakGlassIds $TargetKey)
     if (-not $tgtBg.Count) { $Plan.Blocks.Add('Im Ziel sind keine Notfallkonten hinterlegt (Analyse > Sicherheit > Sollwerte, V1) - ohne sie wird keine Conditional-Access-Richtlinie uebertragen (045 F1).') }
@@ -935,7 +955,19 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
     if ($was.Count) { $Plan.Warnings.Add("Zuweisung wird NICHT uebertragen - im Muster: $($was -join ' | '). Im Ziel selbst zuweisen.") }
     # Rollen: nur eingebaute (Ue-4; CA wirkt nur mit eingebauten Rollen)
     $roleNames = New-Object System.Collections.Generic.List[string]
+    # 2.5.1 mitgelieferte "100 - Admin-Portale": alle eingebauten Rollen des ZIELS ausnehmen - die Liste aendert Microsoft laufend (Udo 25.10.)
+    $allRolesDyn = ("$(Get-HUErProp $Backup 'huRollen')" -eq 'alleEingebautenAusnehmen')
+    if ($allRolesDyn) {
+        $br = $null
+        try { $br = @(Get-HUIntuneGraphAll -TenantKey $TargetKey -Settings $Settings -Endpoint '/roleManagement/directory/roleDefinitions?$select=id,templateId,displayName,isBuiltIn,isEnabled' -V1 | Where-Object { (ConvertTo-HUErBool $_.isBuiltIn) -and "$($_.isEnabled)" -ne 'False' }) } catch { $Plan.Blocks.Add("Rollen im Ziel nicht lesbar ($($_.Exception.Message)) - ohne sie wuerde die Richtlinie alle Admins aussperren."); return }
+        $rids = @($br | ForEach-Object { $(if ("$($_.templateId)") { "$($_.templateId)" } else { "$($_.id)" }) } | Where-Object { $_ -match $script:HUErGuidRx -and $script:HUErNoAdminRoles -notcontains "$_".ToLowerInvariant() } | Select-Object -Unique)
+        if (-not $rids.Count) { $Plan.Blocks.Add('Im Ziel wurden keine eingebauten Rollen gelesen - ohne sie wuerde die Richtlinie alle Admins aussperren.'); return }
+        Set-HUErProp $u 'excludeRoles' ([object[]]$rids)
+        $roleNames.Add("ausser alle $($rids.Count) eingebauten Rollen")
+        $Plan.Notes.Add("Ausgenommen: alle $($rids.Count) eingebauten Admin-Rollen, die das Ziel jetzt hat (ohne Benutzer-, Gast- und Geraete-Rollen). Kommen spaeter neue Rollen von Microsoft dazu, im Portal ergaenzen.")
+    }
     foreach ($f in 'includeRoles', 'excludeRoles') {
+        if ($allRolesDyn -and $f -eq 'excludeRoles') { continue }
         foreach ($x in @(Get-HUErProp $u $f | Where-Object { "$_" -match $script:HUErGuidRx })) {
             try {
                 $rd = Invoke-HUErGraph $TargetKey $Settings "/roleManagement/directory/roleDefinitions/$x`?`$select=id,isBuiltIn,displayName"
