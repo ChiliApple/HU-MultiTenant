@@ -9,7 +9,7 @@
     "P1",
     "Geräte"
   ],
-  "Note": "Microsoft-Vorlagen \"Secure foundation\" (Geräte): zwei Varianten - \"konformes Gerät ODER MFA\" (sanfter Einstieg) bzw. \"konformes Gerät erforderlich\" (streng). Eine davon wählen. Setzt Compliance-Richtlinien voraus; private Geräte ohne Intune und Gäste haben kein konformes Gerät.",
+  "Note": "Microsoft-Vorlagen \"Secure foundation\" (Geräte): zwei Varianten - \"konformes Gerät ODER MFA\" (sanfter Einstieg) bzw. \"konformes Gerät erforderlich\" (streng). Eine davon wählen. Setzt Compliance-Richtlinien voraus; private Geräte ohne Intune haben kein konformes Gerät; bei „erforderlich“ sind Gäste ausgenommen (sie haben kein konformes Gerät in diesem Tenant).",
   "Learn": [
     "https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common"
   ],

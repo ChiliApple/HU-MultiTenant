@@ -1,0 +1,16 @@
+{
+  "Tenant": "__MUSTER__",
+  "Errors": 0,
+  "Complete": true,
+  "FailedTypes": [],
+  "Items": [
+    {
+      "Typ": "Conditional Access",
+      "Name": "Grundschutz - Phishing-resistente MFA für Administratoren",
+      "Id": "mitgeliefert-ca-admins-phishingresistent-01",
+      "File": "Conditional_Access/001_Grundschutz_-_Phishing-resistente_MFA_fuer_Administratoren.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    }
+  ]
+}

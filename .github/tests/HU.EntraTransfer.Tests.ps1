@@ -260,6 +260,46 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
         @($p.Body.conditions.locations.excludeLocations) | Should -Be @('AllTrusted')
     }
 
+    It 'Mitgelieferte Vorlagen: MFA fuer Gaeste (Haken Gaeste), MFA fuer alle behaelt Rollen-Ausnahme, Phishing-resistent prueft eingebaute Staerke' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $rd = { param($n) Read-HUBackupJson (@(Get-ChildItem -LiteralPath (Join-Path $root 'Muster') -Recurse -Filter "*$n*.json")[0].FullName) }
+        $dsId = 'd29b2b05-8046-44ba-8758-1e26182fcf32'
+        $global:EtFx["Z|/roleManagement/directory/roleDefinitions/$dsId"] = [pscustomobject]@{ id = $dsId; isBuiltIn = $true; displayName = 'Directory Synchronization Accounts' }
+        # Gaeste: Benutzer leer + includeGuestsOrExternalUsers; ohne Haken -> Keine
+        $g = & $rd 'MFA_fuer_Gaeste'
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'g' -Name $g.displayName -Backup $g -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
+        $p.Blocks | Should -BeNullOrEmpty
+        @($p.Body.conditions.users.includeUsers).Count | Should -Be 0
+        $p.Body.conditions.users.includeGuestsOrExternalUsers.externalTenants.membershipKind | Should -Be 'all'
+        @($p.Options | Where-Object Key -eq 'guests').Count | Should -Be 1
+        @($p.Warnings | Where-Object { $_ -like '*Gaeste*' }).Count | Should -Be 0
+        ($p.Options | Where-Object Key -eq 'guests').Value = $false
+        $r = Invoke-HUEntraTransfer -Plan $p -Settings $script:Set
+        $r.Ok | Should -BeTrue
+        $w = @($global:EtWrites | Where-Object Method -eq 'POST')[-1]
+        ($w.Body | ConvertTo-Json -Depth 20 -Compress) | Should -Not -BeLike '*includeGuestsOrExternalUsers*'
+        ($w.Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike '*"includeUsers":`["None"`]*'
+        # MFA fuer alle: Haken 'Alle' bleibt an -> Ausnahme Directory Synchronization Accounts wird mitgeschickt
+        $a = & $rd 'MFA_fuer_alle_Benutzer'
+        $p2 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'a' -Name $a.displayName -Backup $a -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
+        $p2.Blocks | Should -BeNullOrEmpty
+        [void](Invoke-HUEntraTransfer -Plan $p2 -Settings $script:Set)
+        $w2 = @($global:EtWrites | Where-Object Method -eq 'POST')[-1]
+        ($w2.Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike ('*"excludeRoles":`["' + $dsId + '"`]*')
+        ($w2.Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike '*"includeUsers":`["All"`]*'
+        # Phishing-resistent: eingebaute Staerke im Ziel lesbar -> Hinweis; nicht lesbar -> Sperre
+        $ph = & $rd 'Phishing-resistente'
+        $global:EtFx['Z|/roleManagement/directory/roleDefinitions/'] = [pscustomobject]@{ id = 'r'; isBuiltIn = $true; displayName = 'Admin-Rolle' }
+        $global:EtFx['Z|/policies/authenticationStrengthPolicies/00000000-0000-0000-0000-000000000004'] = [pscustomobject]@{ id = '00000000-0000-0000-0000-000000000004'; displayName = 'Phishing-resistant MFA'; policyType = 'builtIn' }
+        $p3 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'ph' -Name $ph.displayName -Backup $ph -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
+        $p3.Blocks | Should -BeNullOrEmpty
+        @($p3.Notes | Where-Object { $_ -like "*Phishing-resistant MFA*eingebaut*" }).Count | Should -Be 1
+        $p3.Body.grantControls.authenticationStrength.id | Should -Be '00000000-0000-0000-0000-000000000004'
+        $global:EtFx.Remove('Z|/policies/authenticationStrengthPolicies/00000000-0000-0000-0000-000000000004')
+        $p4 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'ph' -Name $ph.displayName -Backup $ph -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
+        @($p4.Blocks | Where-Object { $_ -like '*Authentifizierungsstaerke*nicht lesbar*' }).Count | Should -Be 1
+    }
+
     It "Gibt es die Richtlinie im Ziel schon: neue heisst '(von Muster)', die bestehende bleibt" {
         $global:EtList['Z|/identity/conditionalAccess/policies'] = @([pscustomobject]@{ displayName = '201 mfa lehrer'; state = 'enabled' })
         $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '201 MFA Lehrer' -Backup (& $script:Ca) -ResolveKey 'Q' -SourceLabel 'Muster'

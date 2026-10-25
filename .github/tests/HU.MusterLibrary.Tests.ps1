@@ -316,10 +316,10 @@ Describe 'Mitgelieferte Pakete (Programmordner Muster)' {
         Set-HUMusterBuiltinRoot (Join-Path ([IO.Path]::GetTempPath()) 'HU-MUL-keine-mitgelieferten')
         Remove-Item -LiteralPath $script:Bb -Recurse -Force -ErrorAction SilentlyContinue
     }
-    It 'fuenf Pakete, schreibgeschuetzt, zuerst gelistet, Kategorie Mitgeliefert' {
+    It 'sechs Pakete, schreibgeschuetzt, zuerst gelistet, Kategorie Mitgeliefert' {
         $all = @(Get-HUMusterPackages $script:Sb)
         $b = @($all | Where-Object BuiltIn)
-        $b.Count | Should -Be 5
+        $b.Count | Should -Be 6
         @($b | Where-Object { $_.Category -ne 'Mitgeliefert' }).Count | Should -Be 0
         $all[0].BuiltIn | Should -BeTrue
         @($b | ForEach-Object { $_.CopyCategory } | Sort-Object -Unique) -join '|' | Should -Be 'Compliance|Conditional Access'

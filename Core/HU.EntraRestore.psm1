@@ -869,7 +869,10 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
         $vals = @(Get-HUErProp $u $pair[0] | Where-Object { "$_" -match $script:HUErGuidRx -and $srcBg -notcontains "$_".ToLowerInvariant() })
         if ($vals.Count) { $was.Add("$($pair[2]): $(@($vals | ForEach-Object { & $nameOf $pair[1] "$_" }) -join ', ')") }
     }
-    if ((Get-HUErProp $u 'includeGuestsOrExternalUsers') -or @(Get-HUErProp $u 'includeUsers' | ForEach-Object { "$_" }) -contains 'GuestsOrExternalUsers') { $was.Add('Gaeste/externe Benutzer') }
+    # "alle Gaeste und externen Benutzer" (alle externen Tenants) ist ein Schluesselwort ohne Kennungen - per Haken uebernehmbar (unten)
+    $ig = Get-HUErProp $u 'includeGuestsOrExternalUsers'
+    $hasGuests = [bool]($ig -and "$(Get-HUErProp $ig 'guestOrExternalUserTypes')" -and "$(Get-HUErProp (Get-HUErProp $ig 'externalTenants') 'membershipKind')" -eq 'all')
+    if (($ig -and -not $hasGuests) -or @(Get-HUErProp $u 'includeUsers' | ForEach-Object { "$_" }) -contains 'GuestsOrExternalUsers') { $was.Add('Gaeste/externe Benutzer (bestimmte Tenants)') }
     if ($was.Count) { $Plan.Warnings.Add("Zuweisung wird NICHT uebertragen - im Muster: $($was -join ' | '). Im Ziel selbst zuweisen.") }
     # Rollen: nur eingebaute (Ue-4; CA wirkt nur mit eingebauten Rollen)
     $roleNames = New-Object System.Collections.Generic.List[string]
@@ -888,9 +891,10 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
     $hasAll = @(Get-HUErProp $u 'includeUsers' | ForEach-Object { "$_" }) -contains 'All'
     # 053 B1: ohne $( ) - ein leeres @() wuerde darin zu $null (Graph: "includeUsers": null -> 400); Rollen-Pfad braucht []
     $iu = New-Object System.Collections.Generic.List[string]
-    if ($hasAll) { $iu.Add('All') } elseif (-not $hasRoles) { $iu.Add('None') }
+    if ($hasAll) { $iu.Add('All') } elseif (-not $hasRoles -and -not $hasGuests) { $iu.Add('None') }
     $nu = [pscustomobject]@{ includeUsers = [object[]]$iu.ToArray(); excludeUsers = [object[]]$tgtBg; includeGroups = [object[]]@(); excludeGroups = [object[]]@()
         includeRoles = [object[]]@(Get-HUErProp $u 'includeRoles' | Where-Object { "$_" }); excludeRoles = [object[]]@(Get-HUErProp $u 'excludeRoles' | Where-Object { "$_" }) }
+    if ($hasGuests) { $nu | Add-Member -NotePropertyName includeGuestsOrExternalUsers -NotePropertyValue (Copy-HUErObject $ig) -Force }
     # Ausnahme "alle Gaeste und externen Benutzer" (alle externen Tenants) ist ein Schluesselwort ohne Kennungen - bleibt erhalten
     # (z. B. mitgelieferte Vorlage "Registrierung der Sicherheitsinfos"); eine Auswahl bestimmter Tenants wird nicht uebertragen
     $xg = Get-HUErProp $u 'excludeGuestsOrExternalUsers'
@@ -904,6 +908,7 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
     $opts = New-Object System.Collections.Generic.List[object]
     if ($hasAll) { $opts.Add([pscustomobject]@{ Key = 'allUsers'; Value = $true; Text = "Benutzer 'Alle' aus dem Muster uebernehmen (Schluesselwort, in jedem Tenant gleich). Ohne Haken: Benutzer 'Keine'." }) }
     if ($hasRoles) { $opts.Add([pscustomobject]@{ Key = 'roles'; Value = $true; Text = "Rollen aus dem Muster uebernehmen (in jedem Tenant gleich): $($roleNames -join ', ')." }) }
+    if ($hasGuests) { $opts.Add([pscustomobject]@{ Key = 'guests'; Value = $true; Text = "Benutzer 'alle Gaeste und externen Benutzer' aus dem Muster uebernehmen (Schluesselwort, in jedem Tenant gleich). Ohne Haken: Benutzer 'Keine'." }) }
     if ($opts.Count) { $Plan | Add-Member -NotePropertyName Options -NotePropertyValue $opts.ToArray() -Force }
     else { $Plan.Notes.Add("Benutzer: 'Keine' - die Richtlinie gilt erst, wenn du sie im Ziel zuweist.") }
     # Orte ueber den Namen (Ue-2)
@@ -941,6 +946,13 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
     if (@(Get-HUErProp $g 'customAuthenticationFactors' | Where-Object { "$_" }).Count) { $Plan.Blocks.Add('Eigene Steuerelemente (customAuthenticationFactors) werden nicht uebertragen.') }
     # Authentifizierungsstaerke: eingebaute bleiben (im Ziel geprueft), eigene ueber den Namen
     $asId = "$(Get-HUErProp (Get-HUErProp $g 'authenticationStrength') 'id')"
+    if ($asId -and $asId -match $script:HUErBuiltinStrengthRx) {
+        # eingebaute Staerke: gleiche Kennung in jedem Tenant - im Ziel nachlesen und mit Namen zeigen (falsche Kennung -> Sperre statt Graph 400)
+        try {
+            $bs = Invoke-HUErGraph $TargetKey $Settings "/policies/authenticationStrengthPolicies/$asId`?`$select=id,displayName,policyType"
+            $Plan.Notes.Add("Authentifizierungsstaerke '$($bs.displayName)' (eingebaut).")
+        } catch { $Plan.Blocks.Add("Eingebaute Authentifizierungsstaerke $asId ist im Ziel nicht lesbar ($($_.Exception.Message)).") }
+    }
     if ($asId -and $asId -notmatch $script:HUErBuiltinStrengthRx) {
         $sn = ''
         try { $sn = "$((Invoke-HUErGraph $ResolveKey $Settings "/policies/authenticationStrengthPolicies/$asId`?`$select=id,displayName").displayName)" } catch { }
@@ -1031,15 +1043,18 @@ function Invoke-HUEntraTransfer {
         Start-Sleep -Seconds 1
         # Auswahl in der Vorschau: Rollen nicht uebernehmen -> Benutzer 'Keine'
         $opts = @($(if ($Plan.PSObject.Properties['Options']) { $Plan.Options }) | Where-Object { $_ })
-        $oR = @($opts | Where-Object { "$($_.Key)" -eq 'roles' }); $oA = @($opts | Where-Object { "$($_.Key)" -eq 'allUsers' })
-        $keepR = $oR.Count -and [bool]$oR[0].Value; $keepA = $oA.Count -and [bool]$oA[0].Value
+        $oR = @($opts | Where-Object { "$($_.Key)" -eq 'roles' }); $oA = @($opts | Where-Object { "$($_.Key)" -eq 'allUsers' }); $oG = @($opts | Where-Object { "$($_.Key)" -eq 'guests' })
+        $keepR = $oR.Count -and [bool]$oR[0].Value; $keepA = $oA.Count -and [bool]$oA[0].Value; $keepG = $oG.Count -and [bool]$oG[0].Value
         if ($opts.Count) {
             $us = $Plan.Body['conditions']['users']
             # immer als Liste ([object[]]): $( ) wuerde eine Liste mit einem Eintrag zu einem Text auspacken (Graph 400)
-            if (-not $keepR) { $us['includeRoles'] = [object[]]@(); $us['excludeRoles'] = [object[]]@() }
+            # Rollen nur leeren, wenn der Rollen-Haken angeboten und abgewaehlt wurde - eine reine Rollen-Ausnahme (z. B. Konto der
+            # Entra-Synchronisierung bei "Alle Benutzer") bleibt sonst erhalten
+            if ($oR.Count -and -not $keepR) { $us['includeRoles'] = [object[]]@(); $us['excludeRoles'] = [object[]]@() }
+            if ($oG.Count -and -not $keepG -and $us.Contains('includeGuestsOrExternalUsers')) { $us.Remove('includeGuestsOrExternalUsers') }
             # 053 B1: Liste statt $( ) - im Rollen-Pfad muss [] gesendet werden, nicht null
             $iu = New-Object System.Collections.Generic.List[string]
-            if ($keepA) { $iu.Add('All') } elseif (-not $keepR) { $iu.Add('None') }
+            if ($keepA) { $iu.Add('All') } elseif (-not $keepR -and -not $keepG) { $iu.Add('None') }
             $us['includeUsers'] = [object[]]$iu.ToArray()
         }
         $res = Invoke-HUErCreate $Plan $Settings "$Actor (Uebertragen aus $($Plan.SourceLabel))"

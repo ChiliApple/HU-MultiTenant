@@ -51,6 +51,14 @@
       "File": "Conditional_Access/006_Grundschutz_-_MFA_fuer_Azure-Verwaltung.json",
       "Source": "mitgeliefert",
       "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "Grundschutz - MFA für Gäste",
+      "Id": "mitgeliefert-ca-grundschutz-07",
+      "File": "Conditional_Access/007_Grundschutz_-_MFA_fuer_Gaeste.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
     }
   ]
 }

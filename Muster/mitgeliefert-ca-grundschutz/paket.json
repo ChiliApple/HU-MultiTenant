@@ -9,7 +9,7 @@
     "P1",
     "Grundschutz"
   ],
-  "Note": "Microsoft-Vorlagen \"Secure foundation\" (Identität): MFA für Admins und Admin-Portale, MFA für alle, Registrierung der Sicherheitsinfos, Legacy-Auth blockieren, MFA für Azure-Verwaltung. Beim Übertragen: NEU, Nur Bericht, Notfallkonten des Ziels ausgenommen. Die Registrierungs-Richtlinie ist eine Benutzeraktion - dafür gibt es kein „Nur Bericht“, sie steht deshalb auf „Aus“.",
+  "Note": "Microsoft-Vorlagen \"Secure foundation\" (Identität): MFA für Admins und Admin-Portale, MFA für alle, MFA für Gäste, Registrierung der Sicherheitsinfos, Legacy-Auth blockieren, MFA für Azure-Verwaltung. Beim Übertragen: NEU, Nur Bericht, Notfallkonten des Ziels ausgenommen. Die Registrierungs-Richtlinie ist eine Benutzeraktion - dafür gibt es kein „Nur Bericht“, sie steht deshalb auf „Aus“.",
   "Learn": [
     "https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common"
   ],

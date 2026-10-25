@@ -13,7 +13,15 @@
       "includeRoles": [],
       "excludeRoles": [
         "d29b2b05-8046-44ba-8758-1e26182fcf32"
-      ]
+      ],
+      "excludeGuestsOrExternalUsers": {
+        "@odata.type": "#microsoft.graph.conditionalAccessGuestsOrExternalUsers",
+        "guestOrExternalUserTypes": "internalGuest,b2bCollaborationGuest,b2bCollaborationMember,b2bDirectConnectUser,otherExternalUser,serviceProvider",
+        "externalTenants": {
+          "@odata.type": "#microsoft.graph.conditionalAccessAllExternalTenants",
+          "membershipKind": "all"
+        }
+      }
     },
     "applications": {
       "includeApplications": [
