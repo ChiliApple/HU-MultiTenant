@@ -169,17 +169,14 @@ function Start-HUSecretCheckAll([switch]$Force, [scriptblock]$Done = $null) {
 
 function Update-HUSecretDisplay([switch]$LogWarnings) {
     $c = $script:Controls
-    $info = Get-HUSecretInfo (Get-SelectedTenantKey)
-    $c['txtSecretExpiry'].Text = $info.Text
+    # 2.5.2: Ablauf in der Kopfzeile (neben Version/Kanal) - fuer den Tenant des offenen Reiters (Quick Script: dessen Tenant)
+    $hk = $(if ($c['tabMain'] -and $c['tabMain'].SelectedItem -eq $c['tabQuickScript']) { Get-HUQSTenantKey } else { Get-SelectedTenantKey })
+    $script:HdrSecretKey = "$hk"
+    $info = Get-HUSecretInfo $hk
+    $tn = "$(@($script:Settings.tenants | Where-Object { "$($_.key)" -eq "$hk" } | ForEach-Object { $_.displayName })[0])"
+    $c['txtSecretExpiry'].Text = $(if ($info.Text) { "$($info.Text)$(if ($tn) { "  -  $tn" })" } else { '' })
     $c['txtSecretExpiry'].Foreground = Get-HUBrush $info.Color
-    $c['txtSecretExpiry'].ToolTip = $info.Tooltip
-    $qk = Get-HUQSTenantKey
-    if ($qk) {
-        $qi = Get-HUSecretInfo $qk
-        $c['txtQSSecret'].Text = $(if ($qi.EndDate) { "Secret: $($qi.Short)" } else { '' })
-        $c['txtQSSecret'].Foreground = Get-HUBrush $qi.Color
-        $c['txtQSSecret'].ToolTip = $qi.Text + "`n" + $qi.Tooltip
-    }
+    $c['txtSecretExpiry'].ToolTip = "$($info.Tooltip)`n`nKlick: Einstellungen > Tenants" 
     # Warnung in der Titelleiste
     $bad = @()
     foreach ($t in @($script:Settings.tenants)) {
@@ -439,5 +436,5 @@ function Register-HUTenantHandlers {
 
     $c['txtSecretWarning'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' })
     $c['txtSecretExpiry'].Cursor = [System.Windows.Input.Cursors]::Hand
-    $c['txtSecretExpiry'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' (Get-SelectedTenantKey) })
+    $c['txtSecretExpiry'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' $(if ($script:HdrSecretKey) { $script:HdrSecretKey } else { Get-SelectedTenantKey }) })
 }

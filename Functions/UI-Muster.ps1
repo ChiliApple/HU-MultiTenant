@@ -41,6 +41,35 @@ function Get-HUMuTipNote([string]$Note, [int]$Max = 240, [int]$Line = 90) {
     return $out.ToString()
 }
 
+# 2.5.2 Notiz lesbar: eine Zeile je Punkt (Zeilenumbrueche in der Notiz), Quellen als anklickbare Links je Zeile
+function Get-HUMuLinkText([string]$Url) {
+    try { $u = [Uri]$Url; $leaf = ($u.AbsolutePath.TrimEnd('/') -split '/')[-1]; return "$($u.Host) - $(($leaf -replace '[-_]', ' '))" } catch { return $Url }
+}
+function Set-HUMuNoteView($Tb, [string]$Note, [string[]]$Learn = @()) {
+    $Tb.Inlines.Clear()
+    $lines = @("$Note" -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $first = $true
+    foreach ($l in $lines) {
+        if (-not $first) { [void]$Tb.Inlines.Add((New-Object System.Windows.Documents.LineBreak)) }
+        [void]$Tb.Inlines.Add($(if ($lines.Count -gt 1) { "$([char]0x2022) $l" } else { $l })); $first = $false
+    }
+    $links = @($Learn | Where-Object { "$_" -match '^https://' })
+    if ($links.Count) {
+        if (-not $first) { [void]$Tb.Inlines.Add((New-Object System.Windows.Documents.LineBreak)) }
+        $b = New-Object System.Windows.Documents.Run('Quellen:'); $b.FontWeight = 'SemiBold'; [void]$Tb.Inlines.Add($b)
+        foreach ($u in $links) {
+            [void]$Tb.Inlines.Add((New-Object System.Windows.Documents.LineBreak))
+            $h = New-Object System.Windows.Documents.Hyperlink
+            [void]$h.Inlines.Add((Get-HUMuLinkText $u))
+            $h.Foreground = Get-HUBrush '#90CAF9'; $h.Tag = $u; $h.ToolTip = $u
+            $h.Add_Click({ Open-HUUrl "$($this.Tag)" })
+            [void]$Tb.Inlines.Add('    '); [void]$Tb.Inlines.Add($h)
+        }
+        $first = $false
+    }
+    $Tb.Visibility = $(if ($first) { 'Collapsed' } else { 'Visible' })
+}
+
 function Get-HUMuItemHint([string]$Typ, [string]$Name, [string]$Source = '') {
     if ($Typ -eq 'Conditional Access' -and $Name -like 'Microsoft-managed:*') { return 'von Microsoft verwaltet, nicht uebertragbar' }
     if ((Test-HUMusterBuiltinSource $Source) -and $Typ -eq 'Conditional Access') { return 'Uebertragen: neu, Nur Bericht, ohne Zuweisung' }
@@ -135,7 +164,7 @@ function Update-HUMuDetail {
     if (-not $p) {
         $c['lblMuTitle'].Text = 'Kein Paket gewaehlt'
         $c['lblMuMeta'].Text = 'Links ein Paket waehlen oder mit + Neues Paket eines anlegen.'
-        $c['lblMuTags'].Text = ''; $c['lblMuNote'].Text = ''
+        $c['lblMuTags'].Text = ''; $c['lblMuNote'].Inlines.Clear()
         $c['pnlMuActions'].Visibility = 'Collapsed'
         $c['gridMuItems'].ItemsSource = @()
         Update-HUMuHint
@@ -157,8 +186,7 @@ function Update-HUMuDetail {
     $c['btnMuDel'].ToolTip = $(if ($p.BuiltIn) { 'Mitgelieferte Pakete kommen mit dem Programm und lassen sich nicht loeschen' } else { 'Paket in den Papierkorb der Bibliothek verschieben' })
     $c['lblMuTags'].Text = $p.TagText
     $c['lblMuTags'].Visibility = $(if ($p.TagText) { 'Visible' } else { 'Collapsed' })
-    $c['lblMuNote'].Text = "$($p.Note)$(if (@($p.Learn).Count) { "`nQuelle: $(@($p.Learn) -join '  ')" })"
-    $c['lblMuNote'].Visibility = $(if ($c['lblMuNote'].Text) { 'Visible' } else { 'Collapsed' })
+    Set-HUMuNoteView $c['lblMuNote'] "$($p.Note)" @($p.Learn)
     $words = @("$($c['txtMuItemFilter'].Text)" -split '\s+' | Where-Object { $_ })
     $items = foreach ($it in @($p.Items)) {
         $o = [pscustomobject]@{ Typ = "$($it.Typ)"; Name = "$($it.Name)"; Herkunft = (Get-HUAnaTenantName "$($it.Source)"); StandText = (Get-HUMuStandText "$($it.Stand)"); Hinweis = (Get-HUMuItemHint "$($it.Typ)" "$($it.Name)" "$($it.Source)"); Source = "$($it.Source)"; File = "$($it.File)" }
@@ -598,6 +626,7 @@ function Register-HUMusterHandlers {
     $c['btnMuDup'].Add_Click({ Start-HUMuDup })
     $c['btnMuDel'].Add_Click({ Start-HUMuDelete })
     $c['btnMuCompare'].Add_Click({ Start-HUMuCompare })
+    $c['btnMuApply'].Add_Click({ Show-HUMusterApply })
     $c['btnMuTrash'].Add_Click({ Show-HUMusterTrash })
     $c['gridMuItems'].Add_MouseDoubleClick({ Show-HUMuItemDetail })
     $c['txtMuFilter'].Add_TextChanged({ $script:Controls['lblMuFilterHint'].Visibility = $(if ($script:Controls['txtMuFilter'].Text) { 'Collapsed' } else { 'Visible' }); Update-HUMuList })
@@ -632,6 +661,9 @@ function Register-HUMusterHandlers {
             $script:Controls['rtbMu'].Height = [math]::Max(50, [math]::Min(600, $h))
         })
     $c['thbMuLog'].Add_DragCompleted({ Set-HUStateValue 'muLogHeight' ([int]$script:Controls['rtbMu'].Height) })
+    # 2.5.2 Breite der Bibliothek merken (Unterteilung Bibliothek | Paket)
+    try { $lw = [double](Get-HUStateValue 'muLibWidth' 360); if ($lw -ge 260 -and $lw -le 620) { $c['colMuLib'].Width = New-Object System.Windows.GridLength($lw) } } catch { }
+    $c['splMuLib'].Add_DragCompleted({ try { Set-HUStateValue 'muLibWidth' ([int]$script:Controls['colMuLib'].ActualWidth) } catch { } })
     # beim ersten Oeffnen des Reiters laden (die Bibliothek uebernimmt dabei einmalig das bisherige Muster)
     $c['tabMain'].Add_SelectionChanged({
             param($s, $e)

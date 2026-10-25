@@ -9,7 +9,7 @@
     "P1",
     "Windows"
   ],
-  "Note": "Zero-Trust-Empfehlung fuer Windows 10/11: BitLocker, Secure Boot, Codeintegrität, Verschlüsselung, Firewall, Virenschutz, Defender mit aktuellen Signaturen und Echtzeitschutz, Mindestversion 10.0.26100 (Windows 11 24H2). Ohne Kennwortregeln und ohne Defender-for-Endpoint-Risiko (eigene Lizenz). BitLocker zählt erst nach einem Neustart.",
+  "Note": "Zero-Trust-Empfehlung für Windows 10/11.\nBitLocker, Secure Boot, Codeintegrität, Verschlüsselung, Firewall, Virenschutz, Defender mit aktuellen Signaturen und Echtzeitschutz.\nMindestversion 10.0.26100 (Windows 11 24H2); ohne Kennwortregeln und ohne Defender-for-Endpoint-Risiko (eigene Lizenz).\nBitLocker zählt erst nach einem Neustart.",
   "Learn": [
     "https://learn.microsoft.com/security/zero-trust/zero-trust-identity-device-access-policies-common"
   ],

@@ -371,6 +371,17 @@ Describe 'Mitgelieferte Pakete (Programmordner Muster)' {
         $k.Sources -join '' | Should -Be 'mitgeliefert'
         { Save-HUMusterPackage -Settings $script:Sb -Title $p.Title -Category 'Conditional Access' -Items @(Get-HUMusterPackageItems $p) } | Should -Throw '*schon ein Paket*'
     }
+    It 'Quellen der mitgelieferten Pakete: vollstaendige https-Adressen auf Microsoft Learn (vom Link-Pruefer gefunden)' {
+        $urls = @(Get-HUMusterBuiltinPackages | ForEach-Object { @($_.Learn) } | Sort-Object -Unique)
+        $urls.Count | Should -BeGreaterThan 5
+        @($urls | Where-Object { $_ -notmatch '^https://learn\.microsoft\.com/[a-z0-9/._-]+$' }).Count | Should -Be 0
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $found = @(& (Join-Path $root '.github\scripts\Test-HULinks.ps1') -Root (Join-Path $root 'Muster') -Offline -PassThru | ForEach-Object Url)
+        foreach ($u in $urls) { $found | Should -Contain $u }
+    }
+    It 'Notiz der mitgelieferten Pakete: kurze Punkte je Zeile' {
+        foreach ($p in @(Get-HUMusterBuiltinPackages)) { @("$($p.Note)" -split "`n" | Where-Object { $_.Length -gt 220 }).Count | Should -Be 0 -Because $p.Title }
+    }
     It 'Namen benannter Orte aus dem Paket (names.json und index.json)' {
         $p = Get-HUMusterPackage $script:Sb 'mitgeliefert-ca-schule-praxis'
         $h = Get-HUMusterLocationNames @($p.Folder)

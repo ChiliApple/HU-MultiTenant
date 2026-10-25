@@ -2035,7 +2035,7 @@ $script:HUSecFixPortals = [ordered]@{
     entra    = @{ Name = 'Entra admin center'; Url = 'https://entra.microsoft.com' }
     intune   = @{ Name = 'Intune admin center'; Url = 'https://intune.microsoft.com' }
     defender = @{ Name = 'Microsoft Defender portal'; Url = 'https://security.microsoft.com' }
-    m365     = @{ Name = 'Microsoft 365 admin center'; Url = 'https://admin.microsoft.com' }
+    m365     = @{ Name = 'Microsoft 365 admin center'; Url = 'https://admin.cloud.microsoft' }
     teams    = @{ Name = 'Teams admin center'; Url = 'https://admin.teams.microsoft.com' }
     purview  = @{ Name = 'Microsoft Purview portal'; Url = 'https://purview.microsoft.com' }
 }

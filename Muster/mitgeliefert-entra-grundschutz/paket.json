@@ -9,7 +9,7 @@
     "P1",
     "Entra"
   ],
-  "Note": "Security Baseline V2.1 Kap. 1.5, 1.7 und 1.14: Benutzer dürfen keine Apps registrieren, keine Sicherheitsgruppen und keine Tenants anlegen; Gäste mit eingeschränktem Zugriff; MSOL-PowerShell blockiert; Zustimmung zu Apps nur bei verifizierten Herstellern und Rechten mit geringer Auswirkung. Übertragen ändert nur diese Werte; vorhandene Zustimmungsrechte für eigene Ressourcen (z. B. Teams) bleiben. „Entra Admin Center beschränken“ und „LinkedIn“ gibt es nicht über Graph - im Portal setzen (Benutzer > Benutzereinstellungen).",
+  "Note": "Security Baseline V2.1 Kap. 1.5, 1.7 und 1.14.\nBenutzer dürfen keine Apps registrieren, keine Sicherheitsgruppen und keine Tenants anlegen; Gäste eingeschränkt; MSOL-PowerShell blockiert.\nZustimmung zu Apps nur bei verifizierten Herstellern und Rechten mit geringer Auswirkung.\nÜbertragen ändert nur diese Werte; Zustimmungsrechte für eigene Ressourcen (z. B. Teams) bleiben.\n„Entra Admin Center beschränken“ und „LinkedIn“ gibt es nicht über Graph – im Portal setzen (Benutzer › Benutzereinstellungen).",
   "Learn": [
     "https://learn.microsoft.com/entra/identity/enterprise-apps/configure-user-consent",
     "https://learn.microsoft.com/entra/identity/users/users-restrict-guest-permissions"

@@ -9,7 +9,7 @@
     "P1",
     "Geräte"
   ],
-  "Note": "Microsoft-Vorlagen \"Secure foundation\" (Geräte): zwei Varianten - 904 „konformes Gerät ODER MFA“ (sanfter Einstieg) bzw. 905 „konformes Gerät erforderlich“ (streng). Eine davon wählen. Setzt Compliance-Richtlinien voraus; private Geräte ohne Intune haben kein konformes Gerät; bei 905 sind Gäste ausgenommen.",
+  "Note": "Microsoft-Vorlagen „Secure foundation“ (Geräte), zwei Varianten – eine wählen:\n904 „konformes Gerät ODER MFA“ (sanfter Einstieg), 905 „konformes Gerät erforderlich“ (streng, Gäste ausgenommen).\nSetzt Compliance-Richtlinien voraus; private Geräte ohne Intune haben kein konformes Gerät.",
   "Learn": [
     "https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common"
   ],
