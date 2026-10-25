@@ -67,6 +67,33 @@ function Start-HUMaRevoke([string]$TenantKey, $Login = $null, [scriptblock]$Done
     [void](Start-HUMaAdminLogin $TenantKey $do)
 }
 
+# Rechte mehrerer Tenants nacheinander zurueckgeben - mit den gemerkten Admin-Anmeldungen (gueltig ~60 Min), ohne neue Anmeldung.
+# Abgelaufene Anmeldung -> fuer diesen Tenant Browser-Anmeldung. $Then bekommt ($alleOk, $berichtText).
+function Start-HUMaRevokeAll([string[]]$Tenants, [hashtable]$Logins, [scriptblock]$Then = $null, $Owner = $null) {
+    $list = @($Tenants | Where-Object { "$_" } | Select-Object -Unique | Where-Object { $m = Get-HUMaMarker $_; $m -and @($m.Added | Where-Object { "$_" }).Count })
+    if (-not $list.Count) { if ($Then) { & $Then $true 'Es sind keine erteilten Rechte offen.' }; return }
+    $script:MaRevAll = @{ List = $list; I = 0; Logins = $(if ($Logins) { $Logins } else { @{} }); Lines = New-Object System.Collections.Generic.List[string]; AllOk = $true; Then = $Then; Owner = $Owner }
+    Invoke-HUMaRevokeAllNext
+}
+function Invoke-HUMaRevokeAllNext {
+    $A = $script:MaRevAll; if (-not $A) { return }
+    if ($A.I -ge @($A.List).Count) {
+        $script:MaRevAll = $null
+        if ($A.Then) { & $A.Then $A.AllOk ($A.Lines -join "`n") }
+        return
+    }
+    $tk = "$($A.List[$A.I])"
+    Start-HUMaRevoke $tk $A.Logins[$tk] {
+        param($ok, $txt)
+        $A2 = $script:MaRevAll; if (-not $A2) { return }
+        $tk2 = "$($A2.List[$A2.I])"
+        if (-not $ok) { $A2.AllOk = $false }
+        $A2.Lines.Add("$(if ($ok) { 'OK  ' } else { 'NICHT' })  $(Get-HUAnaTenantName $tk2): $(("$txt" -split "`n")[0])")
+        $A2.I++
+        Invoke-HUMaRevokeAllNext
+    } $A.Owner
+}
+
 # Beim Programmstart: noch erteilte Rechte aus einem abgebrochenen Ablauf melden (Absturz-Sicherung)
 function Test-HUMaMarkerReminder {
     foreach ($m in @(Get-HUMaMarkers)) {
@@ -175,10 +202,10 @@ function Show-HUMusterApply {
                     <Button x:Name="btnUndo" Content="&#x21BA; Paket rueckgaengig ..." Style="{StaticResource ToolButton}" Padding="10,2" Margin="0,0,8,0"
                             ToolTip="Alles aus diesem Durchgang in umgekehrter Reihenfolge zuruecknehmen - nur, was seitdem unveraendert, nicht zugewiesen und nicht eingeschaltet ist"/>
                     <Button x:Name="btnRevoke" Content="Rechte zurueckgeben" Background="#A65A28" Style="{StaticResource DarkButton}" Padding="12,0" Margin="0,0,8,0"
-                            ToolTip="Genau die Rechte entziehen, die dieser Ablauf erteilt hat - auch nach Fehler oder Abbruch"/>
+                            ToolTip="Genau die Rechte entziehen, die dieser Ablauf erteilt hat - fuer alle bisher bearbeiteten Tenants auf einmal, ohne neue Anmeldung solange die Admin-Anmeldung gilt (ca. 60 Min)"/>
                     <Button x:Name="btnCopy" Content="Bericht kopieren" Style="{StaticResource ToolButton}" Padding="10,2" Margin="0,0,8,0" ToolTip="Ergebnis als Text in die Zwischenablage"/>
                     <Button x:Name="btnNextTenant" Background="#1976D2" Style="{StaticResource DarkButton}" Padding="12,0" Visibility="Collapsed"
-                            ToolTip="Mit dem naechsten Tenant weitermachen - vorher werden die hier erteilten Rechte zurueckgegeben"/>
+                            ToolTip="Mit dem naechsten Tenant weitermachen - die erteilten Rechte bleiben bis zum Schluss und werden dann fuer alle Tenants gesammelt zurueckgegeben"/>
                 </StackPanel>
                 <DataGrid x:Name="gridRun" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column">
                     <DataGrid.Columns>
@@ -208,7 +235,7 @@ function Show-HUMusterApply {
     $mt = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $mt.Groups[1].Value))
     $w = $d.Window; $c = $d.C
-    $S = @{ W = $w; C = $c; Sel = $sel; Step = 1; Tenant = ''; Needed = @(); Rights = $null; RightsOk = $false; Bg = $null; Login = $null
+    $S = @{ W = $w; C = $c; Sel = $sel; Step = 1; Tenant = ''; Needed = @(); Rights = $null; RightsOk = $false; Bg = $null; Login = $null; Logins = @{}; Queue = @()
         Rows = @(); Slots = $null; Groups = @{}; Countries = @{}; RunFile = ''; Running = $false; Cancel = [hashtable]::Synchronized(@{ Stop = $false }); Prog = [hashtable]::Synchronized(@{ Lines = [System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList)); Total = 0; Done = $false }) }
     $script:MA = $S
     $c.lblPkgs.Text = "Pakete: $($sel.Titles)"
@@ -313,7 +340,7 @@ function Show-HUMusterApply {
                 & $S3.SetBusy ''
                 if (-not $L.Ok) { Show-HUMessage "Nicht erteilt: $($L.Error)" -Icon Error -Owner $S3.W; return }
                 if (-not (Test-HUAdminCanGrant $L)) { Show-HUMessage 'Das angemeldete Konto darf keine App-Rechte erteilen (Global Admin oder Privileged Role Admin noetig). Nichts geaendert.' -Icon Warning -Owner $S3.W; return }
-                $S3.Login = $L
+                $S3.Login = $L; $S3.Logins[$S3.Tenant] = $L
                 $t = Get-HUMaTenant $S3.Tenant
                 $added = @()
                 try { $added = @(Add-HUAppPermissions -Login $L -AppId "$($t.appId)" -Permissions @($S3.Missing)) }
@@ -479,10 +506,11 @@ function Show-HUMusterApply {
                 $S2.C.gridRun.ItemsSource = @($S2.Prog.Lines.ToArray())
                 $S2.RunFile = $(if ($r) { $r.RunFile } else { '' })
                 $ok = @($S2.Prog.Lines | Where-Object { $_.Ergebnis -eq 'ok' }).Count
-                $S2.C.lblT5.Text = "Ergebnis: $ok von $($S2.Prog.Total) angewendet$(if ($r) { " ($($r.State))" }). Conditional Access steht auf 'Nur Bericht' - nach der Pruefung im Anmeldeprotokoll im Portal einschalten; Intune ohne Zuweisungen.`n$(if (@($(if (Get-HUMaMarker $S2.Tenant) { (Get-HUMaMarker $S2.Tenant).Added }) | Where-Object { $_ }).Count) { 'Jetzt die erteilten Rechte zurueckgeben (Knopf unten).' } else { 'Es wurden keine Rechte dazugegeben.' })"
+                $S2.C.lblT5.Text = "Ergebnis: $ok von $($S2.Prog.Total) angewendet$(if ($r) { " ($($r.State))" }). Conditional Access steht auf 'Nur Bericht' - nach der Pruefung im Anmeldeprotokoll im Portal einschalten; Intune ohne Zuweisungen.`n$(if ($S2.QIndex -lt @($S2.Queue).Count - 1) { 'Die erteilten Rechte bleiben bis zum letzten Tenant und werden dann fuer alle gesammelt zurueckgegeben.' } elseif (@(& $S2.OpenRights).Count) { "Jetzt die erteilten Rechte zurueckgeben (Knopf unten, $(@(& $S2.OpenRights).Count) Tenant(s) auf einmal)." } else { 'Es sind keine erteilten Rechte offen.' })"
                 for ($i = 0; $i -lt $S2.StepLbl.Count; $i++) { $S2.StepLbl[$i].Foreground = Get-HUBrush $(if ($i -lt 5) { '#81C784' } else { '#E0E0E0' }) }
                 $S2.C.pnlDone.Visibility = 'Visible'
                 $S2.C.btnUndo.IsEnabled = [bool]$S2.RunFile
+                & $S2.UpdRevoke
                 if ($S2.QIndex -lt @($S2.Queue).Count - 1) {
                     $S2.C.btnNextTenant.Content = "Weiter mit $(Get-HUAnaTenantName "$($S2.Queue[$S2.QIndex + 1])") $([char]0x2192)"
                     $S2.C.btnNextTenant.Visibility = 'Visible'
@@ -490,10 +518,25 @@ function Show-HUMusterApply {
             })
     }
     $c.btnStop.Add_Click({ $script:MA.Cancel.Stop = $true; $script:MA.C.btnStop.IsEnabled = $false; $script:MA.C.lblT5.Text = 'Wird nach dem laufenden Eintrag beendet ...' })
+    # bisher bearbeitete Tenants des Durchgangs (bis einschliesslich aktuellem)
+    $S.Visited = {
+        $S = $script:MA
+        $q = @($S.Queue); $n = [Math]::Min($S.QIndex, $q.Count - 1)
+        $v = @(if ($q.Count) { $q[0..$n] }); if ($S.Tenant -and $v -notcontains $S.Tenant) { $v += $S.Tenant }
+        return , @($v | Where-Object { "$_" })
+    }
+    $S.OpenRights = { $S = $script:MA; return , @(@(& $S.Visited) | Where-Object { $m = Get-HUMaMarker $_; $m -and @($m.Added | Where-Object { "$_" }).Count }) }
     $c.btnRevoke.Add_Click({
             $S2 = $script:MA
-            Start-HUMaRevoke $S2.Tenant $S2.Login { param($ok, $txt) Show-HUMessage $txt -Icon $(if ($ok) { 'Info' } else { 'Warning' }) -Owner $script:MA.W } $S2.W
+            & $S2.SetBusy 'Rechte werden zurueckgegeben ...'
+            Start-HUMaRevokeAll @(& $S2.Visited) $S2.Logins { param($ok, $txt) $S3 = $script:MA; if ($S3) { & $S3.SetBusy ''; & $S3.UpdRevoke }; Show-HUMessage "Rechte zurueckgegeben:`n`n$txt$(if ($ok) { "`n`nEin schon geholtes App-Token kann sie noch bis zu einer Stunde enthalten." })" -Icon $(if ($ok) { 'Info' } else { 'Warning' }) -Owner $(if ($S3) { $S3.W }) } $S2.W
         })
+    # Knopftext: wie viele Tenants haben noch offene Rechte
+    $S.UpdRevoke = {
+        $S = $script:MA; $o = @(& $S.OpenRights)
+        $S.C.btnRevoke.Content = $(if ($o.Count -gt 1) { "Rechte zurueckgeben ($($o.Count) Tenants)" } elseif ($o.Count) { 'Rechte zurueckgeben' } else { 'Rechte zurueckgegeben' })
+        $S.C.btnRevoke.IsEnabled = [bool]$o.Count
+    }
     $c.btnUndo.Add_Click({
             $S2 = $script:MA
             if (-not $S2.RunFile) { return }
@@ -533,18 +576,10 @@ function Show-HUMusterApply {
         return $true
     }
     $c.btnNextTenant.Add_Click({
+            # Rechte bleiben (Markierung + gemerkte Anmeldung) und werden am Ende fuer alle Tenants gesammelt zurueckgegeben
             $S2 = $script:MA
             $m = Get-HUMaMarker $S2.Tenant
-            if ($m -and @($m.Added | Where-Object { $_ }).Count) {
-                Start-HUMaRevoke $S2.Tenant $S2.Login {
-                    param($ok, $txt)
-                    $S3 = $script:MA; if (-not $S3) { return }
-                    if (-not $ok -and -not (Confirm-HU "$txt`n`nTrotzdem mit dem naechsten Tenant weitermachen? Die Rechte bleiben gemerkt (Erinnerung beim naechsten Start)." -Owner $S3.W)) { return }
-                    $S3.QIndex++; [void](& $S3.StartTenant)
-                } $S2.W
-                return
-            }
-            if ($m) { Remove-HUMaMarker $S2.Tenant }
+            if ($m -and -not @($m.Added | Where-Object { $_ }).Count) { Remove-HUMaMarker $S2.Tenant }
             $S2.QIndex++; [void](& $S2.StartTenant)
         })
 
@@ -583,12 +618,19 @@ function Show-HUMusterApply {
             param($sd, $e)
             $S2 = $script:MA; if (-not $S2) { return }
             if ($S2.Running) { Show-HUMessage 'Es wird gerade angewendet - erst abbrechen (Knopf Abbrechen) und das Ende abwarten.' -Icon Warning -Owner $S2.W; $e.Cancel = $true; return }
-            $m = $(if ($S2.Tenant) { Get-HUMaMarker $S2.Tenant } else { $null })
-            if ($m -and @($m.Added | Where-Object { $_ }).Count) {
-                $a = Confirm-HUYesNoCancel "Die erteilten Rechte fuer $(Get-HUAnaTenantName $S2.Tenant) sind noch nicht zurueckgegeben:`n`n$(@($m.Added) -join "`n")`n`nJa = jetzt zurueckgeben, Nein = spaeter (Erinnerung beim naechsten Start), Abbrechen = Fenster offen lassen." -Owner $S2.W
+            $open = @(& $S2.OpenRights)
+            if ($open.Count) {
+                $lst = ($open | ForEach-Object { "$(Get-HUAnaTenantName $_): $(@((Get-HUMaMarker $_).Added) -join ', ')" }) -join "`n"
+                $a = Confirm-HUYesNoCancel "Die erteilten Rechte sind noch nicht zurueckgegeben:`n`n$lst`n`nJa = jetzt alle zurueckgeben, Nein = spaeter (Erinnerung beim naechsten Start), Abbrechen = Fenster offen lassen." -Owner $S2.W
                 if ($a -eq 'Cancel') { $e.Cancel = $true; return }
-                if ($a -eq 'Yes') { $e.Cancel = $true; $c2 = $S2.C; Start-HUMaRevoke $S2.Tenant $S2.Login { param($ok, $txt) Show-HUMessage $txt -Icon $(if ($ok) { 'Info' } else { 'Warning' }) -Owner $script:MA.W; if ($ok) { $script:MA.W.Close() } } $S2.W; return }
-            } elseif ($m) { Remove-HUMaMarker $S2.Tenant }
+                if ($a -eq 'Yes') {
+                    $e.Cancel = $true
+                    & $S2.SetBusy 'Rechte werden zurueckgegeben ...'
+                    Start-HUMaRevokeAll $open $S2.Logins { param($ok, $txt) $S3 = $script:MA; if ($S3) { & $S3.SetBusy '' }; Show-HUMessage "Rechte zurueckgegeben:`n`n$txt" -Icon $(if ($ok) { 'Info' } else { 'Warning' }) -Owner $(if ($S3) { $S3.W }); if ($ok -and $S3) { $S3.W.Close() } elseif ($S3) { & $S3.UpdRevoke } } $S2.W
+                    return
+                }
+            }
+            if ($S2.Tenant) { $m = Get-HUMaMarker $S2.Tenant; if ($m -and -not @($m.Added | Where-Object { $_ }).Count) { Remove-HUMaMarker $S2.Tenant } }
             if ($S2.Tenant) { Exit-HUMaLock $S2.Tenant }
             $script:MA = $null
         })

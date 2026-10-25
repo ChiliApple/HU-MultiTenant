@@ -26,11 +26,12 @@
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                     <Image x:Name="imgLogo" Width="32" Height="32" Margin="0,0,10,0" RenderOptions.BitmapScalingMode="HighQuality"/>
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="HU-MultiTenant" FontSize="17" FontWeight="Bold" Foreground="White"/>
+                        <!-- Zertifikat/Secret in Hoehe des Titels, ca. 2 cm (76 DIP) Abstand -->
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="txtVersion" FontSize="10" Foreground="#4CAF50"/>
-                            <TextBlock x:Name="txtSecretExpiry" FontSize="10" Foreground="#858585" Margin="22,0,0,0"/>
+                            <TextBlock Text="HU-MultiTenant" FontSize="17" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="txtSecretExpiry" FontSize="10" Foreground="#858585" Margin="76,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
+                        <TextBlock x:Name="txtVersion" FontSize="10" Foreground="#4CAF50"/>
                     </StackPanel>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
