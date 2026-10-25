@@ -162,17 +162,24 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     # 045 Ue-10: bei mehreren Zielen den Ziel-Tenant-Namen eintippen
     $typeName = if ($Plan.PSObject.Properties['TypeToConfirm']) { "$($Plan.TypeToConfirm)" } else { '' }
     if ($typeName) { $c.pnlType.Visibility = 'Visible'; $c.lblType.Text = "Zum Bestaetigen '$typeName' eintippen:" }
-    $upd = { $c.btnWrite.IsEnabled = (-not $Plan.Blocks.Count) -and $Plan.Changes.Count -and -not @($checks | Where-Object { -not $_.IsChecked }).Count -and -not @($rows | Where-Object { $_.Gekuerzt -and $_.Status -ne 'gesehen' }).Count -and (-not $typeName -or "$($c.txtType.Text)".Trim() -eq $typeName) }
+    # 2.5.1: angesehen je Zeilennummer merken (nicht nur am Zeilenobjekt - Test 25.10.: Knopf blieb trotz angesehener Zeile grau)
+    $seen = @{}
+    $unseen = { @(for ($i = 0; $i -lt $rows.Count; $i++) { if ($rows[$i].Gekuerzt -and -not $seen.ContainsKey($i)) { $i } }).Count }
+    $upd = { $c.btnWrite.IsEnabled = [bool]((-not $Plan.Blocks.Count) -and $Plan.Changes.Count -and -not @($checks | Where-Object { -not $_.IsChecked }).Count -and -not (& $unseen) -and (-not $typeName -or "$($c.txtType.Text)".Trim() -eq $typeName)) }
     foreach ($cb in $checks) { $cb.Add_Checked($upd); $cb.Add_Unchecked($upd) }
     $c.txtType.Add_TextChanged($upd)
     $c.gridChanges.Add_SelectionChanged({
-            $r = $c.gridChanges.SelectedItem
-            if (-not $r) { return }
+            $ri = $c.gridChanges.SelectedIndex
+            if ($ri -lt 0 -or $ri -ge $rows.Count) { return }
+            $r = $rows[$ri]
             $c.txtFullNow.Text = "Jetzt im Tenant:`r`n$($r.JetztVoll)"
             $c.txtFullThen.Text = "Danach (wird geschrieben):`r`n$($r.DanachVoll)"
             $c.expFull.IsExpanded = $true
-            if ($r.Gekuerzt -and $r.Status -ne 'gesehen') { $r.Status = 'gesehen'; $c.gridChanges.Items.Refresh() }
+            $wasNew = $r.Gekuerzt -and -not $seen.ContainsKey($ri)
+            if ($r.Gekuerzt) { $seen[$ri] = $true; $r.Status = 'gesehen' }
             & $upd
+            # Anzeige 'gesehen' erst nach dem Auswahl-Ereignis auffrischen (Refresh mitten im Ereignis kann scheitern)
+            if ($wasNew) { $gc = $c.gridChanges; [void]$w.Dispatcher.BeginInvoke([action]({ try { $gc.Items.Refresh() } catch { } }.GetNewClosure())) }
         })
     & $upd
     # nur eine Zeile: gleich markieren, damit der volle Wert sofort zu sehen ist

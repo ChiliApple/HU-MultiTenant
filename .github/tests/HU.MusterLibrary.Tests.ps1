@@ -322,6 +322,8 @@ Describe 'Mitgelieferte Pakete (Programmordner Muster)' {
         $b.Count | Should -Be 9
         @($b | Where-Object { $_.Category -ne 'Mitgeliefert' }).Count | Should -Be 0
         $all[0].BuiltIn | Should -BeTrue
+        # Praxis-Set Schule ganz oben (Order 10), die anderen danach
+        $all[0].Id | Should -Be 'mitgeliefert-ca-schule-praxis'
         @($b | ForEach-Object { $_.CopyCategory } | Sort-Object -Unique) -join '|' | Should -Be 'Compliance|Conditional Access|Entra-Grundschutz'
         foreach ($p in $b) { $p.Count | Should -BeGreaterThan 0; @($p.Learn).Count | Should -BeGreaterThan 0; $p.Sources -join '' | Should -Be 'mitgeliefert' }
     }

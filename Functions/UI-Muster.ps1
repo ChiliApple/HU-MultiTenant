@@ -29,6 +29,18 @@ function Get-HUMusterSelectionUi {
 }
 
 # Hinweis je Eintrag (z. B. von Microsoft verwaltete CA-Richtlinie: legt Microsoft in jedem Tenant selbst an, nicht uebertragbar)
+# 2.5.1 Notiz im Tooltip der Bibliothek: gekuerzt und umbrochen (die ganze Notiz steht rechts im Paket)
+function Get-HUMuTipNote([string]$Note, [int]$Max = 240, [int]$Line = 90) {
+    $t = ("$Note" -replace '\s+', ' ').Trim()
+    if ($t.Length -gt $Max) { $cut = $t.LastIndexOf(' ', $Max); if ($cut -lt 20) { $cut = $Max }; $t = $t.Substring(0, $cut).TrimEnd(' ', ',', '.', ';') + ' ... (ganze Notiz rechts)' }
+    $out = New-Object System.Text.StringBuilder; $len = 0
+    foreach ($wd in $t.Split(' ')) {
+        if ($len -and ($len + $wd.Length) -gt $Line) { [void]$out.Append("`n"); $len = 0 } elseif ($len) { [void]$out.Append(' '); $len++ }
+        [void]$out.Append($wd); $len += $wd.Length
+    }
+    return $out.ToString()
+}
+
 function Get-HUMuItemHint([string]$Typ, [string]$Name, [string]$Source = '') {
     if ($Typ -eq 'Conditional Access' -and $Name -like 'Microsoft-managed:*') { return 'von Microsoft verwaltet, nicht uebertragbar' }
     if ((Test-HUMusterBuiltinSource $Source) -and $Typ -eq 'Conditional Access') { return 'Uebertragen: neu, Nur Bericht, ohne Zuweisung' }
@@ -86,7 +98,7 @@ function Update-HUMuList([string]$SelectId = '') {
         $lock = if ($p.BuiltIn) { "$([char]::ConvertFromUtf32(0x1F512)) " } else { '' }
         [pscustomobject]@{
             Id = $p.Id; Title = "$lock$($p.Title)"; Category = $p.Category; Count = $p.Count; Sel = ($sel -contains $p.Id); Sub = $sub
-            Tip = "$($p.Title)$(if ($p.BuiltIn) { "`nMitgeliefert (nach Microsoft-Empfehlung) - schreibgeschuetzt, zum Anpassen duplizieren" })`n$($p.Category) - $($p.Count) Eintraege$(if ($p.Complete) { ' - Gesamtstand (im Vergleich zaehlt auch, was fehlt)' } else { ' - Teilpaket (prueft nur seine Eintraege)' })`nHerkunft: $herk`nGeaendert: $($p.ChangedText)$(if ($p.Note) { "`n$($p.Note)" })"
+            Tip = "$($p.Title)$(if ($p.BuiltIn) { "`nMitgeliefert - schreibgeschuetzt, zum Anpassen duplizieren" })`n$($p.Category) - $($p.Count) Eintraege$(if ($p.Complete) { ' - Gesamtstand (im Vergleich zaehlt auch, was fehlt)' } else { ' - Teilpaket (prueft nur seine Eintraege)' })`nHerkunft: $herk`nGeaendert: $($p.ChangedText)$(if ($p.Note) { "`n$(Get-HUMuTipNote $p.Note)" })"
         }
     }
     $view = [System.Windows.Data.CollectionViewSource]::GetDefaultView(@($rows))

@@ -317,7 +317,8 @@ function Read-HUMusterPackage([string]$Folder, [switch]$BuiltIn) {
 function Get-HUMusterPackages($Settings) {
     try { Initialize-HUMusterLibrary $Settings | Out-Null } catch { try { Write-HULog -Message "Muster-Bibliothek: bisheriges Muster nicht uebernommen ($($_.Exception.Message))" -Level 'WARN' } catch { } }
     $list = New-Object System.Collections.Generic.List[object]
-    foreach ($p in @(Get-HUMusterBuiltinPackages)) { $list.Add($p) }
+    $bix = @{}
+    foreach ($p in @(Get-HUMusterBuiltinPackages)) { $bix[$p.Id] = $bix.Count; $list.Add($p) }
     $root = Get-HUMusterPkgRoot $Settings
     if (Test-Path -LiteralPath $root) {
         foreach ($d in @(Get-ChildItem -LiteralPath $root -Directory | Where-Object { $_.Name -notlike '_*' })) {
@@ -326,18 +327,25 @@ function Get-HUMusterPackages($Settings) {
             if ($p -and -not @($list | Where-Object { $_.Id -eq $p.Id }).Count) { $list.Add($p) }
         }
     }
-    # Mitgelieferte zuerst, dann nach Kategorie-Reihenfolge und Titel
-    return @($list.ToArray() | Sort-Object @{ Expression = { if ($_.BuiltIn) { -1 } else { $i = [array]::IndexOf($script:HUMuCategories, $_.Category); if ($i -lt 0) { 99 } else { $i } } } }, Title)
+    # Mitgelieferte zuerst (in ihrer Reihenfolge, Order aus paket.json), dann nach Kategorie-Reihenfolge und Titel
+    return @($list.ToArray() | Sort-Object @{ Expression = { if ($_.BuiltIn) { -1 } else { $i = [array]::IndexOf($script:HUMuCategories, $_.Category); if ($i -lt 0) { 99 } else { $i } } } },
+        @{ Expression = { if ($_.BuiltIn -and $bix.ContainsKey($_.Id)) { '{0:D4}' -f $bix[$_.Id] } else { "$($_.Title)" } } })
 }
 
 # Mitgelieferte Pakete (Programmordner Muster\) - schreibgeschuetzt
 function Get-HUMusterBuiltinPackages {
     $r = $script:HUMuBuiltinRoot
     if (-not $r -or -not (Test-Path -LiteralPath $r)) { return @() }
-    return @(foreach ($d in @(Get-ChildItem -LiteralPath $r -Directory | Where-Object { $_.Name -notlike '_*' } | Sort-Object Name)) {
+    # 2.5.1 Reihenfolge: 'Order' aus paket.json (kleiner = weiter oben, z. B. Praxis-Set Schule zuerst), sonst nach Ordnername
+    $list = @(foreach ($d in @(Get-ChildItem -LiteralPath $r -Directory | Where-Object { $_.Name -notlike '_*' } | Sort-Object Name)) {
             $p = Read-HUMusterPackage $d.FullName -BuiltIn
-            if ($p) { $p.Category = $script:HUMuBuiltinCategory; $p }
+            if ($p) {
+                $p.Category = $script:HUMuBuiltinCategory
+                $o = 50; try { $pj = Read-HUBackupJson (Join-Path $d.FullName 'paket.json'); if ($pj.PSObject.Properties['Order'] -and "$($pj.Order)" -match '^\d+$') { $o = [int]$pj.Order } } catch { }
+                [pscustomobject]@{ O = $o; N = $d.Name; P = $p }
+            }
         })
+    return @($list | Sort-Object O, N | ForEach-Object { $_.P })
 }
 
 function Get-HUMusterPackage($Settings, [string]$Id) {
