@@ -424,7 +424,7 @@ function Show-HUMusterApply {
         if (-not $todo.Count) { return }
         & $S.ShowStep 5
         $S.Running = $true; $S.Cancel.Stop = $false
-        $S.Prog.Lines.Clear(); $S.Prog.Total = $todo.Count; $S.Prog.Done = $false
+        $S.Prog.Lines.Clear(); $S.Prog.Total = $todo.Count; $S.Prog.Done = $false; $S.Prog.Cur = ''
         $c.prg.Maximum = $todo.Count; $c.prg.Value = 0
         $c.btnStop.Visibility = 'Visible'; $c.btnClose.IsEnabled = $false
         & $S.SetBusy 'Wird angewendet ...'
@@ -436,6 +436,7 @@ function Show-HUMusterApply {
                 $S2 = $script:MA; if (-not $S2) { $this.Stop(); return }
                 $S2.C.gridRun.ItemsSource = @($S2.Prog.Lines.ToArray())
                 $S2.C.prg.Value = $S2.Prog.Lines.Count
+                if (-not $S2.Prog.Done -and "$($S2.Prog.Cur)" -and -not $S2.Cancel.Stop) { $S2.C.lblT5.Text = "Wird angewendet ($($S2.Prog.Lines.Count + 1) von $($S2.Prog.Total)): $($S2.Prog.Cur) ..." }
                 if ($S2.Prog.Done) { $this.Stop() }
             })
         $tm.Start()
@@ -444,6 +445,7 @@ function Show-HUMusterApply {
                 $state = 'fertig'
                 foreach ($r in $Rows) {
                     if ($Cancel.Stop) { $state = 'abgebrochen'; [void]$Prog.Lines.Add([pscustomobject]@{ Ergebnis = 'ausgelassen'; Typ = $r.Typ; Name = $r.Name; Text = 'Abgebrochen - nicht angewendet' }); continue }
+                    $Prog.Cur = "$($r.Typ): $($r.Name)"
                     $res = Invoke-HUMaStep -Settings $Settings -TargetKey $TK -Row $r -Run $run -Groups $G -Countries $K -LocNames $Loc
                     [void]$Prog.Lines.Add([pscustomobject]@{ Ergebnis = $(if ($res.Ok) { 'ok' } else { 'FEHLER' }); Typ = $r.Typ; Name = $r.Name; Text = "$($res.Text)" })
                     if (-not $res.Ok -and $state -eq 'fertig') { $state = 'mit Fehlern' }

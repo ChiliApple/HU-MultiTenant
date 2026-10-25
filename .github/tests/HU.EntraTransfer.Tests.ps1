@@ -303,6 +303,8 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
         $p3.Blocks | Should -BeNullOrEmpty
         @($p3.Notes | Where-Object { $_ -like "*Phishing-resistant MFA*eingebaut*" }).Count | Should -Be 1
         $p3.Body.grantControls.authenticationStrength.id | Should -Be '00000000-0000-0000-0000-000000000004'
+        # Einzelabruf ohne $select (Learn: keine OData-Parameter; mit $select sperrte die Vorschau im Test 25.10.)
+        Should -Invoke -ModuleName HU.EntraRestore Invoke-HUIntuneGraph -Times 0 -ParameterFilter { $Endpoint -like '/policies/authenticationStrengthPolicies/*select*' }
         $global:EtFx.Remove('Z|/policies/authenticationStrengthPolicies/00000000-0000-0000-0000-000000000004')
         $p4 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'ph' -Name $ph.displayName -Backup $ph -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
         @($p4.Blocks | Where-Object { $_ -like '*Authentifizierungsstaerke*nicht lesbar*' }).Count | Should -Be 1

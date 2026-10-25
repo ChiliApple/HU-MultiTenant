@@ -442,7 +442,7 @@ function Test-HUErCaRefs([string]$TenantKey, $Settings, $Policy) {
         else { $miss.Add("Nutzungsbedingungen '$x' haben kein gueltiges Format") }
     }
     $as = Get-HUErProp (Get-HUErProp $g 'authenticationStrength') 'id'
-    if ("$as") { $checks.Add(@{ L = 'Authentifizierungsstaerke'; E = "/policies/authenticationStrengthPolicies/$as`?`$select=id"; X = "$as" }) }
+    if ("$as") { $checks.Add(@{ L = 'Authentifizierungsstaerke'; E = "/policies/authenticationStrengthPolicies/$as"; X = "$as" }) }   # Einzel-GET kennt keine OData-Parameter (Learn)
     foreach ($ck in $checks) {
         try { if (-not (Test-HUErExists $TenantKey $Settings $ck.E)) { $miss.Add("$($ck.L) $($ck.X) gibt es im Tenant nicht (mehr)") } }
         catch { $miss.Add("$($ck.L) $($ck.X) nicht pruefbar ($($_.Exception.Message))") }
@@ -1052,13 +1052,14 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
     if ($asId -and $asId -match $script:HUErBuiltinStrengthRx) {
         # eingebaute Staerke: gleiche Kennung in jedem Tenant - im Ziel nachlesen und mit Namen zeigen (falsche Kennung -> Sperre statt Graph 400)
         try {
-            $bs = Invoke-HUErGraph $TargetKey $Settings "/policies/authenticationStrengthPolicies/$asId`?`$select=id,displayName,policyType"
+            # ohne $select: der Einzelabruf unterstuetzt laut Learn keine OData-Parameter (Test 25.10.: Vorschau sperrte 101)
+            $bs = Invoke-HUErGraph $TargetKey $Settings "/policies/authenticationStrengthPolicies/$asId"
             $Plan.Notes.Add("Authentifizierungsstaerke '$($bs.displayName)' (eingebaut).")
         } catch { $Plan.Blocks.Add("Eingebaute Authentifizierungsstaerke $asId ist im Ziel nicht lesbar ($($_.Exception.Message)).") }
     }
     if ($asId -and $asId -notmatch $script:HUErBuiltinStrengthRx) {
         $sn = ''
-        try { $sn = "$((Invoke-HUErGraph $ResolveKey $Settings "/policies/authenticationStrengthPolicies/$asId`?`$select=id,displayName").displayName)" } catch { }
+        try { $sn = "$((Invoke-HUErGraph $ResolveKey $Settings "/policies/authenticationStrengthPolicies/$asId").displayName)" } catch { }
         if (-not $sn) { $Plan.Blocks.Add("Authentifizierungsstaerke $asId ist in der Quelle nicht (mehr) lesbar.") }
         else {
             $hits = @()
