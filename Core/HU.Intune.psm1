@@ -2438,7 +2438,7 @@ function Get-HUCompareInventory {
             if (-not $name) { continue }
             $n++
             $isCa = ($src.Typ -eq 'Conditional Access')
-            [pscustomobject]@{ Tenant = $TenantKey; Typ = $src.Typ; Name = $name; Id = "$($o.id)"; Hash = $(if ($src.Hash) { if ($isCa) { Get-HUCompareHash (ConvertTo-HUCaComparable $o) } else { Get-HUCompareHash $o } } else { '' }); Copy = $src.Copy; Info = $(if ($isCa) { Get-HUCaStateLabel $o } else { '' }) }
+            [pscustomobject]@{ Tenant = $TenantKey; Typ = $src.Typ; Name = $name; Id = "$($o.id)"; Hash = $(if ($src.Hash) { if ($isCa) { Get-HUCompareHash (ConvertTo-HUCaComparable $o) } else { Get-HUCompareHash $o } } else { '' }); Copy = $src.Copy; Info = $(if ($isCa) { Get-HUCaStateLabel $o } else { '' }); Obj = $(if ($isCa) { $o } else { $null }) }   # CA: Objekt fuer den Feldvergleich mit dem Muster
         }
         Write-HULog -Message "$($src.Typ): $n" -Level 'INFO' -Tenant $TenantKey
     }

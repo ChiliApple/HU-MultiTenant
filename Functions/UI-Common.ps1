@@ -69,6 +69,32 @@ function Set-HUColumnsFit($Columns) {
         }
     } catch { try { Write-HULog -Message "Spaltenbreiten: $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" -Level 'WARN' } catch { } }
 }
+# Zeile "abweichend"? Spalte Unterschied/Abweichung/Status/Ergebnis (Objekte oder DataTable mit echtem Namen in Caption)
+$script:HUDiffTintCols = @('Unterschied', 'Abweichung', 'Status', 'Ergebnis', 'Vergleich')
+$script:HUDiffTintBrush = $null
+function Test-HUDiffItem($Item) {
+    if ($null -eq $Item) { return $false }
+    $vals = @()
+    if ($Item -is [System.Data.DataRowView]) {
+        foreach ($col in $Item.Row.Table.Columns) { if ("$($col.Caption)" -in $script:HUDiffTintCols -or "$($col.ColumnName)" -in $script:HUDiffTintCols) { $vals += "$($Item.Row[$col])" } }
+    } else {
+        foreach ($n in $script:HUDiffTintCols) { $p = $Item.PSObject.Properties[$n]; if ($p) { $vals += "$($p.Value)" } }
+    }
+    foreach ($v in $vals) { if ($v -match '(?i)\babweichend\b') { return $true } }
+    return $false
+}
+function Set-HUDiffRowTint($Row) {
+    try {
+        if ($null -eq $Row) { return }
+        if ($null -eq $script:HUDiffTintBrush) { $b = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#3A321F')); $b.Freeze(); $script:HUDiffTintBrush = $b }
+        # nur in Fenstern, die aufgehen (Detail/Ergebnis) - nicht im Hauptfenster (Udo 25.10.)
+        $win = [System.Windows.Window]::GetWindow($Row)
+        if ($null -eq $win -or ($script:Window -and [object]::ReferenceEquals($win, $script:Window))) { return }
+        if (Test-HUDiffItem $Row.Item) { $Row.Background = $script:HUDiffTintBrush }
+        elseif ([object]::ReferenceEquals($Row.Background, $script:HUDiffTintBrush)) { $Row.ClearValue([System.Windows.Controls.Control]::BackgroundProperty) }
+    } catch { }
+}
+
 function Set-HUGridFit($Grid) {
     # darf NIE einen Fehler nach aussen geben (wird beim Laden jedes Fensters aufgerufen)
     try {
@@ -77,6 +103,11 @@ function Set-HUGridFit($Grid) {
         # jede Tabelle nur einmal verdrahten (Tag bleibt unberuehrt - den nutzen andere Fenster selbst)
         foreach ($h in $script:HUGridHookedList) { if ([object]::ReferenceEquals($h, $Grid)) { return } }
         [void]$script:HUGridHookedList.Add($Grid)
+        # GLOBAL (Udo 25.10.): in aufgehenden Fenstern Zeilen mit "abweichend" dezent einfaerben - beim Erzeugen jeder Zeile, auch wiederverwendete
+        try {
+            $Grid.Add_LoadingRow({ param($s, $e) Set-HUDiffRowTint $e.Row })
+            foreach ($it in @($Grid.Items)) { $r = $Grid.ItemContainerGenerator.ContainerFromItem($it); if ($r) { Set-HUDiffRowTint $r } }
+        } catch { }
         # spaeter vom Code angelegte Spalten: Ereignis der Spaltenliste ueber .NET anhaengen
         # (PS 5.1 findet add_CollectionChanged an der Liste nicht und sucht dann an den einzelnen Spalten)
         $cols = $Grid.Columns

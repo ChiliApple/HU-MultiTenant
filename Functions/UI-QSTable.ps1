@@ -75,7 +75,7 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
     foreach ($cn in $data.Columns) {
         $safe = "c$i"; $i++
         $map[$safe] = $cn
-        [void]$dt.Columns.Add($safe, [string])
+        $dc = $dt.Columns.Add($safe, [string]); $dc.Caption = "$cn"   # echter Name (u. a. fuer die globale Einfaerbung 'abweichend')
     }
     foreach ($r in $data.Rows) {
         $row = $dt.NewRow()

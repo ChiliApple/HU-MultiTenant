@@ -169,16 +169,38 @@ function Start-HUSecretCheckAll([switch]$Force, [scriptblock]$Done = $null) {
 
 function Update-HUSecretDisplay([switch]$LogWarnings) {
     $c = $script:Controls
-    $info = Get-HUSecretInfo (Get-SelectedTenantKey)
-    $c['txtSecretExpiry'].Text = $info.Text
-    $c['txtSecretExpiry'].Foreground = Get-HUBrush $info.Color
-    $c['txtSecretExpiry'].ToolTip = $info.Tooltip
-    $qk = Get-HUQSTenantKey
-    if ($qk) {
-        $qi = Get-HUSecretInfo $qk
-        $c['txtQSSecret'].Text = $(if ($qi.EndDate) { "Secret: $($qi.Short)" } else { '' })
-        $c['txtQSSecret'].Foreground = Get-HUBrush $qi.Color
-        $c['txtQSSecret'].ToolTip = $qi.Text + "`n" + $qi.Tooltip
+    # 2.5.2: Ablauf in der Kopfzeile (neben Version/Kanal) - fuer den Tenant des offenen Reiters (Quick Script: dessen Tenant)
+    $sel = $(if ($c['tabMain']) { $c['tabMain'].SelectedItem } else { $null })
+    # Einen Tenant gibt es nur in Extensions (Tenant-Leiste) und Quick Script (eigene Auswahl); alle anderen Reiter (Apps, Wartung,
+    # Analyse, Muster, Teams, Zusatzmodule) waehlen ihre Tenants selbst -> Sammelanzeige, bei Warnung die zuerst ablaufende Schule
+    $multi = $sel -and $sel -ne $c['tabExtensions'] -and $sel -ne $c['tabQuickScript']
+    if ($multi -and @($script:Settings.tenants).Count -gt 1) {
+        $all = @(foreach ($t in @($script:Settings.tenants)) { [pscustomobject]@{ Key = "$($t.key)"; Name = "$($t.displayName)"; Info = (Get-HUSecretInfo "$($t.key)"); Cert = [bool](Test-HUTenantCertAuth $t) } })
+        $known = @($all | Where-Object { $null -ne $_.Info.Days } | Sort-Object { $_.Info.Days })
+        $what = $(if (@($all | Where-Object { -not $_.Cert }).Count) { 'Secrets/Zertifikate' } else { 'Zertifikate' })
+        $first = @($known)[0]
+        $tip = (@($all | ForEach-Object { "$($_.Name): $($_.Info.Text -replace '^\S+\s', '')" }) -join "`n")
+        if ($first -and $first.Info.Level -in 'Warn', 'Critical', 'Expired') {
+            $script:HdrSecretKey = $first.Key
+            $c['txtSecretExpiry'].Text = "$($first.Info.Text)  -  $($first.Name)"
+            $c['txtSecretExpiry'].Foreground = Get-HUBrush $first.Info.Color
+        } else {
+            $script:HdrSecretKey = $(if ($first) { $first.Key } else { "$(Get-SelectedTenantKey)" })
+            $unk = $all.Count - $known.Count
+            $c['txtSecretExpiry'].Text = $(if (-not $known.Count) { "$($script:KeyIcon) ${what}: Ablauf unbekannt" }
+                elseif ($unk) { "$($script:KeyIcon) ${what}: $($known.Count) von $($all.Count) gueltig, $unk unbekannt (fruehestens bis $($first.Info.EndDate.ToString('dd.MM.yyyy')))" }
+                else { "$($script:KeyIcon) ${what}: alle $($all.Count) gueltig (fruehestens bis $($first.Info.EndDate.ToString('dd.MM.yyyy')))" })
+            $c['txtSecretExpiry'].Foreground = Get-HUBrush $(if ($known.Count -and -not $unk) { '#8BC34A' } else { '#858585' })
+        }
+        $c['txtSecretExpiry'].ToolTip = "$tip`n`nKlick: Einstellungen > Tenants"
+    } else {
+        $hk = $(if ($sel -and $sel -eq $c['tabQuickScript']) { Get-HUQSTenantKey } else { Get-SelectedTenantKey })
+        $script:HdrSecretKey = "$hk"
+        $info = Get-HUSecretInfo $hk
+        $tn = "$(@($script:Settings.tenants | Where-Object { "$($_.key)" -eq "$hk" } | ForEach-Object { $_.displayName })[0])"
+        $c['txtSecretExpiry'].Text = $(if ($info.Text) { "$($info.Text)$(if ($tn) { "  -  $tn" })" } else { '' })
+        $c['txtSecretExpiry'].Foreground = Get-HUBrush $info.Color
+        $c['txtSecretExpiry'].ToolTip = "$($info.Tooltip)`n`nKlick: Einstellungen > Tenants"
     }
     # Warnung in der Titelleiste
     $bad = @()
@@ -439,5 +461,5 @@ function Register-HUTenantHandlers {
 
     $c['txtSecretWarning'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' })
     $c['txtSecretExpiry'].Cursor = [System.Windows.Input.Cursors]::Hand
-    $c['txtSecretExpiry'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' (Get-SelectedTenantKey) })
+    $c['txtSecretExpiry'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' $(if ($script:HdrSecretKey) { $script:HdrSecretKey } else { Get-SelectedTenantKey }) })
 }

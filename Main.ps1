@@ -172,7 +172,7 @@ $script:Version = '0.0.0'
 try { $script:Version = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
 
 Set-HUSplashStatus 'Module werden geladen ...'
-foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs', 'HU.Setup', 'HU.SecCatalog', 'HU.EntraRestore', 'HU.Muster', 'HU.Transfer')) {
+foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs', 'HU.Setup', 'HU.SecCatalog', 'HU.EntraRestore', 'HU.Muster', 'HU.Transfer', 'HU.MusterApply')) {
     $modPath = Join-Path $script:AppRoot "Core\$mod.psm1"
     if (-not (Test-Path -LiteralPath $modPath)) { Show-HUFatal "Core-Modul fehlt: $modPath`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     Import-Module $modPath -Force -DisableNameChecking
@@ -183,7 +183,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 $uiFiles = @('Core-Async', 'Core-Update', 'Core-Addons', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
+             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-MusterApply', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
 # ohne Oberflaeche nur das Noetige (Einstellungen lesen/ergaenzen)
 if ($Headless) { $uiFiles = @('UI-Common', 'UI-Settings') }
 foreach ($f in $uiFiles) {
@@ -330,7 +330,7 @@ $script:Controls['btnSupport'].Add_Click({ Show-HUSupport })
 $script:Controls['btnRemote'].Add_Click({ Show-HURemoteDialog })
 $script:Controls['btnPanic'].Add_Click({ Invoke-HUPanic })
 # Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
-$script:Controls['tabMain'].Add_SelectionChanged({ param($s, $e) if ($e.OriginalSource -eq $script:Controls['tabMain']) { Update-HULeftPanel } })
+$script:Controls['tabMain'].Add_SelectionChanged({ param($s, $e) if ($e.OriginalSource -eq $script:Controls['tabMain']) { Update-HULeftPanel; try { Update-HUSecretDisplay } catch { } } })
 # Reiterleiste bleibt an derselben Stelle: Abstaende von Tenant-Leiste und Extension-Liste bei Groessenaenderungen nachziehen
 # (Splitter, Fenstergroesse, Reiterleiste bricht um)
 foreach ($__n in 'pnlLeft', 'pnlTenantBar', 'tabMain') { $script:Controls[$__n].Add_SizeChanged({ Update-HUMainOverlay }) }
@@ -379,6 +379,7 @@ $script:Window.Add_ContentRendered({
         if ((Get-HULockConfig).Enabled -and (Get-HULockConfig).OnStart) { Lock-HUApp -AtStart }
         # Schreibrechte fuer Uebertragen/Zurueckschreiben laenger als 7 Tage an? (einmal am Tag)
         try { Test-HUWritePkgReminder } catch { }
+        try { Test-HUMaMarkerReminder } catch { }
     }
     if ($script:SmokeTestFile) {
         # automatischer Test (CI): Fenster laeuft, Ergebnis schreiben, beenden

@@ -658,11 +658,52 @@ function Get-HUMusterInventory([object[]]$Packages) {
     }
 }
 
+# Conditional Access aus dem Muster gegen die Tenants: Felder, die erst beim Uebertragen aus dem Ziel kommen oder bewusst anders sind,
+# zaehlen nicht als Abweichung - Status (Muster immer 'Nur Bericht'), Notfallkonten (excludeUsers), Rollen bei huRollen, Gruppen bei huGruppen.
+# Liefert $true, wenn die Tenants untereinander gleich sind und sich vom Muster nur in diesen Feldern unterscheiden.
+function Test-HUMusterCaOnlyTemplateDiff($Row, [string]$MusterKey) {
+    if ("$($Row.Typ)" -ne 'Conditional Access') { return $false }
+    $items = @($Row.Items | Where-Object { $_.PSObject.Properties['Obj'] -and $null -ne $_.Obj })
+    if ($items.Count -ne @($Row.Items).Count) { return $false }
+    $mu = @($items | Where-Object { "$($_.Tenant)" -eq $MusterKey }); $tn = @($items | Where-Object { "$($_.Tenant)" -ne $MusterKey })
+    if ($mu.Count -ne 1 -or -not $tn.Count) { return $false }
+    $mo = $mu[0].Obj
+    $ign = @('state', 'conditions.users.excludeUsers')
+    if ($mo.PSObject.Properties['huRollen'] -and "$($mo.huRollen)") { $ign += 'conditions.users.excludeRoles', 'conditions.users.includeRoles' }
+    if ($mo.PSObject.Properties['huGruppen'] -and $mo.huGruppen) { $ign += 'conditions.users.includeGroups', 'conditions.users.excludeGroups' }
+    $rx = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+    $flat = {
+        param($o, [string[]]$Skip)
+        $f = ConvertTo-HUFlatMap $o; $n = @{}
+        foreach ($k in $f.Keys) { $nk = [regex]::Replace("$k", $rx, '#id'); if ($Skip -contains $nk) { continue }; $n[$nk] = [regex]::Replace("$($f[$k])", $rx, '#id') }
+        $n
+    }
+    try {
+        # Tenants untereinander: alle Felder
+        if (@($tn | ForEach-Object { $_.Hash } | Select-Object -Unique).Count -gt 1) {
+            $maps = @{}; $ks = @(); for ($i = 0; $i -lt $tn.Count; $i++) { $maps["t$i"] = & $flat $tn[$i].Obj @(); $ks += "t$i" }
+            if (@(Get-HUCompareDiff $maps $ks).Count) { return $false }
+        }
+        # Muster gegen den ersten Tenant ohne die Vorlagen-Felder
+        $maps = @{ m = (& $flat $mo $ign); t = (& $flat $tn[0].Obj $ign) }
+        return (-not @(Get-HUCompareDiff $maps @('m', 't')).Count)
+    } catch { return $false }
+}
+
 # Vergleichsmatrix mit Muster-Spalte. -Partial (nur Teilpakete gewaehlt): Was nicht im Paket ist, zaehlt nicht als Abweichung -
 # die Zeile wird nur unter den Tenants bewertet und bekommt NotInPkg = $true (Zelle "nicht im Paket").
 function Get-HUMusterMatrix([object[]]$Rows, [string[]]$Keys, [switch]$Partial) {
     $mk = Get-HUMusterKey
     $m = @(Get-HUCompareMatrix $Rows $Keys)
+    # CA: nur Status/Notfallkonten/Platzhalter anders als im Muster -> nicht als abweichend zaehlen
+    if ($Keys -contains $mk) {
+        foreach ($r in $m) {
+            if ("$($r.Status)" -like '*Einstellungen abweichend*' -and @($r.Have) -contains $mk -and (Test-HUMusterCaOnlyTemplateDiff $r $mk)) {
+                $r.Status = ("$($r.Status)" -replace ', Einstellungen abweichend', '') + ' (wie Muster; Status und Notfallkonten kommen aus dem Tenant)'
+                $r.Diff = (@($r.Missing).Count -gt 0 -or @($r.Unknown).Count -gt 0 -or $r.Dupe)
+            }
+        }
+    }
     if (-not $Partial -or $Keys -notcontains $mk) { return $m }
     $others = @($Keys | Where-Object { $_ -ne $mk })
     $errs = @($Rows | Where-Object { $_.PSObject.Properties['Error'] -and $_.Error })
@@ -679,4 +720,4 @@ Export-ModuleMember -Function Get-HUMusterBuiltinRoot, Set-HUMusterBuiltinRoot, 
     Get-HUMusterKey, Get-HUMusterRoot, Get-HUMuster, Save-HUMuster, Get-HUNameMap, ConvertTo-HUMuName,
     Get-HUMusterCategories, Get-HUMusterPkgRoot, ConvertTo-HUMusterTags, Get-HUMusterNameMap, Resolve-HUMusterName, Get-HUMusterTagNames, Get-HUMusterLocationNames,
     Get-HUMusterPackages, Get-HUMusterPackage, Get-HUMusterNameCatalog, Save-HUMusterPackage, Get-HUMusterPackageItems, Get-HUMusterStandItems,
-    New-HUMusterPackageFromStand, Remove-HUMusterPackage, Initialize-HUMusterLibrary, Get-HUMusterTrashRoot, Get-HUMusterTrash, Restore-HUMusterPackage, Remove-HUMusterTrashItem, Clear-HUMusterTrash, Get-HUMusterSelection, Get-HUMusterInventory, Get-HUMusterMatrix
+    New-HUMusterPackageFromStand, Remove-HUMusterPackage, Initialize-HUMusterLibrary, Get-HUMusterTrashRoot, Get-HUMusterTrash, Restore-HUMusterPackage, Remove-HUMusterTrashItem, Clear-HUMusterTrash, Get-HUMusterSelection, Get-HUMusterInventory, Get-HUMusterMatrix, Test-HUMusterCaOnlyTemplateDiff

@@ -184,6 +184,57 @@ Describe 'Vergleich mit Teilpaketen' {
     }
 }
 
+Describe 'Vergleich: CA aus dem Muster mit Werten aus dem Ziel' {
+    BeforeAll {
+        $script:CaObj = {
+            param([string]$State, [string[]]$Bg, [string[]]$Roles, [string]$Ctl = 'mfa', [bool]$Rollen = $false)
+            $o = [pscustomobject]@{ displayName = '100 - Admin'; state = $State
+                conditions = [pscustomobject]@{ users = [pscustomobject]@{ includeUsers = @('All'); excludeUsers = @($Bg); excludeRoles = @($Roles) } }
+                grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @($Ctl) } }
+            if ($Rollen) { $o | Add-Member -NotePropertyName huRollen -NotePropertyValue 'alleEingebautenAusnehmen' }
+            $o
+        }
+        $script:CaRow = { param($t, $o, $h) [pscustomobject]@{ Tenant = $t; Typ = 'Conditional Access'; Name = '100 - Admin'; Id = 'x'; Hash = $h; Copy = ''; Info = ''; Obj = $o } }
+    }
+    It 'nur Status, Notfallkonten und Rollen (huRollen) anders -> nicht abweichend' {
+        $mk = '__MUSTER__'
+        $r1 = '11111111-0000-0000-0000-000000000001'; $r2 = '22222222-0000-0000-0000-000000000002'; $bg = 'bbbbbbbb-0000-0000-0000-000000000001'
+        $rows = @(
+            (& $script:CaRow $mk (& $script:CaObj 'enabledForReportingButNotEnforced' @() @() -Rollen $true) 'hm'),
+            (& $script:CaRow 'T1' (& $script:CaObj 'enabled' @($bg) @($r1, $r2)) 'ht'),
+            (& $script:CaRow 'T2' (& $script:CaObj 'enabled' @($bg) @($r1, $r2)) 'ht')
+        )
+        $m = @(Get-HUMusterMatrix $rows @($mk, 'T1', 'T2'))[0]
+        $m.Diff | Should -BeFalse
+        $m.Status | Should -BeLike 'ueberall (wie Muster*'
+    }
+    It 'echte Abweichung (anderes Steuerelement) bleibt abweichend' {
+        $mk = '__MUSTER__'
+        $rows = @(
+            (& $script:CaRow $mk (& $script:CaObj 'enabledForReportingButNotEnforced' @() @() -Rollen $true) 'hm'),
+            (& $script:CaRow 'T1' (& $script:CaObj 'enabled' @() @() 'block') 'ht')
+        )
+        @(Get-HUMusterMatrix $rows @($mk, 'T1'))[0].Diff | Should -BeTrue
+    }
+    It 'Tenants untereinander verschieden -> abweichend' {
+        $mk = '__MUSTER__'
+        $rows = @(
+            (& $script:CaRow $mk (& $script:CaObj 'enabledForReportingButNotEnforced' @() @()) 'hm'),
+            (& $script:CaRow 'T1' (& $script:CaObj 'enabled' @() @()) 'h1'),
+            (& $script:CaRow 'T2' (& $script:CaObj 'enabled' @() @() 'block') 'h2')
+        )
+        @(Get-HUMusterMatrix $rows @($mk, 'T1', 'T2'))[0].Diff | Should -BeTrue
+    }
+    It 'Rollen ohne huRollen zaehlen weiter' {
+        $mk = '__MUSTER__'
+        $rows = @(
+            (& $script:CaRow $mk (& $script:CaObj 'enabledForReportingButNotEnforced' @() @('11111111-0000-0000-0000-000000000001')) 'hm'),
+            (& $script:CaRow 'T1' (& $script:CaObj 'enabled' @() @('11111111-0000-0000-0000-000000000001', '22222222-0000-0000-0000-000000000002')) 'ht')
+        )
+        @(Get-HUMusterMatrix $rows @($mk, 'T1'))[0].Diff | Should -BeTrue
+    }
+}
+
 Describe 'Namenszuordnung mit Paketen' {
     It 'Gruppennamen aus dem Namenskatalog, mehrere Pakete, ohne Quell-Tenant' {
         $b = & $script:NewBase
@@ -370,6 +421,17 @@ Describe 'Mitgelieferte Pakete (Programmordner Muster)' {
         $k.Count | Should -Be $p.Count
         $k.Sources -join '' | Should -Be 'mitgeliefert'
         { Save-HUMusterPackage -Settings $script:Sb -Title $p.Title -Category 'Conditional Access' -Items @(Get-HUMusterPackageItems $p) } | Should -Throw '*schon ein Paket*'
+    }
+    It 'Quellen der mitgelieferten Pakete: vollstaendige https-Adressen auf Microsoft Learn (vom Link-Pruefer gefunden)' {
+        $urls = @(Get-HUMusterBuiltinPackages | ForEach-Object { @($_.Learn) } | Sort-Object -Unique)
+        $urls.Count | Should -BeGreaterThan 5
+        @($urls | Where-Object { $_ -notmatch '^https://learn\.microsoft\.com/[a-z0-9/._-]+$' }).Count | Should -Be 0
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $found = @(& (Join-Path $root '.github\scripts\Test-HULinks.ps1') -Root (Join-Path $root 'Muster') -Offline -PassThru | ForEach-Object Url)
+        foreach ($u in $urls) { $found | Should -Contain $u }
+    }
+    It 'Notiz der mitgelieferten Pakete: kurze Punkte je Zeile' {
+        foreach ($p in @(Get-HUMusterBuiltinPackages)) { @("$($p.Note)" -split "`n" | Where-Object { $_.Length -gt 220 }).Count | Should -Be 0 -Because $p.Title }
     }
     It 'Namen benannter Orte aus dem Paket (names.json und index.json)' {
         $p = Get-HUMusterPackage $script:Sb 'mitgeliefert-ca-schule-praxis'

@@ -517,6 +517,7 @@ $script:HUSecDefaults = @{
     V1  = @{ accounts = @() }
     A25 = @{ adminGroups = @(); maxUsers = 4 }
     A23 = @{ maxHours = 24 }
+    A17 = @{ allowed = 'keine' }
     E03 = @{ maxPercent = 5 }
     E04 = @{ minPercent = 95 }
     E07 = @{ maxQualityDays = 7 }
@@ -543,6 +544,7 @@ $script:HUSecBaselineInfo = @(
     @{ Rule = 'A08'; Key = 'min';               Kind = 'int';   Text = 'Mindestens so viele Global Administratoren.' }
     @{ Rule = 'A08'; Key = 'max';               Kind = 'int';   Text = 'Hoechstens so viele Global Administratoren.' }
     @{ Rule = 'A09'; Key = 'allowedWithout';    Kind = 'int';   Text = 'So viele Administratoren duerfen ohne MFA-Registrierung sein (z. B. Notfallkonten).' }
+    @{ Rule = 'A17'; Key = 'allowed';           Kind = 'choice'; Choices = @('keine', 'gering', 'empfohlen'); Text = 'Benutzer-Consent, der noch ok ist: keine | gering (verifizierte Herausgeber, schwache Berechtigungen) | empfohlen (zusaetzlich von Microsoft verwaltet). Rest mit Admin-Freigabe (A41).' }
     @{ Rule = 'A19'; Key = 'warnDays';          Kind = 'int';   Text = 'Secrets und Zertifikate von Apps: so viele Tage vor Ablauf warnen.' }
     @{ Rule = 'A23'; Key = 'maxHours';          Kind = 'int';   Text = 'Gaeste muessen sich spaetestens nach so vielen Stunden neu anmelden.' }
     @{ Rule = 'A26'; Key = 'maxAgeDays';        Kind = 'int';   Text = 'Offene Gaesteinladungen gelten nach so vielen Tagen als veraltet.' }
@@ -606,6 +608,11 @@ function Save-HUSecBaselineEdit {
             $min = @($parts | Where-Object { $i.Kind -eq 'rules' -and $known[$_].Min })
             if ($min.Count) { $errs.Add("$k`: Mindeststandard, nicht abschaltbar (nur Ausnahme mit Ablauf): $($min -join ', ')"); continue }
             $clean[$k] = $parts
+        }
+        elseif ($i.Kind -eq 'choice') {
+            $hit = @($i.Choices | Where-Object { $_ -eq $t.ToLowerInvariant() })
+            if (-not $hit.Count) { $errs.Add("$k`: erlaubt sind $($i.Choices -join ', ') ('$t')"); continue }
+            $clean[$k] = $hit[0]
         }
         elseif ($i.Kind -eq 'codes') {
             $parts = @($t -split '[,;\s]+' | Where-Object { $_ })
@@ -989,7 +996,11 @@ $script:HUSecRules = @(
             if ($d -and $d.PSObject.Properties['permissionGrantPoliciesAssigned']) { $prop = $d.permissionGrantPoliciesAssigned }
             elseif ($F.authz.PSObject.Properties['permissionGrantPolicyIdsAssignedToDefaultUserRole']) { $prop = $F.authz.permissionGrantPolicyIdsAssignedToDefaultUserRole }
             else { return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = 'Feld fuer Consent-Richtlinien nicht gefunden'; Complete = $false } }
-            $badList = @(@($prop) | Where-Object { "$_" -like 'ManagePermissionGrantsForSelf.*' })
+            # Sollwert A17 allowed: keine (Standard) | gering (-low) | empfohlen (-low und -recommended); Legacy (alle Apps) nie ok
+            $al = "$($B.allowed)".ToLowerInvariant()
+            $okRx = $(if ($al -eq 'empfohlen') { '(-low|recommended)$' } elseif ($al -eq 'gering') { '-low$' } else { '^$' })
+            $allList = @(@($prop) | Where-Object { "$_" -like 'ManagePermissionGrantsForSelf.*' })
+            $badList = @($allList | Where-Object { "$_" -notmatch $okRx })
             $bad = $badList.Count
             $names = @($badList | ForEach-Object {
                     switch -Wildcard ("$_") {
@@ -999,7 +1010,9 @@ $script:HUSecRules = @(
                         default { ("$_" -replace '^ManagePermissionGrantsForSelf\.', '') }
                     }
                 }) -join '; '
-            if ($bad -eq 0) { @{ Status = 'OK'; Count = 0; Detail = 'kein Benutzer-Consent' } } else { @{ Status = 'Abweichung'; Count = $bad; Detail = "Benutzer-Consent aktiv: $names" } }
+            $okNames = @($allList | Where-Object { "$_" -match $okRx } | ForEach-Object { if ("$_" -like '*-low') { 'verifizierte Herausgeber, schwache Berechtigungen' } else { 'von Microsoft verwaltet (empfohlen)' } }) -join '; '
+            if ($bad -eq 0) { @{ Status = 'OK'; Count = 0; Detail = $(if ($okNames) { "erlaubt laut Sollwert A17 ($al): $okNames" } else { 'kein Benutzer-Consent' }) } }
+            else { @{ Status = 'Abweichung'; Count = $bad; Detail = "Benutzer-Consent aktiv: $names$(if ($al -ne 'keine' -and $al) { " (Sollwert A17 erlaubt: $al)" })" } }
         } }
     @{ Id = 'V5'; Area = 'Entra'; Sev = 'Kritisch'; Title = 'MFA-Grundschutz vorhanden (Security Defaults oder CA-Richtlinie fuer alle)'; Facts = @('ca', 'secdef'); Min = $true; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
         Items = { param($F, $B) Get-HUSecPolicyItems $F.ca { param($P) (Test-HUSecCaMfaAny $P) -and (Test-HUSecCaTargetsAll $P) } }
@@ -1708,7 +1721,7 @@ $script:HUSecWhy = @{
     A08 = 'Zu viele Global Administratoren vergroessern die Angriffsflaeche, zu wenige gefaehrden die Erreichbarkeit. Soll: 2 bis 4.'
     A14 = 'Gaeste sollen im Verzeichnis moeglichst wenig sehen koennen (eingeschraenkteste Rolle).'
     A15 = 'Wer Gaeste einladen darf, bestimmt, wer externe Konten anlegen kann.'
-    A17 = 'Duerfen Benutzer Apps selbst zustimmen, kann eine Phishing-App Zugriff auf Daten bekommen.'
+    A17 = 'Duerfen Benutzer Apps selbst zustimmen, kann eine Phishing-App Zugriff auf Daten bekommen. Ueber Sollwert A17 allowed laesst sich die Portal-Einstellung "verifizierte Herausgeber, schwach eingestufte Berechtigungen" (gering) bzw. "von Microsoft verwaltet" (empfohlen) als ok werten - alles andere dann mit Admin-Freigabe (A41).'
     V5  = 'Ohne MFA-Grundschutz reicht ein gestohlenes Passwort. Entweder Security Defaults oder eine MFA-Richtlinie fuer alle Benutzer.'
     A02 = 'Administratorkonten sind das beliebteste Angriffsziel. Ohne MFA reicht ein gestohlenes Passwort fuer Vollzugriff.'
     A03 = 'Gast-Konten werden oft schwach geschuetzt. MFA soll auch fuer sie gelten.'
@@ -2035,7 +2048,7 @@ $script:HUSecFixPortals = [ordered]@{
     entra    = @{ Name = 'Entra admin center'; Url = 'https://entra.microsoft.com' }
     intune   = @{ Name = 'Intune admin center'; Url = 'https://intune.microsoft.com' }
     defender = @{ Name = 'Microsoft Defender portal'; Url = 'https://security.microsoft.com' }
-    m365     = @{ Name = 'Microsoft 365 admin center'; Url = 'https://admin.microsoft.com' }
+    m365     = @{ Name = 'Microsoft 365 admin center'; Url = 'https://admin.cloud.microsoft' }
     teams    = @{ Name = 'Teams admin center'; Url = 'https://admin.teams.microsoft.com' }
     purview  = @{ Name = 'Microsoft Purview portal'; Url = 'https://purview.microsoft.com' }
 }
