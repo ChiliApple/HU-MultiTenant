@@ -6,17 +6,17 @@
   "Items": [
     {
       "Typ": "Conditional Access",
-      "Name": "Grundschutz - Konformes Gerät oder MFA",
+      "Name": "904 - Konformes Gerät oder MFA",
       "Id": "mitgeliefert-ca-geraete-01",
-      "File": "Conditional_Access/001_Grundschutz_-_Konformes_Geraet_oder_MFA.json",
+      "File": "Conditional_Access/001_904_-_Konformes_Geraet_oder_MFA.json",
       "Source": "mitgeliefert",
       "Stand": "2026-10-25_000000"
     },
     {
       "Typ": "Conditional Access",
-      "Name": "Grundschutz - Konformes Gerät erforderlich",
+      "Name": "905 - Konformes Gerät erforderlich",
       "Id": "mitgeliefert-ca-geraete-02",
-      "File": "Conditional_Access/002_Grundschutz_-_Konformes_Geraet_erforderlich.json",
+      "File": "Conditional_Access/002_905_-_Konformes_Geraet_erforderlich.json",
       "Source": "mitgeliefert",
       "Stand": "2026-10-25_000000"
     }

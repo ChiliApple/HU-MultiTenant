@@ -1,12 +1,10 @@
 {
   "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
-  "displayName": "Grundschutz - Legacy-Authentifizierung blockieren",
+  "displayName": "203 - MFA Cloud-User",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
-      "includeUsers": [
-        "All"
-      ],
+      "includeUsers": [],
       "excludeUsers": [],
       "includeGroups": [],
       "excludeGroups": [],
@@ -21,16 +19,21 @@
       "includeUserActions": []
     },
     "clientAppTypes": [
-      "exchangeActiveSync",
-      "other"
+      "all"
     ]
   },
   "grantControls": {
     "operator": "OR",
     "builtInControls": [
-      "block"
+      "mfa"
     ],
     "customAuthenticationFactors": [],
     "termsOfUse": []
-  }
+  },
+  "huGruppen": [
+    {
+      "feld": "includeGroups",
+      "name": "Cloud-User"
+    }
+  ]
 }

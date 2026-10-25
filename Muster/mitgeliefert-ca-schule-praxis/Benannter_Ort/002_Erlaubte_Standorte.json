@@ -1,0 +1,26 @@
+{
+  "@odata.type": "#microsoft.graph.countryNamedLocation",
+  "id": "a1b2c3d4-0903-4000-8000-000000000913",
+  "displayName": "Erlaubte Standorte",
+  "countriesAndRegions": [
+    "BE",
+    "DK",
+    "DE",
+    "FR",
+    "IE",
+    "IT",
+    "XK",
+    "HR",
+    "AT",
+    "CH",
+    "RS",
+    "SK",
+    "SI",
+    "ES",
+    "CZ",
+    "HU",
+    "GB"
+  ],
+  "includeUnknownCountriesAndRegions": false,
+  "countryLookupMethod": "clientIpAddress"
+}

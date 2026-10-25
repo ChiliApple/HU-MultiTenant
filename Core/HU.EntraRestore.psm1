@@ -719,6 +719,33 @@ function Get-HUErTrPlanConsent($Plan, [string]$TargetKey, $Settings, $Backup, [s
     }
 }
 
+# 2.5.1 Uebertragen der Autorisierungsrichtlinie: Zustimmungsrechte des Ziels fuer EIGENE Apps (ManagePermissionGrantsForOwnedResource.*)
+# behalten - das Muster legt nur die Benutzer-Zustimmung fest (z. B. mitgelieferter Entra-Grundschutz), nicht die Team-/Owner-Rechte.
+function Merge-HUErTrOwnedGrants([string]$TargetKey, $Settings, $Backup) {
+    $bd = Get-HUErProp $Backup 'defaultUserRolePermissions'
+    if (-not $bd -or -not (Test-HUErHas $bd 'permissionGrantPoliciesAssigned')) { return $Backup }
+    $live = $null
+    try { $live = Invoke-HUErGraph $TargetKey $Settings '/policies/authorizationPolicy' } catch { return $Backup }
+    $owned = @(@(Get-HUErProp (Get-HUErProp $live 'defaultUserRolePermissions') 'permissionGrantPoliciesAssigned') | Where-Object { "$_" -like 'ManagePermissionGrantsForOwnedResource.*' })
+    if (-not $owned.Count) { return $Backup }
+    $b = Copy-HUErObject $Backup
+    $d = Get-HUErProp $b 'defaultUserRolePermissions'
+    $cur = @(@(Get-HUErProp $d 'permissionGrantPoliciesAssigned') | Where-Object { "$_" })
+    $low = @($cur | ForEach-Object { "$_".ToLowerInvariant() })
+    $add = @($owned | Where-Object { $low -notcontains "$_".ToLowerInvariant() })
+    if ($add.Count) { Set-HUErProp $d 'permissionGrantPoliciesAssigned' ([object[]]@($cur + $add)) }
+    return $b
+}
+
+# 2.5.1 Laenderwahl (mitgelieferter Geoblock): im Muster fest + waehlbar, gewaehlt wird in der Vorschau
+function Get-HUErTrCountryChoice($Backup) {
+    $m = Get-HUErProp $Backup 'huLaenderwahl'
+    if (-not $m) { return $null }
+    $fest = @(@(Get-HUErProp $m 'fest') | Where-Object { "$_" } | ForEach-Object { "$_".ToUpperInvariant() })
+    $wahl = @(@(Get-HUErProp $m 'wahl') | Where-Object { $_ -and "$(Get-HUErProp $_ 'code')" })
+    return [pscustomobject]@{ Fest = $fest; Wahl = $wahl }
+}
+
 function Get-HUErTrPlanLocation($Plan, [string]$TargetKey, $Settings, $Backup) {
     $type = "$(Get-HUErProp $Backup '@odata.type')"
     $name = "$(Get-HUErProp $Backup 'displayName')"
@@ -727,6 +754,8 @@ function Get-HUErTrPlanLocation($Plan, [string]$TargetKey, $Settings, $Backup) {
     try { $all = @(Get-HUIntuneGraphAll -TenantKey $TargetKey -Settings $Settings -Endpoint '/identity/conditionalAccess/namedLocations' -V1) } catch { $Plan.Blocks.Add("Orte im Ziel nicht lesbar ($($_.Exception.Message))."); return }
     $hits = @($all | Where-Object { (ConvertTo-HUErName $_.displayName) -eq (ConvertTo-HUErName $name) })
     if ($hits.Count -gt 1) { $Plan.Blocks.Add("Den Ort '$name' gibt es im Ziel $($hits.Count)-mal - nicht eindeutig."); return }
+    $cc = Get-HUErTrCountryChoice $Backup
+    if ($cc -and $hits.Count -eq 1) { $Plan.Blocks.Add("Den Ort '$name' gibt es im Ziel schon - die Laender dort im Portal anpassen (die Laenderwahl gilt nur beim Neuanlegen)."); return }
     $fields = if ($type -eq '#microsoft.graph.ipNamedLocation') { @('displayName', 'ipRanges', 'isTrusted') } else { @('displayName', 'countriesAndRegions', 'includeUnknownCountriesAndRegions') }
     if ($hits.Count -eq 1) {
         # 045 B1: gleicher Name ist nicht derselbe Inhalt - Aenderung zeigen, betroffene Richtlinien nennen, bewusst bestaetigen
@@ -757,6 +786,17 @@ function Get-HUErTrPlanLocation($Plan, [string]$TargetKey, $Settings, $Backup) {
             Add-HUErChange $Plan $f '(neu)' $v
         }
         $Plan.Body = $body
+        if ($cc) {
+            $opts = New-Object System.Collections.Generic.List[object]
+            foreach ($wx in $cc.Wahl) {
+                $code = "$(Get-HUErProp $wx 'code')".ToUpperInvariant()
+                if ($cc.Fest -contains $code) { continue }
+                $opts.Add([pscustomobject]@{ Key = "country:$code"; Value = [bool](ConvertTo-HUErBool (Get-HUErProp $wx 'an')); Text = "Erlaubt: $(Get-HUErProp $wx 'name') ($code)" })
+            }
+            $Plan | Add-Member -NotePropertyName Options -NotePropertyValue $opts.ToArray() -Force
+            $Plan | Add-Member -NotePropertyName CountryFixed -NotePropertyValue ([string[]]$cc.Fest) -Force
+            $Plan.Notes.Add("Laender: immer erlaubt $($cc.Fest -join ', '); weitere per Haken waehlen (Liste unten). Geschrieben werden fest + angehakt.")
+        }
         $Plan.Notes.Add("Den Ort '$name' gibt es im Ziel noch nicht - er wird NEU angelegt (neue Kennung). Rueckgaengig = loeschen, solange unveraendert und von keiner Richtlinie verwendet.")
         $Plan.BreakGlass = $true
     }
@@ -842,7 +882,7 @@ function Get-HUErBreakGlassIds([string]$TenantKey) {
 }
 function Set-HUErProp($Obj, [string]$Name, $Value) { $Obj | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force }
 
-function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string]$ResolveKey, [string]$SourceLabel) {
+function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string]$ResolveKey, [string]$SourceLabel, [hashtable]$SourceNames = @{}) {
     $Plan.Perm = 'Policy.ReadWrite.ConditionalAccess (und Policy.Read.All)'
     # von Microsoft verwaltete Richtlinien legt Microsoft in jedem Tenant selbst an - keine Kopie
     if ("$(Get-HUErProp $Backup 'displayName')" -like 'Microsoft-managed:*') { $Plan.Blocks.Add('Von Microsoft verwaltete Richtlinie - Microsoft legt sie in jedem Tenant selbst an; dort im Portal ein-/ausschalten statt kopieren.'); return }
@@ -864,8 +904,27 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
         $ep = if ($Kind -eq 'u') { "/users/$Id`?`$select=id,userPrincipalName" } else { "/groups/$Id`?`$select=id,displayName" }
         try { $o = Invoke-HUErGraph $ResolveKey $Settings $ep; if ($Kind -eq 'u') { return "$($o.userPrincipalName)" } else { return "$($o.displayName)" } } catch { return $Id }
     }
+    # 2.5.1 Gruppen-Plaetze: Gruppen des Musters (Name aus der Quelle) und Platzhalter mitgelieferter Pakete (huGruppen) -
+    # in der Vorschau je Platz eine Gruppe des Ziels waehlen, die gleich zugewiesen wird (Udo 25.10.)
+    $slots = New-Object System.Collections.Generic.List[object]
+    foreach ($gf in 'includeGroups', 'excludeGroups') {
+        foreach ($gx in @(Get-HUErProp $u $gf | Where-Object { "$_" -match $script:HUErGuidRx })) { $slots.Add([pscustomobject]@{ Feld = $gf; Name = (& $nameOf 'g' "$gx") }) }
+    }
+    foreach ($hg in @(Get-HUErProp $Backup 'huGruppen' | Where-Object { $_ })) {
+        $gf = "$(Get-HUErProp $hg 'feld')"; $gn = "$(Get-HUErProp $hg 'name')"
+        if ($gf -in 'includeGroups', 'excludeGroups' -and $gn) { $slots.Add([pscustomobject]@{ Feld = $gf; Name = $gn }) }
+    }
+    $gChoices = $null
+    if ($slots.Count) {
+        try {
+            $gChoices = @(Get-HUIntuneGraphAll -TenantKey $TargetKey -Settings $Settings -Endpoint '/groups?$select=id,displayName,securityEnabled,groupTypes' -V1 |
+                    Where-Object { (ConvertTo-HUErBool $_.securityEnabled) -or @($_.groupTypes) -contains 'Unified' } |
+                    ForEach-Object { [pscustomobject]@{ Id = "$($_.id)"; Name = "$($_.displayName)" } } | Sort-Object Name)
+        } catch { $gChoices = $null; $Plan.Warnings.Add("Gruppen im Ziel nicht lesbar ($($_.Exception.Message)) - Gruppen werden nicht zugewiesen (Leserecht Group.Read.All).") }
+    }
     $was = New-Object System.Collections.Generic.List[string]
     foreach ($pair in @(@('includeUsers', 'u', 'Konten'), @('includeGroups', 'g', 'Gruppen'), @('excludeUsers', 'u', 'Ausnahmen Konten'), @('excludeGroups', 'g', 'Ausnahmen Gruppen'))) {
+        if ($pair[1] -eq 'g' -and $null -ne $gChoices) { continue }
         $vals = @(Get-HUErProp $u $pair[0] | Where-Object { "$_" -match $script:HUErGuidRx -and $srcBg -notcontains "$_".ToLowerInvariant() })
         if ($vals.Count) { $was.Add("$($pair[2]): $(@($vals | ForEach-Object { & $nameOf $pair[1] "$_" }) -join ', ')") }
     }
@@ -909,6 +968,16 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
     if ($hasAll) { $opts.Add([pscustomobject]@{ Key = 'allUsers'; Value = $true; Text = "Benutzer 'Alle' aus dem Muster uebernehmen (Schluesselwort, in jedem Tenant gleich). Ohne Haken: Benutzer 'Keine'." }) }
     if ($hasRoles) { $opts.Add([pscustomobject]@{ Key = 'roles'; Value = $true; Text = "Rollen aus dem Muster uebernehmen (in jedem Tenant gleich): $($roleNames -join ', ')." }) }
     if ($hasGuests) { $opts.Add([pscustomobject]@{ Key = 'guests'; Value = $true; Text = "Benutzer 'alle Gaeste und externen Benutzer' aus dem Muster uebernehmen (Schluesselwort, in jedem Tenant gleich). Ohne Haken: Benutzer 'Keine'." }) }
+    if ($null -ne $gChoices) {
+        $i = 0
+        foreach ($sl in $slots) {
+            $i++
+            $pre = @($gChoices | Where-Object { (ConvertTo-HUErName $_.Name) -eq (ConvertTo-HUErName $sl.Name) })
+            $opts.Add([pscustomobject]@{ Key = "group:$i"; Kind = 'group'; Feld = $sl.Feld; Slot = $sl.Name; Value = $(if ($pre.Count -eq 1) { $pre[0].Id } else { '' })
+                    Choices = [object[]]$gChoices; Text = "$(if ($sl.Feld -eq 'includeGroups') { 'Gilt fuer Gruppe' } else { 'Ausgenommen Gruppe' }) '$($sl.Name)':" })
+        }
+        $Plan.Notes.Add('Gruppen: je Platz eine Gruppe im Ziel waehlen (leer = nicht zuweisen). Gleichnamige Gruppen sind vorgewaehlt.')
+    }
     if ($opts.Count) { $Plan | Add-Member -NotePropertyName Options -NotePropertyValue $opts.ToArray() -Force }
     else { $Plan.Notes.Add("Benutzer: 'Keine' - die Richtlinie gilt erst, wenn du sie im Ziel zuweist.") }
     # Orte ueber den Namen (Ue-2)
@@ -920,7 +989,9 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
             foreach ($x in @(Get-HUErProp $l $f | Where-Object { "$_" })) {
                 if ("$x" -notmatch $script:HUErGuidRx) { $new.Add("$x"); continue }
                 $sn = ''
-                try { $sn = "$((Invoke-HUErGraph $ResolveKey $Settings "/identity/conditionalAccess/namedLocations/$x").displayName)" } catch { }
+                # 2.5.1 Namen aus dem Muster selbst (mitgelieferte Pakete: der Ort ist Teil des Pakets, nicht in einem Tenant)
+                if ($SourceNames -and $SourceNames.ContainsKey("$x".ToLowerInvariant())) { $sn = "$($SourceNames["$x".ToLowerInvariant()])" }
+                if (-not $sn) { try { $sn = "$((Invoke-HUErGraph $ResolveKey $Settings "/identity/conditionalAccess/namedLocations/$x").displayName)" } catch { } }
                 if (-not $sn) { $Plan.Blocks.Add("Benannter Ort $x ist in der Quelle nicht (mehr) lesbar."); continue }
                 if ($null -eq $tl) { try { $tl = @(Get-HUIntuneGraphAll -TenantKey $TargetKey -Settings $Settings -Endpoint '/identity/conditionalAccess/namedLocations?$select=id,displayName' -V1) } catch { $Plan.Blocks.Add("Orte im Ziel nicht lesbar ($($_.Exception.Message))."); return } }
                 $hits = @($tl | Where-Object { (ConvertTo-HUErName $_.displayName) -eq (ConvertTo-HUErName $sn) })
@@ -986,7 +1057,7 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
 function Get-HUEntraTransferPlan {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TargetKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Typ, [string]$Id = '', [string]$Name = '',
-        [Parameter(Mandatory)]$Backup, [Parameter(Mandatory)][string]$ResolveKey, [string]$SourceLabel = 'Muster')
+        [Parameter(Mandatory)]$Backup, [Parameter(Mandatory)][string]$ResolveKey, [string]$SourceLabel = 'Muster', [hashtable]$SourceNames = @{})
     $kind = Get-HUEntraRestoreKind $Typ $Id
     if ($script:HUErTrKinds -notcontains $kind) { throw "$Typ '$Name' wird (noch) nicht uebertragen" }
     $plan = New-HUErPlan $kind $TargetKey $Typ $Name
@@ -995,11 +1066,11 @@ function Get-HUEntraTransferPlan {
     $plan | Add-Member -NotePropertyName EntraId -NotePropertyValue $Id
     if ($TargetKey -eq $ResolveKey) { $plan.Blocks.Add('Ziel ist der Tenant, aus dem das Muster stammt - dafuer gibt es Zurueckschreiben.'); return $plan }
     switch ($kind) {
-        'authz' { Get-HUErPlanAuthz $plan $TargetKey $Settings $Backup }
+        'authz' { Get-HUErPlanAuthz $plan $TargetKey $Settings (Merge-HUErTrOwnedGrants $TargetKey $Settings $Backup) }
         'consent' { Get-HUErTrPlanConsent $plan $TargetKey $Settings $Backup $ResolveKey }
         'location' { Get-HUErTrPlanLocation $plan $TargetKey $Settings $Backup }
         'groupSetting' { Get-HUErTrPlanGroupSetting $plan $TargetKey $Settings $Backup $ResolveKey }
-        'caNew' { Get-HUErTrPlanCa $plan $TargetKey $Settings $Backup $ResolveKey $SourceLabel }
+        'caNew' { Get-HUErTrPlanCa $plan $TargetKey $Settings $Backup $ResolveKey $SourceLabel $SourceNames }
     }
     if ($plan.BreakGlass -eq $true -and $plan.Changes.Count) {
         $bg = Test-HUEntraBreakGlass -TenantKey $TargetKey -Settings $Settings
@@ -1022,6 +1093,22 @@ function Get-HUErTrUndoDir($Settings, [string]$TenantKey) { return (Join-Path (J
 
 # Schreiben nach Bestaetigung. PATCH/PUT ueber Invoke-HUEntraRestore (erneut lesen, sichern, schreiben, nachpruefen);
 # POST (neuer Ort / neue Verzeichniseinstellung): anlegen, nachlesen, je Feld pruefen. Danach Rueckgaengig-Datei.
+# Laenderwahl aus der Vorschau in den Inhalt und die Nachpruefung uebernehmen (fest + angehakt)
+function Set-HUErTrCountryBody($Plan) {
+    $sel = New-Object System.Collections.Generic.List[string]
+    foreach ($f in @($Plan.CountryFixed)) { if ("$f" -and -not $sel.Contains("$f")) { $sel.Add("$f") } }
+    foreach ($o in @($(if ($Plan.PSObject.Properties['Options']) { $Plan.Options }) | Where-Object { $_ -and "$($_.Key)" -like 'country:*' -and [bool]$_.Value })) {
+        $code = "$($o.Key)".Substring(8)
+        if (-not $sel.Contains($code)) { $sel.Add($code) }
+    }
+    $v = [object[]]$sel.ToArray()
+    $Plan.Body['countriesAndRegions'] = $v
+    foreach ($ch in @($Plan.Changes | Where-Object { $_.Feld -eq 'countriesAndRegions' })) {
+        $ch.Expected = $v; $ch.Danach = Format-HUErValue $v; $ch.DanachVoll = Format-HUErValue $v -Full
+        $ch.Anzahl = "0 -> $($v.Count)"
+    }
+}
+
 function Invoke-HUEntraTransfer {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Plan, [Parameter(Mandatory)]$Settings, [string]$Actor = "$env:USERNAME", [datetime]$Now = (Get-Date))
@@ -1052,9 +1139,13 @@ function Invoke-HUEntraTransfer {
             # Entra-Synchronisierung bei "Alle Benutzer") bleibt sonst erhalten
             if ($oR.Count -and -not $keepR) { $us['includeRoles'] = [object[]]@(); $us['excludeRoles'] = [object[]]@() }
             if ($oG.Count -and -not $keepG -and $us.Contains('includeGuestsOrExternalUsers')) { $us.Remove('includeGuestsOrExternalUsers') }
+            # 2.5.1 gewaehlte Gruppen des Ziels zuweisen (leer = nicht zuweisen)
+            $gIn = @($opts | Where-Object { "$($_.Kind)" -eq 'group' -and "$($_.Feld)" -eq 'includeGroups' -and "$($_.Value)" -match $script:HUErGuidRx } | ForEach-Object { "$($_.Value)" } | Select-Object -Unique)
+            $gEx = @($opts | Where-Object { "$($_.Kind)" -eq 'group' -and "$($_.Feld)" -eq 'excludeGroups' -and "$($_.Value)" -match $script:HUErGuidRx } | ForEach-Object { "$($_.Value)" } | Select-Object -Unique)
+            $us['includeGroups'] = [object[]]$gIn; $us['excludeGroups'] = [object[]]$gEx
             # 053 B1: Liste statt $( ) - im Rollen-Pfad muss [] gesendet werden, nicht null
             $iu = New-Object System.Collections.Generic.List[string]
-            if ($keepA) { $iu.Add('All') } elseif (-not $keepR -and -not $keepG) { $iu.Add('None') }
+            if ($keepA) { $iu.Add('All') } elseif (-not $keepR -and -not $keepG -and -not $gIn.Count) { $iu.Add('None') }
             $us['includeUsers'] = [object[]]$iu.ToArray()
         }
         $res = Invoke-HUErCreate $Plan $Settings "$Actor (Uebertragen aus $($Plan.SourceLabel))"
@@ -1070,6 +1161,7 @@ function Invoke-HUEntraTransfer {
         $res | Add-Member -NotePropertyName UndoFile -NotePropertyValue $file -Force
         return $res
     }
+    if ($Plan.Kind -eq 'location' -and $Plan.PSObject.Properties['CountryFixed']) { Set-HUErTrCountryBody $Plan }
     $r = $null
     try { $r = Invoke-HUErGraph $tk $Settings $Plan.Endpoint 'POST' $Plan.Body }
     catch { if (Test-HUGraphForbidden $_) { throw "Schreibrecht fehlt: $($Plan.Perm). Nichts angelegt. Microsoft meldet: $($_.Exception.Message)" }; throw }

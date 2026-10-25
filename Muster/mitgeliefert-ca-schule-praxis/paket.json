@@ -1,0 +1,23 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-ca-schule-praxis",
+  "Title": "CA Schule (Praxis-Set)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Conditional Access",
+  "Tags": [
+    "Schule",
+    "Praxis",
+    "P1"
+  ],
+  "Note": "Praxis-Set aus dem Schulbetrieb mit sprechender Nummerierung: 1xx Admins, 2xx MFA je Personengruppe, 9xx Blockieren/Geräte. Gruppen (Administration, Lehrer, Schüler, Cloud-User, Ausnahmen) werden beim Übertragen in der Vorschau je Platz aus dem Ziel gewählt und gleich zugewiesen - gleichnamige Gruppen sind vorgewählt, leer = nicht zuweisen. Zuerst die drei Länder-Orte übertragen (Geblockte Standorte, Erlaubte Standorte, Erlaubte Standorte ohne MFA), dann die Richtlinien. Ausnahmen für den Schulstandort (IP-Bereich) sind bewusst NICHT dabei - bei Bedarf eigenen IP-Ort anlegen und bei 200/201/900 ausnehmen. 902 und 903 sind zwei Varianten (Blacklist oder Whitelist) - eine davon wählen. Beim Übertragen: NEU, Nur Bericht, Notfallkonten des Ziels ausgenommen. Namen dürfen im Ziel frei angepasst werden.",
+  "Learn": [
+    "https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common",
+    "https://learn.microsoft.com/entra/identity/conditional-access/concept-authentication-flows",
+    "https://learn.microsoft.com/entra/identity/conditional-access/concept-assignment-network"
+  ],
+  "Created": "2026-10-25T00:00:00",
+  "Changed": "2026-10-25T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false
+}

@@ -80,7 +80,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     elseif ($isTr) { $c.btnWrite.ToolTip = 'Legt im Ziel NEU an (ohne Zuweisungen), liest danach nach und legt eine Rueckgaengig-Datei an.' }
     elseif ($Plan.Method -eq 'POST') { $c.btnWrite.ToolTip = 'Legt eine NEUE Richtlinie im Modus Nur Bericht an; die bestehende bleibt unveraendert.' }
     if ($isTr) { $c.gridChanges.Columns[3].Header = 'Danach (aus der Quelle)'; $c.btnWrite.Content = $(if ($isAl) { "$([char]0x2192) Angleichen" } else { "$([char]0x2192) Neu anlegen" }) }
-    $c.lblSub.Text = if ($isEtCa) { "Wird in $TenantName als NEUE Richtlinie '$(if ($Plan.Body) { $Plan.Body.displayName } else { "$($Plan.Name) (von Muster)" })' im Modus $(if ($Plan.Body -and "$($Plan.Body.state)" -eq 'disabled') { 'AUS' } else { 'NUR BERICHT' }) angelegt - bestehende Richtlinien bleiben unveraendert. Ohne Zuweisung (Konten, Gruppen), Orte ueber den Namen zugeordnet, Notfallkonten des Ziels ausgenommen. Schreibrecht: $($Plan.Perm)." } elseif ($isEt) { "Entra-Einstellung aus dem festgehaltenen Muster nach $TenantName. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). $(if ($Plan.Method -eq 'POST') { 'Wird im Ziel NEU angelegt; danach nachgelesen und je Feld geprueft.' } else { 'Vor dem Schreiben wird das Ziel erneut gelesen und als Datei gesichert; danach nachgeprueft.' })" } elseif ($isAl) { "Das bestehende Objekt in $TenantName wird an die Quelle ANGEGLICHEN. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird das Ziel erneut gelesen (geaendert = Abbruch) und als Rueckgaengig-Datei gesichert; Zuweisungen bleiben unveraendert." } elseif ($isTr) { "Wird in $TenantName NEU angelegt, ohne Zuweisungen. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird erneut geprueft, ob es den Namen dort inzwischen gibt; danach wird nachgelesen und eine Rueckgaengig-Datei angelegt." } elseif ($Plan.Method -eq 'POST') { "Aus dem Stand $Stamp in denselben Tenant als NEUE Richtlinie, Schreibrecht: $($Plan.Perm). Die bestehende Richtlinie wird nicht veraendert." } else { "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert." }
+    $c.lblSub.Text = if ($isEtCa) { "Wird in $TenantName als NEUE Richtlinie '$(if ($Plan.Body) { $Plan.Body.displayName } else { "$($Plan.Name) (von Muster)" })' im Modus $(if ($Plan.Body -and "$($Plan.Body.state)" -eq 'disabled') { 'AUS' } else { 'NUR BERICHT' }) angelegt - bestehende Richtlinien bleiben unveraendert. Ohne Konten; Gruppen je Platz unten waehlbar, Orte ueber den Namen zugeordnet, Notfallkonten des Ziels ausgenommen. Schreibrecht: $($Plan.Perm)." } elseif ($isEt) { "Entra-Einstellung aus dem festgehaltenen Muster nach $TenantName. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). $(if ($Plan.Method -eq 'POST') { 'Wird im Ziel NEU angelegt; danach nachgelesen und je Feld geprueft.' } else { 'Vor dem Schreiben wird das Ziel erneut gelesen und als Datei gesichert; danach nachgeprueft.' })" } elseif ($isAl) { "Das bestehende Objekt in $TenantName wird an die Quelle ANGEGLICHEN. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird das Ziel erneut gelesen (geaendert = Abbruch) und als Rueckgaengig-Datei gesichert; Zuweisungen bleiben unveraendert." } elseif ($isTr) { "Wird in $TenantName NEU angelegt, ohne Zuweisungen. Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird erneut geprueft, ob es den Namen dort inzwischen gibt; danach wird nachgelesen und eine Rueckgaengig-Datei angelegt." } elseif ($Plan.Method -eq 'POST') { "Aus dem Stand $Stamp in denselben Tenant als NEUE Richtlinie, Schreibrecht: $($Plan.Perm). Die bestehende Richtlinie wird nicht veraendert." } else { "Aus dem Stand $Stamp in denselben Tenant. Methode $($Plan.Method), Schreibrecht: $($Plan.Perm). Vor dem Schreiben wird der Tenant erneut gelesen und der aktuelle Stand als Datei gesichert." }
     # B1: gekuerzte Werte muessen vor dem Schreiben einmal voll angesehen werden (Zeile markieren, voller Wert klappt auf)
     $rows = @($Plan.Changes | ForEach-Object { [pscustomobject]@{ Feld = $_.Feld; Anzahl = $_.Anzahl; Jetzt = $_.Jetzt; Danach = $_.Danach; JetztVoll = $_.JetztVoll; DanachVoll = $_.DanachVoll; Gekuerzt = [bool]$_.Gekuerzt; Status = $(if ($_.Gekuerzt) { 'ansehen' } else { '' }) } })
     $c.gridChanges.ItemsSource = $rows
@@ -107,6 +107,31 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
     }
     # 2.4.5 waehlbare Uebernahmen (z. B. Rollen, 'Alle Benutzer'): Haken = uebernehmen
     foreach ($op in @($(if ($Plan.PSObject.Properties['Options']) { $Plan.Options }) | Where-Object { $_ })) {
+        if ($op.PSObject.Properties['Kind'] -and "$($op.Kind)" -eq 'group') {
+            # 2.5.1 Gruppen-Platz: Gruppe des Ziels waehlen (Tippen springt zum Namen), leer = nicht zuweisen
+            $sp = New-Object System.Windows.Controls.StackPanel
+            $sp.Orientation = 'Horizontal'; $sp.Margin = '0,3,0,3'
+            $tb = New-Object System.Windows.Controls.TextBlock
+            $tb.Text = "$($op.Text)"; $tb.Foreground = Get-HUBrush '#90CAF9'; $tb.FontSize = 12; $tb.VerticalAlignment = 'Center'; $tb.Margin = '0,0,8,0'; $tb.MinWidth = 260
+            $cb2 = New-Object System.Windows.Controls.ComboBox
+            try { $cb2.Style = $w.FindResource('DarkComboBox') } catch { }
+            $cb2.MinWidth = 320; $cb2.FontSize = 12; $cb2.IsTextSearchEnabled = $true
+            [System.Windows.Controls.TextSearch]::SetTextPath($cb2, 'Name')
+            $cb2.DisplayMemberPath = 'Name'
+            $items = New-Object System.Collections.Generic.List[object]
+            $items.Add([pscustomobject]@{ Id = ''; Name = '(nicht zuweisen)' })
+            foreach ($ch in @($op.Choices)) { if ($ch) { $items.Add($ch) } }
+            $cb2.ItemsSource = $items
+            $sel = 0
+            for ($ix = 1; $ix -lt $items.Count; $ix++) { if ("$($items[$ix].Id)" -eq "$($op.Value)" -and "$($op.Value)") { $sel = $ix; break } }
+            $cb2.SelectedIndex = $sel
+            $cb2.Tag = $op
+            $cb2.ToolTip = "Platz '$($op.Slot)': Gruppe im Ziel, die die Richtlinie $(if ("$($op.Feld)" -eq 'includeGroups') { 'erhaelt' } else { 'ausnimmt' }). Gleichnamige Gruppe ist vorgewaehlt."
+            $cb2.Add_SelectionChanged({ $it = $this.SelectedItem; $this.Tag.Value = $(if ($it) { "$($it.Id)" } else { '' }) })
+            [void]$sp.Children.Add($tb); [void]$sp.Children.Add($cb2)
+            [void]$c.pnlInfo.Children.Add($sp)
+            continue
+        }
         $ob = New-Object System.Windows.Controls.CheckBox
         $ob.Content = "$($op.Text)"; $ob.IsChecked = [bool]$op.Value; $ob.Foreground = Get-HUBrush '#90CAF9'; $ob.Margin = '0,3,0,3'; $ob.FontSize = 12
         try { $ob.Style = $w.FindResource('DarkCheckBox') } catch { }

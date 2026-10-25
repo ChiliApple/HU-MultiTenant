@@ -1,12 +1,10 @@
 {
   "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
-  "displayName": "Grundschutz - MFA für Azure-Verwaltung",
+  "displayName": "201 - MFA Lehrer",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
-      "includeUsers": [
-        "All"
-      ],
+      "includeUsers": [],
       "excludeUsers": [],
       "includeGroups": [],
       "excludeGroups": [],
@@ -15,7 +13,7 @@
     },
     "applications": {
       "includeApplications": [
-        "797f4846-ba00-4fd7-ba43-dac1f8f63013"
+        "All"
       ],
       "excludeApplications": [],
       "includeUserActions": []
@@ -31,5 +29,15 @@
     ],
     "customAuthenticationFactors": [],
     "termsOfUse": []
-  }
+  },
+  "huGruppen": [
+    {
+      "feld": "includeGroups",
+      "name": "Lehrer"
+    },
+    {
+      "feld": "excludeGroups",
+      "name": "Ausnahmen MFA Lehrer"
+    }
+  ]
 }

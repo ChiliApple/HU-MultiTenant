@@ -1,0 +1,60 @@
+{
+  "@odata.type": "#microsoft.graph.countryNamedLocation",
+  "id": "a1b2c3d4-0903-4000-8000-000000000903",
+  "displayName": "Erlaubte Länder (Geoblock)",
+  "countriesAndRegions": [
+    "AT",
+    "DE",
+    "CH",
+    "LI"
+  ],
+  "includeUnknownCountriesAndRegions": false,
+  "countryLookupMethod": "clientIpAddress",
+  "huLaenderwahl": {
+    "fest": [
+      "AT"
+    ],
+    "wahl": [
+      {
+        "code": "DE",
+        "name": "Deutschland",
+        "an": true
+      },
+      {
+        "code": "CH",
+        "name": "Schweiz",
+        "an": true
+      },
+      {
+        "code": "LI",
+        "name": "Liechtenstein",
+        "an": true
+      },
+      {
+        "code": "IT",
+        "name": "Italien",
+        "an": false
+      },
+      {
+        "code": "SI",
+        "name": "Slowenien",
+        "an": false
+      },
+      {
+        "code": "HU",
+        "name": "Ungarn",
+        "an": false
+      },
+      {
+        "code": "SK",
+        "name": "Slowakei",
+        "an": false
+      },
+      {
+        "code": "CZ",
+        "name": "Tschechien",
+        "an": false
+      }
+    ]
+  }
+}

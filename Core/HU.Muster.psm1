@@ -272,6 +272,23 @@ function Get-HUMusterTagNames([string[]]$Folders, [string]$Source) {
     return $h
 }
 
+# 2.5.1 Namen benannter Orte aus dem Paket selbst (names.json + Eintraege 'Benannter Ort'): Kennung (klein) -> Name.
+# Mitgelieferte Pakete bringen den Ort mit - er steht in keinem Tenant, aus dem man den Namen nachlesen koennte.
+function Get-HUMusterLocationNames([string[]]$Folders) {
+    $h = @{}
+    foreach ($f in @($Folders | Where-Object { "$_" })) {
+        $nf = Join-Path $f 'names.json'
+        if (Test-Path -LiteralPath $nf) {
+            try { foreach ($n in @((Read-HUBackupJson $nf).Items)) { if ("$($n.Art)" -eq 'Benannter Ort' -and "$($n.Id)" -and "$($n.Name)") { $h["$($n.Id)".ToLowerInvariant()] = "$($n.Name)" } } } catch { }
+        }
+        $xf = Join-Path $f 'index.json'
+        if (Test-Path -LiteralPath $xf) {
+            try { foreach ($it in @((Read-HUBackupJson $xf).Items)) { if ("$($it.Typ)" -eq 'Benannter Ort' -and "$($it.Id)" -and "$($it.Name)" -and -not $h.ContainsKey("$($it.Id)".ToLowerInvariant())) { $h["$($it.Id)".ToLowerInvariant()] = "$($it.Name)" } } } catch { }
+        }
+    }
+    return $h
+}
+
 function Read-HUMusterPackage([string]$Folder, [switch]$BuiltIn) {
     $pf = Join-Path $Folder 'paket.json'
     if (-not (Test-Path -LiteralPath $pf) -or -not (Test-Path -LiteralPath (Join-Path $Folder 'index.json'))) { return $null }
@@ -652,6 +669,6 @@ function Get-HUMusterMatrix([object[]]$Rows, [string[]]$Keys, [switch]$Partial) 
 
 Export-ModuleMember -Function Get-HUMusterBuiltinRoot, Set-HUMusterBuiltinRoot, Get-HUMusterBuiltinSource, Test-HUMusterBuiltinSource, Get-HUMusterResolveKey, Get-HUMusterBuiltinPackages,
     Get-HUMusterKey, Get-HUMusterRoot, Get-HUMuster, Save-HUMuster, Get-HUNameMap, ConvertTo-HUMuName,
-    Get-HUMusterCategories, Get-HUMusterPkgRoot, ConvertTo-HUMusterTags, Get-HUMusterNameMap, Resolve-HUMusterName, Get-HUMusterTagNames,
+    Get-HUMusterCategories, Get-HUMusterPkgRoot, ConvertTo-HUMusterTags, Get-HUMusterNameMap, Resolve-HUMusterName, Get-HUMusterTagNames, Get-HUMusterLocationNames,
     Get-HUMusterPackages, Get-HUMusterPackage, Get-HUMusterNameCatalog, Save-HUMusterPackage, Get-HUMusterPackageItems, Get-HUMusterStandItems,
     New-HUMusterPackageFromStand, Remove-HUMusterPackage, Initialize-HUMusterLibrary, Get-HUMusterTrashRoot, Get-HUMusterTrash, Restore-HUMusterPackage, Remove-HUMusterTrashItem, Clear-HUMusterTrash, Get-HUMusterSelection, Get-HUMusterInventory, Get-HUMusterMatrix

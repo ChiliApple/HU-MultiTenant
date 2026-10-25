@@ -1,0 +1,25 @@
+{
+  "@odata.type": "#microsoft.graph.countryNamedLocation",
+  "id": "a1b2c3d4-0902-4000-8000-000000000902",
+  "displayName": "Geblockte Standorte",
+  "countriesAndRegions": [
+    "AF",
+    "AQ",
+    "AZ",
+    "BY",
+    "CN",
+    "HK",
+    "IQ",
+    "IR",
+    "IL",
+    "KZ",
+    "KG",
+    "KP",
+    "KR",
+    "RU",
+    "UA",
+    "UZ"
+  ],
+  "includeUnknownCountriesAndRegions": true,
+  "countryLookupMethod": "clientIpAddress"
+}

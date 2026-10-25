@@ -316,27 +316,30 @@ Describe 'Mitgelieferte Pakete (Programmordner Muster)' {
         Set-HUMusterBuiltinRoot (Join-Path ([IO.Path]::GetTempPath()) 'HU-MUL-keine-mitgelieferten')
         Remove-Item -LiteralPath $script:Bb -Recurse -Force -ErrorAction SilentlyContinue
     }
-    It 'sechs Pakete, schreibgeschuetzt, zuerst gelistet, Kategorie Mitgeliefert' {
+    It 'neun Pakete, schreibgeschuetzt, zuerst gelistet, Kategorie Mitgeliefert' {
         $all = @(Get-HUMusterPackages $script:Sb)
         $b = @($all | Where-Object BuiltIn)
-        $b.Count | Should -Be 6
+        $b.Count | Should -Be 9
         @($b | Where-Object { $_.Category -ne 'Mitgeliefert' }).Count | Should -Be 0
         $all[0].BuiltIn | Should -BeTrue
-        @($b | ForEach-Object { $_.CopyCategory } | Sort-Object -Unique) -join '|' | Should -Be 'Compliance|Conditional Access'
+        @($b | ForEach-Object { $_.CopyCategory } | Sort-Object -Unique) -join '|' | Should -Be 'Compliance|Conditional Access|Entra-Grundschutz'
         foreach ($p in $b) { $p.Count | Should -BeGreaterThan 0; @($p.Learn).Count | Should -BeGreaterThan 0; $p.Sources -join '' | Should -Be 'mitgeliefert' }
     }
     It 'jeder Eintrag lesbar: Datei da, Name = displayName, keine Benutzer/Gruppen/Orte mit Kennung' {
         $guid = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
         foreach ($p in @(Get-HUMusterBuiltinPackages)) {
+            # Orte des Pakets selbst (mitgeliefert, Platzhalter-Kennung) duerfen in den Richtlinien stehen - sonst keine Kennungen
+            $own = @($p.Items | Where-Object { $_.Typ -eq 'Benannter Ort' } | ForEach-Object { "$($_.Id)".ToLowerInvariant() })
             foreach ($it in @($p.Items)) {
                 "$($it.File)" | Should -Not -Match '[^A-Za-z0-9_./-]'
                 $o = Read-HUBackupJson (Join-Path $p.Folder $it.File)
-                "$($o.displayName)" | Should -Be "$($it.Name)"
+                if ($it.Typ -ne 'Entra-Einstellung') { "$($o.displayName)" | Should -Be "$($it.Name)" }
+                if ($it.Typ -eq 'Benannter Ort') { "$($o.'@odata.type')" | Should -Be '#microsoft.graph.countryNamedLocation' }
                 if ($it.Typ -eq 'Conditional Access') {
                     "$($o.state)" | Should -BeIn @('enabledForReportingButNotEnforced', 'disabled')
                     $u = $o.conditions.users
                     foreach ($f in 'includeUsers', 'excludeUsers', 'includeGroups', 'excludeGroups') { @($u.$f | Where-Object { "$_" -match $guid }).Count | Should -Be 0 }
-                    @($o.conditions.locations.includeLocations + $o.conditions.locations.excludeLocations | Where-Object { "$_" -match $guid }).Count | Should -Be 0
+                    @(@($o.conditions.locations.includeLocations) + @($o.conditions.locations.excludeLocations) | Where-Object { "$_" -match $guid -and $own -notcontains "$_".ToLowerInvariant() }).Count | Should -Be 0
                 }
                 if ($it.Typ -eq 'Compliance') {
                     # Uebertragen verlangt genau eine Aktion 'Als nicht konform markieren'
@@ -365,6 +368,22 @@ Describe 'Mitgelieferte Pakete (Programmordner Muster)' {
         $k.Count | Should -Be $p.Count
         $k.Sources -join '' | Should -Be 'mitgeliefert'
         { Save-HUMusterPackage -Settings $script:Sb -Title $p.Title -Category 'Conditional Access' -Items @(Get-HUMusterPackageItems $p) } | Should -Throw '*schon ein Paket*'
+    }
+    It 'Namen benannter Orte aus dem Paket (names.json und index.json)' {
+        $p = Get-HUMusterPackage $script:Sb 'mitgeliefert-ca-schule-praxis'
+        $h = Get-HUMusterLocationNames @($p.Folder)
+        $h.Count | Should -Be 3
+        @($h.Values) -contains 'Erlaubte Standorte ohne MFA' | Should -BeTrue
+        $g = Get-HUMusterPackage $script:Sb 'mitgeliefert-ca-geoblock-admins'
+        (Get-HUMusterLocationNames @($g.Folder))['a1b2c3d4-0903-4000-8000-000000000903'] | Should -Be 'Erlaubte Länder (Geoblock)'
+        (Get-HUMusterLocationNames @('')).Count | Should -Be 0
+    }
+    It 'Praxis-Set Schule: Gruppen nur als Platzhalter (huGruppen), keine Konten' {
+        $p = Get-HUMusterPackage $script:Sb 'mitgeliefert-ca-schule-praxis'
+        $l = Get-HUMusterPackageItems $p | Where-Object { $_.Name -eq '201 - MFA Lehrer' }
+        $o = Read-HUBackupJson (Join-Path $p.Folder $l.File)
+        @($o.huGruppen | ForEach-Object { "$($_.feld):$($_.name)" }) -join '|' | Should -Be 'includeGroups:Lehrer|excludeGroups:Ausnahmen MFA Lehrer'
+        @($o.conditions.users.includeGroups).Count | Should -Be 0
     }
     It 'Namen nachschlagen: mitgeliefert -> erster Tenant, sonst unveraendert' {
         Test-HUMusterBuiltinSource 'mitgeliefert' | Should -BeTrue

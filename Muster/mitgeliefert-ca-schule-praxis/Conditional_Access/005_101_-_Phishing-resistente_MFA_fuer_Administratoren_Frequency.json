@@ -1,0 +1,55 @@
+{
+  "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
+  "displayName": "101 - Phishing-resistente MFA für Administratoren + Frequency 10h",
+  "state": "enabledForReportingButNotEnforced",
+  "conditions": {
+    "users": {
+      "includeUsers": [],
+      "excludeUsers": [],
+      "includeGroups": [],
+      "excludeGroups": [],
+      "includeRoles": [
+        "62e90394-69f5-4237-9190-012177145e10"
+      ],
+      "excludeRoles": []
+    },
+    "applications": {
+      "includeApplications": [
+        "All"
+      ],
+      "excludeApplications": [],
+      "includeUserActions": []
+    },
+    "clientAppTypes": [
+      "all"
+    ]
+  },
+  "grantControls": {
+    "operator": "OR",
+    "builtInControls": [],
+    "customAuthenticationFactors": [],
+    "termsOfUse": [],
+    "authenticationStrength": {
+      "id": "00000000-0000-0000-0000-000000000004"
+    }
+  },
+  "sessionControls": {
+    "signInFrequency": {
+      "value": 10,
+      "type": "hours",
+      "authenticationType": "primaryAndSecondaryAuthentication",
+      "frequencyInterval": "timeBased",
+      "isEnabled": true
+    },
+    "persistentBrowser": {
+      "mode": "never",
+      "isEnabled": true
+    }
+  },
+  "huGruppen": [
+    {
+      "feld": "excludeGroups",
+      "name": "Ausnahmen MFA Admins"
+    }
+  ]
+}

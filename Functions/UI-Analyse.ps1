@@ -473,7 +473,7 @@ function Start-HUCmpEntraCopy($M) {
     $txt = "'$($M.Name)' aus dem Muster uebertragen - je Tenant eine eigene Vorschau, Bestaetigung mit dem Tenant-Namen."
     if ($M.Typ -eq 'Conditional Access') {
         # 045 Ue-7: nie eine bestehende Richtlinie aendern - immer eine NEUE im Modus Nur Bericht
-        $txt = "'$($M.Name)' aus dem Muster als NEUE Richtlinie im Modus NUR BERICHT anlegen, ohne Zuweisung - bestehende Richtlinien bleiben unveraendert. Je Tenant eine eigene Vorschau, Bestaetigung mit dem Tenant-Namen."
+        $txt = "'$($M.Name)' aus dem Muster als NEUE Richtlinie im Modus NUR BERICHT anlegen, ohne Konten (Gruppen in der Vorschau waehlbar) - bestehende Richtlinien bleiben unveraendert. Je Tenant eine eigene Vorschau, Bestaetigung mit dem Tenant-Namen."
         if ($missing.Count) { $txt += "`nFehlt (mit gleichem Namen anlegen): $(@($missing | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
         if ($diff.Count) { $txt += "`nGibt es anders (zusaetzlich '$($M.Name) (von Muster)' zum Vergleichen): $(@($diff | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
     } else {
@@ -486,7 +486,8 @@ function Start-HUCmpEntraCopy($M) {
     $script:TrQueue = New-Object System.Collections.Generic.Queue[object]
     foreach ($t in $tg) { $script:TrQueue.Enqueue($t) }
     $script:TrCtx = @{ Typ = $M.Typ; Name = $M.Name; Src = $mk; SrcLabel = (Get-HUAnaTenantName $mk); Resolve = $src; Obj = $mi[0].Obj; Id = $(if ($M.Typ -eq 'Entra-Einstellung') { Get-HUCmpEntraId $M } else { "$($mi[0].Id)" })
-        Multi = ($tg.Count -gt 1); Done = 0; DoneNames = (New-Object System.Collections.Generic.List[string]); Cur = ''; Modes = $modes; TIds = @{}; Entra = $true }
+        Multi = ($tg.Count -gt 1); Done = 0; DoneNames = (New-Object System.Collections.Generic.List[string]); Cur = ''; Modes = $modes; TIds = @{}; Entra = $true
+        LocNames = $(if ($script:CmpMusterSel) { Get-HUMusterLocationNames @($script:CmpMusterSel.Folders) } else { @{} }) }
     Start-HUTransferNext
 }
 
@@ -520,7 +521,7 @@ function Start-HUTransferNext {
     [void](Start-HUJob -Name 'TransferPlan' -Quiet -Output $c['rtbAna'] -Vars @{ X = $x; T = $t; Mode = $mode; Tid = $tid } -Code {
             try {
                 $o = if ($null -ne $X.Obj) { $X.Obj } else { Get-HUCompareObject -TenantKey $X.Src -Settings $Settings -Typ $X.Typ -Id $X.Id }
-                $p = if ($Mode -eq 'entra') { Get-HUEntraTransferPlan -TargetKey $T -Settings $Settings -Typ $X.Typ -Id $X.Id -Name $X.Name -Backup $o -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel }
+                $p = if ($Mode -eq 'entra') { Get-HUEntraTransferPlan -TargetKey $T -Settings $Settings -Typ $X.Typ -Id $X.Id -Name $X.Name -Backup $o -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -SourceNames $(if ($X.LocNames) { $X.LocNames } else { @{} }) }
                 elseif ($Mode -eq 'align') { Get-HUTransferAlignPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T -TargetId $Tid }
                 else { Get-HUTransferPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T -SourceTagNames $(if ($X.TagNames) { $X.TagNames } else { @{} }) }
                 [pscustomobject]@{ __Plan = $p }

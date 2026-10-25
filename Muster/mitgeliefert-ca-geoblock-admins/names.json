@@ -1,0 +1,11 @@
+{
+  "Format": 1,
+  "Items": [
+    {
+      "Art": "Benannter Ort",
+      "Id": "a1b2c3d4-0903-4000-8000-000000000903",
+      "Name": "Erlaubte Länder (Geoblock)",
+      "Source": "mitgeliefert"
+    }
+  ]
+}

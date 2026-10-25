@@ -1,6 +1,6 @@
 {
   "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
-  "displayName": "Grundschutz - Konformes Gerät erforderlich",
+  "displayName": "901 - Legacy-Authentifizierung blockieren",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
@@ -11,17 +11,7 @@
       "includeGroups": [],
       "excludeGroups": [],
       "includeRoles": [],
-      "excludeRoles": [
-        "d29b2b05-8046-44ba-8758-1e26182fcf32"
-      ],
-      "excludeGuestsOrExternalUsers": {
-        "@odata.type": "#microsoft.graph.conditionalAccessGuestsOrExternalUsers",
-        "guestOrExternalUserTypes": "internalGuest,b2bCollaborationGuest,b2bCollaborationMember,b2bDirectConnectUser,otherExternalUser,serviceProvider",
-        "externalTenants": {
-          "@odata.type": "#microsoft.graph.conditionalAccessAllExternalTenants",
-          "membershipKind": "all"
-        }
-      }
+      "excludeRoles": []
     },
     "applications": {
       "includeApplications": [
@@ -31,13 +21,14 @@
       "includeUserActions": []
     },
     "clientAppTypes": [
-      "all"
+      "exchangeActiveSync",
+      "other"
     ]
   },
   "grantControls": {
     "operator": "OR",
     "builtInControls": [
-      "compliantDevice"
+      "block"
     ],
     "customAuthenticationFactors": [],
     "termsOfUse": []

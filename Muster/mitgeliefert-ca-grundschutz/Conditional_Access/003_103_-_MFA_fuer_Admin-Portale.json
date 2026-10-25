@@ -1,6 +1,6 @@
 {
   "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
-  "displayName": "Grundschutz - MFA für Admin-Portale",
+  "displayName": "103 - MFA für Admin-Portale",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {

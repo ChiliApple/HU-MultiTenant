@@ -1,23 +1,17 @@
 {
   "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
-  "displayName": "Grundschutz - MFA für Gäste",
+  "displayName": "901 - Legacy-Authentifizierung blockieren",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
-      "includeUsers": [],
+      "includeUsers": [
+        "All"
+      ],
       "excludeUsers": [],
       "includeGroups": [],
       "excludeGroups": [],
       "includeRoles": [],
-      "excludeRoles": [],
-      "includeGuestsOrExternalUsers": {
-        "@odata.type": "#microsoft.graph.conditionalAccessGuestsOrExternalUsers",
-        "guestOrExternalUserTypes": "internalGuest,b2bCollaborationGuest,b2bCollaborationMember,b2bDirectConnectUser,otherExternalUser,serviceProvider",
-        "externalTenants": {
-          "@odata.type": "#microsoft.graph.conditionalAccessAllExternalTenants",
-          "membershipKind": "all"
-        }
-      }
+      "excludeRoles": []
     },
     "applications": {
       "includeApplications": [
@@ -27,13 +21,14 @@
       "includeUserActions": []
     },
     "clientAppTypes": [
-      "all"
+      "exchangeActiveSync",
+      "other"
     ]
   },
   "grantControls": {
     "operator": "OR",
     "builtInControls": [
-      "mfa"
+      "block"
     ],
     "customAuthenticationFactors": [],
     "termsOfUse": []

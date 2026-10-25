@@ -1,6 +1,6 @@
 {
   "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
-  "displayName": "Grundschutz - MFA für Administratoren",
+  "displayName": "903 - Geoblock Admins nur aus erlaubten Ländern",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
@@ -35,12 +35,20 @@
     },
     "clientAppTypes": [
       "all"
-    ]
+    ],
+    "locations": {
+      "includeLocations": [
+        "All"
+      ],
+      "excludeLocations": [
+        "a1b2c3d4-0903-4000-8000-000000000903"
+      ]
+    }
   },
   "grantControls": {
     "operator": "OR",
     "builtInControls": [
-      "mfa"
+      "block"
     ],
     "customAuthenticationFactors": [],
     "termsOfUse": []

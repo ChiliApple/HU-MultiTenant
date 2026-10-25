@@ -1,6 +1,6 @@
 {
   "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
-  "displayName": "Grundschutz - Phishing-resistente MFA für Administratoren",
+  "displayName": "101 - Phishing-resistente MFA für Administratoren",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {

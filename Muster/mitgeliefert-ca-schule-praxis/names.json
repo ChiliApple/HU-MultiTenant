@@ -1,0 +1,23 @@
+{
+  "Format": 1,
+  "Items": [
+    {
+      "Art": "Benannter Ort",
+      "Id": "a1b2c3d4-0902-4000-8000-000000000902",
+      "Name": "Geblockte Standorte",
+      "Source": "mitgeliefert"
+    },
+    {
+      "Art": "Benannter Ort",
+      "Id": "a1b2c3d4-0903-4000-8000-000000000913",
+      "Name": "Erlaubte Standorte",
+      "Source": "mitgeliefert"
+    },
+    {
+      "Art": "Benannter Ort",
+      "Id": "a1b2c3d4-0205-4000-8000-000000000205",
+      "Name": "Erlaubte Standorte ohne MFA",
+      "Source": "mitgeliefert"
+    }
+  ]
+}

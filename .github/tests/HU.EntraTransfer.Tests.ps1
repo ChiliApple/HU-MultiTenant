@@ -197,7 +197,9 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
         $global:EtBg = @{ Q = @('aaaa0000-0000-0000-0000-00000000000b'); Z = @('bbbb0000-0000-0000-0000-00000000000b') }
         $global:EtFx['Z|/users/bbbb0000-0000-0000-0000-00000000000b'] = [pscustomobject]@{ id = 'bbbb0000-0000-0000-0000-00000000000b'; accountEnabled = $true; userPrincipalName = 'notfall@ziel.example' }
         $global:EtFx['Q|/groups/aaaaaaaa-0000-0000-0000-000000000001'] = [pscustomobject]@{ id = 'aaaaaaaa-0000-0000-0000-000000000001'; displayName = 'Lehrer' }
-        $global:EtList['Z|/groups?'] = @([pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-000000000002'; displayName = 'lehrer' })
+        $global:EtList['Z|/groups?'] = @([pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-000000000002'; displayName = 'lehrer'; securityEnabled = $true },
+            [pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-000000000003'; displayName = 'Schueler'; securityEnabled = $true },
+            [pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-000000000009'; displayName = 'Verteiler'; securityEnabled = $false; groupTypes = @() })
         $global:EtFx['Z|/groups/bbbbbbbb-0000-0000-0000-000000000002'] = [pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-000000000002' }
         $global:EtFx['Q|/identity/conditionalAccess/namedLocations/aaaaaaaa-0000-0000-0000-0000000000c1'] = [pscustomobject]@{ id = 'aaaaaaaa-0000-0000-0000-0000000000c1'; displayName = 'Schulnetz' }
         $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @([pscustomobject]@{ id = 'bbbbbbbb-0000-0000-0000-0000000000c2'; displayName = 'Schulnetz' })
@@ -228,8 +230,14 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
         ($p.Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike '*"excludeUsers":`["bbbb0000-0000-0000-0000-00000000000b"`]*'
         @($p.Body.conditions.users.includeGroups | Where-Object { $_ }).Count | Should -Be 0
         @($p.Body.conditions.locations.excludeLocations) | Should -Be @('bbbbbbbb-0000-0000-0000-0000000000c2')
-        @($p.Warnings | Where-Object { $_ -like '*NICHT uebertragen*Gruppen: Lehrer*' }).Count | Should -Be 1
+        # 2.5.1 Gruppen sind waehlbar (gleichnamige vorgewaehlt) - nur Konten bleiben in der Warnung
+        @($p.Warnings | Where-Object { $_ -like '*Gruppen: Lehrer*' }).Count | Should -Be 0
         @($p.Warnings | Where-Object { $_ -like '*Ausnahmen Konten*' }).Count | Should -Be 1
+        $go = @($p.Options | Where-Object Kind -eq 'group')
+        $go.Count | Should -Be 1
+        $go[0].Value | Should -Be 'bbbbbbbb-0000-0000-0000-000000000002'
+        @($go[0].Choices | ForEach-Object Name) -join '|' | Should -Be 'lehrer|Schueler'
+        $go[0].Value = ''   # wie bisher ohne Zuweisung uebertragen
         $p.BreakGlass.Ok | Should -BeTrue
         # Quelle bleibt unberuehrt
         @($src.conditions.users.includeGroups) | Should -Be @('aaaaaaaa-0000-0000-0000-000000000001')
@@ -344,6 +352,107 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
         @(@($global:EtWrites | Where-Object Method -eq 'POST')[0].Body.conditions.users.includeUsers) | Should -Be @('None')
         # Liste, kein einzelner Text (Graph 400)
         (@($global:EtWrites | Where-Object Method -eq 'POST')[0].Body | ConvertTo-Json -Depth 20 -Compress) | Should -BeLike '*"includeUsers":`["None"`]*'
+    }
+
+    It '2.5.1 Gruppen-Plaetze (huGruppen): gewaehlte Gruppen werden zugewiesen, ohne Auswahl Benutzer Keine' {
+        $src = & $script:Ca
+        $src.conditions.users.includeGroups = @(); $src.conditions.users.excludeUsers = @()
+        $src | Add-Member -NotePropertyName huGruppen -NotePropertyValue @([pscustomobject]@{ feld = 'includeGroups'; name = 'Schueler' }, [pscustomobject]@{ feld = 'excludeGroups'; name = 'Ausnahmen MFA' })
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '202 MFA Schueler' -Backup $src -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert' -SourceNames @{ 'aaaaaaaa-0000-0000-0000-0000000000c1' = 'Schulnetz' }
+        $p.Blocks | Should -BeNullOrEmpty
+        # Ort ueber den Namen aus dem Paket (mitgeliefert: in keinem Tenant nachlesbar)
+        @($p.Body.conditions.locations.excludeLocations) | Should -Be @('bbbbbbbb-0000-0000-0000-0000000000c2')
+        $go = @($p.Options | Where-Object Kind -eq 'group')
+        $go.Count | Should -Be 2
+        $go[0].Value | Should -Be 'bbbbbbbb-0000-0000-0000-000000000003'
+        $go[1].Value | Should -Be ''
+        ($p.Body | ConvertTo-Json -Depth 20 -Compress) | Should -Not -BeLike '*huGruppen*'
+        $go[1].Value = 'bbbbbbbb-0000-0000-0000-000000000002'
+        [void](Invoke-HUEntraTransfer -Plan $p -Settings $script:Set)
+        $j = (@($global:EtWrites | Where-Object Method -eq 'POST')[-1].Body | ConvertTo-Json -Depth 20 -Compress)
+        $j | Should -BeLike '*"includeGroups":`["bbbbbbbb-0000-0000-0000-000000000003"`]*'
+        $j | Should -BeLike '*"excludeGroups":`["bbbbbbbb-0000-0000-0000-000000000002"`]*'
+        $j | Should -BeLike '*"includeUsers":`[`]*'
+        # nichts gewaehlt -> Keine
+        $p2 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '202 MFA Schueler' -Backup $src -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert' -SourceNames @{ 'aaaaaaaa-0000-0000-0000-0000000000c1' = 'Schulnetz' }
+        foreach ($o in @($p2.Options | Where-Object Kind -eq 'group')) { $o.Value = '' }
+        [void](Invoke-HUEntraTransfer -Plan $p2 -Settings $script:Set)
+        $j2 = (@($global:EtWrites | Where-Object Method -eq 'POST')[-1].Body | ConvertTo-Json -Depth 20 -Compress)
+        $j2 | Should -BeLike '*"includeUsers":`["None"`]*'
+        $j2 | Should -BeLike '*"includeGroups":`[`]*'
+    }
+
+    It '2.5.1 Gruppen im Ziel nicht lesbar: Hinweis, keine Plaetze, Gruppen in der Warnung' {
+        $global:EtList.Remove('Z|/groups?')
+        Mock -ModuleName HU.EntraRestore Get-HUIntuneGraphAll -ParameterFilter { $Endpoint -like '/groups?*' } { throw (New-EtFail 403) }
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '201 MFA Lehrer' -Backup (& $script:Ca) -ResolveKey 'Q' -SourceLabel 'Muster'
+        @($p.Options | Where-Object Kind -eq 'group').Count | Should -Be 0
+        @($p.Warnings | Where-Object { $_ -like '*Gruppen im Ziel nicht lesbar*' }).Count | Should -Be 1
+        @($p.Warnings | Where-Object { $_ -like '*NICHT uebertragen*Gruppen: Lehrer*' }).Count | Should -Be 1
+    }
+
+    It 'Mitgeliefertes Praxis-Set Schule: alle Richtlinien planbar (Orte ueber Paket-Namen, Gruppen-Plaetze)' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $pk = Join-Path $root 'Muster\mitgeliefert-ca-schule-praxis'
+        $ix = Read-HUBackupJson (Join-Path $pk 'index.json')
+        $names = @{}; foreach ($it in @($ix.Items | Where-Object Typ -eq 'Benannter Ort')) { $names["$($it.Id)".ToLowerInvariant()] = "$($it.Name)" }
+        $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @($ix.Items | Where-Object Typ -eq 'Benannter Ort' | ForEach-Object { [pscustomobject]@{ id = "z-$($_.Name)"; displayName = $_.Name } })
+        $global:EtFx['Z|/roleManagement/directory/roleDefinitions/'] = [pscustomobject]@{ id = 'r'; isBuiltIn = $true; displayName = 'Rolle' }
+        $global:EtFx['Z|/policies/authenticationStrengthPolicies/00000000-0000-0000-0000-000000000004'] = [pscustomobject]@{ id = '00000000-0000-0000-0000-000000000004'; displayName = 'Phishing-resistant MFA'; policyType = 'builtIn' }
+        $n = 0
+        foreach ($it in @($ix.Items | Where-Object Typ -eq 'Conditional Access')) {
+            $src = Read-HUBackupJson (Join-Path $pk $it.File)
+            $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id $it.Id -Name $it.Name -Backup $src -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert' -SourceNames $names
+            $p.Blocks | Should -BeNullOrEmpty -Because $it.Name
+            (Invoke-HUEntraTransfer -Plan $p -Settings $script:Set).Ok | Should -BeTrue -Because $it.Name
+            $n++
+            if ($it.Name -eq '201 - MFA Lehrer') { @($p.Options | Where-Object Kind -eq 'group' | ForEach-Object Slot) -join '|' | Should -Be 'Lehrer|Ausnahmen MFA Lehrer' }
+            if ($it.Name -like '900 *') { $p.Body.conditions.authenticationFlows.transferMethods | Should -Be 'deviceCodeFlow' }
+            if ($it.Name -like '902 *') { @($p.Body.conditions.locations.includeLocations) | Should -Be @('z-Geblockte Standorte') }
+        }
+        $n | Should -Be 15
+    }
+
+    It '2.5.1 Laenderwahl beim Ort: fest + angehakt wird geschrieben, vorhandener Ort sperrt' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $src = Read-HUBackupJson (@(Get-ChildItem -LiteralPath (Join-Path $root 'Muster\mitgeliefert-ca-geoblock-admins') -Recurse -Filter '*Laender*.json')[0].FullName)
+        $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @()
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Benannter Ort' -Id $src.id -Name $src.displayName -Backup $src -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
+        $p.Blocks | Should -BeNullOrEmpty
+        $p.Method | Should -Be 'POST'
+        @($p.CountryFixed) | Should -Be @('AT')
+        @($p.Options).Count | Should -Be 8
+        @($p.Options | Where-Object Value | ForEach-Object Key) -join ',' | Should -Be 'country:DE,country:CH,country:LI'
+        $p.Body.ContainsKey('huLaenderwahl') | Should -BeFalse
+        ($p.Options | Where-Object Key -eq 'country:CH').Value = $false
+        ($p.Options | Where-Object Key -eq 'country:SI').Value = $true
+        $r = Invoke-HUEntraTransfer -Plan $p -Settings $script:Set
+        $r.Mismatch | Should -BeNullOrEmpty
+        $w = @($global:EtWrites | Where-Object Method -eq 'POST')[-1]
+        @($w.Body.countriesAndRegions) -join ',' | Should -Be 'AT,DE,LI,SI'
+        # nur ein Land: trotzdem Liste
+        foreach ($o in $p.Options) { $o.Value = $false }
+        InModuleScope HU.EntraRestore -Parameters @{ P = $p } { param($P) Set-HUErTrCountryBody $P }
+        ($p.Body | ConvertTo-Json -Depth 5 -Compress) | Should -BeLike '*"countriesAndRegions":`["AT"`]*'
+        ($p.Changes | Where-Object Feld -eq 'countriesAndRegions').Anzahl | Should -Be '0 -> 1'
+        # vorhanden -> gesperrt
+        $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @([pscustomobject]@{ id = 'x'; displayName = $src.displayName; '@odata.type' = '#microsoft.graph.countryNamedLocation'; countriesAndRegions = @('AT') })
+        $p2 = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Benannter Ort' -Id $src.id -Name $src.displayName -Backup $src -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
+        @($p2.Blocks | Where-Object { $_ -like '*gibt es im Ziel schon*Laenderwahl*' }).Count | Should -Be 1
+    }
+
+    It '2.5.1 Autorisierungsrichtlinie aus dem Muster: Zustimmungsrechte fuer eigene Ressourcen des Ziels bleiben' {
+        $global:EtFx['Z|/policies/authorizationPolicy'] = [pscustomobject]@{ id = 'authorizationPolicy'; blockMsolPowerShell = $false
+            defaultUserRolePermissions = [pscustomobject]@{ allowedToCreateApps = $true; permissionGrantPoliciesAssigned = @('ManagePermissionGrantsForSelf.microsoft-user-default-legacy', 'ManagePermissionGrantsForOwnedResource.microsoft-dynamically-managed-permissions-for-team') } }
+        $global:EtList['Z|/policies/permissionGrantPolicies'] = @()
+        $src = [pscustomobject]@{ id = 'authorizationPolicy'; blockMsolPowerShell = $true
+            defaultUserRolePermissions = [pscustomobject]@{ allowedToCreateApps = $false; permissionGrantPoliciesAssigned = @('ManagePermissionGrantsForSelf.microsoft-user-default-low') } }
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Entra-Einstellung' -Id 'authorizationPolicy' -Name 'Autorisierungsrichtlinie' -Backup $src -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
+        $p.Blocks | Should -BeNullOrEmpty
+        @($p.Body.defaultUserRolePermissions.permissionGrantPoliciesAssigned) -join ',' | Should -Be 'ManagePermissionGrantsForSelf.microsoft-user-default-low,ManagePermissionGrantsForOwnedResource.microsoft-dynamically-managed-permissions-for-team'
+        @($p.Confirms | Where-Object { $_ -like '*eigene Apps*' }).Count | Should -Be 0
+        # Muster bleibt unberuehrt
+        @($src.defaultUserRolePermissions.permissionGrantPoliciesAssigned).Count | Should -Be 1
     }
 
     It '045 F1/Ue-5: fehlende Notfallkonten im Ziel, Ort fehlt, Dienstprinzipale sperren' {

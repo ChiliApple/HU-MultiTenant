@@ -1,7 +1,7 @@
 {
   "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
-  "displayName": "Grundschutz - Registrierung der Sicherheitsinfos schützen",
-  "state": "disabled",
+  "displayName": "905 - Konformes Gerät erforderlich",
+  "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
       "includeUsers": [
@@ -11,7 +11,9 @@
       "includeGroups": [],
       "excludeGroups": [],
       "includeRoles": [],
-      "excludeRoles": [],
+      "excludeRoles": [
+        "d29b2b05-8046-44ba-8758-1e26182fcf32"
+      ],
       "excludeGuestsOrExternalUsers": {
         "@odata.type": "#microsoft.graph.conditionalAccessGuestsOrExternalUsers",
         "guestOrExternalUserTypes": "internalGuest,b2bCollaborationGuest,b2bCollaborationMember,b2bDirectConnectUser,otherExternalUser,serviceProvider",
@@ -22,28 +24,20 @@
       }
     },
     "applications": {
-      "includeApplications": [],
+      "includeApplications": [
+        "All"
+      ],
       "excludeApplications": [],
-      "includeUserActions": [
-        "urn:user:registersecurityinfo"
-      ]
+      "includeUserActions": []
     },
     "clientAppTypes": [
       "all"
-    ],
-    "locations": {
-      "includeLocations": [
-        "All"
-      ],
-      "excludeLocations": [
-        "AllTrusted"
-      ]
-    }
+    ]
   },
   "grantControls": {
     "operator": "OR",
     "builtInControls": [
-      "mfa"
+      "compliantDevice"
     ],
     "customAuthenticationFactors": [],
     "termsOfUse": []

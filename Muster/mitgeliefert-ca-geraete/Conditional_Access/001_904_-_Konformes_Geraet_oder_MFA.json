@@ -1,6 +1,6 @@
 {
   "@odata.type": "#microsoft.graph.conditionalAccessPolicy",
-  "displayName": "Grundschutz - Konformes Gerät oder MFA",
+  "displayName": "904 - Konformes Gerät oder MFA",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
