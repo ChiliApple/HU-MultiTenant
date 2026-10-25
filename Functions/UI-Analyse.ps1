@@ -801,7 +801,19 @@ function Register-HUCmpHandlers {
     $c['btnCmpMap'].Add_Click({ Start-HUCmpMap })
     $c['chkCmpMuster'].IsChecked = [bool](Get-HUStateValue 'cmpMuster' $false)
     $c['chkCmpMuster'].Add_Checked({ Set-HUStateValue 'cmpMuster' $true })
-    $c['chkCmpMuster'].Add_Unchecked({ Set-HUStateValue 'cmpMuster' $false })
+    $c['chkCmpMuster'].Add_Unchecked({
+            Set-HUStateValue 'cmpMuster' $false
+            # Muster-Spalte sofort weg (ohne neu einzulesen): Matrix aus den schon gelesenen Tenants neu bilden
+            $mk = Get-HUMusterKey
+            if (@($script:CmpKeys) -contains $mk -and -not $script:CmpWait.Count) {
+                $script:CmpKeys = @($script:CmpKeys | Where-Object { $_ -ne $mk })
+                [void]$script:CmpData.Remove($mk)
+                $script:CmpMusterSel = $null; $script:CmpMusterLabel = ''
+                $script:Controls['chkCmpMusterOnly'].Visibility = 'Collapsed'
+                $script:CmpMatrix = $(if (@($script:CmpKeys).Count) { @(Get-HUMusterMatrix @($script:CmpData.Values | ForEach-Object { $_ }) $script:CmpKeys) } else { @() })
+                Update-HUCmpGrid
+            }
+        })
     $c['chkCmpColor'].IsChecked = [bool](Get-HUStateValue 'cmpColor' $true)
     $c['chkCmpColor'].Add_Checked({ Set-HUStateValue 'cmpColor' $true; Update-HUCmpGrid })
     $c['chkCmpColor'].Add_Unchecked({ Set-HUStateValue 'cmpColor' $false; Update-HUCmpGrid })

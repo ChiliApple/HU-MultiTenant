@@ -171,9 +171,10 @@ function Update-HUSecretDisplay([switch]$LogWarnings) {
     $c = $script:Controls
     # 2.5.2: Ablauf in der Kopfzeile (neben Version/Kanal) - fuer den Tenant des offenen Reiters (Quick Script: dessen Tenant)
     $sel = $(if ($c['tabMain']) { $c['tabMain'].SelectedItem } else { $null })
-    $multi = $sel -and ($sel -eq $c['tabAnalyse'] -or $sel -eq $c['tabMuster'])
+    # Einen Tenant gibt es nur in Extensions (Tenant-Leiste) und Quick Script (eigene Auswahl); alle anderen Reiter (Apps, Wartung,
+    # Analyse, Muster, Teams, Zusatzmodule) waehlen ihre Tenants selbst -> Sammelanzeige, bei Warnung die zuerst ablaufende Schule
+    $multi = $sel -and $sel -ne $c['tabExtensions'] -and $sel -ne $c['tabQuickScript']
     if ($multi -and @($script:Settings.tenants).Count -gt 1) {
-        # Reiter fuer mehrere Tenants (Analyse, Muster): Sammelanzeige statt eines Schulnamens; bei Warnung die zuerst ablaufende Schule
         $all = @(foreach ($t in @($script:Settings.tenants)) { [pscustomobject]@{ Key = "$($t.key)"; Name = "$($t.displayName)"; Info = (Get-HUSecretInfo "$($t.key)"); Cert = [bool](Test-HUTenantCertAuth $t) } })
         $known = @($all | Where-Object { $null -ne $_.Info.Days } | Sort-Object { $_.Info.Days })
         $what = $(if (@($all | Where-Object { -not $_.Cert }).Count) { 'Secrets/Zertifikate' } else { 'Zertifikate' })

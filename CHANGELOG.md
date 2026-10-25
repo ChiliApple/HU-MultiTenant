@@ -13,7 +13,10 @@
 - Pro Tenant läuft der Assistent nur einmal gleichzeitig; ein pulsierender Punkt zeigt, solange gelesen oder geschrieben wird.
 
 ### 🖥️ Oberfläche
-- **Ablauf von Secret/Zertifikat in der Kopfzeile** in Höhe des Titels (Tenant der Auswahl; in den Reitern Analyse und Muster Sammelanzeige aller Tenants bzw. die zuerst ablaufende Schule) – in den Reitern Extensions und Quick Script entfernt.
+- **Ablauf von Secret/Zertifikat in der Kopfzeile** in Höhe des Titels (Extensions und Quick Script: der gewählte Tenant; alle anderen Reiter: Sammelanzeige aller Tenants bzw. die zuerst ablaufende Schule) – in den Reitern Extensions und Quick Script entfernt.
+- **Abweichungen dezent eingefärbt:** In allen Tabellen sind Zeilen mit „abweichend“ (Unterschied, Status, Ergebnis) leicht hinterlegt.
+- **Fenstergrößen** (z. B. Einstellungen) werden ohne Oberflächengröße gemerkt – das Fenster wächst beim Öffnen nicht mehr und bleibt auf dem Bildschirm.
+- **Tenant-Vergleich:** Muster-Haken aus = Muster-Spalte sofort weg; Conditional Access gilt als gleich wie im Muster, wenn nur Status, Notfallkonten oder eingesetzte Rollen/Gruppen aus dem Tenant abweichen.
 - **Reiter Muster:** Die Breite der Bibliothek (Unterteilung Bibliothek | Paket) wird gemerkt.
 - **Notizen der Pakete** lesbarer: ein Punkt je Zeile, Quellen als anklickbare Links darunter.
 

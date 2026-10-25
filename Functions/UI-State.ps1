@@ -292,7 +292,15 @@ function Restore-HUDialogState($Window, [string]$Key) {
     $g = Get-HUStateValue $Key
     if (-not $g) { return }
     try {
-        if ($g.Width -and $g.Height) { $Window.Width = [double]$g.Width; $Window.Height = [double]$g.Height }
+        # gespeichert wird die Groesse OHNE Oberflaechengroesse (Set-HUWindowScale skaliert beim Laden) - sonst waechst das Fenster bei
+        # jedem Oeffnen um den Faktor (Udo 25.10.). Alte, schon skalierte Werte: auf den Bildschirm begrenzen.
+        if ($g.Width -and $g.Height) {
+            $sc = Get-HUUiScaleValue; $wa = [System.Windows.SystemParameters]::WorkArea
+            $vw = $(if ($g.PSObject.Properties['Unscaled'] -and $g.Unscaled) { [double]$g.Width } else { [double]$g.Width / $sc })
+            $vh = $(if ($g.PSObject.Properties['Unscaled'] -and $g.Unscaled) { [double]$g.Height } else { [double]$g.Height / $sc })
+            $Window.Width = [Math]::Max([Math]::Max(200, $Window.MinWidth), [Math]::Min($vw, $wa.Width * 0.9 / $sc))
+            $Window.Height = [Math]::Max([Math]::Max(150, $Window.MinHeight), [Math]::Min($vh, $wa.Height * 0.9 / $sc))
+        }
         if ($null -ne $g.Left -and $null -ne $g.Top -and (Test-HUOnScreen ([double]$g.Left) ([double]$g.Top) $Window.Width $Window.Height)) {
             $Window.WindowStartupLocation = 'Manual'; $Window.Left = [double]$g.Left; $Window.Top = [double]$g.Top
         }
@@ -301,7 +309,8 @@ function Restore-HUDialogState($Window, [string]$Key) {
 function Save-HUDialogState($Window, [string]$Key) {
     try {
         $rb = if ($Window.WindowState -ne 'Normal') { $Window.RestoreBounds } else { [System.Windows.Rect]::new($Window.Left, $Window.Top, $Window.Width, $Window.Height) }
-        Set-HUStateValue $Key ([pscustomobject]@{ Left = [Math]::Round($rb.Left); Top = [Math]::Round($rb.Top); Width = [Math]::Round($rb.Width); Height = [Math]::Round($rb.Height) })
+        $sc = Get-HUUiScaleValue
+        Set-HUStateValue $Key ([pscustomobject]@{ Left = [Math]::Round($rb.Left); Top = [Math]::Round($rb.Top); Width = [Math]::Round($rb.Width / $sc); Height = [Math]::Round($rb.Height / $sc); Unscaled = $true })
         Save-HUUIState
     } catch { }
 }
