@@ -500,6 +500,8 @@ function Show-HUSettingsDialog {
             if ($c.chkRequireSig.IsChecked) { if ($u.PSObject.Properties['AllowUnsigned']) { $u.PSObject.Properties.Remove('AllowUnsigned') } } else { Set-HUProp $u 'AllowUnsigned' $true }
             Write-HUJsonFile -Path (Join-Path $script:ConfigDir 'update.json') -Object $u -Depth 4
         } catch { Write-HULogWarn "update.json: $($_.Exception.Message)" }
+        # Kanal in der Kopfzeile sofort nachziehen
+        try { Update-VersionDisplay } catch { }
 
         if ($c.cmbScale.SelectedItem) { Set-HUUiScale ([double]::Parse("$($c.cmbScale.SelectedItem.Tag)", [Globalization.CultureInfo]::InvariantCulture)) }
 

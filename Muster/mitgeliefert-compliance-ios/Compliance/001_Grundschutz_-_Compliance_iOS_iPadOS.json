@@ -1,0 +1,29 @@
+{
+  "@odata.type": "#microsoft.graph.iosCompliancePolicy",
+  "displayName": "Grundschutz - Compliance iOS/iPadOS",
+  "description": "Mitgeliefertes Muster nach Microsoft-Empfehlung (Stufe 2).",
+  "securityBlockJailbrokenDevices": true,
+  "passcodeRequired": true,
+  "passcodeBlockSimple": true,
+  "passcodeMinimumLength": 6,
+  "passcodeRequiredType": "numeric",
+  "passcodeMinutesOfInactivityBeforeLock": 5,
+  "passcodeMinutesOfInactivityBeforeScreenTimeout": 5,
+  "osMinimumVersion": "18.0",
+  "roleScopeTagIds": [
+    "0"
+  ],
+  "scheduledActionsForRule": [
+    {
+      "ruleName": "PasswordRequired",
+      "scheduledActionConfigurations": [
+        {
+          "actionType": "block",
+          "gracePeriodHours": 0,
+          "notificationTemplateId": "",
+          "notificationMessageCCList": []
+        }
+      ]
+    }
+  ]
+}

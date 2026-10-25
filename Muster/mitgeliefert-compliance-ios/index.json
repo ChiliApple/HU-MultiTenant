@@ -1,0 +1,16 @@
+{
+  "Tenant": "__MUSTER__",
+  "Errors": 0,
+  "Complete": true,
+  "FailedTypes": [],
+  "Items": [
+    {
+      "Typ": "Compliance",
+      "Name": "Grundschutz - Compliance iOS/iPadOS",
+      "Id": "mitgeliefert-compliance-ios-01",
+      "File": "Compliance/001_Grundschutz_-_Compliance_iOS_iPadOS.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    }
+  ]
+}

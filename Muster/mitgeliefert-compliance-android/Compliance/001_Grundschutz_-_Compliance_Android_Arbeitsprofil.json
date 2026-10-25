@@ -1,0 +1,35 @@
+{
+  "@odata.type": "#microsoft.graph.androidWorkProfileCompliancePolicy",
+  "displayName": "Grundschutz - Compliance Android Arbeitsprofil",
+  "description": "Mitgeliefertes Muster nach Microsoft-Empfehlung (Stufe 2, persönliches Arbeitsprofil).",
+  "securityBlockJailbrokenDevices": true,
+  "securityRequireGooglePlayServices": true,
+  "securityRequireUpToDateSecurityProviders": true,
+  "securityRequireSafetyNetAttestationBasicIntegrity": true,
+  "securityRequireSafetyNetAttestationCertifiedDevice": true,
+  "storageRequireEncryption": true,
+  "securityPreventInstallAppsFromUnknownSources": true,
+  "securityRequireCompanyPortalAppIntegrity": true,
+  "securityDisableUsbDebugging": true,
+  "passwordRequired": true,
+  "passwordRequiredType": "numericComplex",
+  "passwordMinimumLength": 6,
+  "passwordMinutesOfInactivityBeforeLock": 5,
+  "osMinimumVersion": "13.0",
+  "roleScopeTagIds": [
+    "0"
+  ],
+  "scheduledActionsForRule": [
+    {
+      "ruleName": "PasswordRequired",
+      "scheduledActionConfigurations": [
+        {
+          "actionType": "block",
+          "gracePeriodHours": 0,
+          "notificationTemplateId": "",
+          "notificationMessageCCList": []
+        }
+      ]
+    }
+  ]
+}

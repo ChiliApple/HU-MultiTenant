@@ -1,5 +1,44 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.5.1 (Testversion, Weg zu 2.6.0)
+
+### ⭐ Muster-Bibliothek (neuer Reiter „Muster“)
+- **Mehrere Muster:** Statt eines einzigen Mustertenants gibt es jetzt eine **Bibliothek von Paketen** – Teilpakete wie „Conditional Access komplett“ oder „Compliance Windows“ und ganze Stände.
+- **Zusammenstellen:** *+ Neues Paket …* – Einträge aus den Backup-Ständen wählen, auch **gemischt aus mehreren Tenants**; jeder Eintrag merkt sich seine Herkunft. Gleiche Art und Name kommt nur einmal ins Paket.
+- **Ordnen:** feste **Kategorien** (Conditional Access, Compliance, Entra-Grundschutz, Endpunktsicherheit/Defender, Updates, Gerätekonfiguration, Gesamtstand) und freie **Schlagwörter**; Suche nach Text oder `#Schlagwort`.
+- Von Microsoft verwaltete CA-Richtlinien sind in Paket und Editor grau als „nicht übertragbar“ gekennzeichnet.
+- **Bearbeiten, Duplizieren, Löschen** (Rechtsklick oder Knöpfe); Löschen verschiebt in den **Papierkorb** der Bibliothek – Knopf *Papierkorb (n)* unter der Liste: zurückholen oder endgültig löschen; nach 90 Tagen automatisch endgültig gelöscht (abschaltbar).
+- **Namenskatalog je Paket:** Gruppen, Orte, Filter, Bereichsmarkierungen und Authentifizierungsstärken werden beim Speichern mit Namen festgehalten – nie Benutzer.
+- **Übernahme:** Das bisherige Muster wird beim ersten Start einmalig als Paket „Gesamtstand … (bisheriges Muster)“ übernommen und ist angehakt, wenn noch nichts gewählt war.
+
+### 🔒 Mitgelieferte Muster (nach Microsoft-Empfehlung)
+- **Fünf fertige Pakete** kommen mit dem Programm und mit jedem Update – oben in der Bibliothek unter „Mitgeliefert“, einzeln anhakbar:
+  - **CA-Grundschutz:** MFA für Administratoren und Admin-Portale, MFA für alle Benutzer, Registrierung der Sicherheitsinfos schützen, Legacy-Authentifizierung blockieren, MFA für Azure-Verwaltung (Microsoft-Vorlagen „Secure foundation“).
+  - **CA Gerätekonformität:** „konformes Gerät oder MFA“ bzw. „konformes Gerät erforderlich“ – eine der beiden Varianten wählen.
+  - **Compliance Windows, Android (Arbeitsprofil) und iOS/iPadOS** nach den Zero-Trust-Beispielen von Microsoft.
+- **Allgemein gehalten:** keine Tenant-Kennungen, Gruppen oder Benutzer – nur Rollen, Microsoft-Apps und Schlüsselwörter (Alle Benutzer, vertrauenswürdige Orte). Alles läuft mit Entra ID P1.
+- **Sicher beim Übertragen:** Conditional Access kommt als neue Richtlinie im Modus „Nur Bericht“ an, die Notfallkonten des Ziels sind ausgenommen; Compliance ohne Zuweisung.
+- **Schreibgeschützt** (🔒): zum Anpassen *Duplizieren* – die Kopie landet unter ihrer echten Kategorie und ist frei bearbeitbar.
+- Beim Übertragen von Conditional Access bleibt die Ausnahme „alle Gäste und externen Benutzer“ jetzt erhalten.
+
+### 🔍 Tenant-Vergleich mit Paketen
+- **Haken „Muster“** vergleicht die im Reiter Muster **angehakten Pakete** (eines oder mehrere).
+- **Teilpakete** prüfen nur ihre eigenen Einträge – alles andere zählt nicht als Abweichung (Zelle „nicht im Paket“). Ein **Gesamtstand** prüft wie bisher alles.
+- **Übertragen aus dem Muster** schlägt Namen (Gruppen, Orte, Bereichsmarkierungen) im Tenant nach, aus dem der jeweilige Eintrag stammt; Bereichsmarkierungen kommen aus dem Namenskatalog.
+- **Zuordnung prüfen** und **Doppelklick-Details** arbeiten mit den angehakten Paketen.
+- *Backup & Verlauf* › **Als Muster festhalten …** legt den Stand als Paket „Gesamtstand“ in der Bibliothek ab (Name frei wählbar).
+- **Nur Muster-Einträge:** neuer Haken neben „Nur Unterschiede“ – zeigt nur die Zeilen der angehakten Pakete; bei Teilpaketen automatisch an.
+- Steht derselbe Eintrag in mehreren angehakten Paketen, zählt die Fassung aus dem ersten Paket (Hinweis im Protokoll) – er wird nicht als „doppelt“ gemeldet.
+
+### 🖥️ Oberfläche
+- Reiter Muster: wird beim Start wiederhergestellt (Startreiter „Zuletzt“), die Extension-Liste links ist dort ausgeblendet; Bibliothek links (Breite ziehbar), Paket rechts, Protokoll unten (Höhe ziehbar), pulsierender Punkt bei laufenden Aufträgen, Tooltips an allen Steuerelementen; der Paket-Editor ist größenveränderbar mit Anfasser und öffnet so breit wie seine Spalten.
+
+- **Kopfzeile zeigt den Update-Kanal** statt „Standardbenutzer“: *Kanal Stabil* (grün), *Kanal Test* (orange), bei Entwicklungsstand rot – ändert sich sofort mit der Einstellung.
+- **Oberflächengröße für alle Fenster:** Die Größe aus *Strg + Mausrad* (bzw. Einstellungen) gilt jetzt auch für alle weiteren Fenster (Tabellen, Vorschau, Dialoge) – vorher nur für das Hauptfenster. Fenster wachsen mit und bleiben ganz auf dem Bildschirm.
+
+### ✅ Qualität
+- 777 automatische Tests.
+
 ## v2.5.0 (Stable, 24.10.2026)
 
 Stable-Release der Testversionen 2.4.1 bis 2.4.5 – „Angleichen und Übertragen“. Alle Punkte im Detail stehen in den Abschnitten darunter.

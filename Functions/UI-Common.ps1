@@ -118,10 +118,52 @@ function Register-HUGridFit {
             [System.Windows.RoutedEventHandler] { param($s, $e) Set-HUGridFit $s })
     } catch { try { Write-HULog -Message "Spaltenbreiten global: Registrieren fehlgeschlagen ($($_.Exception.Message))" -Level 'WARN' } catch { } }
     # GLOBAL: jedes groessenveraenderbare WPF-Fenster bekommt den sichtbaren Anfasser rechts unten (auch Fenster ausserhalb von New-HUWindow)
+    # und die Oberflaechengroesse des Hauptfensters (Strg + Mausrad) gilt auch fuer alle weiteren Fenster
     try {
         [System.Windows.EventManager]::RegisterClassHandler([System.Windows.Window], [System.Windows.FrameworkElement]::LoadedEvent,
-            [System.Windows.RoutedEventHandler] { param($s, $e) try { if ($s.ResizeMode -eq [System.Windows.ResizeMode]::CanResize) { $s.ResizeMode = [System.Windows.ResizeMode]::CanResizeWithGrip } } catch { } })
+            [System.Windows.RoutedEventHandler] { param($s, $e) try { if ($s.ResizeMode -eq [System.Windows.ResizeMode]::CanResize) { $s.ResizeMode = [System.Windows.ResizeMode]::CanResizeWithGrip } } catch { }; Set-HUWindowScale $s })
     } catch { }
+}
+
+# Aktuelle Oberflaechengroesse (1.0 = 100 %)
+function Get-HUUiScaleValue {
+    try { if ($script:UiScale -and [double]$script:UiScale -gt 0) { return [double]$script:UiScale } } catch { }
+    return 1.0
+}
+
+# Oberflaechengroesse auf ein weiteres Fenster anwenden (Inhalt skalieren, feste Fenstergroesse mitwachsen lassen, im Bildschirm halten).
+# Darf nie einen Fehler nach aussen geben (wird beim Laden jedes Fensters aufgerufen).
+function Set-HUWindowScale($Window) {
+    try {
+        if ($null -eq $Window -or $Window -isnot [System.Windows.Window]) { return }
+        if ($script:Window -and [object]::ReferenceEquals($Window, $script:Window)) { return }
+        $sc = Get-HUUiScaleValue
+        if ([Math]::Abs($sc - 1.0) -lt 0.01) { return }
+        $ct = $Window.Content
+        if ($ct -isnot [System.Windows.FrameworkElement]) { return }
+        if ($ct.LayoutTransform -is [System.Windows.Media.ScaleTransform]) { return }
+        $ct.LayoutTransform = [System.Windows.Media.ScaleTransform]::new($sc, $sc)
+        $wa = [System.Windows.SystemParameters]::WorkArea
+        $stc = "$($Window.SizeToContent)"
+        if ($stc -notin 'Width', 'WidthAndHeight') {
+            if ($Window.MinWidth -gt 0) { $Window.MinWidth = [Math]::Min($wa.Width * 0.9, $Window.MinWidth * $sc) }
+            $cw = if (-not [double]::IsNaN($Window.Width)) { $Window.Width } else { $Window.ActualWidth }
+            if ($cw -gt 0) { $Window.Width = [Math]::Min($wa.Width * 0.98, $cw * $sc) }
+        }
+        if ($stc -notin 'Height', 'WidthAndHeight') {
+            if ($Window.MinHeight -gt 0) { $Window.MinHeight = [Math]::Min($wa.Height * 0.9, $Window.MinHeight * $sc) }
+            $ch = if (-not [double]::IsNaN($Window.Height)) { $Window.Height } else { $Window.ActualHeight }
+            if ($ch -gt 0) { $Window.Height = [Math]::Min($wa.Height * 0.98, $ch * $sc) }
+        }
+        # neu mittig ueber dem Besitzer (oder dem Bildschirm), immer ganz sichtbar
+        $nw = if (-not [double]::IsNaN($Window.Width)) { $Window.Width } else { $Window.ActualWidth }
+        $nh = if (-not [double]::IsNaN($Window.Height)) { $Window.Height } else { $Window.ActualHeight }
+        $o = $Window.Owner
+        $l = if ($o -and $o.IsLoaded -and $o.WindowState -eq 'Normal') { $o.Left + ($o.ActualWidth - $nw) / 2 } else { $wa.Left + ($wa.Width - $nw) / 2 }
+        $t = if ($o -and $o.IsLoaded -and $o.WindowState -eq 'Normal') { $o.Top + ($o.ActualHeight - $nh) / 2 } else { $wa.Top + ($wa.Height - $nh) / 2 }
+        $Window.Left = [Math]::Max($wa.Left, [Math]::Min($l, $wa.Right - $nw))
+        $Window.Top = [Math]::Max($wa.Top, [Math]::Min($t, $wa.Bottom - $nh))
+    } catch { try { Write-HULog -Message "Oberflaechengroesse (Fenster): $($_.Exception.Message)" -Level 'WARN' } catch { } }
 }
 
 function Show-HUMessage {

@@ -1,0 +1,21 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-ca-geraete",
+  "Title": "CA Gerätekonformität (Microsoft-Empfehlung)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Conditional Access",
+  "Tags": [
+    "Microsoft-Empfehlung",
+    "P1",
+    "Geräte"
+  ],
+  "Note": "Microsoft-Vorlagen \"Secure foundation\" (Geräte): zwei Varianten - \"konformes Gerät ODER MFA\" (sanfter Einstieg) bzw. \"konformes Gerät erforderlich\" (streng). Eine davon wählen. Setzt Compliance-Richtlinien voraus; private Geräte ohne Intune gelten nicht als konform.",
+  "Learn": [
+    "https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common"
+  ],
+  "Created": "2026-10-25T00:00:00",
+  "Changed": "2026-10-25T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false
+}

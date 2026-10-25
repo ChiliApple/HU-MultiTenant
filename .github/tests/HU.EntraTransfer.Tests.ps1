@@ -245,6 +245,21 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
         { Undo-HUEntraTransfer -Settings $script:Set -File $r.UndoFile -U $u -CheckOnly } | Should -Throw '*EINGESCHALTET*'
     }
 
+    It 'Mitgelieferte Vorlage (Registrierung der Sicherheitsinfos): Alle Benutzer, Gaeste-Ausnahme bleibt, Benutzeraktion -> ausgeschaltet' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $f = @(Get-ChildItem -LiteralPath (Join-Path $root 'Muster\mitgeliefert-ca-grundschutz') -Recurse -Filter '*Sicherheitsinfos*.json')[0]
+        $src = Read-HUBackupJson $f.FullName
+        $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'mitgeliefert-ca-grundschutz-04' -Name $src.displayName -Backup $src -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
+        $p.Blocks | Should -BeNullOrEmpty
+        @($p.Body.conditions.users.includeUsers) | Should -Be @('All')
+        @($p.Body.conditions.users.excludeUsers) | Should -Be @('bbbb0000-0000-0000-0000-00000000000b')
+        $p.Body.conditions.users.excludeGuestsOrExternalUsers.externalTenants.membershipKind | Should -Be 'all'
+        $p.Body.conditions.users.excludeGuestsOrExternalUsers.externalTenants.'@odata.type' | Should -Be '#microsoft.graph.conditionalAccessAllExternalTenants'
+        $p.Body.state | Should -Be 'disabled'
+        @($p.Body.conditions.applications.includeUserActions) | Should -Be @('urn:user:registersecurityinfo')
+        @($p.Body.conditions.locations.excludeLocations) | Should -Be @('AllTrusted')
+    }
+
     It "Gibt es die Richtlinie im Ziel schon: neue heisst '(von Muster)', die bestehende bleibt" {
         $global:EtList['Z|/identity/conditionalAccess/policies'] = @([pscustomobject]@{ displayName = '201 mfa lehrer'; state = 'enabled' })
         $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Conditional Access' -Id 'q-pol' -Name '201 MFA Lehrer' -Backup (& $script:Ca) -ResolveKey 'Q' -SourceLabel 'Muster'

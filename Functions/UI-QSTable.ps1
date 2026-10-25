@@ -137,6 +137,7 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
         try {
             $win = [System.Windows.Window]::GetWindow($s0)
             $need = 60; foreach ($col in @($s0.Columns)) { $need += $col.ActualWidth }
+            $need = $need * (Get-HUUiScaleValue)   # Oberflaechengroesse: Spalten sind im Fenster skaliert
             $wa = [System.Windows.SystemParameters]::WorkArea
             $target = [Math]::Min($need, $wa.Width - 20)
             if ($win -and $win.ActualWidth -gt 0 -and $target -gt $win.ActualWidth) {

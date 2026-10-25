@@ -1,0 +1,56 @@
+{
+  "Tenant": "__MUSTER__",
+  "Errors": 0,
+  "Complete": true,
+  "FailedTypes": [],
+  "Items": [
+    {
+      "Typ": "Conditional Access",
+      "Name": "Grundschutz - MFA für Administratoren",
+      "Id": "mitgeliefert-ca-grundschutz-01",
+      "File": "Conditional_Access/001_Grundschutz_-_MFA_fuer_Administratoren.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "Grundschutz - MFA für Admin-Portale",
+      "Id": "mitgeliefert-ca-grundschutz-02",
+      "File": "Conditional_Access/002_Grundschutz_-_MFA_fuer_Admin-Portale.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "Grundschutz - MFA für alle Benutzer",
+      "Id": "mitgeliefert-ca-grundschutz-03",
+      "File": "Conditional_Access/003_Grundschutz_-_MFA_fuer_alle_Benutzer.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "Grundschutz - Registrierung der Sicherheitsinfos schützen",
+      "Id": "mitgeliefert-ca-grundschutz-04",
+      "File": "Conditional_Access/004_Grundschutz_-_Registrierung_der_Sicherheitsinfos_schuetzen.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "Grundschutz - Legacy-Authentifizierung blockieren",
+      "Id": "mitgeliefert-ca-grundschutz-05",
+      "File": "Conditional_Access/005_Grundschutz_-_Legacy-Authentifizierung_blockieren.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    },
+    {
+      "Typ": "Conditional Access",
+      "Name": "Grundschutz - MFA für Azure-Verwaltung",
+      "Id": "mitgeliefert-ca-grundschutz-06",
+      "File": "Conditional_Access/006_Grundschutz_-_MFA_fuer_Azure-Verwaltung.json",
+      "Source": "mitgeliefert",
+      "Stand": "2026-10-25_000000"
+    }
+  ]
+}

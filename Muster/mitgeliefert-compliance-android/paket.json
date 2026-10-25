@@ -1,0 +1,21 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-compliance-android",
+  "Title": "Compliance Android Arbeitsprofil (Microsoft-Empfehlung)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Compliance",
+  "Tags": [
+    "Microsoft-Empfehlung",
+    "P1",
+    "Android"
+  ],
+  "Note": "Microsoft-Beispiel Stufe 2 für private Geräte mit Arbeitsprofil: Root-Erkennung, Google Play-Dienste, Play Integrity (Basis + Gerät), Verschlüsselung, keine unbekannten Quellen, kein USB-Debugging, Kennwort numerisch komplex (6, 5 Min.), Mindestversion 13.0. Strenge Integritätsprüfung (Hardware) bewusst nicht gesetzt.",
+  "Learn": [
+    "https://learn.microsoft.com/intune/intune-service/protect/android-personally-owned-security-configurations"
+  ],
+  "Created": "2026-10-25T00:00:00",
+  "Changed": "2026-10-25T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false
+}

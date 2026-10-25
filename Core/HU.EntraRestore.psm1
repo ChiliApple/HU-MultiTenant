@@ -891,6 +891,15 @@ function Get-HUErTrPlanCa($Plan, [string]$TargetKey, $Settings, $Backup, [string
     if ($hasAll) { $iu.Add('All') } elseif (-not $hasRoles) { $iu.Add('None') }
     $nu = [pscustomobject]@{ includeUsers = [object[]]$iu.ToArray(); excludeUsers = [object[]]$tgtBg; includeGroups = [object[]]@(); excludeGroups = [object[]]@()
         includeRoles = [object[]]@(Get-HUErProp $u 'includeRoles' | Where-Object { "$_" }); excludeRoles = [object[]]@(Get-HUErProp $u 'excludeRoles' | Where-Object { "$_" }) }
+    # Ausnahme "alle Gaeste und externen Benutzer" (alle externen Tenants) ist ein Schluesselwort ohne Kennungen - bleibt erhalten
+    # (z. B. mitgelieferte Vorlage "Registrierung der Sicherheitsinfos"); eine Auswahl bestimmter Tenants wird nicht uebertragen
+    $xg = Get-HUErProp $u 'excludeGuestsOrExternalUsers'
+    if ($xg -and "$(Get-HUErProp $xg 'guestOrExternalUserTypes')") {
+        if ("$(Get-HUErProp (Get-HUErProp $xg 'externalTenants') 'membershipKind')" -eq 'all') {
+            $nu | Add-Member -NotePropertyName excludeGuestsOrExternalUsers -NotePropertyValue (Copy-HUErObject $xg) -Force
+            $Plan.Notes.Add('Ausnahme: alle Gaeste und externen Benutzer (wie im Muster).')
+        } else { $Plan.Warnings.Add('Die Ausnahme fuer Gaeste bestimmter Tenants wird NICHT uebertragen (Tenant-Kennungen) - im Ziel selbst setzen.') }
+    }
     Set-HUErProp $c 'users' $nu
     $opts = New-Object System.Collections.Generic.List[object]
     if ($hasAll) { $opts.Add([pscustomobject]@{ Key = 'allUsers'; Value = $true; Text = "Benutzer 'Alle' aus dem Muster uebernehmen (Schluesselwort, in jedem Tenant gleich). Ohne Haken: Benutzer 'Keine'." }) }

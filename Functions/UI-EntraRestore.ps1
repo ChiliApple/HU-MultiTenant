@@ -145,7 +145,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp) 
             try {
                 $sum = 0; foreach ($col in @($c.gridChanges.Columns)) { $sum += $col.ActualWidth }
                 $wa = [System.Windows.SystemParameters]::WorkArea
-                $nw = [Math]::Max(880, [Math]::Min([Math]::Floor($wa.Width * 0.95), $sum + 70))
+                $nw = [Math]::Max(880, [Math]::Min([Math]::Floor($wa.Width * 0.95), ($sum + 70) * (Get-HUUiScaleValue)))
                 if ($nw -gt $w.ActualWidth) { $w.Width = $nw; $w.Left = $wa.Left + [Math]::Max(0, ($wa.Width - $nw) / 2) }
             } catch { }
         })

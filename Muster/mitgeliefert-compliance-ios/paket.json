@@ -1,0 +1,21 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-compliance-ios",
+  "Title": "Compliance iOS/iPadOS (Microsoft-Empfehlung)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Compliance",
+  "Tags": [
+    "Microsoft-Empfehlung",
+    "P1",
+    "iOS"
+  ],
+  "Note": "Microsoft-Beispiel Stufe 2 für iOS/iPadOS: Jailbreak-Erkennung, Code erforderlich, keine einfachen Codes, numerisch mindestens 6 Stellen, Sperre nach 5 Min., Mindestversion 18.0.",
+  "Learn": [
+    "https://learn.microsoft.com/intune/device-security/security-configurations/ios-ipados-compliance"
+  ],
+  "Created": "2026-10-25T00:00:00",
+  "Changed": "2026-10-25T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false
+}

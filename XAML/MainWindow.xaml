@@ -1124,18 +1124,20 @@
                                         </StackPanel>
                                         <ComboBox x:Name="cmbCmpType" Style="{StaticResource DarkComboBox}" Width="190" Margin="6,0,0,4" ToolTip="Nur eine Art anzeigen"/>
                                         <CheckBox x:Name="chkCmpDiff" Content="Nur Unterschiede" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"/>
+                                        <CheckBox x:Name="chkCmpMusterOnly" Content="Nur Muster-Eintraege" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4" Visibility="Collapsed"
+                                                  ToolTip="Nur Zeilen zeigen, die im Muster (den angehakten Paketen) stehen - geht bei Teilpaketen automatisch an"/>
                                         <Button x:Name="btnCmpRun" Content="&#x25B6; Vergleich einlesen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
                                         <Button x:Name="btnCmpCopy" Content="&#x2192; Uebertragen ..." Background="#A65A28" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
                                                 ToolTip="Einen markierten Eintrag aus einer Quelle (Tenant oder Muster) in Tenants neu anlegen, in denen er fehlt - je Ziel mit Vorschau und Pruefungen, ohne Zuweisungen, rueckgaengig machbar"/>
                                         <Button x:Name="btnCmpUndo" Content="&#x21B6; Rueckgaengig ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,4"
                                                 ToolTip="Uebertragene Eintraege in den angehakten Tenants wieder loeschen - nur, wenn sie seitdem unveraendert sind"/>
                                         <Button x:Name="btnCmpTable" Content="&#x1F4CA; Tabelle / Export" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
-                                        <CheckBox x:Name="chkCmpMuster" Content="Muster aus Backup" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
-                                                  ToolTip="Den festgehaltenen Mustertenant (Soll-Stand aus Backup &amp; Verlauf) als eigene Spalte mitvergleichen"/>
+                                        <CheckBox x:Name="chkCmpMuster" Content="Muster" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
+                                                  ToolTip="Die im Reiter Muster angehakten Pakete als eigene Spalte mitvergleichen. Teilpakete pruefen nur ihre Eintraege (sonst 'nicht im Paket'), ein Gesamtstand prueft alles."/>
                                         <CheckBox x:Name="chkCmpColor" Content="Farben" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
                                                   ToolTip="Zeichen farbig: gruen = vorhanden und gleich wie das Muster (ohne Muster: wie die Mehrheit), orange = Einstellungen abweichend, rot = fehlt, grau = nicht lesbar"/>
                                         <Button x:Name="btnCmpMap" Content="&#x1F517; Zuordnung pruefen" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
-                                                ToolTip="Nur lesen: Gruppen, benannte Orte, Filter und Bereichsmarkierungen der Quelle (Muster, sonst erster angehakter Tenant) in den anderen Tenants nach Name suchen - ok, fehlt oder mehrfach; dazu die Notfallkonten je Tenant"/>
+                                                ToolTip="Nur lesen: Gruppen, benannte Orte, Filter und Bereichsmarkierungen der Quelle (angehakte Muster-Pakete, sonst erster angehakter Tenant) in den anderen Tenants nach Name suchen - ok, fehlt oder mehrfach; dazu die Notfallkonten je Tenant"/>
                                     </WrapPanel>
                                 </StackPanel>
                                 <StackPanel x:Name="pnlAnaBak" Visibility="Collapsed">
@@ -1159,7 +1161,7 @@
                                                 ToolTip="Intune: markierte Eintraege aus dem aelteren Stand neu anlegen (Zusatz im Namen, ohne Zuweisungen). Einzeln mit Vorschau: Entra-Einstellungen (Autorisierung, Administratorzustimmung, benannte Orte, Verzeichniseinstellungen) zurueckschreiben, Conditional Access neu als 'Nur Bericht'"/>
                                         <Button x:Name="btnBakTable" Content="&#x1F4CA; Tabelle / Export" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"/>
                                         <Button x:Name="btnBakMuster" Content="&#x2B50; Als Muster festhalten ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,4"
-                                                ToolTip="Den linken (aelteren) Stand als Mustertenant festhalten: Soll-Stand, laeuft nicht ab, im Tenant-Vergleich als Spalte 'Muster'"/>
+                                                ToolTip="Den linken (aelteren) Stand als Paket 'Gesamtstand' in der Muster-Bibliothek festhalten (Reiter Muster): Soll-Stand, laeuft nicht ab, im Tenant-Vergleich als Spalte 'Muster'"/>
                                     </WrapPanel>
                                 </StackPanel>
                                 <StackPanel x:Name="pnlAnaSec" Visibility="Collapsed">
@@ -1268,6 +1270,124 @@
                                 <DataGridTextColumn Header="Filter" Binding="{Binding Filter}" Width="Auto" MinWidth="50"/>
                             </DataGrid.Columns>
                         </DataGrid>
+                        </Grid>
+                    </DockPanel>
+                </TabItem>
+                <TabItem Header="&#x2B50; Muster" x:Name="tabMuster" Style="{StaticResource DarkTabItem}">
+                    <DockPanel Margin="0,8,0,0">
+                        <Border DockPanel.Dock="Top" Background="#252526" CornerRadius="4" Padding="10" Margin="0,0,0,6">
+                            <TextBlock x:Name="lblMuIntro" Style="{StaticResource HintText}" TextWrapping="Wrap"
+                                       Text="Muster sind Pakete mit Soll-Einstellungen - z. B. 'Conditional Access komplett' oder 'Compliance Windows' - zusammengestellt aus den Backup-Staenden deiner Tenants, auch gemischt. Angehakte Pakete laufen im Tenant-Vergleich (Analyse) als Spalte 'Muster' mit und sind dort Quelle fuers Uebertragen. Ein Teilpaket prueft nur seine eigenen Eintraege; ein Gesamtstand prueft alles. Es wird nichts in Tenants geschrieben."/>
+                        </Border>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" MinHeight="220"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="360" MinWidth="260" MaxWidth="620"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*" MinWidth="360"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Background="#252526" CornerRadius="4" Padding="10">
+                                    <DockPanel>
+                                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                            <Button x:Name="btnMuNew" DockPanel.Dock="Right" Content="+ Neues Paket ..." Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
+                                                    ToolTip="Neues Paket aus den Backup-Staenden zusammenstellen (Eintraege aus einem oder mehreren Tenants)"/>
+                                            <TextBlock Text="Bibliothek" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0"/>
+                                        </DockPanel>
+                                        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                                            <TextBox x:Name="txtMuFilter" Style="{StaticResource DarkTextBox}" FontSize="12"
+                                                     ToolTip="Text im Namen, in der Kategorie oder Notiz - #Wort sucht nach Schlagwort (mehrere Woerter: alle muessen passen)"/>
+                                            <TextBlock x:Name="lblMuFilterHint" Text="Suchen oder #Schlagwort" Foreground="#666666" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                        </Grid>
+                                        <TextBlock DockPanel.Dock="Bottom" x:Name="lblMuSel" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                        <Button DockPanel.Dock="Bottom" x:Name="btnMuTrash" Content="&#x1F5D1; Papierkorb" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,6,0,0" HorizontalAlignment="Left"
+                                                ToolTip="Geloeschte Pakete ansehen, zurueckholen oder endgueltig loeschen"/>
+                                        <ListBox x:Name="lstMuPkg" Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                                 ToolTip="Haken = im Tenant-Vergleich als Muster verwenden. Rechtsklick: Bearbeiten, Duplizieren, Loeschen">
+                                            <ListBox.GroupStyle>
+                                                <GroupStyle>
+                                                    <GroupStyle.HeaderTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding Name}" Foreground="#90CAF9" FontWeight="SemiBold" FontSize="11" Margin="2,8,0,2"/>
+                                                        </DataTemplate>
+                                                    </GroupStyle.HeaderTemplate>
+                                                </GroupStyle>
+                                            </ListBox.GroupStyle>
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <DockPanel Margin="0,1" ToolTip="{Binding Tip}">
+                                                        <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Sel, Mode=OneWay}" Tag="{Binding Id}" VerticalAlignment="Center" Margin="0,0,8,0"
+                                                                  ToolTip="Im Tenant-Vergleich als Muster verwenden"/>
+                                                        <Border DockPanel.Dock="Right" Background="#2D3E50" CornerRadius="8" Padding="7,0" Margin="6,0,0,0" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Count}" Foreground="#90CAF9" FontSize="11"/>
+                                                        </Border>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                            <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </DockPanel>
+                                </Border>
+                                <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="Transparent" Cursor="SizeWE" ToolTip="Breite der Bibliothek anpassen (ziehen)"/>
+                                <Border Grid.Column="2" Background="#252526" CornerRadius="4" Padding="12">
+                                    <DockPanel>
+                                        <StackPanel DockPanel.Dock="Top">
+                                            <TextBlock x:Name="lblMuTitle" Style="{StaticResource SectionTitle}" Margin="0,0,0,2" TextWrapping="Wrap"/>
+                                            <TextBlock x:Name="lblMuMeta" Foreground="#AAAAAA" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,2"/>
+                                            <TextBlock x:Name="lblMuTags" Foreground="#81C784" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,2"/>
+                                            <TextBlock x:Name="lblMuNote" Foreground="#CCCCCC" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,6"/>
+                                            <WrapPanel x:Name="pnlMuActions" Orientation="Horizontal" Margin="0,0,0,6">
+                                                <Button x:Name="btnMuEdit" Content="&#x270E; Bearbeiten ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,4"
+                                                        ToolTip="Name, Kategorie, Schlagwoerter, Notiz und Eintraege des Pakets aendern"/>
+                                                <Button x:Name="btnMuDup" Content="Duplizieren" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,4"
+                                                        ToolTip="Kopie des Pakets anlegen (z. B. als Ausgangspunkt fuer eine Variante)"/>
+                                                <Button x:Name="btnMuDel" Content="Loeschen ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,4"
+                                                        ToolTip="Paket in den Papierkorb der Bibliothek verschieben (Backups\_Muster\papierkorb) - nicht endgueltig"/>
+                                                <Button x:Name="btnMuCompare" Content="&#x25B6; Im Tenant-Vergleich ansehen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
+                                                        ToolTip="Zur Analyse wechseln und die angehakten Pakete als Spalte 'Muster' gegen die angehakten Tenants vergleichen"/>
+                                            </WrapPanel>
+                                            <DockPanel Margin="0,0,0,4">
+                                                <TextBlock Text="Eintraege" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                <Grid>
+                                                    <TextBox x:Name="txtMuItemFilter" Style="{StaticResource DarkTextBox}" FontSize="12" Width="240" HorizontalAlignment="Left"
+                                                             ToolTip="Eintraege filtern: Text in Art, Name oder Herkunft"/>
+                                                    <TextBlock x:Name="lblMuItemFilterHint" Text="Filtern ..." Foreground="#666666" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                                </Grid>
+                                            </DockPanel>
+                                        </StackPanel>
+                                        <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                            <Ellipse x:Name="dotMuRun" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,0,6,0" VerticalAlignment="Top" Visibility="Collapsed" ToolTip="laeuft ..."/>
+                                            <TextBlock x:Name="lblMuHint" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
+                                        </DockPanel>
+                                        <DataGrid x:Name="gridMuItems" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Extended"
+                                                  CanUserSortColumns="True" ToolTip="Doppelklick: Einstellungen dieses Eintrags ansehen">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Art" Binding="{Binding Typ}" Width="Auto"/>
+                                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="Auto"/>
+                                                <DataGridTextColumn Header="Herkunft" Binding="{Binding Herkunft}" Width="Auto"/>
+                                                <DataGridTextColumn Header="Stand" Binding="{Binding StandText}" Width="Auto"/>
+                                                <DataGridTextColumn Header="Hinweis" Binding="{Binding Hinweis}" Width="Auto"><DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="Foreground" Value="#8A8A8A"/></Style></DataGridTextColumn.ElementStyle></DataGridTextColumn>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </DockPanel>
+                                </Border>
+                            </Grid>
+                            <Thumb x:Name="thbMuLog" Grid.Row="1" Height="8" Cursor="SizeNS" Margin="0,2,0,0" ToolTip="Hoehe des Protokolls anpassen (ziehen)">
+                                <Thumb.Template>
+                                    <ControlTemplate TargetType="Thumb"><Border Background="#3E3E42" Opacity="0.5" Height="4" VerticalAlignment="Center"/></ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                            <RichTextBox x:Name="rtbMu" Grid.Row="2" Height="110" Background="#1E1E1E" Foreground="White" FontFamily="Consolas" FontSize="11" IsReadOnly="True"
+                                         VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="6">
+                                <RichTextBox.Document><FlowDocument/></RichTextBox.Document>
+                            </RichTextBox>
                         </Grid>
                     </DockPanel>
                 </TabItem>

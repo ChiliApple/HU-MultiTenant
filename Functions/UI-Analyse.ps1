@@ -42,7 +42,11 @@ function Save-HUAnaTenants {
 }
 
 function Get-HUAnaTenantName([string]$Key) {
-    if ($Key -eq (Get-HUMusterKey)) { $m = $null; try { $m = Get-HUMuster $script:Settings } catch { }; if ($m) { return $m.Label }; return 'Muster' }
+    if ($Key -eq (Get-HUMusterKey)) {
+        if ("$($script:CmpMusterLabel)") { return "$($script:CmpMusterLabel)" }
+        $m = $null; try { $m = Get-HUMusterSelectionUi } catch { }; if ($m) { return $m.Label }; return 'Muster'
+    }
+    if (Test-HUMusterBuiltinSource $Key) { return 'Mitgeliefert' }
     $t = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $Key }) | Select-Object -First 1
     if ($t -and "$($t.displayName)") { return "$($t.displayName)" }
     return $Key
@@ -213,6 +217,9 @@ $script:CmpKeys = @()
 $script:UndoEntra = $false
 $script:CmpGen = 0
 $script:CmpMatrix = @()
+$script:CmpMusterSel = $null    # angehakte Muster-Pakete des letzten Vergleichs (Get-HUMusterSelection)
+$script:CmpMusterLabel = ''
+$script:CmpMoBusy = $false
 
 function Update-HUCmpHint {
     $c = $script:Controls
@@ -223,7 +230,7 @@ function Update-HUCmpHint {
     $all = @($script:CmpMatrix)
     $d = @($all | Where-Object Diff).Count
     $vis = @(Get-HUCmpVisibleRows).Count
-    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' fuer Profile, Compliance, Feature-Updates, Autopilot, Conditional Access (Zelle Ein, Aus oder Melden) und die weiteren Arten aus dem Backup; IDs von Gruppen, Apps und Orten zaehlen dabei nicht, die Namen zeigt der Doppelklick. Doppelklick zeigt die abweichenden Einstellungen. Uebertragen: einen Eintrag markieren, Quelle und Ziele waehlen, je Ziel Vorschau - Intune neu angelegt ohne Zuweisungen oder angeglichen; Entra-Einstellungen und Conditional Access (neu, als Nur Bericht) nur aus dem Muster."
+    $c['lblAnaHint'].Text = "$($all.Count) Eintraege, $d mit Unterschied$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Gleich = gleicher Name; 'Einstellungen abweichend' fuer Profile, Compliance, Feature-Updates, Autopilot, Conditional Access (Zelle Ein, Aus oder Melden) und die weiteren Arten aus dem Backup; IDs von Gruppen, Apps und Orten zaehlen dabei nicht, die Namen zeigt der Doppelklick. Doppelklick zeigt die abweichenden Einstellungen. Uebertragen: einen Eintrag markieren, Quelle und Ziele waehlen, je Ziel Vorschau - Intune neu angelegt ohne Zuweisungen oder angeglichen; Entra-Einstellungen und Conditional Access (neu, als Nur Bericht) nur aus dem Muster.$(if ($script:CmpMusterSel -and -not $script:CmpMusterSel.Complete) { ' Muster = Teilpaket(e): Eintraege, die nicht im Paket sind, zaehlen nicht als Abweichung (Zelle nicht im Paket).' })"
 }
 
 # Arten-Dropdown: hinter jeder Art steht, was damit geht (uebertragen/angleichen/nur vergleichen)
@@ -239,6 +246,9 @@ function Get-HUCmpTypeHint([string]$Typ) {
 function Get-HUCmpVisibleRows {
     $rows = @($script:CmpMatrix)
     if ($script:Controls['chkCmpDiff'].IsChecked) { $rows = @($rows | Where-Object Diff) }
+    # Teilpaket: auf Wunsch nur die Eintraege des Musters
+    $mk = Get-HUMusterKey
+    if (@($script:CmpKeys) -contains $mk -and $script:Controls['chkCmpMusterOnly'].IsChecked) { $rows = @($rows | Where-Object { @($_.Have) -contains $mk }) }
     $typ = "$($script:Controls['cmbCmpType'].SelectedItem)" -replace '\s+\([^)]*\)$', ''
     if ($typ -and $typ -ne '(alle Arten)') { $rows = @($rows | Where-Object { $_.Typ -eq $typ }) }
     foreach ($w in @("$($script:Controls['txtCmpFilter'].Text)" -split '\s+' | Where-Object { $_ })) {
@@ -249,6 +259,7 @@ function Get-HUCmpVisibleRows {
 
 # Zelle im Vergleich: Haken, bei Conditional Access der Status (Ein / Aus / Melden)
 function Get-HUCmpCellText($M, [string]$Key) {
+    if ($Key -eq (Get-HUMusterKey) -and $M.PSObject.Properties['NotInPkg'] -and $M.NotInPkg) { return 'nicht im Paket' }
     $it = @($M.Items | Where-Object { $_.Tenant -eq $Key })[0]
     if ($it -and $it.PSObject.Properties['Info'] -and "$($it.Info)") { return "$($it.Info)" }
     return "$([char]0x2714)"
@@ -260,6 +271,7 @@ function Get-HUCmpCellColor($M, [string]$Key) {
     $def = '#CCCCCC'
     if (-not $script:Controls['chkCmpColor'] -or -not $script:Controls['chkCmpColor'].IsChecked) { return $def }
     if (@($M.Unknown) -contains $Key) { return '#8A8A8A' }
+    if ($Key -eq (Get-HUMusterKey) -and $M.PSObject.Properties['NotInPkg'] -and $M.NotInPkg) { return '#8A8A8A' }
     if (@($M.Have) -notcontains $Key) { return '#EF5350' }
     if ("$($M.Status)" -notlike '*abweichend*') { return '#81C784' }
     $withHash = @($M.Items | Where-Object { "$($_.Hash)" })
@@ -313,7 +325,10 @@ function Update-HUCmpGrid {
     }
     $items = foreach ($m in @(Get-HUCmpVisibleRows)) {
         $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
-        for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = $(if ($m.Have -contains $keys[$i]) { Get-HUCmpCellText $m $keys[$i] } elseif (@($m.Unknown) -contains $keys[$i]) { '?' } else { "$([char]0x2014)" }); $o["Fc$i"] = Get-HUCmpCellColor $m $keys[$i] }
+        for ($i = 0; $i -lt $keys.Count; $i++) {
+            $nip = ($keys[$i] -eq (Get-HUMusterKey) -and $m.PSObject.Properties['NotInPkg'] -and $m.NotInPkg)
+            $o["T$i"] = $(if ($nip) { 'nicht im Paket' } elseif ($m.Have -contains $keys[$i]) { Get-HUCmpCellText $m $keys[$i] } elseif (@($m.Unknown) -contains $keys[$i]) { '?' } else { "$([char]0x2014)" }); $o["Fc$i"] = Get-HUCmpCellColor $m $keys[$i]
+        }
         $o.Status = ("$($m.Status)$(if ($m.Missing.Count -and -not $m.Copy -and $m.Typ -notin 'Benannter Ort', 'Verzeichniseinstellung', 'Conditional Access') { ' (nur anzeigen)' })" -replace [regex]::Escape((Get-HUMusterKey)), 'Muster')
         $o.Ref = $m
         [pscustomobject]$o
@@ -327,12 +342,18 @@ function Start-HUCmpRun {
     $keys = @(Get-HUCheckedTenants $c['spAnaTenants'])
     $muster = $null
     if ($c['chkCmpMuster'].IsChecked) {
-        try { $muster = Get-HUMuster $script:Settings } catch { }
-        if (-not $muster) { Show-HUMessage 'Es ist noch kein Mustertenant festgehalten (Backup & Verlauf > Stand waehlen > Als Muster festhalten).' -Icon Info; return }
+        $muster = Get-HUMusterSelectionUi
+        if (-not $muster) { Show-HUMessage 'Es ist kein Muster-Paket angehakt. Im Reiter Muster mindestens ein Paket anhaken (oder in Backup & Verlauf einen Stand als Muster festhalten).' -Icon Info; return }
     }
     if (($keys.Count + [int][bool]$muster) -lt 2) { Show-HUMessage 'Bitte mindestens zwei Tenants anhaken (oder einen Tenant und das Muster).' -Icon Warning; return }
     if ($muster) { $keys = @(@(Get-HUMusterKey) + $keys) }
-    $script:CmpMusterSrc = $(if ($muster) { $muster.Source } else { '' })
+    $script:CmpMusterSel = $muster
+    $script:CmpMusterLabel = $(if ($muster) { $muster.Label } else { '' })
+    # Haken "Nur Muster-Eintraege": nur mit Muster sichtbar, bei Teilpaketen automatisch an
+    $c['chkCmpMusterOnly'].Visibility = $(if ($muster) { 'Visible' } else { 'Collapsed' })
+    $script:CmpMoBusy = $true
+    $c['chkCmpMusterOnly'].IsChecked = [bool]($muster -and -not $muster.Complete)
+    $script:CmpMoBusy = $false
     $script:CmpGen++
     $gen = $script:CmpGen
     $script:CmpKeys = $keys
@@ -344,10 +365,10 @@ function Start-HUCmpRun {
     Add-HURtbLine $c['rtbAna'] "Tenant-Vergleich: $(@($keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" '#90CAF9'
     foreach ($k in $keys) {
         $script:CmpWait[$k] = $true
-        $ok = Start-HUJob -Name "Cmp-$gen-$k" -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; Gen = $gen; MF = $(if ($muster -and $k -eq (Get-HUMusterKey)) { $muster.Folder } else { '' }) } -Code {
+        $ok = Start-HUJob -Name "Cmp-$gen-$k" -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; Gen = $gen; IsMu = [bool]($muster -and $k -eq (Get-HUMusterKey)); PK = $(if ($muster) { $muster.Packages } else { $null }) } -Code {
             $rows = @()
-            # Mustertenant: Bestand aus dem festgehaltenen Backup-Stand, nicht live
-            try { $rows = $(if ($MF) { @(Get-HUBackupInventory -Folder $MF -TenantKey $TK) } else { @(Get-HUCompareInventory -TenantKey $TK -Settings $Settings) }) }
+            # Muster: Bestand aus den angehakten Paketen (Backup-Staende), nicht live - je Zeile mit Quell-Tenant (Origin)
+            try { $rows = $(if ($IsMu) { @(Get-HUMusterInventory @($PK | Where-Object { $_ })) } else { @(Get-HUCompareInventory -TenantKey $TK -Settings $Settings) }) }
             catch {
                 Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $TK
                 $rows = @([pscustomobject]@{ Tenant = $TK; Typ = '*'; Name = ''; Id = ''; Hash = ''; Copy = ''; Error = "$($_.Exception.Message)" })
@@ -361,7 +382,8 @@ function Start-HUCmpRun {
             $script:CmpData["$($d.__CmpDone)"] = @($d.Rows)
             if (-not $script:CmpWait.Count) {
                 $all = @($script:CmpData.Values | ForEach-Object { $_ })
-                $script:CmpMatrix = @(Get-HUCompareMatrix $all $script:CmpKeys)
+                # Teilpakete: was nicht im Paket ist, zaehlt nicht als Abweichung (Gesamtstand: alles zaehlt)
+                $script:CmpMatrix = @(Get-HUMusterMatrix $all $script:CmpKeys -Partial:([bool]($script:CmpMusterSel -and -not $script:CmpMusterSel.Complete)))
                 Update-HUCmpGrid
             } else { Update-HUCmpHint }
         }
@@ -406,7 +428,11 @@ function Start-HUCmpCopy {
     if ($diff.Count) { $txt += "`nWeicht ab (wird ANGEGLICHEN, Zuweisungen bleiben): $(@($diff | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" }
     $tg = @(Show-HUTenantChoice -Title 'Uebertragen nach' -Text $txt -Keys $targets -OkText 'Weiter')
     if (-not $tg.Count) { return }
-    $muster = $null; if ($srcKey -eq $mk) { try { $muster = Get-HUMuster $script:Settings } catch { } }
+    # Muster: Namen (Gruppen, Orte, Bereichsmarkierungen) im Tenant nachschlagen, aus dem der Eintrag stammt
+    $resolve = $srcKey
+    if ($srcKey -eq $mk) { $resolve = $(if ($srcItem.PSObject.Properties['Origin'] -and "$($srcItem.Origin)") { "$($srcItem.Origin)" } else { '' }) }
+    # mitgelieferte Eintraege: Namen (Rollen, Microsoft-Apps) in einem eigenen Tenant nachschlagen - die Kennungen sind ueberall gleich
+    $resolve = Get-HUMusterResolveKey $script:Settings $resolve
     $modes = @{}; $tids = @{}
     foreach ($t in $targets) {
         $modes[$t] = $(if ($diff -contains $t) { 'align' } else { 'new' })
@@ -415,7 +441,7 @@ function Start-HUCmpCopy {
     }
     $script:TrQueue = New-Object System.Collections.Generic.Queue[object]
     foreach ($t in $tg) { $script:TrQueue.Enqueue($t) }
-    $script:TrCtx = @{ Typ = $m.Typ; Name = $m.Name; Src = $srcKey; SrcLabel = (Get-HUAnaTenantName $srcKey); Resolve = $(if ($muster) { $muster.Source } else { $srcKey })
+    $script:TrCtx = @{ Typ = $m.Typ; Name = $m.Name; Src = $srcKey; SrcLabel = (Get-HUAnaTenantName $srcKey); Resolve = $resolve; TagNames = $(if ($srcKey -eq $mk -and $resolve -and $script:CmpMusterSel) { Get-HUMusterTagNames $script:CmpMusterSel.Folders $resolve } else { @{} })
         Obj = $(if ($srcItem.PSObject.Properties['Obj'] -and $null -ne $srcItem.Obj) { $srcItem.Obj } else { $null }); Id = $srcItem.Id; Multi = ($tg.Count -gt 1); Done = 0; DoneNames = (New-Object System.Collections.Generic.List[string]); Cur = ''
         Modes = $modes; TIds = $tids }
     Start-HUTransferNext
@@ -435,10 +461,10 @@ function Get-HUCmpEntraId($M) {
 function Start-HUCmpEntraCopy($M) {
     $mk = Get-HUMusterKey
     $mi = @($M.Items | Where-Object { $_.Tenant -eq $mk })
-    if (-not $mi.Count -or $null -eq $mi[0].Obj) { Show-HUMessage "Entra-Einstellungen werden nur aus dem Mustertenant uebertragen (bewusst festgehaltener Soll-Stand).`n`nHaken 'Muster aus Backup' setzen und Vergleich einlesen - das Muster muss '$($M.Name)' enthalten." -Icon Info; return }
-    $muster = $null; try { $muster = Get-HUMuster $script:Settings } catch { }
-    if (-not $muster) { Show-HUMessage 'Kein Mustertenant festgehalten.' -Icon Info; return }
-    $src = "$($muster.Source)"
+    if (-not $mi.Count -or $null -eq $mi[0].Obj) { Show-HUMessage "Entra-Einstellungen und Conditional Access werden nur aus dem Muster uebertragen (bewusst festgehaltener Soll-Stand).`n`nIm Reiter Muster ein Paket mit '$($M.Name)' anhaken, hier den Haken 'Muster' setzen und Vergleich einlesen." -Icon Info; return }
+    # Quell-Tenant des Muster-Eintrags (Namen dort nachschlagen; dieser Tenant wird nicht als Ziel angeboten)
+    $src = "$(if ($mi[0].PSObject.Properties['Origin']) { $mi[0].Origin })"
+    if (-not $src) { Show-HUMessage "Fuer '$($M.Name)' im Muster ist der Quell-Tenant nicht bekannt - bitte das Paket neu speichern." -Icon Warning; return }
     $mh = "$($mi[0].Hash)"
     $missing = @($M.Missing | Where-Object { $_ -ne $mk -and $_ -ne $src })
     $diff = @($M.Items | Where-Object { $_.Tenant -ne $mk -and $_.Tenant -ne $src -and "$($_.Hash)" -ne $mh } | ForEach-Object { $_.Tenant } | Select-Object -Unique)
@@ -496,7 +522,7 @@ function Start-HUTransferNext {
                 $o = if ($null -ne $X.Obj) { $X.Obj } else { Get-HUCompareObject -TenantKey $X.Src -Settings $Settings -Typ $X.Typ -Id $X.Id }
                 $p = if ($Mode -eq 'entra') { Get-HUEntraTransferPlan -TargetKey $T -Settings $Settings -Typ $X.Typ -Id $X.Id -Name $X.Name -Backup $o -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel }
                 elseif ($Mode -eq 'align') { Get-HUTransferAlignPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T -TargetId $Tid }
-                else { Get-HUTransferPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T }
+                else { Get-HUTransferPlan -Settings $Settings -Typ $X.Typ -SourceObj $o -SourceKey $X.Src -ResolveKey $X.Resolve -SourceLabel $X.SrcLabel -TargetKey $T -SourceTagNames $(if ($X.TagNames) { $X.TagNames } else { @{} }) }
                 [pscustomobject]@{ __Plan = $p }
             } catch { [pscustomobject]@{ __PlanError = "$($_.Exception.Message)" } }
         } -OnDone {
@@ -612,7 +638,7 @@ function Show-HUTransferUndoDialog([object[]]$List) {
             try {
                 $sum = 0; foreach ($col in @($dc.grid.Columns)) { $sum += $col.ActualWidth }
                 $wa = [System.Windows.SystemParameters]::WorkArea
-                $w.Width = [Math]::Max(700, [Math]::Min([Math]::Floor($wa.Width * 0.95), $sum + 70))
+                $w.Width = [Math]::Max(700, [Math]::Min([Math]::Floor($wa.Width * 0.95), ($sum + 70) * (Get-HUUiScaleValue)))
                 $w.Left = $wa.Left + [Math]::Max(0, ($wa.Width - $w.Width) / 2)
             } catch { }
         })
@@ -654,18 +680,18 @@ function Show-HUTransferUndoDialog([object[]]$List) {
 function Start-HUCmpMap {
     $c = $script:Controls
     $keys = @(Get-HUCheckedTenants $c['spAnaTenants'])
-    $folder = ''; $src = ''; $label = ''
+    $folder = @(); $src = ''; $label = ''
     $muster = $null
-    if ($c['chkCmpMuster'].IsChecked) { try { $muster = Get-HUMuster $script:Settings } catch { } }
-    if ($muster) { $folder = $muster.Folder; $src = $muster.Source; $label = $muster.Label }
+    if ($c['chkCmpMuster'].IsChecked) { $muster = Get-HUMusterSelectionUi }
+    if ($muster) { $folder = @($muster.Folders); $src = ''; $label = $muster.Label }
     elseif ($keys.Count) {
         $src = $keys[0]
         $st = @(Get-HUBackupList -Root (Get-HUBakRootSafe) -TenantKey $src | Where-Object Complete) | Select-Object -First 1
         if (-not $st) { Show-HUMessage "Fuer $(Get-HUAnaTenantName $src) gibt es noch keinen vollstaendigen Backup-Stand - erst Backup & Verlauf > Backup jetzt." -Icon Info; return }
-        $folder = $st.Folder; $label = "$(Get-HUAnaTenantName $src), Stand $($st.Label)"
+        $folder = @($st.Folder); $label = "$(Get-HUAnaTenantName $src), Stand $($st.Label)"
     }
     $targets = @($keys | Where-Object { $_ -ne $src })
-    if (-not $folder -or -not $targets.Count) { Show-HUMessage 'Quelle (Muster oder erster angehakter Tenant) und mindestens einen weiteren Tenant anhaken.' -Icon Info; return }
+    if (-not @($folder).Count -or -not $targets.Count) { Show-HUMessage 'Quelle (Muster oder erster angehakter Tenant) und mindestens einen weiteren Tenant anhaken.' -Icon Info; return }
     $names = @{}; foreach ($t in $targets) { $names[$t] = Get-HUAnaTenantName $t }
     $script:CmpMapLabel = $label
     Add-HURtbLine $c['rtbAna'] "Zuordnung pruefen: Quelle $label -> $(@($targets | ForEach-Object { $names[$_] }) -join ', ') ..." '#90CAF9'
@@ -694,14 +720,14 @@ function Show-HUCmpDetail {
     $script:CmpDetailName = "$($m.Typ): $($m.Name)"
     $script:CmpDetailKeys = @($items | ForEach-Object { $_.Tenant })
     Add-HURtbLine $script:Controls['rtbAna'] "Lade Einstellungen von '$($m.Name)' ..." '#90CAF9'
-    [void](Start-HUJob -Name 'CmpDetail' -Quiet -Output $script:Controls['rtbAna'] -Vars @{ Items = $items; MK = (Get-HUMusterKey); MS = "$($script:CmpMusterSrc)" } -Code {
+    [void](Start-HUJob -Name 'CmpDetail' -Quiet -Output $script:Controls['rtbAna'] -Vars @{ Items = $items; MK = (Get-HUMusterKey) } -Code {
             $maps = @{}
             foreach ($it in $Items) {
                 try {
                     # weitere Arten bringen das gelesene Objekt mit (Obj), die Intune-Grundarten werden vollstaendig nachgeladen
                     $o = if ($it.PSObject.Properties['Obj'] -and $null -ne $it.Obj) { $it.Obj } else { Get-HUCompareObject -TenantKey $it.Tenant -Settings $Settings -Typ $it.Typ -Id $it.Id }
-                    # IDs im Muster gehoeren zum Quell-Tenant des Musters - Namen dort nachschlagen
-                    $rk = if ($it.Tenant -eq $MK) { $MS } else { $it.Tenant }
+                    # IDs im Muster gehoeren zum Quell-Tenant des Eintrags - Namen dort nachschlagen
+                    $rk = if ($it.Tenant -eq $MK) { Get-HUMusterResolveKey $Settings "$(if ($it.PSObject.Properties['Origin']) { $it.Origin })" } else { $it.Tenant }
                     $maps[$it.Tenant] = $(if ($rk) { Resolve-HUFlatMapIds -TenantKey $rk -Settings $Settings -Map (ConvertTo-HUFlatMap $o) } else { ConvertTo-HUFlatMap $o })
                 }
                 catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $it.Tenant }
@@ -736,6 +762,8 @@ function Register-HUCmpHandlers {
     $c['chkCmpDiff'].IsChecked = [bool](Get-HUStateValue 'cmpDiff' $true)
     $c['chkCmpDiff'].Add_Checked({ Set-HUStateValue 'cmpDiff' $true; Update-HUCmpGrid })
     $c['chkCmpDiff'].Add_Unchecked({ Set-HUStateValue 'cmpDiff' $false; Update-HUCmpGrid })
+    $c['chkCmpMusterOnly'].Add_Checked({ if (-not $script:CmpMoBusy) { Update-HUCmpGrid } })
+    $c['chkCmpMusterOnly'].Add_Unchecked({ if (-not $script:CmpMoBusy) { Update-HUCmpGrid } })
     $script:CmpTypeWanted = "$(Get-HUStateValue 'cmpType' '')"
     $c['cmbCmpType'].Add_SelectionChanged({
             if ($script:CmpTypeBusy) { return }
@@ -974,18 +1002,31 @@ function Start-HUBakRestore {
         })
 }
 
-# Gewaehlten (linken) Stand als Mustertenant festhalten - Soll-Stand fuer Vergleich und spaeteres Uebertragen
+# Gewaehlten (linken) Stand als Muster festhalten: Gesamtstand-Paket in der Muster-Bibliothek (laeuft nicht ab)
 function Start-HUBakMuster {
     $c = $script:Controls
     $k = "$($c['cmbBakTenant'].SelectedItem.Tag)"
     $a = $c['cmbBakA'].SelectedItem
     if (-not $k -or -not $a) { Show-HUMessage 'Bitte Tenant und Stand (links) waehlen.' -Icon Info; return }
     $folder = "$($a.Tag)"
-    $old = $null; try { $old = Get-HUMuster $script:Settings } catch { }
-    $q = "Stand $($a.Content) von $(Get-HUAnaTenantName $k) als Mustertenant festhalten?`n`nDas Muster ist der Soll-Stand: Es laeuft nicht ab, erscheint im Tenant-Vergleich als eigene Spalte (Haken 'Muster') und ist die Quelle fuer die Namenszuordnung. Es wird nichts in einen Tenant geschrieben.$(if ($old) { "`n`nDas bisherige Muster ($($old.Label)) wird nach _Musterrueher verschoben." })"
-    if (-not (Confirm-HU $q)) { return }
-    try { $m = Save-HUMuster -Settings $script:Settings -Folder $folder -TenantKey $k; Show-HUMessage "Festgehalten: $($m.Label)" -Icon Info }
-    catch { Show-HUMessage "Nicht festgehalten: $($_.Exception.Message)" -Icon Error }
+    $def = "Gesamtstand $(Get-HUAnaTenantName $k) $(("$($a.Content)" -split ' ')[0])"
+    $r = Read-HUNameDescription -Title 'Als Muster festhalten' -Name $def -Hint "Stand $($a.Content) von $(Get-HUAnaTenantName $k) wird als Paket 'Gesamtstand' in der Muster-Bibliothek gespeichert (Reiter Muster): Soll-Stand, laeuft nicht ab, im Tenant-Vergleich als Spalte 'Muster'. Es wird nichts in einen Tenant geschrieben."
+    if (-not $r) { return }
+    if (@(Get-HUMusterPackages $script:Settings | Where-Object { (ConvertTo-HUMuName $_.Title) -eq (ConvertTo-HUMuName $r.Name) }).Count) { Show-HUMessage "Es gibt schon ein Muster-Paket '$($r.Name)' - bitte einen anderen Namen waehlen." -Icon Warning; return }
+    Add-HURtbLine $c['rtbAna'] "Halte Stand $($a.Content) als Muster '$($r.Name)' fest ..." '#90CAF9'
+    [void](Start-HUJob -Name 'BakMuster' -Output $c['rtbAna'] -Vars @{ F = $folder; TK = $k; T = $r.Name; N = $r.Description } -Code {
+            try { [pscustomobject]@{ __MuMade = (New-HUMusterPackageFromStand -Settings $Settings -Folder $F -TenantKey $TK -Title $T -Note $N -ResolveGroups).Package.Id } }
+            catch { [pscustomobject]@{ __MuErr = "$($_.Exception.Message)" } }
+        } -OnDone {
+            param($Result, $Errors)
+            $d = @($Result | Where-Object { $_ -and ($_.PSObject.Properties['__MuMade'] -or $_.PSObject.Properties['__MuErr']) }) | Select-Object -First 1
+            if (-not $d) { Show-HUMessage 'Nicht festgehalten (siehe Protokoll).' -Icon Error; return }
+            if ($d.PSObject.Properties['__MuErr']) { Show-HUMessage "Nicht festgehalten: $($d.__MuErr)" -Icon Error; return }
+            $first = -not @(Get-HUMuSelIds).Count
+            if ($first) { Set-HUMuSelIds @($d.__MuMade) }
+            Show-HUMessage "Festgehalten als Muster-Paket.$(if ($first) { ' Es ist fuer den Tenant-Vergleich angehakt.' } else { ' Im Reiter Muster anhaken, um es im Tenant-Vergleich zu verwenden.' })" -Icon Info
+            try { Update-HUMuList $d.__MuMade } catch { }
+        })
 }
 
 function Register-HUBakHandlers {

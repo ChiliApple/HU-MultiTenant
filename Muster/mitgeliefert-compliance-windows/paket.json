@@ -1,0 +1,21 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-compliance-windows",
+  "Title": "Compliance Windows (Microsoft-Empfehlung)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Compliance",
+  "Tags": [
+    "Microsoft-Empfehlung",
+    "P1",
+    "Windows"
+  ],
+  "Note": "Zero-Trust-Empfehlung fuer Windows 10/11: BitLocker, Secure Boot, Codeintegrität, Verschlüsselung, Firewall, Virenschutz, Defender mit aktuellen Signaturen und Echtzeitschutz, Mindestversion 10.0.26100 (Windows 11 24H2). Ohne Kennwortregeln und ohne Defender-for-Endpoint-Risiko (eigene Lizenz). BitLocker zählt erst nach einem Neustart.",
+  "Learn": [
+    "https://learn.microsoft.com/security/zero-trust/zero-trust-identity-device-access-policies-common"
+  ],
+  "Created": "2026-10-25T00:00:00",
+  "Changed": "2026-10-25T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false
+}

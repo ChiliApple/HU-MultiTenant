@@ -1,0 +1,21 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-ca-grundschutz",
+  "Title": "CA-Grundschutz (Microsoft-Empfehlung)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Conditional Access",
+  "Tags": [
+    "Microsoft-Empfehlung",
+    "P1",
+    "Grundschutz"
+  ],
+  "Note": "Microsoft-Vorlagen \"Secure foundation\" (Identität): MFA für Admins und Admin-Portale, MFA für alle, Registrierung der Sicherheitsinfos, Legacy-Auth blockieren, MFA für Azure-Verwaltung. Beim Übertragen: NEU, Nur Bericht, Notfallkonten des Ziels ausgenommen.",
+  "Learn": [
+    "https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common"
+  ],
+  "Created": "2026-10-25T00:00:00",
+  "Changed": "2026-10-25T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false
+}
