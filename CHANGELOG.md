@@ -13,7 +13,7 @@
 - Pro Tenant läuft der Assistent nur einmal gleichzeitig; ein pulsierender Punkt zeigt, solange gelesen oder geschrieben wird.
 
 ### 🖥️ Oberfläche
-- **Ablauf von Secret/Zertifikat in der Kopfzeile** in Höhe des Titels (Tenant des offenen Reiters) – in den Reitern Extensions und Quick Script entfernt.
+- **Ablauf von Secret/Zertifikat in der Kopfzeile** in Höhe des Titels (Tenant der Auswahl; in den Reitern Analyse und Muster Sammelanzeige aller Tenants bzw. die zuerst ablaufende Schule) – in den Reitern Extensions und Quick Script entfernt.
 - **Reiter Muster:** Die Breite der Bibliothek (Unterteilung Bibliothek | Paket) wird gemerkt.
 - **Notizen der Pakete** lesbarer: ein Punkt je Zeile, Quellen als anklickbare Links darunter.
 
