@@ -1,5 +1,24 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.5.4 (Testversion, Weg zu 2.5.5 Stable)
+
+### 💻 Zusatzmodul Autopilot (neu, 0.5.1)
+- **Eigener Reiter Autopilot** als Zusatzmodul (privates Repository, wie Kinderschutz): Übersicht mit Ampel, Group Tag ändern mit Rückgängig, verschlüsseltes Hash-Archiv je Tenant, Aufnehmen mit Erkennung von Gruppe und Profil, Ausscheiden (erst Autopilot-Eintrag entfernen, dann Wipe) und Zurückziehen für Geräte, die bei der Familie bleiben (BitLocker-Übergabe zum Drucken, dann Retire), Protokolle und ZIP-Pakete für Eltern. Braucht mindestens App 2.5.2; geladen wird es erst nach Signatur und Freigabe durch den Herausgeber.
+- **Doku:** Karte in der Funktionsübersicht und eigener Abschnitt in der Anleitung (Update › Zusatzmodule).
+
+### 🎨 Oberfläche
+- **Markierte Zeilen bleiben dunkelblau,** auch wenn die Tabelle den Fokus verliert (vorher hellgrau) – für alle Tabellen.
+- **Auswahlfelder zum Eintippen:** Der dunkle Stil für Auswahlfelder erlaubt jetzt auch `IsEditable` (Text eingeben und aus der Liste wählen).
+
+### 🔑 Rechte
+- **Rechtekatalog ergänzt** für das Zusatzmodul Autopilot (nicht vorausgewählt): `DeviceManagementServiceConfig.ReadWrite.All`, `DeviceManagementManagedDevices.ReadWrite.All`, `DeviceManagementScripts.Read.All`, `Group.Create` und `BitlockerKey.Read.All` – letzteres gilt als weitreichend (rot, eigene Bestätigung).
+
+### 🧩 Zusatzmodule
+- **Schnittstelle:** `Test-HUUserAway` (seit 2.5.3: App gesperrt, Sperrbildschirm, getrennte Sitzung oder 5 Minuten ohne Eingabe) nutzt jetzt auch das MCP-Zusatzmodul (ab 0.3.1) für seine Freigaben. Das MCP-Modul gibt den Freigabeort (PC/Handy) an die Fernbedienung weiter, und sein Freigabe-Fenster scrollt bei langem Code – die Knöpfe bleiben sichtbar.
+
+### 🗺️ Doku
+- **Roadmap aktualisiert:** 2.5.3 Handprüfungen, 2.5.4 Autopilot, 2.5.5 Stable; 2.6.0 Austausch und Sicherung (Export/Import, Microsoft-Vorlagen, App-Sicherung); Mail und Teams danach in 2.6.x.
+
 ## v2.5.3 (Testversion, Weg zu 2.5.5 Stable)
 
 ### 🛡️ Sicherheitskatalog

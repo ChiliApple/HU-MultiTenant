@@ -30,7 +30,12 @@
     { "name": "GroupSettings.ReadWrite.All", "default": false, "why": "Backup: Verzeichniseinstellungen zurueckschreiben (Kennwortschutz, Sperrschwelle, Gruppen)" },
     { "name": "Directory.Read.All", "default": false, "why": "aeltere Extensions (Enterprise-App-Inventur: Berechtigungen), Sicherheitskatalog A45 (Zustimmungen fuer alle Benutzer - laut Microsoft nur mit diesem Recht lesbar)" },
     { "name": "SecurityEvents.Read.All", "default": true, "why": "Sicherheitskatalog: Microsoft Secure Score (A32)" },
-    { "name": "IdentityRiskyUser.Read.All", "default": false, "why": "Sicherheitskatalog: gefaehrdete Benutzer (K06) - nur mit Entra ID P2 sinnvoll, mit P1 verweigert Graph den Abruf" }
+    { "name": "IdentityRiskyUser.Read.All", "default": false, "why": "Sicherheitskatalog: gefaehrdete Benutzer (K06) - nur mit Entra ID P2 sinnvoll, mit P1 verweigert Graph den Abruf" },
+    { "name": "DeviceManagementServiceConfig.ReadWrite.All", "default": false, "why": "Zusatzmodul Autopilot: Geraete importieren, Group Tag aendern, Autopilot-Eintrag entfernen" },
+    { "name": "DeviceManagementManagedDevices.ReadWrite.All", "default": false, "why": "Zusatzmodul Autopilot: Intune-Eintrag eines ausgeschiedenen Geraets loeschen" },
+    { "name": "DeviceManagementScripts.Read.All", "default": false, "why": "Zusatzmodul Autopilot: Hash-Archiv - Ergebnisse des Wartungspakets HU-AP-Hash abholen" },
+    { "name": "Group.Create", "default": false, "why": "Zusatzmodul Autopilot: dynamische Gruppe fuer einen Group Tag anlegen (nur neue Gruppen, aendert keine bestehenden)" },
+    { "name": "BitlockerKey.Read.All", "default": false, "why": "Zusatzmodul Autopilot: Zurueckziehen - BitLocker-Wiederherstellungsschluessel fuer die Uebergabe lesen (jeder Abruf steht im Entra-Ueberwachungsprotokoll)" }
   ],
   "risky": [
     "Application.ReadWrite.All", "Application.ReadWrite.OwnedBy", "AppRoleAssignment.ReadWrite.All",
@@ -38,7 +43,7 @@
     "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All",
     "Mail.*", "Files.*", "Sites.*", "Policy.ReadWrite.*", "GroupSettings.ReadWrite.All", "RoleManagement.ReadWrite.*", "PrivilegedAccess.ReadWrite.*",
     "UserAuthenticationMethod.ReadWrite.All", "Domain.ReadWrite.All",
-    "DeviceManagementManagedDevices.PrivilegedOperations.All", "DeviceManagementScripts.ReadWrite.All",
+    "DeviceManagementManagedDevices.PrivilegedOperations.All", "DeviceManagementScripts.ReadWrite.All", "BitlockerKey.Read.All",
     "DeviceManagementRBAC.ReadWrite.All", "Organization.ReadWrite.All", "User-PasswordProfile.ReadWrite.All",
     "IdentityRiskyUser.ReadWrite.All", "ServicePrincipalEndpoint.ReadWrite.All", "Application.ReadUpdate.All",
     "Chat.*", "ChannelMessage.*", "Calendars.*", "MailboxSettings.*"

@@ -4,6 +4,9 @@
 -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Markierte Zeilen bleiben dunkelblau, auch wenn die Tabelle den Fokus verliert (sonst hellgrau mit weisser Schrift) -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#094771"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="White"/>
     <Style x:Key="DarkButton" TargetType="Button">
         <Setter Property="Foreground" Value="White"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
@@ -101,6 +104,11 @@
                                           VerticalAlignment="Center"
                                           HorizontalAlignment="Left"
                                           IsHitTestVisible="False"/>
+                        <!-- IsEditable="True": Eingabefeld statt Anzeige (WPF sucht es ueber den Namen PART_EditableTextBox) -->
+                        <TextBox x:Name="PART_EditableTextBox" Style="{x:Null}" Visibility="Hidden"
+                                 Margin="4,1,20,1" Padding="1,0" VerticalAlignment="Center" HorizontalAlignment="Stretch"
+                                 Background="Transparent" BorderThickness="0" Foreground="{TemplateBinding Foreground}" CaretBrush="#CCCCCC"
+                                 SelectionBrush="#094771" FontSize="{TemplateBinding FontSize}" IsReadOnly="{TemplateBinding IsReadOnly}"/>
                         <Popup x:Name="Popup"
                                Placement="Bottom"
                                IsOpen="{TemplateBinding IsDropDownOpen}"
@@ -122,6 +130,13 @@
                             </Grid>
                         </Popup>
                     </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEditable" Value="True">
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="ContentSite" Property="Visibility" Value="Hidden"/>
+                            <Setter Property="IsTabStop" Value="False"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

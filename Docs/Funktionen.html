@@ -135,7 +135,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Funktionsübersicht <span class="ver">v2.5.0</span>
+      HU-MultiTenant · Funktionsübersicht <span class="ver">v2.5.4</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -196,6 +196,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     <a href="#ext" style="--c: var(--peach)">Extensions</a>
     <a href="#apps" style="--c: var(--blue)">Apps</a>
     <a href="#wartung" style="--c: var(--green)">Wartung</a>
+    <a href="#autopilot" style="--c: var(--mauve)">Autopilot (Zusatzmodul)</a>
     <a href="#analyse" style="--c: var(--mauve)">Analyse</a>
     <a href="#teams" style="--c: var(--red)">Teams</a>
     <a href="#handy" style="--c: var(--teal)">Handy</a>
@@ -362,6 +363,24 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
       </div>
     </article>
 
+    <article class="cat" id="autopilot" style="--c: var(--mauve)">
+      <div class="cat-head"><span class="chip">💻 Zusatzmodul</span><h3>Autopilot <span class="new">neu</span></h3><span class="count">10 Punkte</span></div>
+      <div class="cat-body">
+        <ul>
+          <li>Übersicht aller Autopilot-Geräte mit Ampel bereit / Warnung / fehlt, Benutzer und Export</li>
+          <li>Group Tag ändern für markierte Geräte, mit Rückgängig</li>
+          <li>Hash-Archiv je Tenant, verschlüsselt: Lieferanten-Dateien hineinziehen oder Hash über Intune anfordern</li>
+          <li>Aufnehmen: Tag wählen, passende dynamische Gruppe und Profil werden erkannt, Gruppe bei Bedarf anlegen</li>
+          <li>Import mit Vorschau, Sync und Nachverfolgung bis Gruppe und Profil</li>
+          <li>Ausscheiden: Autopilot-Eintrag entfernen, erst danach zurücksetzen (Wipe)</li>
+          <li>Zurückziehen für Geräte, die bei der Familie bleiben: BitLocker-Schlüssel auf Übergabe zum Drucken, dann Retire</li>
+          <li>Abgängerliste (Seriennummern oder UPNs) als CSV, Excel oder Text</li>
+          <li>Protokoll je Gerät mit Hash und Import-CSV für die neue Schule, ZIP-Paket für die Eltern</li>
+          <li>Erinnerung nach 6 Monaten zum Löschen alter Protokolle</li>
+        </ul>
+      </div>
+    </article>
+
     <article class="cat" id="analyse" style="--c: var(--mauve)">
       <div class="cat-head"><span class="chip">🔍 Analyse</span><h3>Analyse</h3><span class="count">13 Punkte</span></div>
       <div class="cat-body">
@@ -430,7 +449,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 </section>
 
 <footer>
-  <span>Stand 21.10.2026 · Version 2.3.1</span>
+  <span>Stand 26.10.2026 · Version 2.5.4</span>
   <a href="Einstieg.html">Einstieg</a>
   <a href="Anleitung.html">Anleitung</a>
   <a href="https://github.com/ChiliApple/HU-MultiTenant">Projekt auf GitHub</a>
