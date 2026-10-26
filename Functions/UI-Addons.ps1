@@ -41,8 +41,17 @@ function Get-HUAddonStartList {
     $cfg = $null; try { $cfg = Update-UpdateConfig } catch { }
     $tp = if ($cfg -and $cfg.SignerThumbprint) { $cfg.SignerThumbprint } else { $script:HMDefaultSigner }
     $ok = @()
+    # 2.5.4: mitgelieferte Module (Modules\<Id>\) kommen mit dem Programm-Update und gelten wie Functions\ - ohne eigene Signatur.
+    # Abschalten je Modul: settings.json "modulesOff": ["<Id>"]. Ein signiertes privates Modul gleicher Kennung ersetzt es.
+    $off = @(); try { if ($script:Settings -and $script:Settings.PSObject.Properties['modulesOff']) { $off = @($script:Settings.modulesOff | ForEach-Object { "$_" }) } } catch { }
+    foreach ($i in @(Get-HUBuiltinModules ([Version]$script:Version))) {
+        if ($i.Error) { Write-HULogWarn "Modul $(Split-Path $i.Dir -Leaf) (mitgeliefert) nicht geladen: $($i.Error)"; continue }
+        if ($off -contains $i.Id) { Write-HULogInfo "Modul $($i.Id) abgeschaltet (Einstellung modulesOff)"; continue }
+        $ok += $i
+    }
     foreach ($i in @(Get-HUAddonsToLoad $dir ([Version]$script:Version) $tp)) {
         if ($i.Error) { Write-HULogWarn "Zusatzmodul $(if ($i.Id) { $i.Id } else { Split-Path $i.Dir -Leaf }) nicht geladen: $($i.Error)"; continue }
+        $ok = @($ok | Where-Object { $_.Id -ne $i.Id })
         $ok += $i
     }
     # Entwicklung: AddonsDev\<Id>\ wird OHNE Signatur geladen und ersetzt ein installiertes Modul gleicher Kennung.

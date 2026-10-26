@@ -157,14 +157,21 @@ function Invoke-HURemoteRun($S, $Req, $Settings, [string]$AppRoot, [int]$LimitMi
     Set-HURemoteAwake $true
     $ok = 0; $bad = 0; $cancel = $false
     try {
-        Add-HURemoteLineTo $S "=== $($it.Name) - gestartet vom Handy '$($Req.By)'$(if ($Req.Live) { ' - ECHTER LAUF' } else { '' }) ===" 'Head'
+        Add-HURemoteLineTo $S "=== $($it.Name) - gestartet $(if ("$($Req.DevId)" -eq 'mcp') { 'ueber MCP (KI)' } else { "vom Handy '$($Req.By)'" })$(if ($Req.Live) { ' - ECHTER LAUF' } else { '' }) ===" 'Head'
         & $log "=== $($it.Name) ($($it.Kind)) vom Handy '$($Req.By)' $(if ($Req.Live) { 'ECHTER LAUF' } else { '' }) Tenants: $($j.Tenants -join ', ')"
         # Pflicht-Hinweis an Teams bei echtem Lauf vom Handy (Review 031 B4): an die Ziele mit "Hinweis bei Problemen" (Kategorie Jobs)
-        if ($Req.Live) {
+        # 2.5.3: nicht bei KI-Laeufen ueber MCP, waehrend Udo am entsperrten PC sitzt (dort am PC freigegeben und sichtbar)
+        $mcpAtPc = [bool](("$($Req.DevId)" -eq 'mcp') -and $Req.AtPc)   # 064 B4a: ohne ContainsKey (Hashtable oder Objekt)
+        if ($Req.Live -and $mcpAtPc) { & $log 'Teams-Hinweis entfaellt: KI-Lauf ueber MCP, am PC freigegeben (PC und App entsperrt, Sitzung verbunden, Eingabe in den letzten 5 Minuten)' }
+        if ($Req.Live -and -not $mcpAtPc) {
             try {
                 Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction Stop
                 Grant-HUSendApproval -Reason 'Hinweis Fernbedienung'
-                $r = Send-HUNotify -Category Jobs -Level Warning -Source 'Fernbedienung' -Title "ECHTER LAUF vom Handy: $($it.Name)" -Lines @("Gestartet von '$($Req.By)' am PC $env:COMPUTERNAME", "Tenants: $($j.Tenants -join ', ')") -Preview "Echter Lauf vom Handy: $($it.Name)"
+                # 2.5.3: von der KI ueber MCP gestartet (am PC oder Handy freigegeben) nicht als "vom Handy" melden; Vorschau ohne doppelten Titel
+                $isMcp = ("$($Req.DevId)" -eq 'mcp')
+                $origin = $(if ($isMcp) { 'ueber MCP (KI)' } else { 'vom Handy' })
+                $who = $(if ($isMcp) { "Gestartet von der KI ueber MCP, nach Freigabe$(if ("$($Req.ApprovedBy)") { " ($($Req.ApprovedBy))" }) - am PC $env:COMPUTERNAME" } else { "Gestartet von '$($Req.By)' am PC $env:COMPUTERNAME" })
+                $r = Send-HUNotify -Category Jobs -Level Warning -Source 'Fernbedienung' -Title "ECHTER LAUF $($origin): $($it.Name)" -Lines @($who, "Tenants: $($j.Tenants -join ', ')") -Preview "Tenants: $($j.Tenants -join ', ')"
                 if (-not $r.Ok) { Add-HURemoteLineTo $S "Teams-Hinweis nicht gesendet: $($r.Text)" 'Warn' }
             } catch { Add-HURemoteLineTo $S "Teams-Hinweis nicht gesendet: $($_.Exception.Message)" 'Warn' }
         }

@@ -13,9 +13,11 @@
                      "tab": { "header": "...", "xaml": "Tab.xaml", "script": "Addon.ps1", "init": "Initialize-HUAddon<Kennung>" } }
       Tab.xaml     Wurzel <TabItem>; Theme ueber <TabItem.Resources><!--HU:THEME--></TabItem.Resources>
       Addon.ps1    Funktionen des Moduls (wird in den Programm-Bereich geladen), Einstieg = "init"
+    Mitgeliefert (2.5.4): <AppRoot>\Modules\<Kennung>\ - gleicher Aufbau, Teil des Programms (ohne eigene Signatur).
     Lokal: <AppRoot>\Addons\<Kennung>\ (Dateien + addon.sha256 + addon.sha256.p7s); neue Fassungen warten in
     Addons\.pending\<Kennung>\ und werden beim naechsten Start uebernommen.
     Tokens: %APPDATA%\HU-MultiTenant\addons\<owner>_<repo>.xml (DPAPI, nur fuer diesen Windows-Benutzer lesbar).
+    Daten der Module: %APPDATA%\HU-MultiTenant\AddonData\<Id>\ (Get-HUAddonDataDir), in der App-Sicherung enthalten.
     Zielmaschine: der PC, auf dem HU-MultiTenant laeuft (Windows PowerShell 5.1).
 #>
 
@@ -25,6 +27,22 @@ $script:HUAddonSignature = 'addon.sha256.p7s'
 function Get-HUAddonsDir { return (Join-Path $script:AppRoot 'Addons') }
 function Get-HUAddonTokenDir {
     $d = Join-Path (Join-Path $env:APPDATA 'HU-MultiTenant') 'addons'
+    if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+    return $d
+}
+
+# 2.5.3: Datenordner je Zusatzmodul (eigene Dateien, Archive, Protokolle): %APPDATA%\HU-MultiTenant\AddonData\<Id>\
+# - pro Windows-Benutzer, neben den DPAPI-Secrets; die App-Sicherung nimmt AddonData\ komplett mit.
+# Zusatzmodule rufen diese Funktion; fehlt sie (aeltere App), denselben Pfad selbst bilden.
+function Get-HUAddonDataRoot {
+    # 064 B5: kein stiller Ausweg nach TEMP (dort waeren die Daten ausserhalb der App-Sicherung)
+    if (-not $env:APPDATA) { throw 'APPDATA ist nicht gesetzt - Datenordner fuer Zusatzmodule nicht bestimmbar.' }
+    $base = $env:APPDATA
+    return (Join-Path (Join-Path $base 'HU-MultiTenant') 'AddonData')
+}
+function Get-HUAddonDataDir([string]$Id) {
+    if (-not (Test-HUAddonId $Id)) { throw "Ungueltige Kennung fuer Zusatzmodul-Daten: '$Id'" }
+    $d = Join-Path (Get-HUAddonDataRoot) $Id
     if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
     return $d
 }
@@ -122,6 +140,21 @@ function Get-HUAddonsToLoad([string]$AddonsDir, [Version]$AppVersion, [string]$T
         $i = Read-HUAddonInfo $d.FullName
         if (-not $i.Error -and $i.Id -cne $d.Name) { $i.Error = 'Ordnername passt nicht zur Kennung' }
         if (-not $i.Error) { $why = Test-HUAddonFiles $d.FullName $Thumbprint; if ($why) { $i.Error = "nicht vertrauenswuerdig: $why" } }
+        if (-not $i.Error -and $AppVersion -lt $i.MinApp) { $i.Error = "braucht HU-MultiTenant $($i.MinApp) oder neuer" }
+        $out += $i
+    }
+    return $out
+}
+
+# 2.5.4: mitgelieferte Module im Programmordner (Modules\<Id>\), Teil des Programms und mit ihm aktualisiert
+function Get-HUBuiltinModulesDir { return (Join-Path $script:AppRoot 'Modules') }
+function Get-HUBuiltinModules([Version]$AppVersion, [string]$Dir = '') {
+    $root = if ($Dir) { $Dir } else { Get-HUBuiltinModulesDir }
+    if (-not (Test-Path -LiteralPath $root)) { return @() }
+    $out = @()
+    foreach ($d in @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '.*' })) {
+        $i = Read-HUAddonInfo $d.FullName
+        if (-not $i.Error -and $i.Id -cne $d.Name) { $i.Error = 'Ordnername passt nicht zur Kennung' }
         if (-not $i.Error -and $AppVersion -lt $i.MinApp) { $i.Error = "braucht HU-MultiTenant $($i.MinApp) oder neuer" }
         $out += $i
     }

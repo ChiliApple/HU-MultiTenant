@@ -1,5 +1,42 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.5.4 (Testversion, Weg zu 2.5.5 Stable)
+
+### 💻 Zusatzmodul Autopilot (neu, 0.5.1)
+- **Eigener Reiter Autopilot,** mitgeliefert im Programm (`Modules\Autopilot\`, kommt mit dem App-Update, abschaltbar mit `"modulesOff": ["Autopilot"]` in `Config\settings.json`): Übersicht mit Ampel, Group Tag ändern mit Rückgängig, verschlüsseltes Hash-Archiv je Tenant, Aufnehmen mit Erkennung von Gruppe und Profil, Ausscheiden (erst Autopilot-Eintrag entfernen, dann Wipe) und Zurückziehen für Geräte, die bei der Familie bleiben (BitLocker-Übergabe zum Drucken, dann Retire), Protokolle und ZIP-Pakete für Eltern. Eigenes Änderungsprotokoll: `Modules\Autopilot\CHANGELOG.md`.
+- **Doku:** Karte in der Funktionsübersicht und eigener Abschnitt in der Anleitung (Update › Zusatzmodule).
+
+### 🎨 Oberfläche
+- **Markierte Zeilen bleiben dunkelblau,** auch wenn die Tabelle den Fokus verliert (vorher hellgrau) – für alle Tabellen.
+- **Auswahlfelder zum Eintippen:** Der dunkle Stil für Auswahlfelder erlaubt jetzt auch `IsEditable` (Text eingeben und aus der Liste wählen).
+
+### 🔑 Rechte
+- **Rechtekatalog ergänzt** für das Zusatzmodul Autopilot (nicht vorausgewählt): `DeviceManagementServiceConfig.ReadWrite.All`, `DeviceManagementManagedDevices.ReadWrite.All`, `DeviceManagementScripts.Read.All`, `Group.Create` und `BitlockerKey.Read.All` – letzteres gilt als weitreichend (rot, eigene Bestätigung).
+
+### 🧩 Zusatzmodule
+- **Mitgelieferte Module:** Neben signierten privaten Modulen (`Addons\`) lädt die App jetzt Module aus `Modules\<Id>\` – sie sind Teil des Programms und werden mit ihm geprüft und aktualisiert. Ein signiertes privates Modul gleicher Kennung ersetzt das mitgelieferte, `AddonsDev\` ersetzt beide (Entwicklung).
+- **Schnittstelle:** `Test-HUUserAway` (seit 2.5.3: App gesperrt, Sperrbildschirm, getrennte Sitzung oder 5 Minuten ohne Eingabe) nutzt jetzt auch das MCP-Zusatzmodul (ab 0.3.1) für seine Freigaben. Das MCP-Modul gibt den Freigabeort (PC/Handy) an die Fernbedienung weiter, und sein Freigabe-Fenster scrollt bei langem Code – die Knöpfe bleiben sichtbar.
+
+### 🗺️ Doku
+- **Roadmap aktualisiert:** 2.5.3 Handprüfungen, 2.5.4 Autopilot, 2.5.5 Stable; 2.6.0 Austausch und Sicherung (Export/Import, Microsoft-Vorlagen, App-Sicherung); Mail und Teams danach in 2.6.x.
+
+## v2.5.3 (Testversion, Weg zu 2.5.5 Stable)
+
+### 🛡️ Sicherheitskatalog
+- **Handprüfungen für den Rest der Security Baseline (M01–M05):** Punkte, die Graph nicht liefert, stehen jetzt als Checkliste im Katalog (Bereich *Handpruefung*): lokales AD – Admin-Konten nicht delegierbar, keine Betriebssysteme ohne Support, keine Konten ohne Kennwortpflicht, LAPS und Tier-Konzept – sowie das Ablaufdatum von Freigabelinks in SharePoint/OneDrive.
+- **Bestätigen je Tenant:** Details → *Von Hand geprueft …* mit kurzer Notiz und Rolle. Die Bestätigung gilt **12 Monate**, danach steht die Zeile wieder orange auf „? Manuell“. Zählt nicht zur Ampel und nicht zu „geprüft“, löst keine Teams-Meldung aus.
+- **So behebst du es:** für jede Handprüfung Schritte und PowerShell-Abfragen für den Domänencontroller, mit Links auf Microsoft Learn – inklusive Hinweisen zu Sonderfällen (adminCount bleibt stehen, Protected Users, Computerkonten, Vertrauensstellungen) und Kontrolle per `Get-SPOTenant`.
+
+### 🔍 Tenant-Vergleich
+- **Vergleich mit Muster genauer:** Bei Conditional Access zählen in den Ausnahmen nur noch die eingestellten Notfallkonten des Tenants (Sollwert V1) nicht als Abweichung – weitere ausgenommene Konten schon. Auch **zwischen den Tenants** zählen verschieden viele Notfallkonten nicht mehr als Abweichung. Fehlt bei einem Tenant der Sollwert V1, nennt der Status das („Sollwert V1 fehlt: …“).
+
+### 📱 Fernbedienung
+- **Kein Push mehr bei KI-Läufen am PC:** Startet die KI über MCP ein Snippet und du bist am PC, kommt am Ende keine Meldung mehr aufs Handy. „Am PC“ heißt: App und Windows entsperrt, Sitzung verbunden (keine getrennte Remotedesktop-Sitzung) und eine Eingabe in den letzten **5 Minuten**; eine Freigabe am Handy zählt nie als „am PC“. Lässt sich das nicht prüfen, gilt „weg“.
+- **Teams-Hinweis und Protokoll** nennen bei KI-Läufen „über MCP (KI)“ statt „vom Handy“; die Vorschau wiederholt den Titel nicht mehr, sondern nennt die Tenants. Bist du beim Start eines echten KI-Laufs am PC (siehe oben), entfällt der Teams-Hinweis (nur im Protokoll vermerkt). Bist du am Ende nicht mehr da, kommt er **nachträglich** („Lauf lief unbeaufsichtigt weiter“). Echte Läufe vom Handy melden sich immer.
+
+### 🧩 Zusatzmodule
+- **Datenordner je Modul:** `Get-HUAddonDataDir <Id>` liefert `%APPDATA%\HU-MultiTenant\AddonData\<Id>\` (Schnittstelle für Zusatzmodule, `Functions\Core-Addons.ps1`). Die kommende App-Sicherung nimmt `AddonData\` komplett mit. Ohne `APPDATA` gibt es einen Fehler statt eines Ordners unter TEMP.
+
 ## v2.5.2 (Testversion, Weg zu 2.6.0)
 
 ### 🧭 Muster anwenden (Assistent)

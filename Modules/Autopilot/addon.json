@@ -1,0 +1,12 @@
+{
+  "id": "Autopilot",
+  "title": "Autopilot",
+  "version": "0.5.1",
+  "minApp": "2.5.2",
+  "tab": {
+    "header": "Autopilot",
+    "xaml": "Tab.xaml",
+    "script": "Addon.ps1",
+    "init": "Initialize-HUAddonAutopilot"
+  }
+}

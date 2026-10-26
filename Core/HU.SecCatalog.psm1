@@ -8,6 +8,8 @@
       2. Regeln   ($script:HUSecRules)  - reine Funktionen auf den abgerufenen Daten
       3. Lauf     (Invoke-HUSecCatalog) - Rechte/Lizenz vorab pruefen, Regeln auswerten, Ausnahmen anwenden
     Status: OK, Abweichung, Ausnahme, NichtPruefbar (Grund: Recht, Lizenz, Technisch, Manuell, NichtAnwendbar), Fehler, Info.
+    Handpruefung (Regeln mit Manual = $true): nicht per Graph pruefbar; von Hand bestaetigt = Info/Handgeprueft (12 Monate),
+    sonst NichtPruefbar/Manuell. Zaehlt nicht zur Ampel und nicht zur Abdeckung.
     Ein Fehler beim Abruf ergibt nie OK. Gespeichert werden nur Zahlen und Status, keine Namen oder IDs von Personen.
 .NOTES
     Zielmaschine: der PC, auf dem HU-MultiTenant laeuft. Ablage: %APPDATA%\HU-MultiTenant\katalog\
@@ -743,6 +745,63 @@ function Get-HUSecExceptionState {
     if ($r -and $r.Status -eq 'Info' -and $r.Reason -eq 'Aus') { return 'wirkungslos: Regel abgeschaltet' }
     return 'aktiv'
 }
+
+# ============================================================================
+# Handpruefung: Punkte der Baseline, die Graph nicht liefert (lokales AD, Ablauf von Freigabelinks).
+# Bestaetigung je Regel und Tenant in manual.json (Datum, Rolle, Notiz), gueltig 12 Monate.
+# ============================================================================
+$script:HUSecManualMonths = 12
+
+function Get-HUSecManual {
+    $j = $null
+    try { $j = Read-HUSecJson (Join-Path (Get-HUSecPath) 'manual.json') } catch { }
+    if (-not $j) { return @() }
+    return @($j.items)
+}
+
+function Test-HUSecManualRule([string]$RuleId) {
+    $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $RuleId })[0]
+    return [bool]($rule -and $rule.PSObject.Properties['Manual'] -and $rule.Manual)
+}
+
+function Set-HUSecManual {
+    param([Parameter(Mandatory)][string]$RuleId, [Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)][string]$Note,
+        [Parameter(Mandatory)][string]$Responsible, [datetime]$Now = (Get-Date))
+    if (-not (Test-HUSecManualRule $RuleId)) { throw "Regel $RuleId ist keine Handpruefung." }
+    if (("$Note").Trim().Length -lt 10) { throw 'Notiz: mindestens 10 Zeichen (was wurde wie geprueft?).' }
+    if (-not ("$Responsible").Trim()) { throw 'Bitte eine verantwortliche Rolle eintragen.' }
+    $items = @(Get-HUSecManual | Where-Object { -not ($_.ruleId -eq $RuleId -and $_.tenant -eq $TenantKey) })
+    $new = [pscustomobject]@{ ruleId = $RuleId; tenant = $TenantKey; confirmed = $Now.ToUniversalTime().ToString('o'); responsible = $Responsible.Trim(); note = $Note.Trim() }
+    Write-HUSecJson (Join-Path (Get-HUSecPath) 'manual.json') ([pscustomobject]@{ version = 1; items = @($items + $new) })
+    return $new
+}
+
+function Remove-HUSecManual([string]$RuleId, [string]$TenantKey) {
+    $items = @(Get-HUSecManual | Where-Object { -not ($_.ruleId -eq $RuleId -and $_.tenant -eq $TenantKey) })
+    Write-HUSecJson (Join-Path (Get-HUSecPath) 'manual.json') ([pscustomobject]@{ version = 1; items = $items })
+}
+
+# Auswertung einer Handpruefung ($B.__manual = Eintrag des Tenants oder $null, $B.__now = Stichtag)
+$script:HUSecManualEval = { param($F, $B)
+    $e = $B['__manual']; $now = if ($B['__now']) { [datetime]$B['__now'] } else { Get-Date }
+    if (-not $e) { return @{ Status = 'NichtPruefbar'; Reason = 'Manuell'; Detail = 'noch nicht von Hand bestaetigt - Details > "Von Hand geprueft ..."' } }
+    $c = [datetime]::Parse("$($e.confirmed)", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToLocalTime()
+    $due = $c.AddMonths($script:HUSecManualMonths)
+    if ($due -le $now) { return @{ Status = 'NichtPruefbar'; Reason = 'Manuell'; Detail = "Bestaetigung vom $($c.ToString('yyyy-MM-dd')) abgelaufen - bitte erneut pruefen" } }
+    @{ Status = 'Info'; Reason = 'Handgeprueft'; Detail = "von Hand bestaetigt am $($c.ToString('yyyy-MM-dd')) ($($e.responsible)): $($e.note) - erneut pruefen bis $($due.ToString('yyyy-MM-dd'))" }
+}
+
+function Get-HUSecManualResult {
+    # Ergebnis einer Handpruefung ohne Graph (fuer sofortige Anzeige nach dem Bestaetigen)
+    param([Parameter(Mandatory)][string]$RuleId, [Parameter(Mandatory)][string]$TenantKey, [datetime]$Now = (Get-Date))
+    $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $RuleId })[0]
+    if (-not $rule -or -not ($rule.PSObject.Properties['Manual'] -and $rule.Manual)) { return $null }
+    $e = @(Get-HUSecManual | Where-Object { $_.ruleId -eq $RuleId -and $_.tenant -eq $TenantKey })[0]
+    $r = & $script:HUSecManualEval @{} @{ __manual = $e; __now = $Now }
+    return (New-HUSecResult -Rule $rule -Tenant $TenantKey -Status $r.Status -Reason $r.Reason -Detail "$($r.Detail)")
+}
+
+function Get-HUSecManualIds { return @(Get-HUSecRules | Where-Object { $_.PSObject.Properties['Manual'] -and $_.Manual } | ForEach-Object { "$($_.Id)" }) }
 
 # ============================================================================
 # Regeln (reine Funktionen: $F = Daten nach Schluessel, $B = Sollwerte der Regel)
@@ -1712,6 +1771,12 @@ $script:HUSecRules = @(
             if ($common.Count -gt 4) { return @{ Status = 'OK'; Count = 0; Detail = "$($common.Count) Konten sind in allen $($pols.Count) Richtlinien ausgenommen - mehr als ueblich, Ausnahmen pruefen; Notfallkonten in den Sollwerten (V1 accounts) hinterlegen" } }
             @{ Status = 'OK'; Count = 0; Detail = "$($common.Count) Konto/Konten in allen $($pols.Count) Richtlinien ausgenommen - vermutlich die Notfallkonten; bitte in den Sollwerten (V1 accounts) bestaetigen" }
         } }
+    # Handpruefung (Baseline 2.1-2.4 und 3.2): Graph liefert diese Punkte nicht
+    @{ Id = 'M01'; Area = 'Handpruefung'; Sev = 'Hoch'; Title = 'Lokales AD: Admin-Konten sind nicht delegierbar'; Facts = @(); Min = $false; Manual = $true; Eval = $script:HUSecManualEval }
+    @{ Id = 'M02'; Area = 'Handpruefung'; Sev = 'Mittel'; Title = 'Lokales AD: keine Computer mit Betriebssystem ohne Support'; Facts = @(); Min = $false; Manual = $true; Eval = $script:HUSecManualEval }
+    @{ Id = 'M03'; Area = 'Handpruefung'; Sev = 'Hoch'; Title = 'Lokales AD: keine Konten ohne Kennwortpflicht'; Facts = @(); Min = $false; Manual = $true; Eval = $script:HUSecManualEval }
+    @{ Id = 'M04'; Area = 'Handpruefung'; Sev = 'Hoch'; Title = 'Lokales AD: LAPS auf Clients und Servern, getrennte Admin-Konten (Tier)'; Facts = @(); Min = $false; Manual = $true; Eval = $script:HUSecManualEval }
+    @{ Id = 'M05'; Area = 'Handpruefung'; Sev = 'Niedrig'; Title = 'SharePoint und OneDrive: Freigabelinks laufen ab'; Facts = @(); Min = $false; Manual = $true; Eval = $script:HUSecManualEval }
 )
 
 # Kurzerklaerung je Regel (Warum wird das geprueft?) fuer das Detailfenster
@@ -1784,6 +1849,11 @@ $script:HUSecWhy = @{
     A24 = 'Anmeldungen aus Laendern, in denen niemand arbeitet, sind fast immer Angriffe. Gezaehlt wird eine aktive Richtlinie: Blockieren, alle Benutzer, alle Apps, keine Spezialbedingung (Geraetecode-Flow, Client-Apps, Plattform, Risiko, Benutzeraktion) und Laender-Standorte - als Sperrliste (Laender eingeschlossen) oder Erlaubnisliste (alle Orte ausser erlaubte Laender bzw. vertrauenswuerdige Orte). Reine IP-Bereiche zaehlen nicht. Welche Laender gesperrt sind, wird nicht bewertet; Ausnahmen werden genannt (Microsoft Learn, Block access by location).'
     V1  = 'Notfallkonten muessen von jeder Richtlinie ausgenommen sein, die aussperren kann, sonst sperrt eine fehlerhafte Richtlinie alle aus. Geprueft werden aktive Richtlinien fuer alle Benutzer oder Admin-Rollen, die blockieren oder etwas verlangen (MFA, Geraet, Nutzungsbedingungen ...); reine Sitzungs- und Berichtsrichtlinien brauchen keine Ausnahme (Microsoft Learn, Notfallzugriffskonten). Ausgenommene Gruppen werden aufgeloest (auch verschachtelt). Mit hinterlegten Notfallkonten (Sollwert V1 accounts, Objekt-IDs) muss jedes in jeder Richtlinie ausgenommen sein; ohne Sollwert muss mindestens ein Konto in allen Richtlinien ausgenommen sein. Rollen als Ausnahme zaehlen nicht. Ob das Konto selbst einen Passkey/FIDO2-Schluessel hat, wird nicht gelesen.'
     V11 = 'Der Geraetecode-Flow wird fuer Phishing missbraucht und selten gebraucht. Er sollte per Richtlinie blockiert sein.'
+    M01 = 'Ein delegierbares Admin-Konto kann ein Server mit Delegierung im Namen des Admins weiterverwenden - ein gekaperter Server wird so zum Domaenen-Admin. Bei Domaenen-, Organisations- und Schema-Admins sowie Dienstkonten mit hohen Rechten "Konto ist vertraulich und kann nicht delegiert werden" setzen oder sie in die Gruppe "Protected Users" aufnehmen (Baseline 2.1). Liegt im lokalen AD, Graph liefert das nicht - von Hand pruefen und hier bestaetigen, gilt 12 Monate.'
+    M02 = 'Computer mit Windows ohne Sicherheitsupdates (z. B. Windows 10 ausser LTSC, Server 2012 R2) sind leichte Ziele im Netz. Im lokalen AD die Computerkonten nach Betriebssystem pruefen, alte Geraete ersetzen oder deaktivieren (Baseline 2.2). Von Hand pruefen und hier bestaetigen, gilt 12 Monate.'
+    M03 = 'Konten mit dem Kennzeichen "Kennwort nicht erforderlich" (PASSWD_NOTREQD) koennen ein leeres Kennwort haben. Im lokalen AD suchen und das Kennzeichen entfernen; Vertrauensstellungs-Konten haben es absichtlich (Baseline 2.3). Von Hand pruefen und hier bestaetigen, gilt 12 Monate.'
+    M04 = 'Gleiche lokale Admin-Kennwoerter erlauben die Ausbreitung von Rechner zu Rechner. Windows LAPS auf Clients und Servern im lokalen AD (cloudverwaltete Geraete prueft E11) und getrennte Konten fuer Domaenen-, Server- und Client-Verwaltung (Tier-Konzept) (Baseline 2.4). Von Hand pruefen und hier bestaetigen, gilt 12 Monate.'
+    M05 = 'Links fuer "Jeder" sollen nach einer festen Zahl von Tagen ablaufen, sonst bleiben geteilte Dateien fuer immer offen. Graph liefert diese Einstellung nicht (sharepointSettings hat kein Feld dafuer) - im SharePoint Admin Center unter Richtlinien > Freigabe pruefen (Baseline 3.2). Ob anonyme Links ueberhaupt erlaubt sind, prueft A33. Bestaetigung gilt 12 Monate.'
 }
 function Get-HUSecWhy([string]$RuleId) { if ($script:HUSecWhy.ContainsKey($RuleId)) { return $script:HUSecWhy[$RuleId] } return '' }
 
@@ -1803,6 +1873,7 @@ function Invoke-HUSecCatalog {
     $rules = @(Get-HUSecRules | Where-Object { -not $RuleIds.Count -or $RuleIds -contains $_.Id })
     $bl = Get-HUSecBaseline -TenantKey $TenantKey -Rules (Get-HUSecRules)
     $exc = @(Get-HUSecExceptions)
+    $man = $null
     $out = New-Object System.Collections.Generic.List[object]
     $off = @(@($bl.Values['Katalog'].disabled) | ForEach-Object { "$_".ToUpperInvariant() } | Where-Object { $_ })
     foreach ($r in $rules) {
@@ -1821,6 +1892,10 @@ function Invoke-HUSecCatalog {
         if ($fail) { $out.Add((New-HUSecResult -Rule $r -Tenant $TenantKey -Status 'NichtPruefbar' -Reason $fail.Reason -Detail $fail.Detail -Complete $false)); continue }
         $b = if ($bl.Values.ContainsKey($r.Id)) { @{} + $bl.Values[$r.Id] } else { @{} }
         if ($bl.Values.ContainsKey('V1')) { $b['__breakGlass'] = $bl.Values['V1'].accounts }   # Notfallkonten fuer A25/A27
+        if ($r.PSObject.Properties['Manual'] -and $r.Manual) {
+            if ($null -eq $man) { $man = @(Get-HUSecManual) }
+            $b['__manual'] = @($man | Where-Object { $_.ruleId -eq $r.Id -and $_.tenant -eq $TenantKey })[0]; $b['__now'] = $Now
+        }
         try {
             $e = & $r.Eval $facts $b
             $cnt = if ($e.ContainsKey('Count')) { $e.Count } else { $null }
@@ -1948,10 +2023,11 @@ function Get-HUSecMatrix {
     return @($rows | Sort-Object @{ Expression = { $script:HUSecSevRank["$($_.Sev)"] } }, RuleId)
 }
 
-# "x von y geprueft" je Tenant (Abweichung/OK/Ausnahme zaehlen als geprueft)
+# "x von y geprueft" je Tenant (Abweichung/OK/Ausnahme zaehlen als geprueft; Handpruefungen zaehlen nicht mit)
 function Get-HUSecCoverage {
     param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key)
-    $mine = @($Results | Where-Object { $_.Tenant -eq $Key -and $_.RuleId -ne '-' })
+    $hand = @(Get-HUSecManualIds)
+    $mine = @($Results | Where-Object { $_.Tenant -eq $Key -and $_.RuleId -ne '-' -and $hand -notcontains "$($_.RuleId)" })
     $ok = @($mine | Where-Object { $_.Status -in 'OK', 'Abweichung', 'Ausnahme' }).Count
     return [pscustomobject]@{ Checked = $ok; Total = $mine.Count }
 }
@@ -1960,7 +2036,8 @@ function Get-HUSecCoverage {
 function Get-HUSecLight {
     param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key)
     $sevOf = @{}; foreach ($r in (Get-HUSecRules)) { $sevOf[$r.Id] = "$($r.Sev)" }
-    $mine = @($Results | Where-Object { $_.Tenant -eq $Key -and $_.RuleId -ne '-' })
+    $hand = @(Get-HUSecManualIds)
+    $mine = @($Results | Where-Object { $_.Tenant -eq $Key -and $_.RuleId -ne '-' -and $hand -notcontains "$($_.RuleId)" })
     $checked = @($mine | Where-Object { $_.Status -in 'OK', 'Abweichung', 'Ausnahme' })
     $ok = @($checked | Where-Object { $_.Status -in 'OK', 'Ausnahme' }).Count
     $dev = @($mine | Where-Object { $_.Status -in 'Abweichung', 'Fehler' })
@@ -2202,6 +2279,6 @@ function Update-HUSecLost {
 
 Export-ModuleMember -Function @(
     'Get-HUSecRules', 'Invoke-HUSecCatalog', 'New-HUSecContext', 'Get-HUSecFact', 'Invoke-HUSecFetch',
-    'Get-HUSecExceptions', 'Add-HUSecException', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException', 'Get-HUSecExceptionState', 'Get-HUSecFix', 'Get-HUSecFixData',
+    'Get-HUSecExceptions', 'Add-HUSecException', 'Get-HUSecManual', 'Set-HUSecManual', 'Remove-HUSecManual', 'Get-HUSecManualResult', 'Get-HUSecManualIds', 'Test-HUSecManualRule', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException', 'Get-HUSecExceptionState', 'Get-HUSecFix', 'Get-HUSecFixData',
     'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecReferenceWorse', 'Set-HUSecReferenceWorseShown', 'Get-HUSecBaselineEdit', 'Save-HUSecBaselineEdit', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport'
 )
