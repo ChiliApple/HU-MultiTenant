@@ -1,6 +1,10 @@
 # Changelog – Zusatzmodul Autopilot
 
-## v0.5.1 – 26.10.2026 (Testversion)
+## v0.5.1 – 26.10.2026 (mit HU-MultiTenant 2.5.5 Stable)
+
+### 🏷️ Anzeige
+- Hinweis „Testversion“ im Kopf des Reiters entfernt.
+
 
 ### 🐛 Behoben (Prüfung 26.10.)
 - **Zurückziehen:** Lässt sich der Autopilot-Eintrag nicht entfernen, wird **nicht** zurückgezogen – sonst ginge das Gerät beim nächsten Zurücksetzen wieder ins Schul-Setup. „Erneut versuchen“ hilft weiter.

@@ -50,8 +50,6 @@
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <TextBlock Text="Autopilot" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
                         <TextBlock x:Name="apTxtVersion" FontSize="10" Foreground="#4CAF50" VerticalAlignment="Center" Margin="8,1,0,0"/>
-                        <TextBlock Text="Testversion" FontSize="10" Foreground="#FFB74D" VerticalAlignment="Center" Margin="8,1,0,0"
-                                   ToolTip="Stufe 1: Uebersicht und Tags. Stufe 2: Hash-Archiv. Stufe 3: Aufnehmen. Stufe 5: Ausscheiden (ohne Zurueckziehen)."/>
                     </StackPanel>
                     <WrapPanel x:Name="apTenants" Margin="0,2,0,0"
                                ToolTip="Uebersicht und Tags &amp; Gruppen: mehrere Tenants gleichzeitig"/>
