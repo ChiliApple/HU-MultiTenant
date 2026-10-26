@@ -19,7 +19,7 @@ function Get-HUSecCellText($Cell) {
         'Ausnahme' { return "$([char]0x25D0)" }
         'NichtPruefbar' { return "? $why".Trim() }
         'Fehler' { return "$([char]0x26A0)" }
-        'Info' { if ("$($Cell.Reason)" -eq 'Aus') { return 'aus' }; if ("$($Cell.Detail)" -match '\(([0-9.,]+ %)\)\s*$') { return $Matches[1] }; return 'i' }
+        'Info' { if ("$($Cell.Reason)" -eq 'Aus') { return 'aus' }; if ("$($Cell.Reason)" -eq 'Handgeprueft') { return "$([char]0x2714) Hand" }; if ("$($Cell.Detail)" -match '\(([0-9.,]+ %)\)\s*$') { return $Matches[1] }; return 'i' }
         default { return "$($Cell.Status)" }
     }
 }
@@ -33,8 +33,8 @@ function Get-HUSecCellColor($Cell) {
         'Abweichung' { return '#EF5350' }
         'Fehler' { return '#EF5350' }
         'Ausnahme' { return '#FFB74D' }
-        'NichtPruefbar' { return '#8A8A8A' }
-        'Info' { if ("$($Cell.Reason)" -eq 'Aus') { return '#8A8A8A' }; return $def }
+        'NichtPruefbar' { if ("$($Cell.Reason)" -eq 'Manuell') { return '#FFB74D' }; return '#8A8A8A' }
+        'Info' { if ("$($Cell.Reason)" -eq 'Aus') { return '#8A8A8A' }; if ("$($Cell.Reason)" -eq 'Handgeprueft') { return '#A5D6A7' }; return $def }
         default { return $def }
     }
 }
@@ -403,6 +403,8 @@ function Show-HUSecDetail {
                     ToolTip="Kurzanleitung: wo im Portal und welche Schritte, mit Link auf Microsoft Learn"/>
             <Button x:Name="btnExc" Content="Ausnahme ..." Width="120" Background="#3E3E42" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Fuer diese Regel eine befristete Ausnahme eintragen oder entfernen"/>
+            <Button x:Name="btnMan" Content="Von Hand geprueft ..." Width="160" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0" Visibility="Collapsed"
+                    ToolTip="Pruefung je Tenant mit Datum und Notiz bestaetigen (gilt 12 Monate) oder Bestaetigung entfernen"/>
             <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" IsDefault="True"/>
         </StackPanel>
         <TextBlock x:Name="lblTitle" DockPanel.Dock="Top" Foreground="White" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
@@ -447,10 +449,14 @@ function Show-HUSecDetail {
             Start-HUSecItems -Key "$($sel.Key)" -RuleId "$($m.RuleId)" -Title "$($m.Title)" -Window $w -Button $ctl.btnList
         })
     $ctl.btnFix.Add_Click({ Show-HUSecFix -RuleId "$($m.RuleId)" })
-    $state = @{ Exc = $false }
+    $state = @{ Exc = $false; Man = $false }
     $ctl.btnExc.Add_Click({ $state.Exc = $true; $w.Close() })
+    # Handpruefung: keine Ausnahme und keine Liste, dafuer Bestaetigen
+    if (Test-HUSecManualRule "$($m.RuleId)") { $ctl.btnExc.Visibility = 'Collapsed'; $ctl.btnList.Visibility = 'Collapsed'; $ctl.btnMan.Visibility = 'Visible' }
+    $ctl.btnMan.Add_Click({ $state.Man = $true; $w.Close() })
     [void]$w.ShowDialog()
     if ($state.Exc) { Start-HUSecException -Row $m }
+    if ($state.Man) { Start-HUSecManual -Row $m }
 }
 
 # ============================================================================
@@ -720,6 +726,106 @@ function Start-HUSecException {
     Add-HURtbLine $script:Controls['rtbAna'] 'Zum Anwenden bitte erneut Pruefen klicken.' '#90CAF9'
 }
 
+# ============================================================================
+# Handpruefung: Bestaetigung je Tenant (Datum, Rolle, Notiz), gilt 12 Monate
+# ============================================================================
+function Show-HUSecManualDialog {
+    param([Parameter(Mandatory)]$Row, [string[]]$Keys)
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <StackPanel Margin="18">
+        <TextBlock x:Name="lblHint" Style="{StaticResource HintText}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <DockPanel Margin="0,0,0,3">
+            <Button x:Name="btnAllT" DockPanel.Dock="Right" Content="alle" Padding="8,1" FontSize="11" Background="#3E3E42" Style="{StaticResource DarkButton}" ToolTip="Alle Tenants anhaken"/>
+            <TextBlock Text="Tenants (je Tenant eine eigene Bestaetigung)" Style="{StaticResource FieldLabel}" VerticalAlignment="Center"/>
+        </DockPanel>
+        <WrapPanel x:Name="wpTenants" Margin="0,2,0,0"/>
+        <TextBlock Text="Notiz: was wurde wie geprueft? (mindestens 10 Zeichen, keine Namen)" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
+        <TextBox x:Name="txtNote" Style="{StaticResource DarkTextBox}" FontSize="12" TextWrapping="Wrap" AcceptsReturn="False" MaxLength="300" Height="60"
+                 ToolTip="Erscheint in den Details, z. B. 'AD-Abfrage am DC, 0 Treffer'"/>
+        <TextBlock Text="Verantwortlich (Rolle)" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
+        <TextBox x:Name="txtWho" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Rolle, keine Person, z.B. Systembetreuung"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="btnRemove" Content="Bestaetigung entfernen" Width="170" Background="#C62828" Style="{StaticResource DarkButton}" Margin="0,0,8,0" Visibility="Collapsed"
+                    ToolTip="Die Bestaetigungen der angehakten Tenants fuer diese Pruefung loeschen"/>
+            <Button x:Name="btnOk" Content="Bestaetigen" Width="110" Background="#4CAF50" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
+            <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
+'@
+    $theme = Get-HUXaml 'Theme'
+    $mt = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+    $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $mt.Groups[1].Value))
+    $w = $d.Window; $ctl = $d.C
+    $w.Title = "Von Hand geprueft - $($Row.RuleId)"
+    $ctl.lblHint.Text = "$($Row.RuleId) [$($Row.Sev)] $($Row.Title)`nDiese Pruefung kann das Programm nicht selbst lesen. Bestaetigung gilt 12 Monate, danach erscheint sie wieder als offen. Zaehlt nicht zur Ampel."
+    $man = @(Get-HUSecManual)
+    $fg = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#CCCCCC')
+    # vorbelegt: offene bzw. abgelaufene Tenants, sonst der erste
+    $open = @($Keys | Where-Object { -not $Row.Cells[$_] -or "$($Row.Cells[$_].Status)" -ne 'Info' })
+    foreach ($k in $Keys) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Content = (Get-HUAnaTenantName $k); $cb.Tag = $k; $cb.Foreground = $fg; $cb.Margin = [System.Windows.Thickness]::new(0, 2, 14, 2)
+        $cb.IsChecked = $(if ($open.Count) { $open -contains $k } else { $k -eq $Keys[0] })
+        [void]$ctl.wpTenants.Children.Add($cb)
+    }
+    $picked = { @($ctl.wpTenants.Children | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" }) }
+    $ctl.txtWho.Text = 'Systembetreuung'
+    $sync = {
+        $tks = @(& $picked)
+        $has = @($man | Where-Object { $_.ruleId -eq $Row.RuleId -and $tks -contains $_.tenant }).Count -gt 0
+        $ctl.btnRemove.Visibility = $(if ($has) { 'Visible' } else { 'Collapsed' })
+    }
+    foreach ($cb in @($ctl.wpTenants.Children)) { $cb.Add_Click($sync) }
+    $ctl.btnAllT.Add_Click({ foreach ($cb in @($ctl.wpTenants.Children)) { $cb.IsChecked = $true }; & $sync })
+    & $sync
+    $state = @{ Action = '' }
+    $ctl.btnOk.Add_Click({
+            if (-not @(& $picked).Count) { Show-HUMessage 'Bitte mindestens einen Tenant anhaken.' -Icon Warning -Owner $w; return }
+            if ($ctl.txtNote.Text.Trim().Length -lt 10) { Show-HUMessage 'Notiz: mindestens 10 Zeichen (was wurde wie geprueft?).' -Icon Warning -Owner $w; return }
+            if (-not $ctl.txtWho.Text.Trim()) { Show-HUMessage 'Bitte eine verantwortliche Rolle eintragen.' -Icon Warning -Owner $w; return }
+            $state.Action = 'add'; $w.Close()
+        })
+    $ctl.btnRemove.Add_Click({ if (-not @(& $picked).Count) { return }; $state.Action = 'remove'; $w.Close() })
+    $w.Add_ContentRendered({ $ctl.txtNote.Focus() })
+    [void]$w.ShowDialog()
+    if (-not $state.Action) { return $null }
+    return [pscustomobject]@{ Action = $state.Action; Tenants = @(& $picked); Note = $ctl.txtNote.Text.Trim(); Who = $ctl.txtWho.Text.Trim() }
+}
+
+function Start-HUSecManual {
+    param([Parameter(Mandatory)]$Row)
+    if (-not $script:SecKeys.Count) { return }
+    $res = Show-HUSecManualDialog -Row $Row -Keys @($script:SecKeys)
+    if (-not $res) { return }
+    foreach ($tk in @($res.Tenants)) {
+        try {
+            if ($res.Action -eq 'remove') {
+                Remove-HUSecManual -RuleId "$($Row.RuleId)" -TenantKey $tk
+                Add-HURtbLine $script:Controls['rtbAna'] "Handpruefung zurueckgenommen: $($Row.RuleId) / $(Get-HUAnaTenantName $tk)" '#FFB74D'
+            } else {
+                [void](Set-HUSecManual -RuleId "$($Row.RuleId)" -TenantKey $tk -Note $res.Note -Responsible $res.Who)
+                Add-HURtbLine $script:Controls['rtbAna'] "Handpruefung bestaetigt: $($Row.RuleId) / $(Get-HUAnaTenantName $tk)" '#81C784'
+            }
+            Write-HULog -Message "Katalog-Handpruefung $($res.Action): $($Row.RuleId)" -Level 'INFO' -Tenant $tk
+        } catch { Show-HUMessage "$(Get-HUAnaTenantName $tk): $($_.Exception.Message)" -Icon Warning; return }
+        # Zelle sofort neu berechnen (kein Graph noetig)
+        $new = Get-HUSecManualResult -RuleId "$($Row.RuleId)" -TenantKey $tk
+        if ($new -and $script:SecRan) {
+            $script:SecResults = @(@($script:SecResults | Where-Object { -not ("$($_.RuleId)" -eq "$($Row.RuleId)" -and "$($_.Tenant)" -eq $tk) }) + $new)
+        }
+    }
+    if ($script:SecRan) {
+        $script:SecMatrix = @(Get-HUSecMatrix -Results $script:SecResults -Keys $script:SecKeys)
+        Update-HUSecGrid
+    }
+}
+
 function Register-HUSecHandlers {
     $c = $script:Controls
     $c['chkSecDev'].IsChecked = [bool](Get-HUStateValue 'secDev' $false)
@@ -732,7 +838,7 @@ function Register-HUSecHandlers {
     $c['chkSecDiff'].Add_Checked({ Set-HUStateValue 'secDiff' $true; Update-HUSecGrid })
     $c['chkSecDiff'].Add_Unchecked({ Set-HUStateValue 'secDiff' $false; Update-HUSecGrid })
     # Bereiche und Grade: Haken je Wert (Bereiche auch aus den Regeln)
-    $areas = @('Entra', 'Apps', 'Intune', 'Teams', 'SharePoint')
+    $areas = @('Entra', 'Apps', 'Intune', 'Teams', 'SharePoint', 'Handpruefung')
     foreach ($a in @(Get-HUSecRules | ForEach-Object { "$($_.Area)" } | Sort-Object -Unique)) { if ($areas -notcontains $a) { $areas += $a } }
     Initialize-HUSecPick 'Area' $areas
     Initialize-HUSecPick 'Sev' @('Kritisch', 'Hoch', 'Mittel', 'Niedrig')

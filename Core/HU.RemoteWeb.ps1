@@ -867,6 +867,7 @@ $script:HURemoteJs = @'
       case 'Fehler': return { t: '!', k: 'sx-dev', h: c.d };
       case 'Info':
         if (c.x === 'Aus') { return { t: 'aus', k: 'sx-na', h: c.d }; }
+        if (c.x === 'Handgeprueft') { return { t: '✔ Hand', k: 'sx-inf', h: c.d }; }
         var m = rid === 'A32' ? /\(([\d.,]+ %)\)/.exec(c.d || '') : null;
         return { t: m ? m[1] : 'i', k: 'sx-inf', h: c.d };
     }

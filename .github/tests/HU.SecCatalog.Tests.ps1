@@ -204,9 +204,47 @@ Describe 'Matrix' {
         $global:HUSecFx['conditionalAccess'] = Fail 403
         $r = @(Invoke-HUSecCatalog -TenantKey 'A' -Settings ([pscustomobject]@{}))
         $c = Get-HUSecCoverage -Results $r -Key 'A'
-        $c.Total | Should -Be @(Get-HUSecRules).Count
+        $c.Total | Should -Be (@(Get-HUSecRules).Count - @(Get-HUSecManualIds).Count)
         $c.Checked | Should -BeLessThan $c.Total
         $c.Checked | Should -BeGreaterThan 0
+    }
+}
+
+Describe 'Handpruefung (M01-M05)' {
+    BeforeEach { Base; Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'manual.json') -Force -ErrorAction SilentlyContinue }
+    It 'ohne Bestaetigung: nicht pruefbar (Manuell), kein Graph-Abruf' {
+        $global:HUSecFx = @{ 'subscribedSkus' = (Skus @('AAD_PREMIUM')) }
+        $r = Run 'M01'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Manuell'; $r.Detail | Should -BeLike '*noch nicht*'
+    }
+    It 'bestaetigt: Info/Handgeprueft mit Datum und Notiz, nur fuer diesen Tenant' {
+        [void](Set-HUSecManual -RuleId 'M03' -TenantKey 'T1' -Note 'LDAP-Abfrage am DC, 0 Treffer' -Responsible 'Systembetreuung')
+        $r = Run 'M03'; $r.Status | Should -Be 'Info'; $r.Reason | Should -Be 'Handgeprueft'; $r.Detail | Should -BeLike '*0 Treffer*'
+        $o = @(Invoke-HUSecCatalog -TenantKey 'T2' -Settings ([pscustomobject]@{}) -RuleIds @('M03'))[0]; $o.Status | Should -Be 'NichtPruefbar'
+    }
+    It 'nach 12 Monaten wieder offen' {
+        [void](Set-HUSecManual -RuleId 'M02' -TenantKey 'T1' -Note 'Computerkonten geprueft' -Responsible 'Systembetreuung' -Now (Get-Date).AddMonths(-13))
+        $r = Run 'M02'; $r.Status | Should -Be 'NichtPruefbar'; $r.Detail | Should -BeLike '*abgelaufen*'
+        (Get-HUSecManualResult -RuleId 'M02' -TenantKey 'T1').Status | Should -Be 'NichtPruefbar'
+    }
+    It 'Notiz zu kurz oder keine Handpruefung: Fehler' {
+        { Set-HUSecManual -RuleId 'M01' -TenantKey 'T1' -Note 'kurz' -Responsible 'X' } | Should -Throw
+        { Set-HUSecManual -RuleId 'A01' -TenantKey 'T1' -Note 'lang genug fuer Notiz' -Responsible 'X' } | Should -Throw
+    }
+    It 'Entfernen nimmt die Bestaetigung zurueck' {
+        [void](Set-HUSecManual -RuleId 'M05' -TenantKey 'T1' -Note 'SharePoint Admin Center: 30 Tage' -Responsible 'Systembetreuung')
+        Remove-HUSecManual -RuleId 'M05' -TenantKey 'T1'
+        (Run 'M05').Status | Should -Be 'NichtPruefbar'
+    }
+    It 'zaehlt nicht zur Ampel und nicht zur Abdeckung, Soll-Vergleich meldet nichts' {
+        $rows = @(
+            [pscustomobject]@{ RuleId = 'A01'; Tenant = 'T1'; Status = 'OK'; Reason = ''; Count = 0 }
+            [pscustomobject]@{ RuleId = 'M01'; Tenant = 'T1'; Status = 'NichtPruefbar'; Reason = 'Manuell'; Count = $null }
+            [pscustomobject]@{ RuleId = 'M02'; Tenant = 'T1'; Status = 'Info'; Reason = 'Handgeprueft'; Count = $null })
+        $l = Get-HUSecLight -Results $rows -Key 'T1'; $l.Color | Should -Be 'Gruen'; $l.NotCheckable | Should -Be 0
+        (Get-HUSecCoverage -Results $rows -Key 'T1').Total | Should -Be 1
+        $ref = [pscustomobject]@{ time = 'x'; rows = @([pscustomobject]@{ ruleId = 'M01'; tenant = 'T1'; status = 'Info'; reason = 'Handgeprueft'; count = $null }) }
+        @((Compare-HUSecReference -Results $rows -Reference $ref).Changes).Count | Should -Be 0
+        (Compare-HUSecReference -Results $rows -Reference $ref).Unchecked | Should -Be 0
     }
 }
 
@@ -1345,7 +1383,7 @@ Describe 'So behebst du es (Docs/Behebung.json)' {
         $ids = @(InModuleScope HU.SecCatalog { Get-HUSecRules } | ForEach-Object { "$($_.Id)" })
         foreach ($p in $j.rules.PSObject.Properties) {
             $ids | Should -Contain $p.Name
-            $p.Value.portal | Should -BeIn @('entra', 'intune', 'defender', 'm365', 'teams', 'purview')
+            "$($p.Value.portal)" | Should -BeIn @('entra', 'intune', 'defender', 'm365', 'teams', 'purview', '')
             "$($p.Value.checked)" | Should -Match '^\d{4}-\d{2}-\d{2}$'
             @($p.Value.steps).Count | Should -BeGreaterThan 1
             foreach ($l in @($p.Value.learn)) { "$($l.url)" | Should -Match '^https://learn\.microsoft\.com/en-us/' }

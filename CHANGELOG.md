@@ -2,6 +2,11 @@
 
 ## v2.5.3 (Testversion, Weg zu 2.6.0)
 
+### 🛡️ Sicherheitskatalog
+- **Handprüfungen für den Rest der Security Baseline (M01–M05):** Punkte, die Graph nicht liefert, stehen jetzt als Checkliste im Katalog (Bereich *Handpruefung*): lokales AD – Admin-Konten nicht delegierbar, keine Betriebssysteme ohne Support, keine Konten ohne Kennwortpflicht, LAPS und Tier-Konzept – sowie das Ablaufdatum von Freigabelinks in SharePoint/OneDrive.
+- **Bestätigen je Tenant:** Details → *Von Hand geprueft …* mit kurzer Notiz und Rolle. Die Bestätigung gilt **12 Monate**, danach steht die Zeile wieder orange auf „? Manuell“. Zählt nicht zur Ampel und nicht zu „geprüft“, löst keine Teams-Meldung aus.
+- **So behebst du es:** für jede Handprüfung Schritte und PowerShell-Abfragen für den Domänencontroller, mit Links auf Microsoft Learn.
+
 ### 🔍 Tenant-Vergleich
 - **Vergleich mit Muster genauer:** Bei Conditional Access zählen in den Ausnahmen nur noch die eingestellten Notfallkonten des Tenants (Sollwert V1) nicht als Abweichung – weitere ausgenommene Konten schon.
 

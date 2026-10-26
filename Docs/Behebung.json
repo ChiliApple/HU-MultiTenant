@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "2026-10-21",
+  "stand": "2026-10-26",
   "hinweis": "Menuenamen wie in der englischen Portal-Oberflaeche und in Microsoft Learn. Massgeblich ist der verlinkte Learn-Artikel; Microsoft benennt Menues gelegentlich um.",
   "rules": {
     "A01": {
@@ -1591,6 +1591,110 @@
         }
       ],
       "checked": "2026-10-21"
+    },
+    "M01": {
+      "portal": "",
+      "path": "Domaenencontroller > Active Directory-Benutzer und -Computer (oder Active Directory-Verwaltungscenter) > Konto > Kontooptionen",
+      "steps": [
+        "Mitglieder der Gruppen Domaenen-Admins, Organisations-Admins, Schema-Admins und Administratoren sowie Dienstkonten mit hohen Rechten auflisten.",
+        "Je Konto unter Konto > Kontooptionen \"Konto ist vertraulich und kann nicht delegiert werden\" anhaken (Account is sensitive and cannot be delegated) oder das Konto in die Gruppe \"Protected Users\" aufnehmen.",
+        "Abfrage zur Kontrolle (PowerShell am DC, Modul ActiveDirectory): Get-ADUser -LDAPFilter '(&(adminCount=1)(!(userAccountControl:1.2.840.113556.1.4.803:=1048576)))' | Select-Object SamAccountName,Enabled (Konten mit adminCount=1, bei denen NOT_DELEGATED fehlt)",
+        "Vorher testen: Dienste, die Delegierung brauchen, funktionieren mit diesem Konto danach nicht mehr.",
+        "In HU-MultiTenant: Details > \"Von Hand geprueft ...\" mit kurzer Notiz bestaetigen."
+      ],
+      "learn": [
+        {
+          "title": "Vertrauliche Admin-Konten: Delegierung abschalten",
+          "url": "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-default-user-accounts#restrict-and-protect-sensitive-domain-accounts"
+        },
+        {
+          "title": "Protected Users und geschuetzte Konten",
+          "url": "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/how-to-configure-protected-accounts#protected-users"
+        }
+      ],
+      "checked": "2026-10-26"
+    },
+    "M02": {
+      "portal": "",
+      "path": "Domaenencontroller > Active Directory-Benutzer und -Computer > Computer (Spalte Betriebssystem)",
+      "steps": [
+        "Computerkonten mit Betriebssystem und letzter Anmeldung auflisten (PowerShell am DC): Get-ADComputer -Filter {Enabled -eq $true} -Properties OperatingSystem,OperatingSystemVersion,LastLogonDate | Sort-Object OperatingSystem | Select-Object Name,OperatingSystem,OperatingSystemVersion,LastLogonDate",
+        "Mit den unterstuetzten Versionen vergleichen (Links unten): Windows 10 ausser LTSC und Windows Server 2012 R2 bekommen keine Updates mehr.",
+        "Alte Geraete ersetzen oder aktualisieren; nicht mehr genutzte Konten deaktivieren und spaeter loeschen.",
+        "In HU-MultiTenant: Details > \"Von Hand geprueft ...\" mit kurzer Notiz bestaetigen."
+      ],
+      "learn": [
+        {
+          "title": "Unterstuetzte Windows-Client-Versionen",
+          "url": "https://learn.microsoft.com/en-us/windows/release-health/supported-versions-windows-client"
+        },
+        {
+          "title": "Windows Server: Versionen und Supportende",
+          "url": "https://learn.microsoft.com/en-us/windows/release-health/windows-server-release-info"
+        }
+      ],
+      "checked": "2026-10-26"
+    },
+    "M03": {
+      "portal": "",
+      "path": "Domaenencontroller > PowerShell (Modul ActiveDirectory)",
+      "steps": [
+        "Konten mit dem Kennzeichen PASSWD_NOTREQD suchen: Get-ADUser -LDAPFilter '(userAccountControl:1.2.840.113556.1.4.803:=32)' | Select-Object SamAccountName,Enabled",
+        "Vertrauensstellungs-Konten haben das Kennzeichen absichtlich - nicht aendern.",
+        "Bei allen anderen Konten das Kennzeichen entfernen (Set-ADUser <Konto> -PasswordNotRequired $false) und ein Kennwort setzen; nicht genutzte Konten deaktivieren.",
+        "In HU-MultiTenant: Details > \"Von Hand geprueft ...\" mit kurzer Notiz bestaetigen."
+      ],
+      "learn": [
+        {
+          "title": "UserAccountControl-Kennzeichen (PASSWD_NOTREQD)",
+          "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/useraccountcontrol-manipulate-account-properties#list-of-property-flags"
+        }
+      ],
+      "checked": "2026-10-26"
+    },
+    "M04": {
+      "portal": "",
+      "path": "Gruppenrichtlinienverwaltung > Computerkonfiguration > Administrative Vorlagen > System > LAPS",
+      "steps": [
+        "Fuer Clients und Server im lokalen AD eine Windows-LAPS-Richtlinie (GPO) einrichten; Schema einmal mit Update-LapsADSchema erweitern und den OUs mit Set-LapsADComputerSelfPermission das Schreiben erlauben.",
+        "Kontrolle an einem Geraet: Get-LapsADPassword -Identity <Computer> zeigt Ablaufdatum und Konto.",
+        "Getrennte Admin-Konten je Ebene (Domaene/DCs, Server, Clients); Domaenen-Admins melden sich nicht an Clients an.",
+        "Cloudverwaltete Geraete (Intune, Entra) prueft E11 automatisch.",
+        "In HU-MultiTenant: Details > \"Von Hand geprueft ...\" mit kurzer Notiz bestaetigen."
+      ],
+      "learn": [
+        {
+          "title": "Windows LAPS: Ueberblick",
+          "url": "https://learn.microsoft.com/en-us/windows-server/identity/laps/laps-overview"
+        },
+        {
+          "title": "Windows LAPS mit lokalem AD einrichten",
+          "url": "https://learn.microsoft.com/en-us/windows-server/identity/laps/laps-scenarios-windows-server-active-directory"
+        },
+        {
+          "title": "Least-Privilege-Verwaltungsmodelle",
+          "url": "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/implementing-least-privilege-administrative-models"
+        }
+      ],
+      "checked": "2026-10-26"
+    },
+    "M05": {
+      "portal": "m365",
+      "path": "SharePoint admin center > Policies > Sharing > Advanced settings for \"Anyone\" links",
+      "steps": [
+        "Nur relevant, wenn anonyme Links (\"Anyone\") erlaubt sind (siehe A33).",
+        "\"These links must expire within this many days\" anhaken und eine Zahl eintragen (z. B. 30).",
+        "Optional die Berechtigung fuer Anyone-Links auf \"View\" beschraenken.",
+        "Save. Bestehende Links mit laengerer Laufzeit werden auf die neue Grenze verkuerzt.",
+        "In HU-MultiTenant: Details > \"Von Hand geprueft ...\" mit kurzer Notiz bestaetigen."
+      ],
+      "learn": [
+        {
+          "title": "Erweiterte Einstellungen fuer Anyone-Links",
+          "url": "https://learn.microsoft.com/en-us/sharepoint/turn-external-sharing-on-or-off#advanced-settings-for-anyone-links"
+        }
+      ],
+      "checked": "2026-10-26"
     }
   }
 }
