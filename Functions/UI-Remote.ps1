@@ -498,9 +498,9 @@ function Update-HURemoteTick {
 
 function Start-HURemoteRunner($Rq) {
     $r = $script:HURem; $S = $r.S
-    # 2.5.3: KI-Lauf ueber MCP, waehrend jemand am PC sitzt -> kein Teams-Hinweis noetig (064 B1: nur bei Freigabe am PC,
+    # 2.5.3: Lauf ueber ein Zusatzmodul, waehrend jemand am PC sitzt -> kein Teams-Hinweis noetig (064 B1: nur bei Freigabe am PC,
     # verbundener Sitzung, entsperrt und Eingabe in den letzten 5 Minuten; Freigabe am Handy zaehlt nie als "am PC")
-    if ($Rq -is [hashtable] -and "$($Rq.DevId)" -eq 'mcp') {
+    if ($Rq -is [hashtable] -and "$($Rq.Origin)" -eq 'addon') {
         $by = "$($Rq.ApprovedBy)"
         $Rq['AtPc'] = (-not $by -or $by -match '^(?i)pc') -and -not (Test-HUUserAway)
     }
@@ -521,9 +521,9 @@ function Start-HURemoteRunner($Rq) {
     $r.Runner = @{ PS = $ps; RS = $rs; Handle = $ps.BeginInvoke(); Rq = $Rq; Started = Get-Date }
     $what = switch ("$($Rq.Item.Kind)") { 'snippet' { 'Snippet' } 'ext' { 'Erweiterung' } default { 'Teams-Meldung' } }
     $tn = @($Rq.Tenants | ForEach-Object { $k = $_; $t = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($t) { "$($t.displayName)" } else { $k } })
-    $log = "$(if ("$($Rq.DevId)" -eq 'mcp') { 'KI (MCP, freigegeben)' } else { "HANDY '$($Rq.By)'" }) startet $what '$($Rq.Item.Name)'$(if ($Rq.Live) { ' - ECHTER LAUF' }) - Tenants: $($tn -join ', ')$(if ($Rq.Target) { ' - einmalig an ein Ziel' })"
+    $log = "$(if ("$($Rq.Origin)" -eq 'addon') { 'ZUSATZMODUL (freigegeben)' } else { "HANDY '$($Rq.By)'" }) startet $what '$($Rq.Item.Name)'$(if ($Rq.Live) { ' - ECHTER LAUF' }) - Tenants: $($tn -join ', ')$(if ($Rq.Target) { ' - einmalig an ein Ziel' })"
     if ($Rq.Live) { Write-HULogWarn $log } else { Write-HULogInfo $log }
-    Update-HURemoteTitle "Remote FB: $($Rq.Item.Name) $(if ("$($Rq.DevId)" -eq 'mcp') { '(KI ueber MCP)' } else { '(vom Handy)' })"
+    Update-HURemoteTitle "Remote FB: $($Rq.Item.Name) $(if ("$($Rq.Origin)" -eq 'addon') { '(ueber Zusatzmodul)' } else { '(vom Handy)' })"
     Update-HURemoteButton
 }
 function Receive-HURemoteRunner {
@@ -537,16 +537,16 @@ function Receive-HURemoteRunner {
     $r.Runner = $null
     if (-not $S.Job.Ended) { $S.Job.Ended = Get-Date }
     $S.Job.Running = $false
-    $msg = "$(if ("$($run.Rq.DevId)" -eq 'mcp') { 'KI-Lauf (MCP)' } else { 'HANDY-Lauf' }) '$($S.Job.Title)' fertig: $($S.Job.Result)"
+    $msg = "$(if ("$($run.Rq.Origin)" -eq 'addon') { 'Zusatzmodul-Lauf' } else { 'HANDY-Lauf' }) '$($S.Job.Title)' fertig: $($S.Job.Result)"
     switch ("$($S.Job.Level)") { 'OK' { Write-HULogOK $msg } 'Warning' { Write-HULogWarn $msg } default { Write-HULogError $msg } }
     Update-HURemoteTitle ''
     Update-HURemoteButton
     if ("$($run.Rq.Item.Kind)" -eq 'teams') { try { Update-HUTeamsHist; Update-HUTeamsJobs } catch { } }
-    # 2.5.3: Laeufe, die die KI ueber MCP am PC gestartet hat, nur dann ans Handy melden, wenn niemand am PC ist
+    # 2.5.3: Laeufe eines Zusatzmoduls, am PC gestartet, nur dann ans Handy melden, wenn niemand am PC ist
     $away = Test-HUUserAway
-    if ("$($run.Rq.DevId)" -ne 'mcp' -or $away -or -not $run.Rq.AtPc) { Send-HURemotePush }
-    # 064 B1: echter KI-Lauf ohne Teams-Hinweis (am PC gestartet), aber am Ende ist niemand mehr da -> Hinweis nachtraeglich
-    if ("$($run.Rq.DevId)" -eq 'mcp' -and $run.Rq.Live -and $run.Rq.AtPc -and $away) { Send-HURemoteLateNotice $run.Rq "$($S.Job.Result)" }
+    if ("$($run.Rq.Origin)" -ne 'addon' -or $away -or -not $run.Rq.AtPc) { Send-HURemotePush }
+    # 064 B1: echter Lauf ohne Teams-Hinweis (am PC gestartet), aber am Ende ist niemand mehr da -> Hinweis nachtraeglich
+    if ("$($run.Rq.Origin)" -eq 'addon' -and $run.Rq.Live -and $run.Rq.AtPc -and $away) { Send-HURemoteLateNotice $run.Rq "$($S.Job.Result)" }
     try { Update-HURemoteCatalog } catch { }
 }
 
@@ -589,17 +589,17 @@ function Test-HUUserAway {
     } catch { return $true }
 }
 
-# Teams-Hinweis nachtraeglich, wenn ein echter KI-Lauf am PC begann und am Ende niemand mehr am PC ist (064 B1)
+# Teams-Hinweis nachtraeglich, wenn ein echter Lauf eines Zusatzmoduls am PC begann und am Ende niemand mehr am PC ist (064 B1)
 function Send-HURemoteLateNotice($Rq, [string]$Result) {
     $tn = @($Rq.Tenants | ForEach-Object { $k = $_; $t = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($t) { "$($t.displayName)" } else { $k } })
-    $vars = @{ __T = "ECHTER LAUF ueber MCP (KI): $($Rq.Item.Name) - nachtraeglich"; __L = @("Gestartet von der KI ueber MCP am PC $env:COMPUTERNAME, am PC freigegeben. Der Lauf lief danach unbeaufsichtigt weiter (PC gesperrt, getrennt oder ohne Eingabe).", "Ergebnis: $Result", "Tenants: $($tn -join ', ')"); __P = "Tenants: $($tn -join ', ')" }
+    $vars = @{ __T = "ECHTER LAUF ueber Zusatzmodul: $($Rq.Item.Name) - nachtraeglich"; __L = @("Gestartet ueber ein Zusatzmodul am PC $env:COMPUTERNAME, am PC freigegeben. Der Lauf lief danach unbeaufsichtigt weiter (PC gesperrt, getrennt oder ohne Eingabe).", "Ergebnis: $Result", "Tenants: $($tn -join ', ')"); __P = "Tenants: $($tn -join ', ')" }
     $ok = Start-HUJob -Name ("RemLate-" + [guid]::NewGuid().ToString('N').Substring(0, 6)) -Quiet -Vars $vars -Code {
         Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction Stop
         Grant-HUSendApproval -Reason 'Hinweis Fernbedienung (nachtraeglich)'
         $r = Send-HUNotify -Category Jobs -Level Warning -Source 'Fernbedienung' -Title $__T -Lines $__L -Preview $__P
         if (-not $r.Ok) { Write-HULog -Message "Fernbedienung: Teams-Hinweis (nachtraeglich) nicht gesendet: $($r.Text)" -Level 'WARN' }
     }
-    if ($ok) { Write-HULogWarn "Fernbedienung: KI-Lauf '$($Rq.Item.Name)' lief unbeaufsichtigt weiter - Teams-Hinweis wird nachtraeglich gesendet" }
+    if ($ok) { Write-HULogWarn "Fernbedienung: Lauf '$($Rq.Item.Name)' lief unbeaufsichtigt weiter - Teams-Hinweis wird nachtraeglich gesendet" }
 }
 
 # Push ohne Inhalt an alle Handys mit Abo (das Ergebnis holt sich das Handy dann beim PC)
