@@ -67,6 +67,9 @@ Describe 'Modul-Aufbau (wie die CI eines Zusatzmoduls)' {
         $xaml = Get-Content -LiteralPath (Join-Path $script:Root 'Tab.xaml') -Raw -Encoding UTF8
         { [void][xml]$xaml } | Should -Not -Throw
         $xaml | Should -Match '<!--HU:THEME-->'
+        # Schluessel, die das Theme schon setzt, duerfen im Reiter nicht noch einmal stehen (sonst laedt der Reiter nicht: doppelter Schluessel)
+        $theme = Get-Content -LiteralPath (Join-Path (Join-Path $script:App 'XAML') 'Theme.xaml') -Raw -Encoding UTF8
+        foreach ($k in @([regex]::Matches($theme, 'x:Key="([^"]+)"') | ForEach-Object { $_.Groups[1].Value })) { $xaml | Should -Not -Match ('x:Key="' + [regex]::Escape($k) + '"') -Because $k }
         $names = @([regex]::Matches($xaml, 'x:Name="([A-Za-z0-9_]+)"') | ForEach-Object { $_.Groups[1].Value })
         @($names | Where-Object { $_ -notmatch '^(ap|tab)' }).Count | Should -Be 0
         $code = Get-Content -LiteralPath (Join-Path $script:Root 'Addon.ps1') -Raw -Encoding UTF8

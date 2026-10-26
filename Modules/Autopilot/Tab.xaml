@@ -3,9 +3,6 @@
          x:Name="tabAutopilot" Header="&#x1F4BB; Autopilot">
     <TabItem.Resources>
         <!--HU:THEME-->
-        <!-- markierte Zeilen auch ohne Fokus dunkel (sonst hellgrau, z. B. waehrend ein Dialog offen ist) -->
-        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#094771"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFF"/>
         <Style x:Key="ApRowStatus" TargetType="DataGridRow">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding Status}" Value="Bereit"><Setter Property="Background" Value="#1B3A1F"/></DataTrigger>
