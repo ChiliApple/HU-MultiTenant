@@ -225,6 +225,28 @@ Describe 'Vergleich: CA aus dem Muster mit Werten aus dem Ziel' {
         )
         @(Get-HUMusterMatrix $rows2 @($mk, 'T1'))[0].Diff | Should -BeTrue
     }
+    It '064 B2: Tenants mit verschieden vielen Notfallkonten (V1) gelten untereinander als gleich; ohne V1 nennt der Status den Grund' {
+        Mock -ModuleName HU.Muster Get-HUSecBaseline {
+            param($TenantKey)
+            if ($TenantKey -eq 'T1') { return [pscustomobject]@{ Values = @{ V1 = @{ accounts = @('bbbbbbbb-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002') } }; Errors = @() } }
+            if ($TenantKey -eq 'T2') { return [pscustomobject]@{ Values = @{ V1 = @{ accounts = @('dddddddd-0000-0000-0000-000000000001') } }; Errors = @() } }
+            [pscustomobject]@{ Values = @{}; Errors = @() }
+        }
+        $mk = '__MUSTER__'
+        $rows = @(
+            (& $script:CaRow $mk (& $script:CaObj 'enabledForReportingButNotEnforced' @() @()) 'hm'),
+            (& $script:CaRow 'T1' (& $script:CaObj 'enabled' @('bbbbbbbb-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002') @()) 'h1'),
+            (& $script:CaRow 'T2' (& $script:CaObj 'enabled' @('dddddddd-0000-0000-0000-000000000001') @()) 'h2')
+        )
+        @(Get-HUMusterMatrix $rows @($mk, 'T1', 'T2'))[0].Diff | Should -BeFalse
+        $rows3 = @(
+            (& $script:CaRow $mk (& $script:CaObj 'enabledForReportingButNotEnforced' @() @()) 'hm'),
+            (& $script:CaRow 'T3' (& $script:CaObj 'enabled' @('eeeeeeee-0000-0000-0000-000000000001') @()) 'h3')
+        )
+        $m3 = @(Get-HUMusterMatrix $rows3 @($mk, 'T3'))[0]
+        $m3.Diff | Should -BeTrue
+        $m3.Status | Should -BeLike '*Sollwert V1 fehlt: T3*'
+    }
     It 'echte Abweichung (anderes Steuerelement) bleibt abweichend' {
         $mk = '__MUSTER__'
         $rows = @(

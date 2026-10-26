@@ -1,21 +1,21 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.5.3 (Testversion, Weg zu 2.6.0)
+## v2.5.3 (Testversion, Weg zu 2.5.5 Stable)
 
 ### 🛡️ Sicherheitskatalog
 - **Handprüfungen für den Rest der Security Baseline (M01–M05):** Punkte, die Graph nicht liefert, stehen jetzt als Checkliste im Katalog (Bereich *Handpruefung*): lokales AD – Admin-Konten nicht delegierbar, keine Betriebssysteme ohne Support, keine Konten ohne Kennwortpflicht, LAPS und Tier-Konzept – sowie das Ablaufdatum von Freigabelinks in SharePoint/OneDrive.
 - **Bestätigen je Tenant:** Details → *Von Hand geprueft …* mit kurzer Notiz und Rolle. Die Bestätigung gilt **12 Monate**, danach steht die Zeile wieder orange auf „? Manuell“. Zählt nicht zur Ampel und nicht zu „geprüft“, löst keine Teams-Meldung aus.
-- **So behebst du es:** für jede Handprüfung Schritte und PowerShell-Abfragen für den Domänencontroller, mit Links auf Microsoft Learn.
+- **So behebst du es:** für jede Handprüfung Schritte und PowerShell-Abfragen für den Domänencontroller, mit Links auf Microsoft Learn – inklusive Hinweisen zu Sonderfällen (adminCount bleibt stehen, Protected Users, Computerkonten, Vertrauensstellungen) und Kontrolle per `Get-SPOTenant`.
 
 ### 🔍 Tenant-Vergleich
-- **Vergleich mit Muster genauer:** Bei Conditional Access zählen in den Ausnahmen nur noch die eingestellten Notfallkonten des Tenants (Sollwert V1) nicht als Abweichung – weitere ausgenommene Konten schon.
+- **Vergleich mit Muster genauer:** Bei Conditional Access zählen in den Ausnahmen nur noch die eingestellten Notfallkonten des Tenants (Sollwert V1) nicht als Abweichung – weitere ausgenommene Konten schon. Auch **zwischen den Tenants** zählen verschieden viele Notfallkonten nicht mehr als Abweichung. Fehlt bei einem Tenant der Sollwert V1, nennt der Status das („Sollwert V1 fehlt: …“).
 
 ### 📱 Fernbedienung
-- **Kein Push mehr bei KI-Läufen am PC:** Startet die KI über MCP ein Snippet und du bist am PC, kommt am Ende keine Meldung mehr aufs Handy – nur noch, wenn App oder Windows gesperrt sind. Gesperrt zählt nur die eigene Windows-Sitzung.
-- **Teams-Hinweis und Protokoll** nennen bei KI-Läufen „über MCP (KI)“ statt „vom Handy“; die Vorschau wiederholt den Titel nicht mehr, sondern nennt die Tenants. Sitzt du am entsperrten PC mit entsperrter App, entfällt der Teams-Hinweis bei KI-Läufen ganz (nur noch im Protokoll vermerkt); echte Läufe vom Handy melden sich weiter.
+- **Kein Push mehr bei KI-Läufen am PC:** Startet die KI über MCP ein Snippet und du bist am PC, kommt am Ende keine Meldung mehr aufs Handy. „Am PC“ heißt: App und Windows entsperrt, Sitzung verbunden (keine getrennte Remotedesktop-Sitzung) und eine Eingabe in den letzten **5 Minuten**; eine Freigabe am Handy zählt nie als „am PC“. Lässt sich das nicht prüfen, gilt „weg“.
+- **Teams-Hinweis und Protokoll** nennen bei KI-Läufen „über MCP (KI)“ statt „vom Handy“; die Vorschau wiederholt den Titel nicht mehr, sondern nennt die Tenants. Bist du beim Start eines echten KI-Laufs am PC (siehe oben), entfällt der Teams-Hinweis (nur im Protokoll vermerkt). Bist du am Ende nicht mehr da, kommt er **nachträglich** („Lauf lief unbeaufsichtigt weiter“). Echte Läufe vom Handy melden sich immer.
 
 ### 🧩 Zusatzmodule
-- **Datenordner je Modul:** `Get-HUAddonDataDir <Id>` liefert `%APPDATA%\HU-MultiTenant\AddonData\<Id>\` (Schnittstelle für Zusatzmodule, `Functions\Core-Addons.ps1`). Die kommende App-Sicherung nimmt `AddonData\` komplett mit.
+- **Datenordner je Modul:** `Get-HUAddonDataDir <Id>` liefert `%APPDATA%\HU-MultiTenant\AddonData\<Id>\` (Schnittstelle für Zusatzmodule, `Functions\Core-Addons.ps1`). Die kommende App-Sicherung nimmt `AddonData\` komplett mit. Ohne `APPDATA` gibt es einen Fehler statt eines Ordners unter TEMP.
 
 ## v2.5.2 (Testversion, Weg zu 2.6.0)
 

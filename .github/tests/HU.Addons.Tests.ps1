@@ -47,6 +47,8 @@ Describe 'Zusatzmodule: Pruefen' {
             $d | Should -Be (Join-Path (Join-Path (Join-Path $env:APPDATA 'HU-MultiTenant') 'AddonData') 'Autopilot')
             { Get-HUAddonDataDir '..\x' } | Should -Throw
             Remove-Item -LiteralPath $env:APPDATA -Recurse -Force
+            $env:APPDATA = ''
+            { Get-HUAddonDataDir 'Autopilot' } | Should -Throw   # 064 B5: kein Ausweg nach TEMP
         } finally { $env:APPDATA = $old }
     }
     It 'gueltiges Modul wird akzeptiert und geladen' {

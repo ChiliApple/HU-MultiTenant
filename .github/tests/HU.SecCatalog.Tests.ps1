@@ -245,6 +245,8 @@ Describe 'Handpruefung (M01-M05)' {
         $ref = [pscustomobject]@{ time = 'x'; rows = @([pscustomobject]@{ ruleId = 'M01'; tenant = 'T1'; status = 'Info'; reason = 'Handgeprueft'; count = $null }) }
         @((Compare-HUSecReference -Results $rows -Reference $ref).Changes).Count | Should -Be 0
         (Compare-HUSecReference -Results $rows -Reference $ref).Unchecked | Should -Be 0
+        # 064 B4c: Ablauf nach 12 Monaten (Info -> NichtPruefbar/Manuell) ist kein "Pruefung verloren"
+        foreach ($i in 1..4) { @(Update-HUSecLost -Results $rows -Reference $ref -NoWrite).Count | Should -Be 0 }
     }
 }
 

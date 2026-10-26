@@ -662,6 +662,18 @@ function Get-HUMusterInventory([object[]]$Packages) {
 # zaehlen nicht als Abweichung - Status (Muster immer 'Nur Bericht'), die eingestellten Notfallkonten des Tenants (Sollwert V1) in excludeUsers
 # (060 B3: weitere ausgenommene Konten zaehlen), Rollen bei huRollen, Gruppen bei huGruppen.
 # Liefert $true, wenn die Tenants untereinander gleich sind und sich vom Muster nur in diesen Feldern unterscheiden.
+# Notfallkonten (Sollwert V1) je Tenant, waehrend einer Matrix einmal gelesen (064 B2); $null = kein Sollwert V1
+$script:HUMuBgCache = @{}
+function Get-HUMusterBreakGlass([string]$TenantKey) {
+    if (-not $TenantKey) { return @() }
+    if ($script:HUMuBgCache.ContainsKey($TenantKey)) { return $script:HUMuBgCache[$TenantKey] }
+    $bg = $null
+    try { $bl = Get-HUSecBaseline -TenantKey $TenantKey; if ($bl -and $bl.Values -and $bl.Values.ContainsKey('V1')) { $bg = @($bl.Values['V1'].accounts | Where-Object { "$_" } | ForEach-Object { "$_".ToLowerInvariant() }) } } catch { }
+    if ($bg -and -not @($bg).Count) { $bg = $null }
+    $script:HUMuBgCache[$TenantKey] = $bg
+    return $bg
+}
+
 function Test-HUMusterCaOnlyTemplateDiff($Row, [string]$MusterKey) {
     if ("$($Row.Typ)" -ne 'Conditional Access') { return $false }
     $items = @($Row.Items | Where-Object { $_.PSObject.Properties['Obj'] -and $null -ne $_.Obj })
@@ -682,17 +694,16 @@ function Test-HUMusterCaOnlyTemplateDiff($Row, [string]$MusterKey) {
     # excludeUsers ohne die Notfallkonten des Tenants (Sollwert V1) - so wie es beim Uebertragen entstuende
     $exu = {
         param($o, [string]$TenantKey)
-        $bg = @()
-        if ($TenantKey) { try { $bl = Get-HUSecBaseline -TenantKey $TenantKey; if ($bl -and $bl.Values -and $bl.Values.ContainsKey('V1')) { $bg = @($bl.Values['V1'].accounts | Where-Object { "$_" } | ForEach-Object { "$_".ToLowerInvariant() }) } } catch { } }
+        $bg = @(Get-HUMusterBreakGlass $TenantKey)
         $l = @()
         try { $l = @($o.conditions.users.excludeUsers | Where-Object { "$_" -and $bg -notcontains "$_".ToLowerInvariant() }) } catch { }
         if (-not $l.Count) { return '(leer)' }
         return ((@($l | ForEach-Object { [regex]::Replace("$_", $rx, '#id') } | Sort-Object)) -join ', ')
     }
     try {
-        # Tenants untereinander: alle Felder
+        # Tenants untereinander: alle Felder, excludeUsers ohne die Notfallkonten des jeweiligen Tenants (064 B2)
         if (@($tn | ForEach-Object { $_.Hash } | Select-Object -Unique).Count -gt 1) {
-            $maps = @{}; $ks = @(); for ($i = 0; $i -lt $tn.Count; $i++) { $maps["t$i"] = & $flat $tn[$i].Obj @(); $ks += "t$i" }
+            $maps = @{}; $ks = @(); for ($i = 0; $i -lt $tn.Count; $i++) { $tmi = & $flat $tn[$i].Obj @(); $tmi['conditions.users.excludeUsers'] = & $exu $tn[$i].Obj "$($tn[$i].Tenant)"; $maps["t$i"] = $tmi; $ks += "t$i" }
             if (@(Get-HUCompareDiff $maps $ks).Count) { return $false }
         }
         # Muster gegen jeden Tenant ohne die Vorlagen-Felder; excludeUsers ohne Notfallkonten des jeweiligen Tenants
@@ -710,12 +721,18 @@ function Test-HUMusterCaOnlyTemplateDiff($Row, [string]$MusterKey) {
 function Get-HUMusterMatrix([object[]]$Rows, [string[]]$Keys, [switch]$Partial) {
     $mk = Get-HUMusterKey
     $m = @(Get-HUCompareMatrix $Rows $Keys)
+    $script:HUMuBgCache = @{}
     # CA: nur Status/Notfallkonten/Platzhalter anders als im Muster -> nicht als abweichend zaehlen
     if ($Keys -contains $mk) {
         foreach ($r in $m) {
             if ("$($r.Status)" -like '*Einstellungen abweichend*' -and @($r.Have) -contains $mk -and (Test-HUMusterCaOnlyTemplateDiff $r $mk)) {
                 $r.Status = ("$($r.Status)" -replace ', Einstellungen abweichend', '') + ' (wie Muster; Status und Notfallkonten kommen aus dem Tenant)'
                 $r.Diff = (@($r.Missing).Count -gt 0 -or @($r.Unknown).Count -gt 0 -or $r.Dupe)
+            }
+            elseif ("$($r.Typ)" -eq 'Conditional Access' -and "$($r.Status)" -like '*Einstellungen abweichend*' -and @($r.Have) -contains $mk) {
+                # Grund nennen, wenn Notfallkonten nicht abgezogen werden koennen (064 B2)
+                $noV1 = @(@($r.Have) | Where-Object { "$_" -ne $mk -and $null -eq (Get-HUMusterBreakGlass "$_") })
+                if ($noV1.Count) { $r.Status = "$($r.Status) (Sollwert V1 fehlt: $($noV1 -join ', '))" }
             }
         }
     }

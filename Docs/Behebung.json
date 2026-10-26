@@ -1599,6 +1599,7 @@
         "Mitglieder der Gruppen Domaenen-Admins, Organisations-Admins, Schema-Admins und Administratoren sowie Dienstkonten mit hohen Rechten auflisten.",
         "Je Konto unter Konto > Kontooptionen \"Konto ist vertraulich und kann nicht delegiert werden\" anhaken (Account is sensitive and cannot be delegated) oder das Konto in die Gruppe \"Protected Users\" aufnehmen.",
         "Abfrage zur Kontrolle (PowerShell am DC, Modul ActiveDirectory): Get-ADUser -LDAPFilter '(&(adminCount=1)(!(userAccountControl:1.2.840.113556.1.4.803:=1048576)))' | Select-Object SamAccountName,Enabled (Konten mit adminCount=1, bei denen NOT_DELEGATED fehlt)",
+        "Hinweis zur Abfrage: adminCount=1 bleibt stehen, auch wenn ein Konto laengst aus den Admin-Gruppen entfernt wurde (Treffer pruefen, ggf. bereinigen). Mitglieder von \"Protected Users\" erscheinen ebenfalls, sind aber schon geschuetzt.",
         "Vorher testen: Dienste, die Delegierung brauchen, funktionieren mit diesem Konto danach nicht mehr.",
         "In HU-MultiTenant: Details > \"Von Hand geprueft ...\" mit kurzer Notiz bestaetigen."
       ],
@@ -1639,8 +1640,9 @@
       "portal": "",
       "path": "Domaenencontroller > PowerShell (Modul ActiveDirectory)",
       "steps": [
-        "Konten mit dem Kennzeichen PASSWD_NOTREQD suchen: Get-ADUser -LDAPFilter '(userAccountControl:1.2.840.113556.1.4.803:=32)' | Select-Object SamAccountName,Enabled",
-        "Vertrauensstellungs-Konten haben das Kennzeichen absichtlich - nicht aendern.",
+        "Konten mit dem Kennzeichen PASSWD_NOTREQD suchen, Vertrauensstellungs-Konten gleich ausgenommen: Get-ADUser -LDAPFilter '(&(userAccountControl:1.2.840.113556.1.4.803:=32)(!(userAccountControl:1.2.840.113556.1.4.803:=2048)))' | Select-Object SamAccountName,Enabled",
+        "Dieselbe Abfrage fuer Computerkonten: Get-ADComputer -LDAPFilter '(userAccountControl:1.2.840.113556.1.4.803:=32)' | Select-Object Name,Enabled",
+        "Vertrauensstellungs-Konten (INTERDOMAIN_TRUST_ACCOUNT) haben das Kennzeichen absichtlich - nicht aendern.",
         "Bei allen anderen Konten das Kennzeichen entfernen (Set-ADUser <Konto> -PasswordNotRequired $false) und ein Kennwort setzen; nicht genutzte Konten deaktivieren.",
         "In HU-MultiTenant: Details > \"Von Hand geprueft ...\" mit kurzer Notiz bestaetigen."
       ],
@@ -1686,12 +1688,17 @@
         "\"These links must expire within this many days\" anhaken und eine Zahl eintragen (z. B. 30).",
         "Optional die Berechtigung fuer Anyone-Links auf \"View\" beschraenken.",
         "Save. Bestehende Links mit laengerer Laufzeit werden auf die neue Grenze verkuerzt.",
+        "Kontrolle mit SharePoint Online PowerShell (falls installiert): (Get-SPOTenant).RequireAnonymousLinksExpireInDays zeigt die eingestellte Zahl der Tage.",
         "In HU-MultiTenant: Details > \"Von Hand geprueft ...\" mit kurzer Notiz bestaetigen."
       ],
       "learn": [
         {
           "title": "Erweiterte Einstellungen fuer Anyone-Links",
           "url": "https://learn.microsoft.com/en-us/sharepoint/turn-external-sharing-on-or-off#advanced-settings-for-anyone-links"
+        },
+        {
+          "title": "Set-SPOTenant: RequireAnonymousLinksExpireInDays",
+          "url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.online.sharepoint.powershell/set-spotenant"
         }
       ],
       "checked": "2026-10-26"

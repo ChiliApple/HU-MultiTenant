@@ -498,8 +498,12 @@ function Update-HURemoteTick {
 
 function Start-HURemoteRunner($Rq) {
     $r = $script:HURem; $S = $r.S
-    # 2.5.3: KI-Lauf ueber MCP, waehrend jemand am (entsperrten) PC mit entsperrter App sitzt -> kein Teams-Hinweis noetig
-    if ($Rq -is [hashtable] -and "$($Rq.DevId)" -eq 'mcp') { $Rq['AtPc'] = -not (Test-HUUserAway) }
+    # 2.5.3: KI-Lauf ueber MCP, waehrend jemand am PC sitzt -> kein Teams-Hinweis noetig (064 B1: nur bei Freigabe am PC,
+    # verbundener Sitzung, entsperrt und Eingabe in den letzten 5 Minuten; Freigabe am Handy zaehlt nie als "am PC")
+    if ($Rq -is [hashtable] -and "$($Rq.DevId)" -eq 'mcp') {
+        $by = "$($Rq.ApprovedBy)"
+        $Rq['AtPc'] = (-not $by -or $by -match '^(?i)pc') -and -not (Test-HUUserAway)
+    }
     $S.Lines.Clear()
     $S.Job.Running = $true; $S.Job.Title = "$($Rq.Item.Name)"; $S.Job.By = "$($Rq.By)"; $S.Job.Live = [bool]$Rq.Live
     $S.Job.Started = Get-Date; $S.Job.Ended = $null; $S.Job.Result = ''; $S.Job.Level = ''; $S.Job.Done = @()
@@ -538,18 +542,64 @@ function Receive-HURemoteRunner {
     Update-HURemoteTitle ''
     Update-HURemoteButton
     if ("$($run.Rq.Item.Kind)" -eq 'teams') { try { Update-HUTeamsHist; Update-HUTeamsJobs } catch { } }
-    # 2.5.3: Laeufe, die die KI ueber MCP am PC gestartet hat, nur dann ans Handy melden, wenn niemand am PC ist (App oder Windows gesperrt)
-    if ("$($run.Rq.DevId)" -ne 'mcp' -or (Test-HUUserAway)) { Send-HURemotePush }
+    # 2.5.3: Laeufe, die die KI ueber MCP am PC gestartet hat, nur dann ans Handy melden, wenn niemand am PC ist
+    $away = Test-HUUserAway
+    if ("$($run.Rq.DevId)" -ne 'mcp' -or $away -or -not $run.Rq.AtPc) { Send-HURemotePush }
+    # 064 B1: echter KI-Lauf ohne Teams-Hinweis (am PC gestartet), aber am Ende ist niemand mehr da -> Hinweis nachtraeglich
+    if ("$($run.Rq.DevId)" -eq 'mcp' -and $run.Rq.Live -and $run.Rq.AtPc -and $away) { Send-HURemoteLateNotice $run.Rq "$($S.Job.Result)" }
     try { Update-HURemoteCatalog } catch { }
 }
 
-# Ist jemand am PC? Weg = App gesperrt oder Windows-Sperrbildschirm in DIESER Sitzung (LogonUI anderer Sitzungen, z. B. Konsole bei RDP, zaehlt nicht)
+# Ist jemand am PC? Weg = App gesperrt, Windows-Sperrbildschirm in DIESER Sitzung, Sitzung nicht verbunden (getrennte RDP-Sitzung)
+# oder seit 5 Minuten keine Eingabe (064 B1). Kann etwas nicht geprueft werden, gilt "weg" (dann lieber eine Meldung zu viel).
+$script:HUAwayIdleMin = 5
+$script:HUPresenceSrc = @'
+using System;
+using System.Runtime.InteropServices;
+public static class HUPresence {
+    [StructLayout(LayoutKind.Sequential)] struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+    [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+    [DllImport("kernel32.dll")] static extern uint GetTickCount();
+    [DllImport("wtsapi32.dll", SetLastError = true)] static extern bool WTSQuerySessionInformation(IntPtr hServer, int sessionId, int infoClass, out IntPtr buffer, out int bytes);
+    [DllImport("wtsapi32.dll")] static extern void WTSFreeMemory(IntPtr memory);
+    // Millisekunden seit der letzten Eingabe in dieser Sitzung; -1 = unbekannt
+    public static long IdleMs() {
+        LASTINPUTINFO l = new LASTINPUTINFO(); l.cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO));
+        if (!GetLastInputInfo(ref l)) { return -1; }
+        return (long)unchecked(GetTickCount() - l.dwTime);
+    }
+    // WTS_CONNECTSTATE_CLASS der eigenen Sitzung (0 = WTSActive); -1 = unbekannt
+    public static int ConnectState() {
+        IntPtr buf; int n;
+        if (!WTSQuerySessionInformation(IntPtr.Zero, -1, 8, out buf, out n)) { return -1; }
+        try { return n >= 4 ? Marshal.ReadInt32(buf) : -1; } finally { WTSFreeMemory(buf); }
+    }
+}
+'@
 function Test-HUUserAway {
     if ($script:LockActive) { return $true }
     try {
         $sid = (Get-Process -Id $PID).SessionId
-        return [bool](@(Get-Process -Name LogonUI -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $sid }).Count)
-    } catch { return $false }
+        if (@(Get-Process -Name LogonUI -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $sid }).Count) { return $true }
+        if (-not ('HUPresence' -as [type])) { Add-Type -TypeDefinition $script:HUPresenceSrc -Language CSharp -ErrorAction Stop }
+        if ([HUPresence]::ConnectState() -ne 0) { return $true }
+        $idle = [HUPresence]::IdleMs()
+        if ($idle -lt 0 -or $idle -ge ($script:HUAwayIdleMin * 60000)) { return $true }
+        return $false
+    } catch { return $true }
+}
+
+# Teams-Hinweis nachtraeglich, wenn ein echter KI-Lauf am PC begann und am Ende niemand mehr am PC ist (064 B1)
+function Send-HURemoteLateNotice($Rq, [string]$Result) {
+    $tn = @($Rq.Tenants | ForEach-Object { $k = $_; $t = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($t) { "$($t.displayName)" } else { $k } })
+    $vars = @{ __T = "ECHTER LAUF ueber MCP (KI): $($Rq.Item.Name) - nachtraeglich"; __L = @("Gestartet von der KI ueber MCP am PC $env:COMPUTERNAME, am PC freigegeben. Der Lauf lief danach unbeaufsichtigt weiter (PC gesperrt, getrennt oder ohne Eingabe).", "Ergebnis: $Result", "Tenants: $($tn -join ', ')"); __P = "Tenants: $($tn -join ', ')" }
+    $ok = Start-HUJob -Name ("RemLate-" + [guid]::NewGuid().ToString('N').Substring(0, 6)) -Quiet -Vars $vars -Code {
+        Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction Stop
+        Grant-HUSendApproval -Reason 'Hinweis Fernbedienung (nachtraeglich)'
+        $r = Send-HUNotify -Category Jobs -Level Warning -Source 'Fernbedienung' -Title $__T -Lines $__L -Preview $__P
+        if (-not $r.Ok) { Write-HULog -Message "Fernbedienung: Teams-Hinweis (nachtraeglich) nicht gesendet: $($r.Text)" -Level 'WARN' }
+    }
+    if ($ok) { Write-HULogWarn "Fernbedienung: KI-Lauf '$($Rq.Item.Name)' lief unbeaufsichtigt weiter - Teams-Hinweis wird nachtraeglich gesendet" }
 }
 
 # Push ohne Inhalt an alle Handys mit Abo (das Ergebnis holt sich das Handy dann beim PC)

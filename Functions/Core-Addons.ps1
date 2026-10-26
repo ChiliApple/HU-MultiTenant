@@ -34,7 +34,9 @@ function Get-HUAddonTokenDir {
 # - pro Windows-Benutzer, neben den DPAPI-Secrets; die App-Sicherung nimmt AddonData\ komplett mit.
 # Zusatzmodule rufen diese Funktion; fehlt sie (aeltere App), denselben Pfad selbst bilden.
 function Get-HUAddonDataRoot {
-    $base = $(if ($env:APPDATA) { $env:APPDATA } else { [IO.Path]::GetTempPath() })
+    # 064 B5: kein stiller Ausweg nach TEMP (dort waeren die Daten ausserhalb der App-Sicherung)
+    if (-not $env:APPDATA) { throw 'APPDATA ist nicht gesetzt - Datenordner fuer Zusatzmodule nicht bestimmbar.' }
+    $base = $env:APPDATA
     return (Join-Path (Join-Path $base 'HU-MultiTenant') 'AddonData')
 }
 function Get-HUAddonDataDir([string]$Id) {
