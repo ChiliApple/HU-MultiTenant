@@ -3,7 +3,7 @@
 ## v2.5.4 (Testversion, Weg zu 2.5.5 Stable)
 
 ### 💻 Zusatzmodul Autopilot (neu, 0.5.1)
-- **Eigener Reiter Autopilot** als Zusatzmodul (privates Repository, wie Kinderschutz): Übersicht mit Ampel, Group Tag ändern mit Rückgängig, verschlüsseltes Hash-Archiv je Tenant, Aufnehmen mit Erkennung von Gruppe und Profil, Ausscheiden (erst Autopilot-Eintrag entfernen, dann Wipe) und Zurückziehen für Geräte, die bei der Familie bleiben (BitLocker-Übergabe zum Drucken, dann Retire), Protokolle und ZIP-Pakete für Eltern. Braucht mindestens App 2.5.2; geladen wird es erst nach Signatur und Freigabe durch den Herausgeber.
+- **Eigener Reiter Autopilot,** mitgeliefert im Programm (`Modules\Autopilot\`, kommt mit dem App-Update, abschaltbar mit `"modulesOff": ["Autopilot"]` in `Config\settings.json`): Übersicht mit Ampel, Group Tag ändern mit Rückgängig, verschlüsseltes Hash-Archiv je Tenant, Aufnehmen mit Erkennung von Gruppe und Profil, Ausscheiden (erst Autopilot-Eintrag entfernen, dann Wipe) und Zurückziehen für Geräte, die bei der Familie bleiben (BitLocker-Übergabe zum Drucken, dann Retire), Protokolle und ZIP-Pakete für Eltern. Eigenes Änderungsprotokoll: `Modules\Autopilot\CHANGELOG.md`.
 - **Doku:** Karte in der Funktionsübersicht und eigener Abschnitt in der Anleitung (Update › Zusatzmodule).
 
 ### 🎨 Oberfläche
@@ -14,6 +14,7 @@
 - **Rechtekatalog ergänzt** für das Zusatzmodul Autopilot (nicht vorausgewählt): `DeviceManagementServiceConfig.ReadWrite.All`, `DeviceManagementManagedDevices.ReadWrite.All`, `DeviceManagementScripts.Read.All`, `Group.Create` und `BitlockerKey.Read.All` – letzteres gilt als weitreichend (rot, eigene Bestätigung).
 
 ### 🧩 Zusatzmodule
+- **Mitgelieferte Module:** Neben signierten privaten Modulen (`Addons\`) lädt die App jetzt Module aus `Modules\<Id>\` – sie sind Teil des Programms und werden mit ihm geprüft und aktualisiert. Ein signiertes privates Modul gleicher Kennung ersetzt das mitgelieferte, `AddonsDev\` ersetzt beide (Entwicklung).
 - **Schnittstelle:** `Test-HUUserAway` (seit 2.5.3: App gesperrt, Sperrbildschirm, getrennte Sitzung oder 5 Minuten ohne Eingabe) nutzt jetzt auch das MCP-Zusatzmodul (ab 0.3.1) für seine Freigaben. Das MCP-Modul gibt den Freigabeort (PC/Handy) an die Fernbedienung weiter, und sein Freigabe-Fenster scrollt bei langem Code – die Knöpfe bleiben sichtbar.
 
 ### 🗺️ Doku

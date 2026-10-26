@@ -51,6 +51,19 @@ Describe 'Zusatzmodule: Pruefen' {
             { Get-HUAddonDataDir 'Autopilot' } | Should -Throw   # 064 B5: kein Ausweg nach TEMP
         } finally { $env:APPDATA = $old }
     }
+    It 'mitgelieferte Module (2.5.4): Modules\Autopilot wird ohne Signatur erkannt, falscher Ordnername und zu alte App nicht' {
+        $mods = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Modules'
+        $i = @(Get-HUBuiltinModules ([Version]'9.9.9') $mods | Where-Object { $_.Id -eq 'Autopilot' })[0]
+        $i | Should -Not -BeNullOrEmpty
+        $i.Error | Should -BeNullOrEmpty
+        @(Get-HUBuiltinModules ([Version]'2.0.0') $mods | Where-Object { $_.Id -eq 'Autopilot' })[0].Error | Should -BeLike 'braucht*'
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ('HU-BM-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path (Join-Path $tmp 'Falsch') -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path (Join-Path $mods 'Autopilot') 'addon.json') -Destination (Join-Path $tmp 'Falsch')
+        @(Get-HUBuiltinModules ([Version]'9.9.9') $tmp)[0].Error | Should -BeLike 'Ordnername*'
+        @(Get-HUBuiltinModules ([Version]'9.9.9') (Join-Path $tmp 'gibtsnicht')).Count | Should -Be 0
+        Remove-Item -LiteralPath $tmp -Recurse -Force
+    }
     It 'gueltiges Modul wird akzeptiert und geladen' {
         $base = Join-Path $script:Tmp 'a1'; New-TestAddon (Join-Path $base 'Testmodul')
         Test-HUAddonFiles (Join-Path $base 'Testmodul') $script:Cert.Thumbprint | Should -Be ''
