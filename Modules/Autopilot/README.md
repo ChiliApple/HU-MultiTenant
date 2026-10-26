@@ -1,6 +1,8 @@
 # HU-MultiTenant – Modul Autopilot
 
-Mitgeliefertes Modul für **HU-MultiTenant** (ab 2.5.4, Mindestversion laut `addon.json` 2.5.2): eigener Reiter **Autopilot** für den ganzen Lebenslauf eines Windows-Geräts mit **Windows Autopilot (klassisch, mit Hardware-Hash)** – Hash sammeln, aufnehmen, Group Tag ändern, ausscheiden bzw. zurückziehen, mit Protokoll und Paket für die Eltern.
+Mitgeliefertes Modul für **HU-MultiTenant** (ab 2.5.4, Mindestversion laut `addon.json` 2.5.2): eigener Reiter **Autopilot** für den ganzen Lebenslauf eines Windows-Geräts mit **Windows Autopilot V1 (klassisch, mit Hardware-Hash)** – Hash sammeln, aufnehmen, Group Tag ändern, ausscheiden bzw. zurückziehen, mit Protokoll und Paket für die Eltern.
+
+**V2 folgt:** Windows Autopilot device preparation (ohne Hardware-Hash und Group Tag) kommt in denselben Reiter – vertrauenswürdige Geräte über Unternehmenskennungen oder Gerätezuordnung, Gerätegruppe und Richtlinie prüfen, Ausscheiden über Kennung bzw. Zuordnung. V1 und V2 laufen dann nebeneinander, das Hash-Archiv bleibt.
 
 ## Funktionen
 
