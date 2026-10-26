@@ -1,5 +1,31 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.5.5 (Stable, 26.10.2026)
+
+Stable-Release der Testversionen 2.5.1 bis 2.5.4 – „Muster-Bibliothek und Autopilot“. Alle Punkte im Detail stehen in den Abschnitten darunter.
+
+### ⭐ Muster-Bibliothek
+- **Mehrere Muster-Pakete** (Teilpaket oder Gesamtstand) mit Kategorien, Schlagwörtern und Herkunft; Vergleich mit Teilpaketen.
+- **Mitgelieferte Pakete** nach Microsoft-Empfehlung, BMB Security Baseline V2.1 und Praxis-Set Schule.
+- **Muster anwenden:** Assistent für einen oder mehrere Tenants – Rechte nur für die Dauer des Ablaufs, Zuordnen an einer Stelle, Vorschau fürs ganze Paket, Rückgängig fürs Paket.
+- **Vergleich mit Muster:** Conditional Access gilt als „wie Muster“, wenn nur Status, Notfallkonten (Sollwert V1) oder Platzhalter abweichen – auch zwischen den Tenants.
+
+### 💻 Modul Autopilot
+- **Eigener Reiter**, mitgeliefert im Programm: Übersicht mit Ampel, Group Tag ändern, verschlüsseltes Hash-Archiv, Aufnehmen mit Gruppen- und Profil-Erkennung, Ausscheiden und Zurückziehen mit Protokoll und Eltern-Paket. Abschaltbar mit `"modulesOff": ["Autopilot"]`.
+
+### 🛡️ Sicherheitskatalog
+- **Handprüfungen M01–M05** für den Rest der Security Baseline (lokales AD, Ablauf von Freigabelinks), Bestätigung je Tenant für 12 Monate.
+- **A17** mit Sollwert für die erlaubte Benutzerzustimmung.
+
+### 📱 Fernbedienung
+- **Anwesenheit am PC:** gesperrt, getrennte Sitzung oder 5 Minuten ohne Eingabe gilt als „weg“; Teams-Hinweis und Push bei Läufen von Zusatzmodulen danach.
+
+### 🎨 Oberfläche
+- **Markierte Zeilen bleiben dunkelblau** ohne Fokus; Auswahlfelder zum Eintippen; Zertifikat in der Kopfzeile; Fenstergröße gemerkt.
+
+### ✅ Qualität
+- **816 automatische Tests** bestanden.
+
 ## v2.5.4 (Testversion, Weg zu 2.5.5 Stable)
 
 ### 💻 Modul Autopilot (neu, 0.5.1)
