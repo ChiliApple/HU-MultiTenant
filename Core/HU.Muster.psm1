@@ -659,7 +659,8 @@ function Get-HUMusterInventory([object[]]$Packages) {
 }
 
 # Conditional Access aus dem Muster gegen die Tenants: Felder, die erst beim Uebertragen aus dem Ziel kommen oder bewusst anders sind,
-# zaehlen nicht als Abweichung - Status (Muster immer 'Nur Bericht'), Notfallkonten (excludeUsers), Rollen bei huRollen, Gruppen bei huGruppen.
+# zaehlen nicht als Abweichung - Status (Muster immer 'Nur Bericht'), die eingestellten Notfallkonten des Tenants (Sollwert V1) in excludeUsers
+# (060 B3: weitere ausgenommene Konten zaehlen), Rollen bei huRollen, Gruppen bei huGruppen.
 # Liefert $true, wenn die Tenants untereinander gleich sind und sich vom Muster nur in diesen Feldern unterscheiden.
 function Test-HUMusterCaOnlyTemplateDiff($Row, [string]$MusterKey) {
     if ("$($Row.Typ)" -ne 'Conditional Access') { return $false }
@@ -668,7 +669,7 @@ function Test-HUMusterCaOnlyTemplateDiff($Row, [string]$MusterKey) {
     $mu = @($items | Where-Object { "$($_.Tenant)" -eq $MusterKey }); $tn = @($items | Where-Object { "$($_.Tenant)" -ne $MusterKey })
     if ($mu.Count -ne 1 -or -not $tn.Count) { return $false }
     $mo = $mu[0].Obj
-    $ign = @('state', 'conditions.users.excludeUsers')
+    $ign = @('state')
     if ($mo.PSObject.Properties['huRollen'] -and "$($mo.huRollen)") { $ign += 'conditions.users.excludeRoles', 'conditions.users.includeRoles' }
     if ($mo.PSObject.Properties['huGruppen'] -and $mo.huGruppen) { $ign += 'conditions.users.includeGroups', 'conditions.users.excludeGroups' }
     $rx = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
@@ -678,15 +679,29 @@ function Test-HUMusterCaOnlyTemplateDiff($Row, [string]$MusterKey) {
         foreach ($k in $f.Keys) { $nk = [regex]::Replace("$k", $rx, '#id'); if ($Skip -contains $nk) { continue }; $n[$nk] = [regex]::Replace("$($f[$k])", $rx, '#id') }
         $n
     }
+    # excludeUsers ohne die Notfallkonten des Tenants (Sollwert V1) - so wie es beim Uebertragen entstuende
+    $exu = {
+        param($o, [string]$TenantKey)
+        $bg = @()
+        if ($TenantKey) { try { $bl = Get-HUSecBaseline -TenantKey $TenantKey; if ($bl -and $bl.Values -and $bl.Values.ContainsKey('V1')) { $bg = @($bl.Values['V1'].accounts | Where-Object { "$_" } | ForEach-Object { "$_".ToLowerInvariant() }) } } catch { } }
+        $l = @()
+        try { $l = @($o.conditions.users.excludeUsers | Where-Object { "$_" -and $bg -notcontains "$_".ToLowerInvariant() }) } catch { }
+        if (-not $l.Count) { return '(leer)' }
+        return ((@($l | ForEach-Object { [regex]::Replace("$_", $rx, '#id') } | Sort-Object)) -join ', ')
+    }
     try {
         # Tenants untereinander: alle Felder
         if (@($tn | ForEach-Object { $_.Hash } | Select-Object -Unique).Count -gt 1) {
             $maps = @{}; $ks = @(); for ($i = 0; $i -lt $tn.Count; $i++) { $maps["t$i"] = & $flat $tn[$i].Obj @(); $ks += "t$i" }
             if (@(Get-HUCompareDiff $maps $ks).Count) { return $false }
         }
-        # Muster gegen den ersten Tenant ohne die Vorlagen-Felder
-        $maps = @{ m = (& $flat $mo $ign); t = (& $flat $tn[0].Obj $ign) }
-        return (-not @(Get-HUCompareDiff $maps @('m', 't')).Count)
+        # Muster gegen jeden Tenant ohne die Vorlagen-Felder; excludeUsers ohne Notfallkonten des jeweiligen Tenants
+        $mm = & $flat $mo $ign; $mm['conditions.users.excludeUsers'] = & $exu $mo ''
+        foreach ($t in $tn) {
+            $tm = & $flat $t.Obj $ign; $tm['conditions.users.excludeUsers'] = & $exu $t.Obj "$($t.Tenant)"
+            if (@(Get-HUCompareDiff @{ m = $mm; t = $tm } @('m', 't')).Count) { return $false }
+        }
+        return $true
     } catch { return $false }
 }
 

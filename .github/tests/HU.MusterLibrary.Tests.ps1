@@ -197,6 +197,7 @@ Describe 'Vergleich: CA aus dem Muster mit Werten aus dem Ziel' {
         $script:CaRow = { param($t, $o, $h) [pscustomobject]@{ Tenant = $t; Typ = 'Conditional Access'; Name = '100 - Admin'; Id = 'x'; Hash = $h; Copy = ''; Info = ''; Obj = $o } }
     }
     It 'nur Status, Notfallkonten und Rollen (huRollen) anders -> nicht abweichend' {
+        Mock -ModuleName HU.Muster Get-HUSecBaseline { [pscustomobject]@{ Values = @{ V1 = @{ accounts = @('BBBBBBBB-0000-0000-0000-000000000001') } }; Errors = @() } }
         $mk = '__MUSTER__'
         $r1 = '11111111-0000-0000-0000-000000000001'; $r2 = '22222222-0000-0000-0000-000000000002'; $bg = 'bbbbbbbb-0000-0000-0000-000000000001'
         $rows = @(
@@ -207,6 +208,22 @@ Describe 'Vergleich: CA aus dem Muster mit Werten aus dem Ziel' {
         $m = @(Get-HUMusterMatrix $rows @($mk, 'T1', 'T2'))[0]
         $m.Diff | Should -BeFalse
         $m.Status | Should -BeLike 'ueberall (wie Muster*'
+    }
+    It '060 B3: weiteres ausgenommenes Konto (kein Notfallkonto) bleibt abweichend' {
+        Mock -ModuleName HU.Muster Get-HUSecBaseline { [pscustomobject]@{ Values = @{ V1 = @{ accounts = @('bbbbbbbb-0000-0000-0000-000000000001') } }; Errors = @() } }
+        $mk = '__MUSTER__'
+        $rows = @(
+            (& $script:CaRow $mk (& $script:CaObj 'enabledForReportingButNotEnforced' @() @()) 'hm'),
+            (& $script:CaRow 'T1' (& $script:CaObj 'enabled' @('bbbbbbbb-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000009') @()) 'ht')
+        )
+        @(Get-HUMusterMatrix $rows @($mk, 'T1'))[0].Diff | Should -BeTrue
+        # ohne Sollwert V1 zaehlt auch das Notfallkonto
+        Mock -ModuleName HU.Muster Get-HUSecBaseline { [pscustomobject]@{ Values = @{ V1 = @{ accounts = @() } }; Errors = @() } }
+        $rows2 = @(
+            (& $script:CaRow $mk (& $script:CaObj 'enabledForReportingButNotEnforced' @() @()) 'hm'),
+            (& $script:CaRow 'T1' (& $script:CaObj 'enabled' @('bbbbbbbb-0000-0000-0000-000000000001') @()) 'ht')
+        )
+        @(Get-HUMusterMatrix $rows2 @($mk, 'T1'))[0].Diff | Should -BeTrue
     }
     It 'echte Abweichung (anderes Steuerelement) bleibt abweichend' {
         $mk = '__MUSTER__'
