@@ -498,6 +498,8 @@ function Update-HURemoteTick {
 
 function Start-HURemoteRunner($Rq) {
     $r = $script:HURem; $S = $r.S
+    # 2.5.3: KI-Lauf ueber MCP, waehrend jemand am (entsperrten) PC mit entsperrter App sitzt -> kein Teams-Hinweis noetig
+    if ($Rq -is [hashtable] -and "$($Rq.DevId)" -eq 'mcp') { $Rq['AtPc'] = -not (Test-HUUserAway) }
     $S.Lines.Clear()
     $S.Job.Running = $true; $S.Job.Title = "$($Rq.Item.Name)"; $S.Job.By = "$($Rq.By)"; $S.Job.Live = [bool]$Rq.Live
     $S.Job.Started = Get-Date; $S.Job.Ended = $null; $S.Job.Result = ''; $S.Job.Level = ''; $S.Job.Done = @()

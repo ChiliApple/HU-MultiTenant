@@ -160,7 +160,10 @@ function Invoke-HURemoteRun($S, $Req, $Settings, [string]$AppRoot, [int]$LimitMi
         Add-HURemoteLineTo $S "=== $($it.Name) - gestartet $(if ("$($Req.DevId)" -eq 'mcp') { 'ueber MCP (KI)' } else { "vom Handy '$($Req.By)'" })$(if ($Req.Live) { ' - ECHTER LAUF' } else { '' }) ===" 'Head'
         & $log "=== $($it.Name) ($($it.Kind)) vom Handy '$($Req.By)' $(if ($Req.Live) { 'ECHTER LAUF' } else { '' }) Tenants: $($j.Tenants -join ', ')"
         # Pflicht-Hinweis an Teams bei echtem Lauf vom Handy (Review 031 B4): an die Ziele mit "Hinweis bei Problemen" (Kategorie Jobs)
-        if ($Req.Live) {
+        # 2.5.3: nicht bei KI-Laeufen ueber MCP, waehrend Udo am entsperrten PC sitzt (dort am PC freigegeben und sichtbar)
+        $mcpAtPc = [bool](("$($Req.DevId)" -eq 'mcp') -and $Req.ContainsKey('AtPc') -and $Req.AtPc)
+        if ($Req.Live -and $mcpAtPc) { & $log 'Teams-Hinweis entfaellt: KI-Lauf ueber MCP, am PC freigegeben (PC und App entsperrt)' }
+        if ($Req.Live -and -not $mcpAtPc) {
             try {
                 Import-Module (Join-Path $AppRoot 'Core\HU.Notify.psm1') -Force -DisableNameChecking -ErrorAction Stop
                 Grant-HUSendApproval -Reason 'Hinweis Fernbedienung'
