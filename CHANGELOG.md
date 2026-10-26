@@ -15,7 +15,7 @@
 
 ### 🧩 Zusatzmodule
 - **Mitgelieferte Module:** Neben signierten privaten Modulen (`Addons\`) lädt die App jetzt Module aus `Modules\<Id>\` – sie sind Teil des Programms und werden mit ihm geprüft und aktualisiert. Ein signiertes privates Modul gleicher Kennung ersetzt das mitgelieferte, `AddonsDev\` ersetzt beide (Entwicklung).
-- **Schnittstelle:** `Test-HUUserAway` (seit 2.5.3: App gesperrt, Sperrbildschirm, getrennte Sitzung oder 5 Minuten ohne Eingabe) nutzt jetzt auch das MCP-Zusatzmodul (ab 0.3.1) für seine Freigaben. Das MCP-Modul gibt den Freigabeort (PC/Handy) an die Fernbedienung weiter, und sein Freigabe-Fenster scrollt bei langem Code – die Knöpfe bleiben sichtbar.
+- **Schnittstelle:** `Test-HUUserAway` (App gesperrt, Sperrbildschirm, getrennte Sitzung oder 5 Minuten ohne Eingabe) steht Zusatzmodulen zur Verfügung. Startet ein Modul einen Lauf über die Fernbedienung, kennzeichnet es ihn mit `Origin = 'addon'` und gibt den Freigabeort mit (`ApprovedBy`: PC oder Handy).
 
 ### 🗺️ Doku
 - **Roadmap aktualisiert:** 2.5.3 Handprüfungen, 2.5.4 Autopilot, 2.5.5 Stable; 2.6.0 Austausch und Sicherung (Export/Import, Microsoft-Vorlagen, App-Sicherung); Mail und Teams danach in 2.6.x.
@@ -31,8 +31,8 @@
 - **Vergleich mit Muster genauer:** Bei Conditional Access zählen in den Ausnahmen nur noch die eingestellten Notfallkonten des Tenants (Sollwert V1) nicht als Abweichung – weitere ausgenommene Konten schon. Auch **zwischen den Tenants** zählen verschieden viele Notfallkonten nicht mehr als Abweichung. Fehlt bei einem Tenant der Sollwert V1, nennt der Status das („Sollwert V1 fehlt: …“).
 
 ### 📱 Fernbedienung
-- **Kein Push mehr bei KI-Läufen am PC:** Startet die KI über MCP ein Snippet und du bist am PC, kommt am Ende keine Meldung mehr aufs Handy. „Am PC“ heißt: App und Windows entsperrt, Sitzung verbunden (keine getrennte Remotedesktop-Sitzung) und eine Eingabe in den letzten **5 Minuten**; eine Freigabe am Handy zählt nie als „am PC“. Lässt sich das nicht prüfen, gilt „weg“.
-- **Teams-Hinweis und Protokoll** nennen bei KI-Läufen „über MCP (KI)“ statt „vom Handy“; die Vorschau wiederholt den Titel nicht mehr, sondern nennt die Tenants. Bist du beim Start eines echten KI-Laufs am PC (siehe oben), entfällt der Teams-Hinweis (nur im Protokoll vermerkt). Bist du am Ende nicht mehr da, kommt er **nachträglich** („Lauf lief unbeaufsichtigt weiter“). Echte Läufe vom Handy melden sich immer.
+- **Kein Push mehr, wenn du am PC bist:** Startet ein Zusatzmodul einen Lauf über die Fernbedienung und du hast ihn am PC freigegeben, kommt am Ende keine Meldung aufs Handy. „Am PC“ heißt: App und Windows entsperrt, Sitzung verbunden (keine getrennte Remotedesktop-Sitzung) und eine Eingabe in den letzten **5 Minuten**; eine Freigabe am Handy zählt nie als „am PC“. Lässt sich das nicht prüfen, gilt „weg“.
+- **Teams-Hinweis und Protokoll** nennen bei solchen Läufen „über Zusatzmodul“ statt „vom Handy“; die Vorschau wiederholt den Titel nicht mehr, sondern nennt die Tenants. Bist du beim Start eines echten Laufs am PC (siehe oben), entfällt der Teams-Hinweis (nur im Protokoll vermerkt). Bist du am Ende nicht mehr da, kommt er **nachträglich** („Lauf lief unbeaufsichtigt weiter“). Echte Läufe vom Handy melden sich immer.
 
 ### 🧩 Zusatzmodule
 - **Datenordner je Modul:** `Get-HUAddonDataDir <Id>` liefert `%APPDATA%\HU-MultiTenant\AddonData\<Id>\` (Schnittstelle für Zusatzmodule, `Functions\Core-Addons.ps1`). Die kommende App-Sicherung nimmt `AddonData\` komplett mit. Ohne `APPDATA` gibt es einen Fehler statt eines Ordners unter TEMP.
