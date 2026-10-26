@@ -33,7 +33,7 @@ function Get-HUSecCellColor($Cell) {
         'Abweichung' { return '#EF5350' }
         'Fehler' { return '#EF5350' }
         'Ausnahme' { return '#FFB74D' }
-        'NichtPruefbar' { if ("$($Cell.Reason)" -eq 'Manuell') { return '#FFB74D' }; return '#8A8A8A' }
+        'NichtPruefbar' { if ("$($Cell.Reason)" -eq 'Manuell' -and (Test-HUSecManualRule "$($Cell.RuleId)")) { return '#FFB74D' }; return '#8A8A8A' }
         'Info' { if ("$($Cell.Reason)" -eq 'Aus') { return '#8A8A8A' }; if ("$($Cell.Reason)" -eq 'Handgeprueft') { return '#A5D6A7' }; return $def }
         default { return $def }
     }
