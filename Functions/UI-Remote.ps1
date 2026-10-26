@@ -515,9 +515,9 @@ function Start-HURemoteRunner($Rq) {
     $r.Runner = @{ PS = $ps; RS = $rs; Handle = $ps.BeginInvoke(); Rq = $Rq; Started = Get-Date }
     $what = switch ("$($Rq.Item.Kind)") { 'snippet' { 'Snippet' } 'ext' { 'Erweiterung' } default { 'Teams-Meldung' } }
     $tn = @($Rq.Tenants | ForEach-Object { $k = $_; $t = $script:Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1; if ($t) { "$($t.displayName)" } else { $k } })
-    $log = "HANDY '$($Rq.By)' startet $what '$($Rq.Item.Name)'$(if ($Rq.Live) { ' - ECHTER LAUF' }) - Tenants: $($tn -join ', ')$(if ($Rq.Target) { ' - einmalig an ein Ziel' })"
+    $log = "$(if ("$($Rq.DevId)" -eq 'mcp') { 'KI (MCP, freigegeben)' } else { "HANDY '$($Rq.By)'" }) startet $what '$($Rq.Item.Name)'$(if ($Rq.Live) { ' - ECHTER LAUF' }) - Tenants: $($tn -join ', ')$(if ($Rq.Target) { ' - einmalig an ein Ziel' })"
     if ($Rq.Live) { Write-HULogWarn $log } else { Write-HULogInfo $log }
-    Update-HURemoteTitle "Remote FB: $($Rq.Item.Name) (vom Handy)"
+    Update-HURemoteTitle "Remote FB: $($Rq.Item.Name) $(if ("$($Rq.DevId)" -eq 'mcp') { '(KI ueber MCP)' } else { '(vom Handy)' })"
     Update-HURemoteButton
 }
 function Receive-HURemoteRunner {
@@ -531,7 +531,7 @@ function Receive-HURemoteRunner {
     $r.Runner = $null
     if (-not $S.Job.Ended) { $S.Job.Ended = Get-Date }
     $S.Job.Running = $false
-    $msg = "HANDY-Lauf '$($S.Job.Title)' fertig: $($S.Job.Result)"
+    $msg = "$(if ("$($run.Rq.DevId)" -eq 'mcp') { 'KI-Lauf (MCP)' } else { 'HANDY-Lauf' }) '$($S.Job.Title)' fertig: $($S.Job.Result)"
     switch ("$($S.Job.Level)") { 'OK' { Write-HULogOK $msg } 'Warning' { Write-HULogWarn $msg } default { Write-HULogError $msg } }
     Update-HURemoteTitle ''
     Update-HURemoteButton

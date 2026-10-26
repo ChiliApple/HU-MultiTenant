@@ -7,6 +7,7 @@
 
 ### 📱 Fernbedienung
 - **Kein Push mehr bei KI-Läufen am PC:** Startet die KI über MCP ein Snippet und du bist am PC, kommt am Ende keine Meldung mehr aufs Handy – nur noch, wenn App oder Windows gesperrt sind. Gesperrt zählt nur die eigene Windows-Sitzung.
+- **Teams-Hinweis und Protokoll** nennen bei KI-Läufen „über MCP (KI)“ statt „vom Handy“; die Vorschau wiederholt den Titel nicht mehr, sondern nennt die Tenants.
 
 ### 🧩 Zusatzmodule
 - **Datenordner je Modul:** `Get-HUAddonDataDir <Id>` liefert `%APPDATA%\HU-MultiTenant\AddonData\<Id>\` (Schnittstelle für Zusatzmodule, `Functions\Core-Addons.ps1`). Die kommende App-Sicherung nimmt `AddonData\` komplett mit.
