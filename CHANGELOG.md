@@ -2,7 +2,7 @@
 
 ## v2.5.4 (Testversion, Weg zu 2.5.5 Stable)
 
-### 💻 Zusatzmodul Autopilot (neu, 0.5.1)
+### 💻 Modul Autopilot (neu, 0.5.1)
 - **Eigener Reiter Autopilot,** mitgeliefert im Programm (`Modules\Autopilot\`, kommt mit dem App-Update, abschaltbar mit `"modulesOff": ["Autopilot"]` in `Config\settings.json`): Übersicht mit Ampel, Group Tag ändern mit Rückgängig, verschlüsseltes Hash-Archiv je Tenant, Aufnehmen mit Erkennung von Gruppe und Profil, Ausscheiden (erst Autopilot-Eintrag entfernen, dann Wipe) und Zurückziehen für Geräte, die bei der Familie bleiben (BitLocker-Übergabe zum Drucken, dann Retire), Protokolle und ZIP-Pakete für Eltern. Eigenes Änderungsprotokoll: `Modules\Autopilot\CHANGELOG.md`.
 - **Doku:** Karte in der Funktionsübersicht und eigener Abschnitt in der Anleitung (Update › Zusatzmodule).
 
@@ -11,7 +11,7 @@
 - **Auswahlfelder zum Eintippen:** Der dunkle Stil für Auswahlfelder erlaubt jetzt auch `IsEditable` (Text eingeben und aus der Liste wählen).
 
 ### 🔑 Rechte
-- **Rechtekatalog ergänzt** für das Zusatzmodul Autopilot (nicht vorausgewählt): `DeviceManagementServiceConfig.ReadWrite.All`, `DeviceManagementManagedDevices.ReadWrite.All`, `DeviceManagementScripts.Read.All`, `Group.Create` und `BitlockerKey.Read.All` – letzteres gilt als weitreichend (rot, eigene Bestätigung).
+- **Rechtekatalog ergänzt** für das Modul Autopilot (nicht vorausgewählt): `DeviceManagementServiceConfig.ReadWrite.All`, `DeviceManagementManagedDevices.ReadWrite.All`, `DeviceManagementScripts.Read.All`, `Group.Create` und `BitlockerKey.Read.All` – letzteres gilt als weitreichend (rot, eigene Bestätigung).
 
 ### 🧩 Zusatzmodule
 - **Mitgelieferte Module:** Neben signierten privaten Modulen (`Addons\`) lädt die App jetzt Module aus `Modules\<Id>\` – sie sind Teil des Programms und werden mit ihm geprüft und aktualisiert. Ein signiertes privates Modul gleicher Kennung ersetzt das mitgelieferte, `AddonsDev\` ersetzt beide (Entwicklung).
