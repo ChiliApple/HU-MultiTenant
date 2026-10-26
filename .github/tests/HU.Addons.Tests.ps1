@@ -38,6 +38,17 @@ BeforeAll {
 AfterAll { Remove-Item -LiteralPath $script:Tmp -Recurse -Force -ErrorAction SilentlyContinue }
 
 Describe 'Zusatzmodule: Pruefen' {
+    It 'Datenordner je Modul (2.5.3): unter AddonData\<Id>, ungueltige Kennung abgelehnt' {
+        $old = $env:APPDATA
+        try {
+            $env:APPDATA = Join-Path ([IO.Path]::GetTempPath()) ("HU-AD-" + [guid]::NewGuid().ToString('N'))
+            $d = Get-HUAddonDataDir 'Autopilot'
+            Test-Path -LiteralPath $d | Should -BeTrue
+            $d | Should -Be (Join-Path (Join-Path (Join-Path $env:APPDATA 'HU-MultiTenant') 'AddonData') 'Autopilot')
+            { Get-HUAddonDataDir '..\x' } | Should -Throw
+            Remove-Item -LiteralPath $env:APPDATA -Recurse -Force
+        } finally { $env:APPDATA = $old }
+    }
     It 'gueltiges Modul wird akzeptiert und geladen' {
         $base = Join-Path $script:Tmp 'a1'; New-TestAddon (Join-Path $base 'Testmodul')
         Test-HUAddonFiles (Join-Path $base 'Testmodul') $script:Cert.Thumbprint | Should -Be ''

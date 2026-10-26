@@ -16,6 +16,7 @@
     Lokal: <AppRoot>\Addons\<Kennung>\ (Dateien + addon.sha256 + addon.sha256.p7s); neue Fassungen warten in
     Addons\.pending\<Kennung>\ und werden beim naechsten Start uebernommen.
     Tokens: %APPDATA%\HU-MultiTenant\addons\<owner>_<repo>.xml (DPAPI, nur fuer diesen Windows-Benutzer lesbar).
+    Daten der Module: %APPDATA%\HU-MultiTenant\AddonData\<Id>\ (Get-HUAddonDataDir), in der App-Sicherung enthalten.
     Zielmaschine: der PC, auf dem HU-MultiTenant laeuft (Windows PowerShell 5.1).
 #>
 
@@ -25,6 +26,20 @@ $script:HUAddonSignature = 'addon.sha256.p7s'
 function Get-HUAddonsDir { return (Join-Path $script:AppRoot 'Addons') }
 function Get-HUAddonTokenDir {
     $d = Join-Path (Join-Path $env:APPDATA 'HU-MultiTenant') 'addons'
+    if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+    return $d
+}
+
+# 2.5.3: Datenordner je Zusatzmodul (eigene Dateien, Archive, Protokolle): %APPDATA%\HU-MultiTenant\AddonData\<Id>\
+# - pro Windows-Benutzer, neben den DPAPI-Secrets; die App-Sicherung nimmt AddonData\ komplett mit.
+# Zusatzmodule rufen diese Funktion; fehlt sie (aeltere App), denselben Pfad selbst bilden.
+function Get-HUAddonDataRoot {
+    $base = $(if ($env:APPDATA) { $env:APPDATA } else { [IO.Path]::GetTempPath() })
+    return (Join-Path (Join-Path $base 'HU-MultiTenant') 'AddonData')
+}
+function Get-HUAddonDataDir([string]$Id) {
+    if (-not (Test-HUAddonId $Id)) { throw "Ungueltige Kennung fuer Zusatzmodul-Daten: '$Id'" }
+    $d = Join-Path (Get-HUAddonDataRoot) $Id
     if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
     return $d
 }

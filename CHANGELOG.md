@@ -5,6 +5,9 @@
 ### 🔍 Tenant-Vergleich
 - **Vergleich mit Muster genauer:** Bei Conditional Access zählen in den Ausnahmen nur noch die eingestellten Notfallkonten des Tenants (Sollwert V1) nicht als Abweichung – weitere ausgenommene Konten schon.
 
+### 🧩 Zusatzmodule
+- **Datenordner je Modul:** `Get-HUAddonDataDir <Id>` liefert `%APPDATA%\HU-MultiTenant\AddonData\<Id>\` (Schnittstelle für Zusatzmodule, `Functions\Core-Addons.ps1`). Die kommende App-Sicherung nimmt `AddonData\` komplett mit.
+
 ## v2.5.2 (Testversion, Weg zu 2.6.0)
 
 ### 🧭 Muster anwenden (Assistent)
