@@ -5,6 +5,9 @@
 ### 🔍 Tenant-Vergleich
 - **Vergleich mit Muster genauer:** Bei Conditional Access zählen in den Ausnahmen nur noch die eingestellten Notfallkonten des Tenants (Sollwert V1) nicht als Abweichung – weitere ausgenommene Konten schon.
 
+### 📱 Fernbedienung
+- **Kein Push mehr bei KI-Läufen am PC:** Startet die KI über MCP ein Snippet und du bist am PC, kommt am Ende keine Meldung mehr aufs Handy – nur noch, wenn App oder Windows gesperrt sind. Gesperrt zählt nur die eigene Windows-Sitzung.
+
 ### 🧩 Zusatzmodule
 - **Datenordner je Modul:** `Get-HUAddonDataDir <Id>` liefert `%APPDATA%\HU-MultiTenant\AddonData\<Id>\` (Schnittstelle für Zusatzmodule, `Functions\Core-Addons.ps1`). Die kommende App-Sicherung nimmt `AddonData\` komplett mit.
 

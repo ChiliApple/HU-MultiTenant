@@ -536,8 +536,18 @@ function Receive-HURemoteRunner {
     Update-HURemoteTitle ''
     Update-HURemoteButton
     if ("$($run.Rq.Item.Kind)" -eq 'teams') { try { Update-HUTeamsHist; Update-HUTeamsJobs } catch { } }
-    Send-HURemotePush
+    # 2.5.3: Laeufe, die die KI ueber MCP am PC gestartet hat, nur dann ans Handy melden, wenn niemand am PC ist (App oder Windows gesperrt)
+    if ("$($run.Rq.DevId)" -ne 'mcp' -or (Test-HUUserAway)) { Send-HURemotePush }
     try { Update-HURemoteCatalog } catch { }
+}
+
+# Ist jemand am PC? Weg = App gesperrt oder Windows-Sperrbildschirm in DIESER Sitzung (LogonUI anderer Sitzungen, z. B. Konsole bei RDP, zaehlt nicht)
+function Test-HUUserAway {
+    if ($script:LockActive) { return $true }
+    try {
+        $sid = (Get-Process -Id $PID).SessionId
+        return [bool](@(Get-Process -Name LogonUI -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $sid }).Count)
+    } catch { return $false }
 }
 
 # Push ohne Inhalt an alle Handys mit Abo (das Ergebnis holt sich das Handy dann beim PC)
