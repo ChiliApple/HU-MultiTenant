@@ -20,7 +20,7 @@
 Add-Type -AssemblyName System.IO.Compression -ErrorAction SilentlyContinue
 
 # ------------------------------------------------------------------ Grenzen ------------------------------------------------------------------
-$script:HUMxLimits = @{ ArchiveBytes = 20MB; Files = 2000; TotalBytes = 100MB; Ratio = 100; Depth = 64; JsonBytes = 20MB; JsonFiles = 200 }
+$script:HUMxLimits = @{ EntryBytes = 5MB; ArchiveBytes = 20MB; Files = 2000; TotalBytes = 100MB; Ratio = 100; Depth = 64; JsonBytes = 20MB; JsonFiles = 200 }
 $script:HUMxFormat = 1
 $script:HUMxSource = 'importiert'
 
@@ -50,6 +50,8 @@ $script:HUMxRefTypes = '(?i)(wifi|wi-fi|vpn|wired|scep|pkcs|derivedcredential|ce
 $script:HUMxMetaNames = @('createdDateTime', 'lastModifiedDateTime', 'modifiedDateTime', 'createdBy', 'lastModifiedBy', 'version', 'deletedDateTime', 'creationSource',
     'createdByAppId', 'lastModifiedByAppId', 'supportsScopeTags', 'isAssigned', 'assignments', 'deviceStatuses', 'userStatuses', 'deviceStatusOverview', 'userStatusOverview',
     'deviceSettingStateSummaries', 'settingCount', 'priorityMetaData')
+# OMA-URI-Pfade, die WLAN-/VPN-Profile oder Zertifikate tragen (068 B2)
+$script:HUMxOmaBlock = '(?i)/(WiFi|VPNv2|ClientCertificateInstall|RootCATrustedCertificates|CertificateStore|PassportForWork|eUICCs)/'
 $script:HUMxGuidRx = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 $script:HUMxUserKeywords = @('All', 'None', 'GuestsOrExternalUsers')
 $script:HUMxBaseFiles = @('manifest.json', 'paket.json', 'index.json', 'names.json')
@@ -106,7 +108,12 @@ function Get-HUMxStrings($Obj, [string]$Path = '') {
         $i = 0; foreach ($e in $Obj) { foreach ($x in (Get-HUMxStrings $e "$Path[$i]")) { $out.Add($x) }; $i++ }
         return $out.ToArray()
     }
-    foreach ($p in $Obj.PSObject.Properties) { foreach ($x in (Get-HUMxStrings $p.Value $(if ($Path) { "$Path.$($p.Name)" } else { $p.Name }))) { $out.Add($x) } }
+    foreach ($p in $Obj.PSObject.Properties) {
+        $pp = $(if ($Path) { "$Path.$($p.Name)" } else { $p.Name })
+        # 068 B8: auch Eigenschaftsnamen (frei erfundene Felder in JSON-Dateien) pruefen
+        $out.Add([pscustomobject]@{ Path = "$pp (Name)"; Value = "$($p.Name)" })
+        foreach ($x in (Get-HUMxStrings $p.Value $pp)) { $out.Add($x) }
+    }
     return $out.ToArray()
 }
 
@@ -163,11 +170,17 @@ function Invoke-HUMusterSanitize {
                 }
                 # Gruppen -> Platzhalter (Name), beim Anwenden im Ziel zuordnen
                 $hg = New-Object System.Collections.Generic.List[object]
-                foreach ($x in @(Get-HUMxProp $o 'huGruppen' | Where-Object { $_ })) { $hg.Add($x) }
+                # 068 B1: Platzhalter aus der Datei nur gueltig (Feld include/excludeGroups, Name Text <= 256) und immer sichtbar
+                foreach ($x in @(Get-HUMxProp $o 'huGruppen' | Where-Object { $_ })) {
+                    $xf = "$(Get-HUMxProp $x 'feld')"; $xn = Get-HUMxProp $x 'name'
+                    if ($xf -notin 'includeGroups', 'excludeGroups' -or $xn -isnot [string] -or -not "$xn".Trim() -or "$xn".Length -gt 256 -or "$xn" -match '[\x00-\x1f]') { & $rem 'ungueltiger Gruppen-Platzhalter aus der Datei'; continue }
+                    $hg.Add([pscustomobject]@{ feld = $xf; name = "$xn".Trim() })
+                    & $mark "$(if ($xf -eq 'excludeGroups') { 'AUSNAHME-Gruppe' } else { 'Gruppe' }) (aus Datei): $("$xn".Trim())"
+                }
                 foreach ($f in 'includeGroups', 'excludeGroups') {
                     foreach ($g in @(Get-HUMxProp $u $f | Where-Object { "$_" })) {
                         $gn = if ($GroupNames.ContainsKey("$g".ToLowerInvariant())) { "$($GroupNames["$g".ToLowerInvariant()])" } else { "unbekannte Gruppe $("$g".Substring(0, [Math]::Min(8, "$g".Length)))" }
-                        $hg.Add([pscustomobject]@{ feld = $f; name = $gn }); & $mark "Gruppenname: $gn"
+                        $hg.Add([pscustomobject]@{ feld = $f; name = $gn }); & $mark "$(if ($f -eq 'excludeGroups') { 'AUSNAHME-Gruppe' } else { 'Gruppe' }): $gn"
                     }
                     if ($u.PSObject.Properties[$f] -and @($u.$f).Count) { & $rem 'Gruppen-Kennungen (nur Name, beim Anwenden zuordnen)' }
                     if ($u.PSObject.Properties[$f]) { $u.$f = [object[]]@() }
@@ -204,6 +217,16 @@ function Invoke-HUMusterSanitize {
                 $o.reviewers = [object[]]@()
             }
         }
+        { $_ -in 'Konfiguration', 'Einstellungskatalog' } {
+            # 068 B2: Custom-Profile koennen WLAN, VPN und Zertifikate ueber OMA-URI tragen - Pfade sperren, eingebettete Inhalte pruefen
+            foreach ($om in @(Get-HUMxProp $o 'omaSettings' | Where-Object { $_ })) {
+                $uri = "$(Get-HUMxProp $om 'omaUri')"
+                if ($uri -match $script:HUMxOmaBlock) { & $block "OMA-URI mit WLAN, VPN oder Zertifikat ($uri)." }
+            }
+            foreach ($s0 in @(Get-HUMxStrings $o)) {
+                if ($s0.Path -match '(?i)(^|\.)(settingDefinitionId)$' -and "$($s0.Value)" -match '(?i)(wifi|vpnv2|clientcertificateinstall|rootcatrustedcertificates|_wlan_|_vpn_)') { & $block "Einstellung fuer WLAN, VPN oder Zertifikat ($($s0.Value))." }
+            }
+        }
         'Compliance' {
             # 067 B1c: Benachrichtigungen (Vorlage, CC-Liste) gehoeren dem Tenant
             foreach ($r in @(Get-HUMxProp $o 'scheduledActionsForRule' | Where-Object { $_ })) {
@@ -226,6 +249,17 @@ function Invoke-HUMusterSanitize {
             if ($txt -match '(?i)(password|passwort|kennwort|secret|apikey|api_key|token)\s*[=:]') { & $block 'Skript enthaelt vermutlich ein Kennwort oder einen Schluessel.' }
         }
     }
+    # 068 B2: eingebettete Inhalte (Base64-Werte, z. B. omaSettingBase64, iOS/macOS-payload, Zertifikate) entpacken und pruefen
+    foreach ($s1 in @(Get-HUMxStrings $o)) {
+        $v = "$($s1.Value)"
+        if ($v.Length -lt 64 -or $s1.Path -match '(?i)(scriptContent|detectionScriptContent|remediationScriptContent)$') { continue }
+        $txt = $null
+        if ($v -match '^[A-Za-z0-9+/=\s]+$' -and ($v.Trim().Length % 4) -eq 0) { try { $txt = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($v.Trim())) } catch { $txt = $null } }
+        $hay = if ($null -ne $txt) { $txt } else { $v }
+        if ($hay -match '(?i)(-----BEGIN|<keyMaterial>|<sharedKey>|PayloadContent.{0,200}pkcs12|\bpassword\b\s*[=:<>]|<Password>|PreSharedKey|\bpsk\b)') { & $block "Eingebetteter Inhalt in '$($s1.Path)' enthaelt Schluessel, Zertifikat oder Kennwort." }
+        elseif ($null -ne $txt -and $txt -match '[\x20-\x7e]{20}') { & $mark "eingebetteter Inhalt (Base64) in '$($s1.Path)' - bitte ansehen" }
+        if ($null -ne $txt) { foreach ($tm in @($TenantMarkers)) { if ($tm -and $txt.ToLowerInvariant().Contains($tm)) { & $block "Eingebetteter Inhalt in '$($s1.Path)' nennt einen eigenen Tenant." ; break } } }
+    }
     # Geheimnisse und fremde Kennungen (wie beim Uebertragen)
     try { foreach ($h in @(Find-HUTrSecrets $o)) { & $block "Geheimer Wert ($h)." } } catch { }
     if ($Typ -ne 'Conditional Access') {
@@ -247,7 +281,7 @@ function Invoke-HUMusterSanitize {
     $ds = "$(Get-HUMxProp $o 'description')"; if ($ds) { & $mark "Beschreibung: $(if ($ds.Length -gt 120) { $ds.Substring(0, 120) + ' ...' } else { $ds })" }
     foreach ($s in $strings) {
         $v = "$($s.Value)"
-        if ($s.Path -in 'displayName', 'name', 'description', '@odata.type') { continue }
+        if ($s.Path -in 'displayName', 'name', 'description', '@odata.type' -or $s.Path.EndsWith(' (Name)')) { continue }
         if ($v -match '@' -and $v -notmatch '^#microsoft') { & $mark "Wert mit @ in '$($s.Path)'" }
         elseif ($v -match '(?i)https?://') { & $mark "Link in '$($s.Path)'" }
         elseif ($v -match '^\\\\') { & $mark "Netzwerkpfad in '$($s.Path)'" }
@@ -376,7 +410,8 @@ function Test-HUMxJsonText([string]$Text, [int]$MaxDepth = 64) {
                 if ($j -lt $len -and $Text[$j] -eq ':') {
                     $set = $stack[$stack.Count - 1]
                     # gleiche Schluessel auch bei anderer Gross-/Kleinschreibung oder Unicode-Form ablehnen
-                    $k = $sb.ToString().Normalize([Text.NormalizationForm]::FormC).ToLowerInvariant()
+                    $kr = [regex]::Replace($sb.ToString(), '\\u([0-9a-fA-F]{4})', { param($mm) [string][char][Convert]::ToInt32($mm.Groups[1].Value, 16) })
+                    $k = $kr.Normalize([Text.NormalizationForm]::FormC).ToLowerInvariant()
                     if ($set -and -not $set.Add($k)) { return "doppelter Schluessel '$($sb.ToString())'" }
                     $expectKey = $false
                 }
@@ -389,6 +424,7 @@ function Test-HUMxJsonText([string]$Text, [int]$MaxDepth = 64) {
             '}' { $depth--; if ($stack.Count) { $stack.RemoveAt($stack.Count - 1) }; $expectKey = $false }
             ']' { $depth--; if ($stack.Count) { $stack.RemoveAt($stack.Count - 1) }; $expectKey = $false }
             ',' { $expectKey = ($stack.Count -and $null -ne $stack[$stack.Count - 1]) }
+            '/' { return 'Kommentare sind nicht erlaubt' }
         }
         if ($depth -lt 0) { return 'Klammern passen nicht' }
         $i++
@@ -479,11 +515,16 @@ function Test-HUMusterArchive {
         $zip = New-Object System.IO.Compression.ZipArchive($ms, [System.IO.Compression.ZipArchiveMode]::Read, $false)
         try {
             $total = [int64]0
+            # 068 B5: gleiche Liste wie im selbst gelesenen Verzeichnis (Anzahl und Namen) - sonst sehen Pruefung und Lesen verschiedenes
+            $zn = @($zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') } | Sort-Object)
+            $dn = @($dir | ForEach-Object { $_.Name.Replace('\', '/') } | Sort-Object)
+            if ($zn.Count -ne $dn.Count -or (($zn -join "`n") -cne ($dn -join "`n"))) { throw 'ZIP-Verzeichnis passt nicht zu den Eintraegen (Namen unterschiedlich kodiert?).' }
             foreach ($ze in $zip.Entries) {
+                if ($ze.FullName.EndsWith('/') -and $ze.Length -gt 0) { throw "'$($ze.FullName)': Ordner mit Inhalt." }
                 $nm = $ze.FullName.Replace('\', '/')
                 if ($nm.EndsWith('/')) { continue }
                 $cs = [int64]$ze.CompressedLength
-                $limit = [Math]::Min([int64]$L.TotalBytes - $total, [Math]::Max([int64]4096, $cs * $L.Ratio))
+                $limit = [Math]::Min([Math]::Min([int64]$L.TotalBytes - $total, [int64]$L.EntryBytes), [Math]::Max([int64]4096, $cs * $L.Ratio))
                 $s = $ze.Open(); $buf = New-Object byte[] 65536; $out = New-Object IO.MemoryStream
                 try {
                     while (($r = $s.Read($buf, 0, $buf.Length)) -gt 0) {

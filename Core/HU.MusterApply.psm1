@@ -152,6 +152,9 @@ function Get-HUMaRow {
     $row = [pscustomobject]@{ Order = (Get-HUMaOrder $typ $id); Typ = $typ; Name = "$($Item.Name)"; Paket = "$($Package.Title)"; PaketId = "$($Package.Id)"; Kind = $kind
         Status = 'gesperrt'; Default = $false; Plan = $null; Reason = ''; Folder = "$($Package.Folder)"; File = "$($Item.File)"; Id = $id; Source = "$($Item.Source)" }
     if (-not $kind) { $row.Reason = "$typ wird (noch) nicht angewendet."; return $row }
+    # 068 B3: importierte Eintraege nur aus bestaetigten Paketen (Stand frisch aus paket.json, nicht aus der Oberflaeche)
+    $deny = Test-HUMusterTransferAllowed "$($Item.Source)" $null "$($Package.Folder)"
+    if ($deny) { $row.Reason = $deny; return $row }
     $obj = $null
     try { $obj = Read-HUBackupJson (Join-Path $Package.Folder $Item.File) } catch { $row.Reason = "Muster-Datei nicht lesbar ($($_.Exception.Message))."; return $row }
     $label = "Muster: $($Package.Title)"

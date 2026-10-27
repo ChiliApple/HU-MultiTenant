@@ -102,6 +102,41 @@ Describe 'Bereinigung (067 B1)' {
     }
 }
 
+Describe 'Review 068' {
+    It 'B1: huGruppen aus der Datei nur gueltig, Ausnahmen sichtbar' {
+        $o = & $script:Ca
+        $o | Add-Member -NotePropertyName huGruppen -NotePropertyValue @([pscustomobject]@{ feld = 'excludeGroups'; name = 'Lehrer' }, [pscustomobject]@{ feld = 'includeUsers'; name = 'x' }, [pscustomobject]@{ feld = 'includeGroups'; name = @('a') })
+        $s = Invoke-HUMusterSanitize -Typ 'Conditional Access' -Obj $o
+        @($s.Obj.huGruppen | Where-Object { $_.name -eq 'Lehrer' -and $_.feld -eq 'excludeGroups' }).Count | Should -Be 1
+        @($s.Obj.huGruppen | Where-Object { $_.feld -eq 'includeUsers' }).Count | Should -Be 0
+        ($s.Marks -join ' ') | Should -Match 'AUSNAHME-Gruppe \(aus Datei\): Lehrer'
+        ($s.Removed -join ' ') | Should -Match 'ungueltiger Gruppen-Platzhalter'
+    }
+    It 'B2: OMA-URI WLAN/VPN/Zertifikat gesperrt, eingebettetes Zertifikat oder Kennwort gesperrt, harmloser Inhalt markiert' {
+        $oma = { param($uri, $v) [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CustomConfiguration'; displayName = 'OMA'; omaSettings = @([pscustomobject]@{ '@odata.type' = '#microsoft.graph.omaSettingString'; omaUri = $uri; value = $v }) } }
+        (Invoke-HUMusterSanitize -Typ 'Konfiguration' -Obj (& $oma './Vendor/MSFT/WiFi/Profile/Schule/WlanXml' '<WLANProfile/>')).Status | Should -Be 'gesperrt'
+        (Invoke-HUMusterSanitize -Typ 'Konfiguration' -Obj (& $oma './Device/Vendor/MSFT/VPNv2/X/ProfileXML' 'x')).Status | Should -Be 'gesperrt'
+        $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("-----BEGIN CERTIFICATE-----`nMIIB" + ('A' * 80)))
+        (Invoke-HUMusterSanitize -Typ 'Konfiguration' -Obj (& $oma './Vendor/MSFT/Policy/Config/X' $b64)).Status | Should -Be 'gesperrt'
+        $ok64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('<plist><dict><key>AllowCamera</key><false/></dict></plist>' + (' ' * 40)))
+        $s = Invoke-HUMusterSanitize -Typ 'Konfiguration' -Obj (& $oma './Vendor/MSFT/Policy/Config/X' $ok64)
+        $s.Status | Should -Be 'ok'; ($s.Marks -join ' ') | Should -Match 'eingebetteter Inhalt'
+    }
+    It 'B3: Uebertragen/Anwenden importierter Eintraege nur aus bestaetigten Paketen' {
+        Test-HUMusterTransferAllowed 'T1' $null | Should -Be ''
+        Test-HUMusterTransferAllowed 'importiert' $true | Should -Be ''
+        Test-HUMusterTransferAllowed 'importiert' $false | Should -Not -Be ''
+        Test-HUMusterTransferAllowed 'importiert' $null | Should -Not -Be ''
+    }
+    It 'B6/B8: \u-Schluessel als doppelt erkannt, Kommentare abgelehnt; Tenant-Marker im Eigenschaftsnamen gesperrt' {
+        Test-HUMxJsonText '{"id":1,"\u0069d":2}' | Should -Match 'doppelt'
+        Test-HUMxJsonText '{"a":1 /* "x */ }' | Should -Match 'Kommentar'
+        Test-HUMxJsonText '{"url":"https://x/y"}' | Should -Be ''
+        $o = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10GeneralConfiguration'; displayName = 'x'; 'contoso.onmicrosoft.com' = 1 }
+        (Invoke-HUMusterSanitize -Typ 'Konfiguration' -Obj $o).Status | Should -Be 'gesperrt'
+    }
+}
+
 Describe 'JSON-Pruefung vor dem Parsen (067 B3)' {
     It 'Tiefe ueber der Grenze, doppelte Schluessel (auch Gross/klein) werden abgelehnt' {
         Test-HUMxJsonText ('[' * 70 + ']' * 70) 64 | Should -Match 'tief'

@@ -317,6 +317,15 @@ function Read-HUMusterPackage([string]$Folder, [switch]$BuiltIn) {
     }
 }
 
+# 068 B3: darf ein Muster-Eintrag uebertragen/angewendet werden? -> '' (ja) oder Grund (nein). Zentral fuer Anwenden und Tenant-Vergleich.
+function Test-HUMusterTransferAllowed([string]$Source, $Checked, [string]$Folder = '') {
+    if ("$Source" -ne 'importiert') { return '' }
+    $ok = $Checked
+    if ($null -eq $ok -and $Folder) { $pk = Read-HUMusterPackage $Folder; $ok = [bool]($pk -and $pk.Checked) }
+    if ([bool]$ok) { return '' }
+    return 'Importiert und noch nicht als geprueft bestaetigt - im Reiter Muster ansehen und bestaetigen.'
+}
+
 # 2.5.7 importiertes Paket als geprueft bestaetigen (nur Kennzeichen in paket.json)
 function Set-HUMusterChecked {
     [CmdletBinding()]
@@ -679,6 +688,8 @@ function Get-HUMusterInventory([object[]]$Packages) {
             $o = "$($orig["$($r.Typ)|$($r.Id)|$(ConvertTo-HUMuName "$($r.Name)")"])"
             $r | Add-Member -NotePropertyName Origin -NotePropertyValue $o -Force
             $r | Add-Member -NotePropertyName Paket -NotePropertyValue $p.Title -Force
+            # 068 B3: ungepruefte importierte Eintraege duerfen nicht uebertragen werden (Pruefung in Test-HUMusterTransferAllowed)
+            $r | Add-Member -NotePropertyName Checked -NotePropertyValue $(if ($p.PSObject.Properties['Checked']) { [bool]$p.Checked } else { $true }) -Force
             if ("$($r.Name)") {
                 $k = "$($r.Typ)|$(ConvertTo-HUMuName "$($r.Name)")"
                 if ($seen.ContainsKey($k)) {
@@ -782,7 +793,7 @@ function Get-HUMusterMatrix([object[]]$Rows, [string[]]$Keys, [switch]$Partial) 
     }
 }
 
-Export-ModuleMember -Function Set-HUMusterChecked, Get-HUMusterBuiltinRoot, Set-HUMusterBuiltinRoot, Get-HUMusterBuiltinSource, Test-HUMusterBuiltinSource, Get-HUMusterResolveKey, Get-HUMusterBuiltinPackages,
+Export-ModuleMember -Function Test-HUMusterTransferAllowed, Set-HUMusterChecked, Get-HUMusterBuiltinRoot, Set-HUMusterBuiltinRoot, Get-HUMusterBuiltinSource, Test-HUMusterBuiltinSource, Get-HUMusterResolveKey, Get-HUMusterBuiltinPackages,
     Get-HUMusterKey, Get-HUMusterRoot, Get-HUMuster, Save-HUMuster, Get-HUNameMap, ConvertTo-HUMuName,
     Get-HUMusterCategories, Get-HUMusterPkgRoot, ConvertTo-HUMusterTags, Get-HUMusterNameMap, Resolve-HUMusterName, Get-HUMusterTagNames, Get-HUMusterLocationNames,
     Get-HUMusterPackages, Get-HUMusterPackage, Get-HUMusterNameCatalog, Save-HUMusterPackage, Get-HUMusterPackageItems, Get-HUMusterStandItems,
