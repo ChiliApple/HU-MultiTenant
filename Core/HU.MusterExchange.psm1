@@ -3,7 +3,7 @@
 .SYNOPSIS
     Muster-Pakete austauschen (2.5.7): Export als .humuster (ZIP), Import mit Schutz, JSON-Import aus Portal und Community.
 .DESCRIPTION
-    Konzept: claude/Muster-Export-Import-2.5.7.md, Pruefungen 056 und 067.
+    Konzept: Muster-Export-Import 2.5.7 (Projekt-Doku), Pruefungen 056 und 067.
     - Bereinigung (Export und Import gleich): keine Zuweisungen, Benutzer, IP-Bereiche, Pruefer, Metadaten, Bereichsmarkierungen
       (-> Standard 0), Benachrichtigungen; Gruppen nur als Name (Platzhalter fuer das Anwenden); Geheimnisse, fremde Kennungen,
       Tenant-IDs und Domains, Profile mit Zertifikat/WLAN/VPN -> Eintrag gesperrt.
@@ -199,8 +199,11 @@ function Invoke-HUMusterSanitize {
             if (@(Get-HUMxProp (Get-HUMxProp $o 'grantControls') 'termsOfUse' | Where-Object { "$_" }).Count) { & $block 'Nutzungsbedingungen (gibt es nur im eigenen Tenant).' }
             $rule = "$(Get-HUMxProp (Get-HUMxProp (Get-HUMxProp $c 'devices') 'deviceFilter') 'rule')"
             if ($rule) { & $mark "Geraetefilter-Regel: $rule" }
-            foreach ($f in 'signInRiskLevels', 'userRiskLevels', 'servicePrincipalRiskLevels', 'insiderRiskLevels') { if (@(Get-HUMxProp $c $f | Where-Object { "$_" }).Count) { $res.P2 = $true } }
-            if ($res.P2) { & $mark 'braucht Entra ID P2 (Risiko-Bedingung) - P1-Alternative: MFA bzw. Authentifizierungsstaerke immer verlangen' }
+            # 069 B3: Zusatzlizenz noetig -> P2-Kennzeichen (nicht vorgewaehlt), Hinweis je Lizenz
+            $lic = [ordered]@{ signInRiskLevels = 'Entra ID P2 (Anmelderisiko)'; userRiskLevels = 'Entra ID P2 (Benutzerrisiko)'; servicePrincipalRiskLevels = 'Workload ID Premium (Dienstprinzipal-Risiko)'; insiderRiskLevels = 'Microsoft Purview Insider-Risiko' }
+            $need = @(foreach ($f in $lic.Keys) { if (@(Get-HUMxProp $c $f | Where-Object { "$_" }).Count) { $lic[$f] } })
+            if (@(Get-HUMxProp (Get-HUMxProp $c 'clientApplications') 'includeServicePrincipals' | Where-Object { "$_" }).Count -or @(Get-HUMxProp (Get-HUMxProp $c 'clientApplications') 'servicePrincipalFilter' | Where-Object { $_ }).Count) { $need += 'Workload ID Premium (Workload-Identitaeten)' }
+            if ($need.Count) { $res.P2 = $true; & $mark "braucht Zusatzlizenz: $(($need | Select-Object -Unique) -join ', ') - mit P1 nicht nutzbar" }
             # Staerke: nur Kennung und Name behalten
             $as = Get-HUMxProp (Get-HUMxProp $o 'grantControls') 'authenticationStrength'
             if ($as) { foreach ($p in @($as.PSObject.Properties | Where-Object { $_.Name -notin 'id', 'displayName' })) { $as.PSObject.Properties.Remove($p.Name) } }
@@ -246,15 +249,18 @@ function Invoke-HUMusterSanitize {
         else {
             $txt = ''
             try { $txt = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("$(Get-HUMxProp $o 'scriptContent')$(Get-HUMxProp $o 'detectionScriptContent')")) } catch { }
+            # 072 (Gemini B3): UTF-16-kodierte Skripte (Nullbytes zwischen den Zeichen) vor der Pruefung bereinigen
+            $txt = "$txt" -replace "`0", ''
             if ($txt -match '(?i)(password|passwort|kennwort|secret|apikey|api_key|token)\s*[=:]') { & $block 'Skript enthaelt vermutlich ein Kennwort oder einen Schluessel.' }
         }
     }
     # 068 B2: eingebettete Inhalte (Base64-Werte, z. B. omaSettingBase64, iOS/macOS-payload, Zertifikate) entpacken und pruefen
     foreach ($s1 in @(Get-HUMxStrings $o)) {
         $v = "$($s1.Value)"
-        if ($v.Length -lt 64 -or $s1.Path -match '(?i)(scriptContent|detectionScriptContent|remediationScriptContent)$') { continue }
+        # 072 (Gemini B3): auch kurze Werte pruefen (ab 12 Zeichen; Base64 ab 24), Name und Beschreibung nicht (die markiert die Pruefansicht)
+        if ($v.Length -lt 12 -or $s1.Path -match '(?i)(scriptContent|detectionScriptContent|remediationScriptContent)$' -or $s1.Path -match '(?i)(^|\.)(displayName|description)$') { continue }
         $txt = $null
-        if ($v -match '^[A-Za-z0-9+/=\s]+$' -and ($v.Trim().Length % 4) -eq 0) { try { $txt = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($v.Trim())) } catch { $txt = $null } }
+        if ($v.Length -ge 24 -and $v -match '^[A-Za-z0-9+/=\s]+$' -and ($v.Trim().Length % 4) -eq 0) { try { $txt = ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($v.Trim()))) -replace "`0", '' } catch { $txt = $null } }
         $hay = if ($null -ne $txt) { $txt } else { $v }
         if ($hay -match '(?i)(-----BEGIN|<keyMaterial>|<sharedKey>|PayloadContent.{0,200}pkcs12|\bpassword\b\s*[=:<>]|<Password>|PreSharedKey|\bpsk\b)') { & $block "Eingebetteter Inhalt in '$($s1.Path)' enthaelt Schluessel, Zertifikat oder Kennwort." }
         elseif ($null -ne $txt -and $txt -match '[\x20-\x7e]{20}') { & $mark "eingebetteter Inhalt (Base64) in '$($s1.Path)' - bitte ansehen" }
@@ -326,8 +332,8 @@ function Get-HUMusterExportPlan {
         NameMarks = @($cat | ForEach-Object { "$($_.Art): $($_.Name)" })
         Ok = @($rows | Where-Object { $_.Status -eq 'ok' }).Count; Blocked = @($rows | Where-Object { $_.Status -eq 'gesperrt' }).Count
         # 067 B7: importierte Pakete behalten Herkunft und urspruenglichen Herausgeber
-        Origin = $(if ($origin -eq 'importiert') { 'importiert' } elseif ($origin -eq 'mitgeliefert') { 'mitgeliefert' } else { 'eigen' })
-        OrigPublisher = $(if ($origin -eq 'importiert' -and $Package.PSObject.Properties['Publisher']) { "$($Package.Publisher)" } else { '' })
+        Origin = $(if ($origin -in 'importiert', 'vorlage') { 'importiert' } elseif ($origin -eq 'mitgeliefert') { 'mitgeliefert' } else { 'eigen' })
+        OrigPublisher = $(if ($origin -in 'importiert', 'vorlage' -and $Package.PSObject.Properties['Publisher']) { "$($Package.Publisher)" } else { '' })
     }
 }
 
@@ -394,14 +400,27 @@ function Test-HUMxJsonText([string]$Text, [int]$MaxDepth = 64) {
     while ($i -lt $len) {
         $ch = $Text[$i]
         if ($ch -eq '"') {
-            $sb = New-Object System.Text.StringBuilder
+            $sb = New-Object System.Text.StringBuilder   # wie in der Datei (fuer die Meldung)
+            $db = New-Object System.Text.StringBuilder   # aufgeloest wie von ConvertFrom-Json (fuer den Vergleich)
             $i++
             $closed = $false
             while ($i -lt $len) {
                 $c2 = $Text[$i]
-                if ($c2 -eq '\') { if ($i + 1 -lt $len) { [void]$sb.Append($c2).Append($Text[$i + 1]) }; $i += 2; continue }
+                if ($c2 -eq '\') {
+                    if ($i + 1 -ge $len) { $i++; continue }
+                    $e = $Text[$i + 1]
+                    [void]$sb.Append($c2).Append($e)
+                    # 072 (Gemini B1): alle JSON-Escapes aufloesen - "a\/b" ist derselbe Schluessel wie "a/b", "\\u0061" ist kein "a"
+                    # (kein continue im switch - das wuerde nur den switch verlassen)
+                    $step = 2
+                    $hx = $(if ($e -ceq 'u' -and $i + 5 -lt $len) { $Text.Substring($i + 2, 4) } else { '' })
+                    if ($e -ceq 'u' -and $hx -match '^[0-9a-fA-F]{4}$') { [void]$sb.Append($hx); [void]$db.Append([char][Convert]::ToInt32($hx, 16)); $step = 6 }
+                    elseif ($e -ceq 'b') { [void]$db.Append([char]8) } elseif ($e -ceq 'f') { [void]$db.Append([char]12) } elseif ($e -ceq 'n') { [void]$db.Append("`n") }
+                    elseif ($e -ceq 'r') { [void]$db.Append("`r") } elseif ($e -ceq 't') { [void]$db.Append("`t") } else { [void]$db.Append($e) }
+                    $i += $step; continue
+                }
                 if ($c2 -eq '"') { $closed = $true; break }
-                [void]$sb.Append($c2); $i++
+                [void]$sb.Append($c2); [void]$db.Append($c2); $i++
             }
             if (-not $closed) { return 'Text nicht abgeschlossen' }
             $i++
@@ -410,8 +429,7 @@ function Test-HUMxJsonText([string]$Text, [int]$MaxDepth = 64) {
                 if ($j -lt $len -and $Text[$j] -eq ':') {
                     $set = $stack[$stack.Count - 1]
                     # gleiche Schluessel auch bei anderer Gross-/Kleinschreibung oder Unicode-Form ablehnen
-                    $kr = [regex]::Replace($sb.ToString(), '\\u([0-9a-fA-F]{4})', { param($mm) [string][char][Convert]::ToInt32($mm.Groups[1].Value, 16) })
-                    $k = $kr.Normalize([Text.NormalizationForm]::FormC).ToLowerInvariant()
+                    $k = $db.ToString().Normalize([Text.NormalizationForm]::FormC).ToLowerInvariant()
                     if ($set -and -not $set.Add($k)) { return "doppelter Schluessel '$($sb.ToString())'" }
                     $expectKey = $false
                 }
@@ -698,8 +716,13 @@ function Get-HUMusterImportPlan {
 # Plan als neues Paket in die Bibliothek (nie ueber ein vorhandenes) -> Paket
 function Save-HUMusterImport {
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)]$Plan, [string]$Title = '', [datetime]$Now = (Get-Date))
+    param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)]$Plan, [string]$Title = '', [string[]]$OnlyKeys = $null, [switch]$Checked, [datetime]$Now = (Get-Date))
     if (-not $Plan.Ok) { throw "Import nicht moeglich: $($Plan.Errors -join ' ')" }
+    # 2.5.8: nur ausgewaehlte Eintraege (Microsoft-Vorlagen: Haken in der Pruefansicht)
+    if ($null -ne $OnlyKeys) {
+        foreach ($r in @($Plan.Rows)) { if ($r.Status -eq 'ok' -and $OnlyKeys -notcontains "$($r.Typ)|$($r.Name)") { $r.Status = 'abgewaehlt' } }
+        if (-not @($Plan.Rows | Where-Object { $_.Status -eq 'ok' }).Count) { throw 'Keine Vorlage ausgewaehlt.' }
+    }
     $ok = @($Plan.Rows | Where-Object { $_.Status -eq 'ok' -and $_.Obj })
     $t = "$Title".Trim(); if (-not $t) { $t = $Plan.Title }
     # Titel frei machen (vorhandenes Paket gleichen Titels bleibt unberuehrt)
@@ -723,11 +746,46 @@ function Save-HUMusterImport {
         Write-HUBackupJson (Join-Path $tmp 'index.json') ([pscustomobject]@{ Tenant = '__MUSTER__'; Errors = 0; Complete = $true; FailedTypes = @(); Items = @($items | ForEach-Object { [pscustomobject]@{ Typ = $_.Typ; Name = $_.Name; Id = $_.Id; File = $_.File; Source = $_.Source; Stand = $_.Stand } }) })
         $cats = @(Get-HUMusterCategories)
         $cat = $(if ($cats -contains $Plan.Category -and $Plan.Category -ne 'Mitgeliefert') { $Plan.Category } else { 'Conditional Access' })
-        $extra = @{ Publisher = "$($Plan.Publisher)"; Imported = $Now.ToString('s'); ImportSha256 = "$($Plan.Sha256)"; ImportKind = "$($Plan.Kind)"; Checked = $false; Learn = @($Plan.Learn) }
-        $r = Save-HUMusterPackage -Settings $Settings -Title $t -Category $cat -Tags @($Plan.Tags) -Note "$($Plan.Note)" -Items $items.ToArray() -Origin 'importiert' -By "$($Plan.Publisher)" -Extra $extra -Now $Now
-        Write-HULog -Message "Muster importiert: '$t' ($($ok.Count) Eintraege, $(@($Plan.Rows | Where-Object { $_.Status -ne 'ok' }).Count) nicht uebernommen) - ungeprueft" -Level 'OK'
+        $extra = @{ Publisher = "$($Plan.Publisher)"; Imported = $Now.ToString('s'); ImportSha256 = "$($Plan.Sha256)"; ImportKind = "$($Plan.Kind)"; Checked = [bool]$Checked; Learn = @($Plan.Learn) }
+        $r = Save-HUMusterPackage -Settings $Settings -Title $t -Category $cat -Tags @($Plan.Tags) -Note "$($Plan.Note)" -Items $items.ToArray() -Origin $(if ("$($Plan.Origin)" -eq 'vorlage') { 'vorlage' } else { 'importiert' }) -By "$($Plan.Publisher)" -Extra $extra -Now $Now
+        Write-HULog -Message "Muster importiert: '$t' ($($ok.Count) Eintraege, $(@($Plan.Rows | Where-Object { $_.Status -ne 'ok' }).Count) nicht uebernommen) - $(if ($Checked) { 'geprueft' } else { 'ungeprueft' })$(if ("$($Plan.Origin)" -eq 'vorlage') { ', Microsoft-Vorlagen' })" -Level 'OK'
         return $r.Package
     } finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# ------------------------------------------------------------------ Microsoft-Vorlagen (2.5.8) ------------------------------------------------------------------
+# Vorlagen fuer bedingten Zugriff (Graph v1.0 /identity/conditionalAccess/templates, Recht Policy.Read.All) -> Plan wie beim Import.
+# Jede Vorlage wird eine CA-Richtlinie im Modus Nur Bericht; bereinigt wie ein Import (z. B. "Current administrator will be excluded").
+$script:HUMxTplLearn = @('https://learn.microsoft.com/entra/identity/conditional-access/concept-conditional-access-policy-common', 'https://learn.microsoft.com/graph/api/conditionalaccessroot-list-templates')
+function ConvertFrom-HUMxTemplates([object[]]$Templates, [string[]]$TenantMarkers = @(), [datetime]$Now = (Get-Date)) {
+    $plan = [pscustomobject]@{ Ok = $false; Errors = (New-Object System.Collections.Generic.List[string]); Kind = 'microsoft'; Title = "Microsoft-Vorlagen $($Now.ToString('dd.MM.yyyy'))"; Category = 'Conditional Access'
+        Tags = @('Microsoft-Vorlage'); Note = ''; Learn = $script:HUMxTplLearn; Publisher = 'Microsoft (Vorlagen fuer bedingten Zugriff)'; Exported = ''; Sha256 = ''; Rows = @(); Names = @(); NameMarks = @(); Origin = 'vorlage' }
+    $rows = New-Object System.Collections.Generic.List[object]
+    foreach ($t in @($Templates | Where-Object { $_ })) {
+        $nm = "$(Get-HUMxProp $t 'name')".Trim()
+        $d = Get-HUMxProp $t 'details'
+        if (-not $nm -or -not $d) { continue }
+        $o = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.conditionalAccessPolicy'; displayName = $nm; state = 'enabledForReportingButNotEnforced'
+            conditions = (Get-HUMxProp $d 'conditions'); grantControls = (Get-HUMxProp $d 'grantControls'); sessionControls = (Get-HUMxProp $d 'sessionControls') }
+        $s = Invoke-HUMusterSanitize -Typ 'Conditional Access' -Name $nm -Obj $o -TenantMarkers $TenantMarkers
+        $desc = "$(Get-HUMxProp $t 'description')"; $sc = "$(Get-HUMxProp $t 'scenarios')"
+        $hin = @(@($(if ($sc) { "Szenarien: $sc" })) + @($(if ($desc) { $desc })) + @($s.Marks | Where-Object { $_ -notlike 'Name: *' }) | Where-Object { $_ }) -join ' | '
+        # Vorlagen haben keine Zuweisungen - "Metadaten und Zuweisungen" waere hier nur Rauschen
+        $rem = @($s.Removed | Where-Object { $_ -ne 'Metadaten und Zuweisungen' })
+        # Entra ID P1: Vorlagen mit Risiko-Bedingung (P2) sind nicht vorgewaehlt
+        $rows.Add([pscustomobject]@{ Typ = 'Conditional Access'; Name = $nm; Id = "$(Get-HUMxProp $t 'id')"; Status = $s.Status; Grund = ($s.Reasons -join ' '); Entfernt = ($rem -join '; '); Hinweise = $hin; P2 = $s.P2; Obj = $s.Obj; IsScript = $false; Pick = (-not $s.P2) })
+    }
+    $plan.Rows = $rows.ToArray()
+    $plan.Note = "Vorlagen von Microsoft (Graph, Stand $($Now.ToString('dd.MM.yyyy'))). Beim Anwenden: neu, Nur Bericht, Notfallkonten des Ziels ausgenommen; Rollen und Apps sind in jedem Tenant gleich."
+    if (-not @($rows | Where-Object { $_.Status -eq 'ok' }).Count) { $plan.Errors.Add('Keine Vorlagen gelesen.') }
+    $plan.Ok = -not $plan.Errors.Count
+    return $plan
+}
+function Get-HUMusterTemplatePlan {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$TenantKey)
+    $tpl = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/identity/conditionalAccess/templates' -V1)
+    return (ConvertFrom-HUMxTemplates $tpl (Get-HUMxTenantMarkers $Settings))
 }
 
 # Pruefansicht fuer ein vorhandenes (importiertes) Paket vor dem Anwenden: Eintraege mit Hinweisen, ohne Bereinigung zu aendern
@@ -739,10 +797,10 @@ function Get-HUMusterReviewRows {
         $o = $null; try { if ("$($it.File)") { $o = Read-HUBackupJson (Join-Path $Package.Folder $it.File) } } catch { }
         if (-not $o) { [pscustomobject]@{ Paket = "$($Package.Title)"; Typ = "$($it.Typ)"; Name = "$($it.Name)"; Status = 'ohne Datei'; Hinweise = '' }; continue }
         $s = Invoke-HUMusterSanitize -Typ "$($it.Typ)" -Id "$($it.Id)" -Name "$($it.Name)" -Obj $o -TenantMarkers $markers
-        [pscustomobject]@{ Paket = "$($Package.Title)"; Typ = "$($it.Typ)"; Name = "$($it.Name)"; Status = $s.Status; Hinweise = (@($s.Reasons) + @($s.Marks) -join ' | ') }
+        [pscustomobject]@{ Paket = "$($Package.Title)"; Typ = "$($it.Typ)"; Name = "$($it.Name)"; Status = $s.Status; Hinweise = (@($s.Reasons) + @($s.Marks) -join ' | '); Obj = $o }
     }
 }
 
 Export-ModuleMember -Function Get-HUMxLimits, Get-HUMxImportSource, ConvertTo-HUMxFileName, Get-HUMxTenantMarkers, Invoke-HUMusterSanitize, Get-HUMusterExportPlan, Save-HUMusterExport,
     Test-HUMxJsonText, ConvertFrom-HUMxJson, Test-HUMxEntryName, Get-HUMxZipDirectory, Test-HUMusterArchive, Get-HUMxJsonKind, Get-HUMxJsonObjects,
-    Get-HUMusterImportPlan, Save-HUMusterImport, Get-HUMusterReviewRows
+    Get-HUMusterImportPlan, Save-HUMusterImport, Get-HUMusterReviewRows, ConvertFrom-HUMxTemplates, Get-HUMusterTemplatePlan

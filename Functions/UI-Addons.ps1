@@ -178,7 +178,7 @@ function Show-HUAddonDialog {
     $c.btnDel.Add_Click({
             $sel = "$($c.lstSrc.SelectedItem)"
             if (-not $sel) { return }
-            if (-not (Confirm-HU "Token fuer $sel entfernen? Das Modul wird dann nicht mehr aktualisiert; der Ordner unter Addons bleibt, bis du ihn loeschst." 'Zusatzmodul')) { return }
+            if (-not (Confirm-HU -Warning "Token fuer $sel entfernen? Das Modul wird dann nicht mehr aktualisiert; der Ordner unter Addons bleibt, bis du ihn loeschst." 'Zusatzmodul')) { return }
             $p = $sel -split '/', 2; Remove-HUAddonToken $p[0] $p[1]; & $fill
         })
     [void]$w.ShowDialog()

@@ -135,7 +135,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Funktionsübersicht <span class="ver">v2.5.5</span>
+      HU-MultiTenant · Funktionsübersicht <span class="ver">v2.6.0</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -408,6 +408,8 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
             <li>Angehakte Pakete als Spalte im Tenant-Vergleich; Teilpakete prüfen nur ihre Einträge</li>
             <li>Mitgeliefert: CA-Grundschutz, phishing-resistente MFA für Admins, Geoblock für Admins (Länder wählbar), CA Gerätekonformität, CA Schule (Praxis-Set), Entra-Grundschutz Benutzereinstellungen, Compliance Windows/Android/iOS – nach Microsoft-Empfehlung und BMB Security Baseline V2.1 (P1)</li>
             <li>Conditional Access übertragen: Gruppen je Platz in der Vorschau wählen und gleich zuweisen</li>
+            <li>Pakete als Datei exportieren und importieren – bereinigt (ohne Personen, Zuweisungen, Geheimnisse, Tenant-Kennungen), beim Import geprüft; JSON aus Portal oder Community per Ziehen <span class="new">neu</span></li>
+            <li>Microsoft-Vorlagen für bedingten Zugriff direkt holen, Prüfansicht mit Rohdaten <span class="new">neu</span></li>
           </ul>
         </div>
         <div class="group"><h4>Backup und Verlauf</h4>
@@ -430,9 +432,10 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     </article>
 
     <article class="cat" id="sicherheit" style="--c: var(--peach)">
-      <div class="cat-head"><span class="chip">🔑 Tenants</span><h3>Einrichtung und Sicherheit</h3><span class="count">8 Punkte</span></div>
+      <div class="cat-head"><span class="chip">🔑 Tenants</span><h3>Einrichtung und Sicherheit</h3><span class="count">9 Punkte</span></div>
       <div class="cat-body">
         <ul>
+          <li>App-Sicherung: Einstellungen, Tenants, Snippets, Teams-Aufträge und Moduldaten verschlüsselt sichern, prüfen und wiederherstellen – auch automatisch <span class="new">neu</span></li>
           <li>Tenant einrichten per Admin-Anmeldung im Browser <span class="new">neu</span></li>
           <li>Anmeldung per Zertifikat, nicht exportierbar, Erneuerung automatisch <span class="new">neu</span></li>
           <li>Fehlende Rechte nachträglich erteilen, weitreichende rot mit Bestätigung <span class="new">neu</span></li>
@@ -450,7 +453,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 </section>
 
 <footer>
-  <span>Stand 26.10.2026 · Version 2.5.5</span>
+  <span>Stand 27.10.2026 · Version 2.6.0</span>
   <a href="Einstieg.html">Einstieg</a>
   <a href="Anleitung.html">Anleitung</a>
   <a href="https://github.com/ChiliApple/HU-MultiTenant">Projekt auf GitHub</a>

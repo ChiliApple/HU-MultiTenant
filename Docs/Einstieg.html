@@ -170,6 +170,8 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     <a href="#liste" style="--c: var(--yellow)"><b>Schnell eine Liste für die Direktion</b><small>Lizenzen, inaktive Konten, Geräte</small></a>
     <a href="#morgens" style="--c: var(--red)"><b>Morgens wissen, ob alles läuft</b><small>Meldungen in Teams</small></a>
     <a href="#unterwegs" style="--c: var(--teal)"><b>Ich bin nicht am PC</b><small>vom Handy aus starten</small></a>
+    <a href="#teilen" style="--c: var(--mauve)"><b>Ein Kollege soll meine Einstellungen haben</b><small>Muster exportieren, Microsoft-Vorlagen</small></a>
+    <a href="#umzug" style="--c: var(--peach)"><b>Neuer PC</b><small>App-Sicherung und Wiederherstellen</small></a>
   </nav>
 </section>
 
@@ -400,6 +402,63 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
           <li>Nur freigegebene Aktionen – nicht das ganze Programm</li>
         </ul>
         <p class="tip"><b>Empfehlung:</b> Die Fernbedienung nur in einer sicheren Homeoffice-Umgebung verwenden.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="teilen" style="--c: var(--mauve)">
+    <div class="scn-head">
+      <span class="tag">Muster-Bibliothek · Austausch</span>
+      <h3>Ein Kollege soll meine Einstellungen haben</h3>
+      <p class="quote">„Unser Grundschutz für Conditional Access läuft gut. Die Kollegin an der Nachbarschule will genau das auch – ohne alles abzutippen.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Muster</span>: Paket wählen, <span class="ui">⬆ Exportieren …</span> – die Prüfansicht zeigt, was mitgeht und was gesperrt ist. Datei <code>.humuster</code> samt Prüfsumme weitergeben.</span></li>
+          <li><span>Die Kollegin zieht die Datei auf ihre Bibliothek, sieht sich das Paket an und bestätigt es als geprüft.</span></li>
+          <li><span><span class="ui">Muster anwenden</span> bringt es in ihre Tenants – Conditional Access immer im Modus <i>Nur Bericht</i>, Gruppen werden zugeordnet.</span></li>
+          <li><span>Oder ganz ohne Kollegen: <span class="ui">☁ Microsoft-Vorlagen holen …</span> legt die Vorlagen für bedingten Zugriff als Paket an.</span></li>
+        </ol>
+        <div class="meta"><span>bereinigt und beim Import geprüft</span><span>ungeprüft bis zur Bestätigung</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Dieselben Soll-Einstellungen an mehreren Schulen</li>
+          <li>Keine Personen, Zuweisungen, Geheimnisse oder Tenant-Kennungen in der Datei</li>
+          <li>Vorher im Tenant-Vergleich sehen, was fehlt oder abweicht</li>
+        </ul>
+        <p class="tip"><b>Gut zu wissen:</b> Skripte kommen beim Import nie mit – die legt jeder selbst an.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="umzug" style="--c: var(--peach)">
+    <div class="scn-head">
+      <span class="tag">App-Sicherung</span>
+      <h3>Neuer PC</h3>
+      <p class="quote">„Das Notebook wird getauscht. Snippets, Teams-Meldungen, App-Bibliothek – das will ich nicht alles neu einrichten.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span><span class="ui">⚙ Einstellungen</span> › <span class="ui">Sicherung</span>: Ordner wählen, Kennwort festlegen, <span class="ui">Jetzt sichern</span> – oder automatisch täglich.</span></li>
+          <li><span>Am neuen PC HU-MultiTenant installieren, <span class="ui">Wiederherstellen …</span>, Datei und Kennwort angeben, Bereiche anhaken.</span></li>
+          <li><span>Die App startet neu und sagt, was noch fehlt: Zertifikate bzw. Secrets je Tenant neu einrichten, Zusatzmodule installieren.</span></li>
+        </ol>
+        <div class="meta"><span>AES-256, Kennwort Pflicht</span><span>Prüfen ohne zu schreiben</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Einstellungen, Snippets, Wartung, Apps und Teams-Meldungen samt Zielen wieder da</li>
+          <li>Vorher-Stand liegt für alle Fälle daneben</li>
+          <li>💾 in der Kopfzeile zeigt die letzte Sicherung</li>
+        </ul>
+        <p class="tip"><b>Wichtig:</b> Kennwort vergessen = Sicherung verloren. Kennwort im Kennwort-Manager aufbewahren und die Datei wie ein Geheimnis behandeln.</p>
       </div>
     </div>
   </article>

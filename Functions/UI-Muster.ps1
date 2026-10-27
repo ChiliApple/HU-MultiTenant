@@ -125,12 +125,12 @@ function Update-HUMuList([string]$SelectId = '') {
         }
         if (-not $ok) { continue }
         $herk = @($p.Sources | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', '
-        if ("$($p.Origin)" -eq 'importiert') { $herk = "importiert$(if ($p.Publisher) { " von $($p.Publisher)" })$(if (-not $p.Checked) { ', ungeprueft' })" }
+        if ("$($p.Origin)" -eq 'vorlage') { $herk = "Microsoft-Vorlagen (Graph)" } elseif ("$($p.Origin)" -eq 'importiert') { $herk = "importiert$(if ($p.Publisher) { " von $($p.Publisher)" })$(if (-not $p.Checked) { ', ungeprueft' })" }
         $sub = @(@($p.TagText) + @($herk) | Where-Object { $_ }) -join '  |  '
-        $lock = if ($p.BuiltIn) { "$([char]::ConvertFromUtf32(0x1F512)) " } elseif ("$($p.Origin)" -eq 'importiert' -and -not $p.Checked) { "$([char]0x26A0) " } else { '' }
+        $lock = if ($p.BuiltIn) { "$([char]::ConvertFromUtf32(0x1F512)) " } elseif ("$($p.Origin)" -in 'importiert', 'vorlage' -and -not $p.Checked) { "$([char]0x26A0) " } else { '' }
         [pscustomobject]@{
             Id = $p.Id; Title = "$lock$($p.Title)"; Category = $p.Category; Count = $p.Count; Sel = ($sel -contains $p.Id); Sub = $sub
-            Tip = "$($p.Title)$(if ($p.BuiltIn) { "`nMitgeliefert - schreibgeschuetzt, zum Anpassen duplizieren" })$(if ("$($p.Origin)" -eq 'importiert' -and -not $p.Checked) { "`nImportiert, ungeprueft - anwenden erst nach Bestaetigung" })`n$($p.Category) - $($p.Count) Eintraege$(if ($p.Complete) { ' - Gesamtstand (im Vergleich zaehlt auch, was fehlt)' } else { ' - Teilpaket (prueft nur seine Eintraege)' })`nHerkunft: $herk`nGeaendert: $($p.ChangedText)$(if ($p.Note) { "`n$(Get-HUMuTipNote $p.Note)" })"
+            Tip = "$($p.Title)$(if ($p.BuiltIn) { "`nMitgeliefert - schreibgeschuetzt, zum Anpassen duplizieren" })$(if ("$($p.Origin)" -in 'importiert', 'vorlage' -and -not $p.Checked) { "`nImportiert, ungeprueft - anwenden erst nach Bestaetigung" })`n$($p.Category) - $($p.Count) Eintraege$(if ($p.Complete) { ' - Gesamtstand (im Vergleich zaehlt auch, was fehlt)' } else { ' - Teilpaket (prueft nur seine Eintraege)' })`nHerkunft: $herk`nGeaendert: $($p.ChangedText)$(if ($p.Note) { "`n$(Get-HUMuTipNote $p.Note)" })"
         }
     }
     $view = [System.Windows.Data.CollectionViewSource]::GetDefaultView(@($rows))
@@ -178,12 +178,12 @@ function Update-HUMuDetail {
     $herk = @($p.Sources | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', '
     if ($p.BuiltIn) {
         $c['lblMuMeta'].Text = "$([char]::ConvertFromUtf32(0x1F512)) Mitgeliefert, schreibgeschuetzt  |  $($p.CopyCategory) (Teilpaket)  |  $($p.Count) Eintraege  |  Vorlage vom $(([datetime]::Parse($p.Changed, [Globalization.CultureInfo]::InvariantCulture)).ToString('dd.MM.yyyy'))  |  zum Anpassen: Duplizieren"
-    } elseif ("$($p.Origin)" -eq 'importiert') {
-        $c['lblMuMeta'].Text = "$(if (-not $p.Checked) { "$([char]0x26A0) ungeprueft  |  " })$($p.Category)$(if (-not $p.Complete) { ' (Teilpaket)' })  |  $($p.Count) Eintraege  |  importiert$(if ($p.Imported) { ' am ' + $(try { ([datetime]::Parse($p.Imported, [Globalization.CultureInfo]::InvariantCulture)).ToString('dd.MM.yyyy') } catch { $p.Imported }) })$(if ($p.Publisher) { ", Herausgeber: $($p.Publisher)" })$(if ($p.ImportSha256) { "  |  SHA-256 $($p.ImportSha256.Substring(0, [Math]::Min(16, $p.ImportSha256.Length)))..." })"
+    } elseif ("$($p.Origin)" -in 'importiert', 'vorlage') {
+        $c['lblMuMeta'].Text = "$(if (-not $p.Checked) { "$([char]0x26A0) ungeprueft  |  " })$($p.Category)$(if (-not $p.Complete) { ' (Teilpaket)' })  |  $($p.Count) Eintraege  |  $(if ("$($p.Origin)" -eq 'vorlage') { 'von Microsoft geholt' } else { 'importiert' })$(if ($p.Imported) { ' am ' + $(try { ([datetime]::Parse($p.Imported, [Globalization.CultureInfo]::InvariantCulture)).ToString('dd.MM.yyyy') } catch { $p.Imported }) })$(if ($p.Publisher) { ", Herausgeber: $($p.Publisher)" })$(if ($p.ImportSha256) { "  |  SHA-256 $($p.ImportSha256.Substring(0, [Math]::Min(16, $p.ImportSha256.Length)))..." })"
     } else {
         $c['lblMuMeta'].Text = "$($p.Category)$(if (-not $p.Complete) { ' (Teilpaket)' })  |  $($p.Count) Eintraege  |  Herkunft: $herk  |  geaendert $($p.ChangedText)$(if ($p.By) { " von $($p.By)" })"
     }
-    $c['btnMuCheck'].Visibility = $(if ("$($p.Origin)" -eq 'importiert' -and -not $p.Checked) { 'Visible' } else { 'Collapsed' })
+    $c['btnMuCheck'].Visibility = $(if ("$($p.Origin)" -in 'importiert', 'vorlage' -and -not $p.Checked) { 'Visible' } else { 'Collapsed' })
     foreach ($b in 'btnMuEdit', 'btnMuDel') {
         $c[$b].IsEnabled = -not $p.BuiltIn
         [System.Windows.Controls.ToolTipService]::SetShowOnDisabled($c[$b], $true)
@@ -295,11 +295,16 @@ function Start-HUMuDelete {
 # Zur Analyse wechseln und den Vergleich mit den angehakten Paketen starten
 function Start-HUMuCompare {
     $c = $script:Controls
-    if (-not @(Get-HUMuSelIds).Count) {
-        if (-not $script:MuCur) { Show-HUMessage 'Bitte links mindestens ein Paket anhaken.' -Icon Info; return }
-        Set-HUMuSelIds @($script:MuCur)
-        Update-HUMuList
-    }
+    # 2.5.8: der Knopf sitzt am rechts gezeigten Paket - dieses vergleichen. Ist es nicht angehakt, kommt es dazu (069 B5, Udo: nur dazunehmen).
+    $sel = @(Get-HUMuSelIds)
+    if ($script:MuCur -and $sel -notcontains $script:MuCur) {
+        Set-HUMuSelIds @(@($sel) + @($script:MuCur))
+        if ($sel.Count) { Add-HURtbLine $c['rtbMu'] "Im Tenant-Vergleich: gezeigtes Paket dazugenommen (zusammen mit $($sel.Count) schon angehakten)." '#90CAF9' }
+        Update-HUMuList $script:MuCur
+    } elseif (-not $sel.Count) { Show-HUMessage 'Bitte links ein Paket waehlen.' -Icon Info; return }
+    # Arten-Auswahl zuruecksetzen, damit alle Eintraege des Pakets sichtbar sind
+    $script:CmpTypeWanted = ''; try { Set-HUStateValue 'cmpType' '' } catch { }
+    try { $c['cmbCmpType'].SelectedIndex = 0 } catch { }
     $c['chkCmpMuster'].IsChecked = $true
     try { $c['tabMain'].SelectedItem = $c['tabAnalyse'] } catch { }
     Set-HUAnaMode 'cmp'

@@ -475,7 +475,7 @@ function Get-HUErPlanCaNew($Plan, [string]$TenantKey, $Settings, $Backup, [strin
         if ($f -eq 'grantControls') { if ($h.ContainsKey('authenticationStrength')) { $h.Remove('authenticationStrength') }; if ($asId) { $h['authenticationStrength'] = @{ id = $asId } } }
         if ($h.Count) { $body[$f] = $h }
     }
-    # 054 B1 (Gemini): bekannte Listenfelder immer als Liste senden - Absicherung gegen PS-5.1-Auspacken (eine Liste mit einem Eintrag -> Text -> Graph 400)
+    # 054 B1: bekannte Listenfelder immer als Liste senden - Absicherung gegen PS-5.1-Auspacken (eine Liste mit einem Eintrag -> Text -> Graph 400)
     $asList = { param($d, [string[]]$names) if ($d -is [System.Collections.IDictionary]) { foreach ($n in $names) { if ($d.Contains($n) -and $null -ne $d[$n]) { $d[$n] = [object[]]@($d[$n]) } } } }
     if ($body.ContainsKey('grantControls')) { & $asList $body['grantControls'] @('builtInControls', 'customAuthenticationFactors', 'termsOfUse') }
     if ($body.ContainsKey('conditions')) {
@@ -727,7 +727,7 @@ function Get-HUErTrPlanConsent($Plan, [string]$TargetKey, $Settings, $Backup, [s
                     $mu = [regex]::Match($q, "/users/$g"); $mg = [regex]::Match($q, "/groups/$g")
                     if ($mu.Success) { try { "Benutzer $((Invoke-HUErGraph $TargetKey $Settings "/users/$($mu.Groups[1].Value)?`$select=userPrincipalName").userPrincipalName)" } catch { "Benutzer $($mu.Groups[1].Value)" } }
                     elseif ($mg.Success) { try { "Gruppe $((Invoke-HUErGraph $TargetKey $Settings "/groups/$($mg.Groups[1].Value)?`$select=displayName").displayName)" } catch { "Gruppe $($mg.Groups[1].Value)" } }
-                    # 054 B3 (Gemini): Rollen-Reviewer mit Namen statt rohem Abfragepfad
+                    # 054 B3: Rollen-Reviewer mit Namen statt rohem Abfragepfad
                     elseif ($q -match "roleDefinition(s/|Id eq ')$g") { $rid = $Matches[2]; try { "Rolle $((Invoke-HUErGraph $TargetKey $Settings "/roleManagement/directory/roleDefinitions/$rid`?`$select=displayName").displayName)" } catch { "Rolle $rid" } }
                     else { $q }
                 })

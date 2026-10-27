@@ -542,7 +542,7 @@ function Set-APArchivAusgeschieden([switch]$Aufheben) {
     } else {
         $inAp = @($sel | Where-Object { $_.InAutopilot -eq 'ja' }).Count
         $frage = "$($sel.Count) Geraet(e) in $(Get-APTenantName $t) als ausgeschieden kennzeichnen?`n`nDer Hash bleibt im Archiv. Beim Aufnehmen werden die Geraete nicht mehr angeboten." + $(if ($inAp) { "`n`nACHTUNG: $inAp davon stehen noch in Autopilot - die Kennzeichnung entfernt sie dort NICHT (das macht spaeter der Reiter Ausscheiden)." } else { '' })
-        if (-not (Confirm-HU $frage 'Autopilot - ausgeschieden')) { return }
+        if (-not (Confirm-HU -Warning $frage 'Autopilot - ausgeschieden')) { return }
     }
     $datum = if ($Aufheben) { '' } else { (Get-Date).ToString('yyyy-MM-dd HH:mm') }
     $liste = @(Set-APAusgeschieden @(Get-APArchivDaten $t) ([string[]]@($sel | ForEach-Object { $_.Seriennummer })) $datum)
@@ -753,7 +753,7 @@ function New-APAufGruppeUI {
     if (-not $name) { Show-HUMessage 'Bitte einen Namen fuer die Gruppe eintippen.' -Icon Info; return }
     if (@($script:APAufRechte[$t]) -contains 'Group.Create') { Show-HUMessage 'Zum Anlegen fehlt das Recht Group.Create - oben "Rechte erteilen ..." verwenden.' -Icon Info; return }
     $regel = New-APGruppenRegel $tag
-    if (-not (Confirm-HU "Dynamische Sicherheitsgruppe in $(Get-APTenantName $t) anlegen?`n`nName: $name`nRegel: $regel`nVerarbeitung: Ein`n`nDie Gruppe bekommt KEIN Autopilot-Profil - das wird im Portal zugewiesen. Mitglieder erscheinen erst, wenn Entra die Regel verarbeitet hat (kann dauern)." 'Autopilot - Gruppe anlegen')) { return }
+    if (-not (Confirm-HU -Warning "Dynamische Sicherheitsgruppe in $(Get-APTenantName $t) anlegen?`n`nName: $name`nRegel: $regel`nVerarbeitung: Ein`n`nDie Gruppe bekommt KEIN Autopilot-Profil - das wird im Portal zugewiesen. Mitglieder erscheinen erst, wenn Entra die Regel verarbeitet hat (kann dauern)." 'Autopilot - Gruppe anlegen')) { return }
     $script:APAufJobTenant = $t
     Set-APDot $c['apDotAuf'] $true
     $ok = Start-HUJob -Name 'AP-AufGruppe' -Output $c['apLog'] -Vars @{ APCore = $script:APCore; APTenant = $t; APName = $name; APTag = $tag } -Code {
@@ -1587,7 +1587,7 @@ function Grant-APRechte {
     $fehlt = @($script:APRechteStand.Values | Where-Object { -not $_.Fehler -and @($_.Fehlt).Count } | Sort-Object Tenant)
     if (-not $fehlt.Count) { return }
     $liste = (@($fehlt | ForEach-Object { "  $(Get-APTenantName $_.Tenant): $(@($_.Fehlt) -join ', ')" }) -join "`n")
-    if (-not (Confirm-HU "Fehlende Leserechte erteilen:`n`n$liste`n`nJe Tenant oeffnet sich das Fenster 'Rechte erteilen' mit den fehlenden Rechten vorausgewaehlt. Ein Global Administrator des Tenants meldet sich einmal im Browser an.`n`nWeiter?" 'Autopilot')) { return }
+    if (-not (Confirm-HU -Warning "Fehlende Leserechte erteilen:`n`n$liste`n`nJe Tenant oeffnet sich das Fenster 'Rechte erteilen' mit den fehlenden Rechten vorausgewaehlt. Ein Global Administrator des Tenants meldet sich einmal im Browser an.`n`nWeiter?" 'Autopilot')) { return }
     foreach ($f in $fehlt) {
         try { [void](Show-HUTenantSetupDialog -TenantKey "$($f.Tenant)" -Preselect @($f.Fehlt)) } catch { Show-HUMessage "$(Get-APTenantName $f.Tenant): $($_.Exception.Message)" -Icon Warning }
     }

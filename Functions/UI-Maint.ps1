@@ -303,7 +303,7 @@ function Import-HURemAnswer {
     try { $t = [System.Windows.Clipboard]::GetText() } catch { }
     if (-not "$t".Trim()) { Show-HUMessage 'Die Zwischenablage ist leer - zuerst die Antwort der KI kopieren.' -Icon Warning; return }
     $c = $script:Controls
-    if (($c['txtRemDetect'].Text.Trim() -or $c['txtRemFix'].Text.Trim()) -and -not (Confirm-HU 'Vorhandene Skripte ersetzen?')) { return }
+    if (($c['txtRemDetect'].Text.Trim() -or $c['txtRemFix'].Text.Trim()) -and -not (Confirm-HU -Warning 'Vorhandene Skripte ersetzen?')) { return }
     $s = Split-HUAiAnswer $t
     $c['txtRemDetect'].Text = $s.Detection
     $c['txtRemFix'].Text = $s.Remediation
@@ -439,7 +439,7 @@ function Start-HURemDeploy([switch]$Release) {
     $tText = if ($r.TargetKind -eq 'none' -and -not $Release) { 'keine Zuweisung (nur hochladen/aktualisieren)' } elseif ($r.Pilot -and -not $Release) { "Pilotgruppe '$($r.PilotGroup)'" } elseif ($r.TargetKind -eq 'allDevices') { 'Alle Geraete' } else { "Gruppe '$($r.TargetGroup)'" }
     $names = @($tenants | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', '
     $mode = if ("$($r.Remediation)".Trim()) { 'pruefen und reparieren' } else { 'nur pruefen und berichten' }
-    if (-not (Confirm-HU "$($r.Name)`n`nTenants: $names`nZiel: $tText`nZeitplan: $(Get-HURemScheduleText $r)`nModus: $mode, als $(if ($r.RunAs -eq 'user') { 'Benutzer' } else { 'System' })`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
+    if (-not (Confirm-HU -Warning "$($r.Name)`n`nTenants: $names`nZiel: $tText`nZeitplan: $(Get-HURemScheduleText $r)`nModus: $mode, als $(if ($r.RunAs -eq 'user') { 'Benutzer' } else { 'System' })`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
 
     Set-HUStateValue 'remTenants' @($r.Tenants)
     if ($r.TargetGroup) { Set-HUStateValue 'remLastGroup' $r.TargetGroup }

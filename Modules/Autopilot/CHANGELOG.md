@@ -1,5 +1,10 @@
 # Changelog – Zusatzmodul Autopilot
 
+## v0.5.3 – 27.10.2026 (mit HU-MultiTenant 2.6.0 Stable)
+
+### 🛡️ Sicherheit
+- **Rückfragen mit Warnung:** „Als ausgeschieden kennzeichnen“, „Dynamische Gruppe anlegen“ und „Fehlende Leserechte erteilen“ fragen als Warnung – Enter bedeutet „Nein“.
+
 ## v0.5.2 – 27.10.2026 (mit HU-MultiTenant 2.5.7 Test)
 
 ### 💾 Hash-Archiv

@@ -1,5 +1,67 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.0 (Stable, 27.10.2026)
+
+Stable-Release der Testversionen 2.5.6 bis 2.5.9 – „Austausch und Sicherung“. Alle Punkte im Detail stehen in den Abschnitten darunter.
+
+### ⭐ Muster-Bibliothek
+- **Exportieren und importieren:** Pakete als Datei `.humuster` weitergeben – bereinigt (ohne Personen, Zuweisungen, Geheimnisse und Tenant-Kennungen) und beim Import geprüft; JSON-Dateien aus dem Portal oder der Community per Ziehen übernehmen. Importierte Pakete erst nach „Als geprüft bestätigen“ anwendbar.
+- **Microsoft-Vorlagen holen:** Vorlagen für bedingten Zugriff direkt von Microsoft als neues Paket – gilt als geprüft (Quelle Microsoft), beim Anwenden immer im Modus *Nur Bericht*; Vorlagen mit Zusatzlizenz nicht vorgewählt. Braucht das Recht `Policy.Read.All`.
+- **Prüfansicht mit Rohdaten** per Doppelklick; „Im Tenant-Vergleich ansehen“ nimmt das gezeigte Paket.
+
+### 💾 App-Sicherung
+- **Neuer Reiter „Sicherung“:** Einstellungen, Tenants, Snippets, Wartung, Apps, Teams-Aufträge samt Zielen, Fensterzustand und Daten der Zusatzmodule in eine verschlüsselte Datei (AES-256, Kennwort Pflicht); dazu standardmäßig die Muster-Bibliothek, auf Wunsch die Tenant-Backups.
+- **Automatisch** täglich oder wöchentlich, **Prüfen** ohne zu schreiben, **Wiederherstellen** mit Auswahl, Vorstand und Neustart. Fortschritt in der Kopfzeile, Hinweis unten rechts.
+
+### 🛡️ Sicherheitskatalog
+- **V5** mit Sollwert für die Richtlinien des MFA-Grundschutzes, **A42** mit erlaubten Apps; auffällige Zeilen dezent eingefärbt.
+
+### 🎨 Oberfläche
+- **Rückfragen, die im Tenant schreiben, löschen oder Rechte erteilen, sind Warnungen:** „Nein“ ist vorgewählt (Enter, erkennbar am hellen Rahmen), der Ja-Knopf rot – z. B. Zuweisen, Ändern, Hochladen, Freigeben, Rechte erteilen, Einrichtung entfernen. Ein Test prüft das für alle Rückfragen.
+- **Meldungen und Rückfragen im App-Stil** statt Windows-Meldungen; Ausgaben mit neuestem Ereignis oben, Umkehren und Löschen; Knöpfe nie abgeschnitten.
+
+### 💻 Modul Autopilot 0.5.3
+- Hash-Dateiname mit Seriennummer bzw. Tenant und Anzahl; Rückfragen zum Kennzeichnen, Gruppe anlegen und Rechte erteilen als Warnung.
+
+### 🗺️ Doku
+- **Einstieg:** neue Situationen „Ein Kollege soll meine Einstellungen haben“ (Muster exportieren, Microsoft-Vorlagen) und „Neuer PC“ (App-Sicherung); Anleitung, Funktionsübersicht, Roadmap und Installation (`Policy.Read.All` für Vorlagen) auf Stand 2.6.0.
+
+### ⚠️ Bekannte Grenzen
+- **App-Sicherung:** Secrets und Zertifikate sind an PC und Windows-Benutzer gebunden und nicht enthalten – nach dem Wiederherstellen auf einem neuen PC je Tenant neu einrichten; ebenso gekoppelte Handys und Freigaben der Fernbedienung. Zusatzmodule werden nur vermerkt und müssen neu installiert werden.
+- **App-Sicherung:** beim Lesen höchstens 2 GB; die Automatik läuft nur, solange HU-MultiTenant geöffnet ist (oder beim nächsten Start). Bricht das Wiederherstellen mittendrin ab, liegt der vorige Stand unter `%APPDATA%\HU-MultiTenant\Wiederherstellung`.
+- **App-Sicherung – Kennwort:** Ohne Kennwort ist eine Sicherung nicht zu öffnen – **vergessenes Kennwort = Sicherung verloren**. Das für die Automatik gespeicherte Kennwort gilt nur auf diesem PC für diesen Windows-Benutzer und hilft auf einem neuen PC nicht – Kennwort deshalb im Kennwort-Manager aufbewahren.
+- **App-Sicherung – wie ein Geheimnis behandeln:** Die Datei enthält (verschlüsselt) Teams-Webhook-Adressen, Tenant-Einstellungen, Snippets und Wartungsskripte. Ordner nur für dich zugänglich wählen; Sicherungen **nur aus eigener Quelle wiederherstellen** – wiederhergestellte Snippets und Wartungsskripte laufen danach mit den Rechten der Tenants bzw. als SYSTEM auf den Geräten.
+- **Muster-Austausch:** WLAN-, VPN- und Zertifikatprofile werden nicht exportiert, Skripte nur nach Einzelfreigabe. **Beim Import werden Skripte (Plattform-Skripte, Wartung) nie übernommen** – auch nicht, wenn sie beim Export freigegeben waren; fremde Skripte bitte selbst prüfen und von Hand anlegen. Workload-Identitäten und Nutzungsbedingungen in Conditional Access sind gesperrt (gibt es nur im eigenen Tenant); Gruppen, Orte und eigene Stärken gehen nur als Namen mit und werden beim Anwenden im Ziel zugeordnet. Pakete sind (noch) nicht signiert – die Prüfung beim Import ersetzt keine Vertrauensprüfung des Absenders.
+- **Microsoft-Vorlagen:** Inhalt kommt unverändert von Microsoft (Graph); neue oder geänderte Vorlagen werden beim erneuten Holen (noch) nicht hervorgehoben.
+
+## v2.5.9 (Testversion)
+
+Dritte Stufe von 2.6.0 „Austausch und Sicherung“.
+
+### 💾 App-Sicherung
+- **Neuer Reiter „Sicherung“ in den Einstellungen:** sichert Einstellungen und Tenants, Quick-Script-Snippets, Wartungsskripte, Apps samt Symbolen, Teams-Aufträge **mit ihren Zielen (Webhook-Adressen)**, Fensterzustand, Fernbedienungs-Einstellungen und die Daten der Zusatzmodule in **eine Datei** (`.husicherung`). Auf Wunsch zusätzlich die eigenen Muster-Pakete samt Mustertenant und die Tenant-Backups.
+- **Immer mit Kennwort verschlüsselt:** AES-256 mit Prüfsumme (HMAC-SHA256), Schlüssel aus dem Kennwort per PBKDF2 (600 000 Durchgänge). Ein falsches Kennwort und eine veränderte Datei werden gleich gemeldet; entschlüsselt wird erst nach der Prüfung.
+- **Bewusst nicht enthalten:** Secrets und Zertifikate (an diesen PC gebunden), gekoppelte Handys, Freigaben der Fernbedienung und die Sperr-PIN – nach dem Wiederherstellen neu eintragen.
+- **Automatisch** täglich oder wöchentlich nach Kalendertagen: beim ersten Start des Tages bzw. – wenn die App durchläuft – kurz nach Mitternacht (geprüft alle 15 Minuten; nach einem Fehlschlag frühestens nach einer Stunde erneut), mit gespeichertem Kennwort (Windows-Datenschutz, nur dieser Benutzer). Die neuesten *N* Sicherungen **dieses PCs** bleiben, ältere eigene werden gelöscht – in einem gemeinsamen Ordner bleiben die Sicherungen anderer PCs unberührt. Jede Sicherung wird nach dem Schreiben zurückgelesen und geprüft – auch auf Netzwerkfreigaben.
+- **Sichtbar im Hauptfenster:** neben dem Schlüssel zeigt 💾 die letzte Sicherung (Tooltip), während einer Sicherung den Fortschritt in Prozent, bei einem Fehler ein orangefarbenes „!“; Klick öffnet Einstellungen › Sicherung. Im Reiter steht der Fortschritt bei „Letzte Sicherung“, der Knopf ist solange gesperrt.
+- **Hinweis unten rechts** (im App-Stil) nach jeder automatischen Sicherung: erstellt (mit Dateien und Größe), fehlgeschlagen oder übersprungen (kein Kennwort gespeichert). Verschwindet von selbst (Fehler nach 20 s), bleibt stehen, solange die Maus darauf ist; Klick öffnet Einstellungen › Sicherung (nicht bei gesperrter App).
+- **Sicherung prüfen:** Kennwort, Prüfsummen und Inhalt testen, ohne etwas zu schreiben.
+- **Wiederherstellen:** Bereiche per Haken wählen (Stand in der Sicherung ↔ aktuell). Vorher wird der aktuelle Stand der betroffenen Dateien abgelegt (`%APPDATA%\HU-MultiTenant\Wiederherstellung`, die letzten 5). `settings.json` wird vorher probeweise geladen. Teams-Ziele werden auf dem neuen PC wieder verschlüsselt abgelegt; Teams-Aufträge, deren Ziel es danach nicht gibt, werden pausiert. Danach ein Hinweis: fehlende Secrets, nicht vorhandene Ordner, nicht installierte Zusatzmodule. Sicherungen aus einer neueren Version werden abgelehnt. Haken mit einem Klick, „Alle“ setzt bzw. entfernt alle. Danach startet die App **immer neu** (das Einstellungsfenster schließt ohne Speichern) – so kann kein alter Stand aus dem Speicher den wiederhergestellten überschreiben.
+
+### 🎨 Oberfläche
+- **Meldungen und Rückfragen im App-Stil:** alle Hinweise, Fehler und Ja/Nein-Fragen erscheinen jetzt im dunklen Design der App statt als Windows-Meldung – mit farbigem Symbol, Knöpfen in App-Farben und markierbarem Text (Strg+C kopiert die ganze Meldung). Das Fenster wächst mit dem Text; ein Rollbalken kommt erst, wenn der Text nicht mehr auf den Bildschirm passt. Bei Warnungen ist „Nein“ der Standard für Enter.
+
+## v2.5.8 (Testversion)
+
+Zweite Stufe von 2.6.0 „Austausch und Sicherung“.
+
+### ⭐ Muster-Bibliothek
+- **Microsoft-Vorlagen holen:** Knopf unten in der Bibliothek liest die Vorlagen für bedingten Zugriff direkt von Microsoft (Graph, `Policy.Read.All`). In der Prüfansicht mit Haken auswählen, Name vergeben – es entsteht ein neues Paket (Herausgeber Microsoft, schon geprüft). Beim Anwenden kommt jede Vorlage neu im Modus *Nur Bericht* an, ohne Konten und Gruppen, die Notfallkonten des Ziels ausgenommen.
+- **„Im Tenant-Vergleich ansehen“** vergleicht das rechts gezeigte Paket (ist es nicht angehakt, kommt es zu den angehakten dazu) und zeigt alle Arten statt einer vorher gewählten. Steht ein Eintrag nur im Muster, heißt der Status jetzt **„nur im Muster (fehlt in allen Tenants)“** statt „nur in einem“.
+- **Muster anwenden:** Schließen, während die Admin-Anmeldung noch offen ist, fragt nicht mehr nach „Rechte zurückgeben“. Kommt die Anmeldung danach doch noch zurück, wird **nichts** erteilt (nur im Protokoll vermerkt).
+- **Vorlagen:** Vorlagen mit Zusatzlizenz (Entra ID P2, Workload ID Premium, Purview Insider-Risiko) sind nicht vorgewählt und nennen die Lizenz; eingebaute Authentifizierungsstärken (z. B. phishingresistente MFA) bleiben erhalten. Gelesen wird über den gewählten Tenant (die Vorlagen sind überall gleich). Das Paket zeigt als Herkunft „Microsoft-Vorlagen“.
+- **Rohdaten in der Prüfansicht:** Doppelklick auf einen Eintrag zeigt ihn als JSON – genau so, wie er bereinigt in die Datei bzw. das Paket geht (Export, Import, Vorlagen, Bestätigen).
+
 ## v2.5.7 (Testversion)
 
 Erste Stufe von 2.6.0 „Austausch und Sicherung“.
@@ -751,7 +813,7 @@ schon in 2.1.10 enthalten.
 - Tages-Ampel: "Secret-Ablauf unbekannt (kein Ablaufdatum)" als Hinweis, wenn das Secret kein Enddatum liefert.
 - **Exit-Codes** des Headless-Laufs (Aufgabenplanung "Letztes Ergebnis"): 0 OK/nichts zu melden, 1 Fehler,
   2 teilweise gesendet, 3 Konfiguration (Auftrag/Ziele/Tenants/settings.json). Der Reiter zeigt den Code als Text.
-- Groks Lueckentests aus Review 029 sind als `.github\tests\*.Review029.Tests.ps1` Teil der CI.
+- Die Lueckentests aus Review 029 sind als `.github\tests\*.Review029.Tests.ps1` Teil der CI.
 
 ### Quick Script
 - **Protokolldateien maskieren Secrets und Token** (z. B. ein neu angelegtes Client Secret, das ein Snippet ausgibt) - vorher standen sie im Klartext in `Logs\QuickScript\*.log` (aus PR #12 vorgezogen)

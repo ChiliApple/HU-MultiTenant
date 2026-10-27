@@ -48,7 +48,7 @@ Umsteigen von Secret: bestehenden Tenant einfach einrichten (wird an der Tenant-
 | `DeviceManagementScripts.ReadWrite.All` | Reiter **Wartung** (Remediations), Remote FB › Intune – **weitreichend**: erlaubt Skripte als SYSTEM auf allen verwalteten Geräten |
 | `Group.Read.All` | Apps/Wartung: Zielgruppe per Name finden, Sicherheitskatalog (Sync-Fehler A39) |
 | `DeviceManagementManagedDevices.PrivilegedOperations.All` | Wartung: *Jetzt auf Gerät ausführen*, Sync – **weitreichend**: erlaubt auch Löschen, Zurücksetzen und Außerbetriebnahme von Geräten |
-| `Policy.Read.All` | Analyse: Conditional Access im Vergleich und Backup, Namen benannter Orte; Sicherheitskatalog (Richtlinien, Anmeldemethoden, Zustimmungs-Workflow) |
+| `Policy.Read.All` | Analyse: Conditional Access im Vergleich und Backup, Namen benannter Orte; Sicherheitskatalog (Richtlinien, Anmeldemethoden, Zustimmungs-Workflow); Muster: Microsoft-Vorlagen für bedingten Zugriff holen |
 | `SharePointTenantSettings.Read.All` | Sicherheitskatalog: externe Freigabe (A33), nur lesend |
 | `Device.Read.All` | Analyse: *Was bekommt …?* für Geräte (Gerätegruppen) |
 | `DeviceManagementConfiguration.ReadWrite.All` | Analyse: fehlende Profile/Richtlinien in andere Tenants kopieren, aus Backup wiederherstellen (zum Lesen reicht `Read.All`) |

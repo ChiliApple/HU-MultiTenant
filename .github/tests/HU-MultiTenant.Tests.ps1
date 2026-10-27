@@ -831,6 +831,11 @@ Describe 'Analyse: Tenant-Vergleich' {
         $cp = $m | Where-Object Typ -eq 'Compliance'
         $cp.Missing.Count | Should -Be 0; $cp.Status | Should -Match 'abweichend'
     }
+    It 'Matrix: nur im Muster wird eigens benannt' {
+        $rows = @([pscustomobject]@{ Tenant = '__MUSTER__'; Typ = 'Bedingter Zugriff'; Name = 'Vorlage'; Id = 'x'; Hash = 'h'; Copy = 'ca' })
+        $m = @(Get-HUCompareMatrix $rows @('__MUSTER__', 't1', 't2'))
+        $m[0].Status | Should -Be 'nur im Muster (fehlt in allen Tenants)'
+    }
     It 'Matrix: Copy-Kennzeichen kommt von der ersten Zeile MIT Kennzeichen (Muster-Stand zuerst in der Gruppe)' {
         $rows = @(
             [pscustomobject]@{ Tenant = '__MUSTER__'; Typ = 'Konfiguration'; Name = 'Win'; Id = 'a'; Hash = 'h1'; Copy = '' }

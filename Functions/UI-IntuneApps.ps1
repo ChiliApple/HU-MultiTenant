@@ -383,7 +383,7 @@ function Add-HUIntAssignment {
     $intent = Get-HUComboTag $c['cmbIntIntent']
     $t = @{ Kind = $kind; GroupName = $grp; Intent = $intent }
     $lbl = switch ($kind) { 'allDevices' { 'Alle Geraete' } 'allUsers' { 'Alle Benutzer' } 'exclude' { "Ausschluss '$grp'" } default { "Gruppe '$grp'" } }
-    if (-not (Confirm-HU "$($script:IntCurrent.Name)`n`nZuweisen: $lbl - $($script:IntIntentText[$intent])`nTenants: $(@($script:IntCurrent.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nAusfuehren?")) { return }
+    if (-not (Confirm-HU -Warning "$($script:IntCurrent.Name)`n`nZuweisen: $lbl - $($script:IntIntentText[$intent])`nTenants: $(@($script:IntCurrent.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nAusfuehren?")) { return }
     Start-HUIntAction 'Zuweisen' -Vars @{ T = $t; Notify = (Get-HUComboTag $c['cmbIntNotify']); Deadline = $dl } -Code {
         foreach ($k in $Per.Keys) {
             try {
@@ -470,7 +470,7 @@ function Save-HUIntProperties {
     if ($null -ne $script:IntCatsOrig -and $catText -and $catText -ne $script:IntCatsOrig) { $v.Cats = @(ConvertTo-HUCategoryList $catText) }
     if (-not ($v.Name -or $v.Publisher -or $v.Description -or $v.IconFile -or $v.Cats.Count)) { Show-HUMessage 'Nichts geaendert.' -Icon Info; return }
     $what = @(); if ($v.Name) { $what += "Name -> $($v.Name)" }; if ($v.Publisher) { $what += 'Hersteller' }; if ($v.Description) { $what += 'Beschreibung' }; if ($v.IconFile) { $what += 'Symbol' }; if ($v.Cats.Count) { $what += "Kategorien -> $($v.Cats -join ', ')" }
-    if (-not (Confirm-HU "$($it.Name)`n`nAendern: $($what -join ', ')`nTenants: $(@($it.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nSpeichern?")) { return }
+    if (-not (Confirm-HU -Warning "$($it.Name)`n`nAendern: $($what -join ', ')`nTenants: $(@($it.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nSpeichern?")) { return }
     if ($v.Name) { $it.Key = "$($v.Name.ToLower())|$($it.OType)"; $script:IntCurrent = $it }
     Start-HUIntAction 'Eigenschaften' -Vars @{ V = $v } -Code {
         foreach ($k in $Per.Keys) {

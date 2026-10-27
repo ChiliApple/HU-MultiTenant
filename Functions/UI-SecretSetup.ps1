@@ -134,10 +134,7 @@ $inputRows            </Grid>
         if ($script:AppIcon) { try { $setupWindow.Icon = $script:AppIcon } catch { } }
     }
     catch {
-        [System.Windows.MessageBox]::Show(
-            "Secret-Setup Dialog konnte nicht geladen werden:`n$($_.Exception.Message)",
-            'HU MultiTenant - Error', 'OK', 'Error'
-        )
+        Show-HUMessage "Secret-Setup Dialog konnte nicht geladen werden:`n$($_.Exception.Message)" 'HU MultiTenant - Error' -Icon Error
         return $false
     }
 
@@ -171,17 +168,11 @@ $inputRows            </Grid>
         }
 
         if ($errorList.Count -gt 0) {
-            [System.Windows.MessageBox]::Show(
-                "Fehler beim Speichern:`n$($errorList -join "`n")",
-                'Secret Setup - Fehler', 'OK', 'Warning'
-            )
+            Show-HUMessage "Fehler beim Speichern:`n$($errorList -join "`n")" 'Secret Setup - Fehler' -Icon Warning -Owner $setupWindow
         }
 
         if ($savedCount -gt 0) {
-            [System.Windows.MessageBox]::Show(
-                "$savedCount Secret(s) erfolgreich gespeichert.",
-                'Secret Setup', 'OK', 'Information'
-            )
+            Show-HUMessage "$savedCount Secret(s) erfolgreich gespeichert." 'Secret Setup' -Owner $setupWindow
         }
 
         $setupWindow.DialogResult = $true

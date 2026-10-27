@@ -379,7 +379,7 @@ function Add-HURintAssignment {
     $fix = [bool]$c['chkRintFix'].IsChecked
     $lbl = switch ($kind) { 'allDevices' { 'Alle Geraete' } 'allUsers' { 'Alle Benutzer' } 'exclude' { "Ausschluss '$grp'" } default { "Gruppe '$grp'" } }
     $how = if ($kind -eq 'exclude') { '' } else { "`nZeitplan: $($sc.Text)`nReparatur: $(if ($fix) { 'ja' } else { 'nein (nur pruefen)' })" }
-    if (-not (Confirm-HU "$($it.Name)`n`nZuweisen: $lbl$how`nTenants: $(@($it.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nAusfuehren?")) { return }
+    if (-not (Confirm-HU -Warning "$($it.Name)`n`nZuweisen: $lbl$how`nTenants: $(@($it.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nAusfuehren?")) { return }
     if ($grp) { Set-HUStateValue 'remLastGroup' $grp }
     Start-HURintAction 'Zuweisen' -Vars @{ T = @{ Kind = $kind; GroupName = $grp }; Schedule = $sc.Schedule; Fix = $fix; SchedText = $sc.Text } -Code {
         foreach ($k in $Per.Keys) {
@@ -444,7 +444,7 @@ function Save-HURintChanges {
     if ($v.Name) { $what += "Name -> $($v.Name)" }; if ($v.ContainsKey('Description')) { $what += 'Beschreibung' }
     if ($v.ContainsKey('RunAs')) { $what += "Ausfuehren als $(if ($v.RunAs -eq 'user') { 'Benutzer' } else { 'System' })" }; if ($v.ContainsKey('RunAs32')) { $what += "32-Bit $(if ($v.RunAs32) { 'ein' } else { 'aus' })" }
     if ($v.ContainsKey('Detection')) { $what += "Skripte$(if ($differs -lt $script:RintDetail.Count) { " (in $differs Tenant(s) abweichend)" })" }
-    if (-not (Confirm-HU "$($it.Name)`n`nAendern: $($what -join ', ')`nTenants: $(@($it.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nDie Geraete verwenden die neue Fassung beim naechsten Lauf. Speichern?")) { return }
+    if (-not (Confirm-HU -Warning "$($it.Name)`n`nAendern: $($what -join ', ')`nTenants: $(@($it.Per.Keys | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nDie Geraete verwenden die neue Fassung beim naechsten Lauf. Speichern?")) { return }
     if ($v.Name) { $it.Key = $v.Name.ToLower(); $script:RintCurrent = $it }
     Start-HURintAction 'Speichern' -Vars @{ V = $v } -Code {
         foreach ($k in $Per.Keys) {
@@ -538,7 +538,7 @@ function Copy-HURintToLib {
     $ids = @($it.Per.Values | ForEach-Object { $_.Id })
     $r = $script:RemLib | Where-Object { @($_.Deployments | Where-Object { $ids -contains $_.ScriptId }).Count } | Select-Object -First 1
     if (-not $r) { $r = $script:RemLib | Where-Object { $_.Name -eq $it.Name } | Select-Object -First 1 }
-    if ($r -and -not (Confirm-HU "In der Bibliothek gibt es '$($r.Name)' schon.`n`nMit den Skripten und der Verteilung aus Intune ueberschreiben?")) { return }
+    if ($r -and -not (Confirm-HU -Warning "In der Bibliothek gibt es '$($r.Name)' schon.`n`nMit den Skripten und der Verteilung aus Intune ueberschreiben?")) { return }
     $isNew = -not $r
     if ($isNew) { $r = ConvertTo-HURem; $r.Id = [guid]::NewGuid().ToString() }
     $r.Name = $d0.Name; $r.Description = $d0.Description

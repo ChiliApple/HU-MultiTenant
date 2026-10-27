@@ -363,28 +363,239 @@ function Set-HUWindowScale($Window) {
     } catch { try { Write-HULog -Message "Oberflaechengroesse (Fenster): $($_.Exception.Message)" -Level 'WARN' } catch { } }
 }
 
+# ---------------------------------------------------------------------------------------------
+# Meldungen und Rueckfragen im App-Stil (2.5.9, Udo: global, sauber, Scrollbalken erst bei viel Text)
+# Ersetzt die Windows-MessageBox; faellt nur zurueck, wenn das App-Design nicht ladbar ist (z. B. ganz am Start).
+# Mode: OK | YesNo | YesNoCancel. Icon: Info | Warning | Error | Question. Rueckgabe: 'OK' | 'Yes' | 'No' | 'Cancel'.
+# Schliessen (X, Esc): OK -> 'OK', YesNo -> 'No', YesNoCancel -> 'Cancel'.
+# Warnung mit Ja/Nein: Enter = Nein (sicherer Standard), sonst Enter = OK bzw. Ja. Strg+C kopiert Titel und Text.
+# ---------------------------------------------------------------------------------------------
+$script:HUDlgTheme = $null
+function Show-HUDialogBox {
+    param([string]$Text, [string]$Title = 'HU-MultiTenant', [ValidateSet('OK', 'YesNo', 'YesNoCancel')][string]$Mode = 'OK',
+        [ValidateSet('Info', 'Warning', 'Error', 'Question')][string]$Icon = 'Info', $Owner = $null)
+    $fallback = {
+        $img = switch ($Icon) { 'Warning' { 'Warning' } 'Error' { 'Error' } 'Question' { 'Question' } default { 'Information' } }
+        $o = if ($Owner) { $Owner } elseif ($script:Window -and $script:Window.IsLoaded) { $script:Window } else { $null }
+        # 072 G1: auch im Rueckfall bei Ja/Nein sicher "Nein" vorgewaehlt
+        $def = $(switch ($Mode) { 'YesNo' { 'No' } 'YesNoCancel' { 'Cancel' } default { 'OK' } })
+        $r = if ($o) { [System.Windows.MessageBox]::Show($o, $Text, $Title, $Mode, $img, $def) } else { [System.Windows.MessageBox]::Show($Text, $Title, $Mode, $img, $def) }
+        return "$r"
+    }
+    try {
+        if (-not $script:HUDlgTheme) {
+            $theme = [System.IO.File]::ReadAllText((Join-Path (Join-Path $script:AppRoot 'XAML') 'Theme.xaml'), [System.Text.Encoding]::UTF8)
+            $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+            if (-not $m.Success) { return (& $fallback) }
+            $script:HUDlgTheme = $m.Groups[1].Value
+        }
+        $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        SizeToContent="WidthAndHeight" MinWidth="440" MinHeight="170" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="#1E1E1E" ShowInTaskbar="False" UseLayoutRounding="True">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="#252526" BorderBrush="#3E3E42" BorderThickness="0,1,0,0" Padding="16,10">
+            <StackPanel x:Name="pnlButtons" Orientation="Horizontal" HorizontalAlignment="Right"/>
+        </Border>
+        <Grid Margin="18,18,22,16">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid x:Name="icoBox" Width="34" Height="34" VerticalAlignment="Top" Margin="0,0,16,0">
+                <Ellipse x:Name="icoCircle"/>
+                <TextBlock x:Name="icoGlyph" Foreground="White" FontSize="19" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0"/>
+            </Grid>
+            <ScrollViewer x:Name="scroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" VerticalAlignment="Center">
+                <TextBox x:Name="txt" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Foreground="#E0E0E0"
+                         FontSize="13" Padding="0" Cursor="Arrow" IsTabStop="False" MinWidth="300"/>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>
+'@
+        $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $script:HUDlgTheme))
+        $w = $d.Window; $c = $d.C
+        $w.Title = $Title
+        $o = if ($Owner) { $Owner } elseif ($script:Window -and $script:Window.IsLoaded) { $script:Window } else { $null }
+        if ($o -and $o -ne $w) { try { $w.Owner = $o } catch { } } else { $w.WindowStartupLocation = 'CenterScreen'; $w.ShowInTaskbar = $true }
+        $txt = "$Text".TrimEnd()
+        $c.txt.Text = $txt
+        # Breite nach Textmenge: kurze Meldungen kompakt, lange breiter (bessere Zeilen statt hoher schmaler Spalte)
+        $len = $txt.Length; $lines = @($txt -split "`n").Count
+        $c.txt.MaxWidth = $(if ($len -gt 1200 -or $lines -gt 24) { 760 } elseif ($len -gt 400) { 620 } else { 520 })
+        # Scrollbalken erst, wenn der Text wirklich nicht mehr passt (65 % der Bildschirmhoehe)
+        $wa = [System.Windows.SystemParameters]::WorkArea
+        $c.scroll.MaxHeight = [Math]::Max(240, $wa.Height * 0.65)
+        $ic = switch ($Icon) {
+            'Warning' { @('#F57C00', '!') } 'Error' { @('#D32F2F', [string][char]0x2715) } 'Question' { @('#1976D2', '?') } default { @('#1976D2', 'i') }
+        }
+        $c.icoCircle.Fill = [System.Windows.Media.BrushConverter]::new().ConvertFrom($ic[0])
+        $c.icoGlyph.Text = $ic[1]
+        if ($Icon -eq 'Error') { $c.icoGlyph.FontSize = 16; $c.icoGlyph.Margin = [System.Windows.Thickness]::new(0) }
+        $st = @{ R = $(switch ($Mode) { 'YesNo' { 'No' } 'YesNoCancel' { 'Cancel' } default { 'OK' } }) }
+        $defs = @(switch ($Mode) {
+            'YesNo' { @(@('Yes', 'Ja', $(if ($Icon -eq 'Warning') { '#C62828' } else { '#1976D2' })), @('No', 'Nein', '#555555')) }
+            'YesNoCancel' { @(@('Yes', 'Ja', '#1976D2'), @('No', 'Nein', '#555555'), @('Cancel', 'Abbrechen', '#555555')) }
+            default { , @('OK', 'OK', '#1976D2') }
+        })
+        $defaultKey = $(if ($Mode -eq 'YesNo' -and $Icon -eq 'Warning') { 'No' } elseif ($Mode -eq 'OK') { 'OK' } else { 'Yes' })
+        $cancelKey = $(switch ($Mode) { 'YesNo' { 'No' } 'YesNoCancel' { 'Cancel' } default { 'OK' } })
+        $first = $null
+        foreach ($b in $defs) {
+            $btn = New-Object System.Windows.Controls.Button
+            $btn.Content = $b[1]; $btn.Tag = $b[0]; $btn.MinWidth = 96; $btn.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
+            $btn.Style = $w.FindResource('DarkButton')
+            $btn.Background = [System.Windows.Media.BrushConverter]::new().ConvertFrom($b[2])
+            if ($b[0] -eq $defaultKey) { $btn.IsDefault = $true; $first = $btn }
+            if ($b[0] -eq $cancelKey) { $btn.IsCancel = $true }
+            $btn.Add_Click({ param($sd, $e) $st.R = "$($sd.Tag)"; $w.Close() })
+            if ($b[0] -eq $defaultKey -and $defs.Count -gt 1) {
+                # vorgewaehlter Knopf (Enter) mit hellem Rahmen - man sieht auf einen Blick, was Enter ausloest
+                $btn.Margin = [System.Windows.Thickness]::new(0)
+                $fr = New-Object System.Windows.Controls.Border
+                $fr.BorderBrush = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#E0E0E0'); $fr.BorderThickness = [System.Windows.Thickness]::new(2)
+                $fr.CornerRadius = [System.Windows.CornerRadius]::new(6); $fr.Padding = [System.Windows.Thickness]::new(1); $fr.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
+                $fr.ToolTip = 'Enter'
+                $fr.Child = $btn
+                [void]$c.pnlButtons.Children.Add($fr)
+            } else { [void]$c.pnlButtons.Children.Add($btn) }
+        }
+        $w.Add_KeyDown({
+                param($sd, $e)
+                if ($e.Key -eq 'C' -and ([System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control) -and -not $c.txt.SelectionLength) {
+                    try { [System.Windows.Clipboard]::SetText("$Title`r`n`r`n$($c.txt.Text)") } catch { }
+                    $e.Handled = $true
+                }
+            })
+        $w.Add_ContentRendered({ if ($first) { [void]$first.Focus() } })
+        [void]$w.ShowDialog()
+        return $st.R
+    } catch {
+        try { Write-HULog -Message "Meldungsfenster: $($_.Exception.Message) - Windows-Meldung verwendet" -Level 'WARN' } catch { }
+        return (& $fallback)
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Hinweis unten rechts im App-Stil (2.5.9): fuer Ereignisse im Hintergrund (z. B. automatische App-Sicherung).
+# Nimmt keinen Fokus, bleibt ueber anderen Fenstern, verschwindet von selbst (Fehler laenger); mehrere stapeln sich.
+# -OnClick: Aktion beim Klick auf den Hinweis (schliesst ihn danach).
+# ---------------------------------------------------------------------------------------------
+$script:HUToasts = New-Object System.Collections.ArrayList
+function Show-HUToast {
+    param([string]$Title, [string]$Text = '', [ValidateSet('Info', 'Warning', 'Error', 'Success')][string]$Icon = 'Info', [int]$Seconds = 0, [scriptblock]$OnClick = $null)
+    try {
+        if (-not $script:HUDlgTheme) {
+            $theme = [System.IO.File]::ReadAllText((Join-Path (Join-Path $script:AppRoot 'XAML') 'Theme.xaml'), [System.Text.Encoding]::UTF8)
+            $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+            if ($m.Success) { $script:HUDlgTheme = $m.Groups[1].Value }
+        }
+        $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowActivated="False" ShowInTaskbar="False"
+        ResizeMode="NoResize" SizeToContent="Height" Width="380" UseLayoutRounding="True">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <Border x:Name="box" Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="6" Margin="8" Cursor="Hand">
+        <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.55"/></Border.Effect>
+        <DockPanel>
+            <Border x:Name="bar" DockPanel.Dock="Left" Width="4" CornerRadius="6,0,0,6"/>
+            <Button x:Name="btnX" DockPanel.Dock="Right" Content="&#x2715;" VerticalAlignment="Top" Margin="0,6,6,0" Padding="6,2"
+                    Background="Transparent" Foreground="#9E9E9E" BorderThickness="0" Cursor="Hand" FontSize="11" ToolTip="Schliessen"/>
+            <Grid Margin="12,12,6,12">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Grid Width="28" Height="28" VerticalAlignment="Top" Margin="0,0,12,0">
+                    <Ellipse x:Name="icoCircle"/>
+                    <TextBlock x:Name="icoGlyph" Foreground="White" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+                <StackPanel Grid.Column="1">
+                    <TextBlock x:Name="txtTitle" Foreground="White" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="txtText" Foreground="#BDBDBD" FontSize="12" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                    <TextBlock Text="HU-MultiTenant" Foreground="#707070" FontSize="10" Margin="0,6,0,0"/>
+                </StackPanel>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>
+'@
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($x.Replace('<!--HU:THEME-->', "$($script:HUDlgTheme)")))
+        try { $w = [System.Windows.Markup.XamlReader]::Load($reader) } finally { $reader.Close() }
+        $f = { param($n) $w.FindName($n) }
+        $col = switch ($Icon) { 'Warning' { @('#F57C00', '!') } 'Error' { @('#D32F2F', [string][char]0x2715) } 'Success' { @('#388E3C', [string][char]0x2713) } default { @('#1976D2', 'i') } }
+        $br = [System.Windows.Media.BrushConverter]::new().ConvertFrom($col[0])
+        (& $f 'bar').Background = $br; (& $f 'icoCircle').Fill = $br; (& $f 'icoGlyph').Text = $col[1]
+        (& $f 'txtTitle').Text = $Title
+        $tt = & $f 'txtText'; if ($Text) { $tt.Text = $Text } else { $tt.Visibility = 'Collapsed' }
+        if ($script:AppIcon) { try { $w.Icon = $script:AppIcon } catch { } }
+        $st = @{ W = $w; Click = $OnClick; Timer = $null }
+        $w.Tag = $st
+        $close = {
+            param($win)
+            try { if ($win.Tag.Timer) { $win.Tag.Timer.Stop() } } catch { }
+            [void]$script:HUToasts.Remove($win)
+            try { $win.Close() } catch { }
+            Update-HUToastPositions
+        }
+        $script:HUToastClose = $close
+        (& $f 'btnX').Add_Click({ param($sd, $e) $e.Handled = $true; & $script:HUToastClose ([System.Windows.Window]::GetWindow($sd)) })
+        (& $f 'box').Add_MouseLeftButtonUp({
+                param($sd, $e)
+                $win = [System.Windows.Window]::GetWindow($sd)
+                $cb = $win.Tag.Click
+                & $script:HUToastClose $win
+                # gesperrte App: der Hinweis darf die Sperre nicht umgehen (kein Fenster oeffnen)
+                $locked = $false; try { $locked = [bool](Get-Variable -Name LockActive -Scope Script -ValueOnly -ErrorAction SilentlyContinue) } catch { }
+                if ($cb -and -not $locked) { try { & $cb } catch { } }
+            })
+        $secs = $(if ($Seconds -gt 0) { $Seconds } elseif ($Icon -in 'Error', 'Warning') { 20 } else { 8 })
+        $t = [System.Windows.Threading.DispatcherTimer]::new()
+        $t.Interval = [TimeSpan]::FromSeconds($secs)
+        $t.Tag = $w
+        $t.Add_Tick({ $this.Stop(); & $script:HUToastClose $this.Tag })
+        $st.Timer = $t
+        # Maus darueber: nicht ausblenden
+        $w.Add_MouseEnter({ try { $this.Tag.Timer.Stop() } catch { } })
+        $w.Add_MouseLeave({ try { $this.Tag.Timer.Start() } catch { } })
+        [void]$script:HUToasts.Add($w)
+        $w.Left = -10000; $w.Top = -10000
+        $w.Show()
+        Update-HUToastPositions
+        $t.Start()
+    } catch { try { Write-HULog -Message "Hinweis unten rechts: $($_.Exception.Message)" -Level 'WARN' } catch { } }
+}
+# 071 B5: offene Hinweise schliessen (Beenden, Sperre)
+function Close-HUToasts {
+    foreach ($w in @($script:HUToasts)) { try { if ($w.Tag.Timer) { $w.Tag.Timer.Stop() } } catch { }; try { $w.Close() } catch { } }
+    $script:HUToasts.Clear()
+}
+function Update-HUToastPositions {
+    $wa = [System.Windows.SystemParameters]::WorkArea
+    $bottom = $wa.Bottom - 8
+    foreach ($w in @($script:HUToasts)) {
+        try {
+            $w.Left = $wa.Right - $w.ActualWidth - 8
+            $w.Top = $bottom - $w.ActualHeight
+            $bottom = $w.Top
+        } catch { }
+    }
+}
+
 function Show-HUMessage {
     param([string]$Text, [string]$Title = 'HU-MultiTenant', [ValidateSet('Info', 'Warning', 'Error')][string]$Icon = 'Info', $Owner = $null)
-    $img = switch ($Icon) { 'Warning' { 'Warning' } 'Error' { 'Error' } default { 'Information' } }
-    $o = if ($Owner) { $Owner } elseif ($script:Window -and $script:Window.IsLoaded) { $script:Window } else { $null }
-    if ($o) { [void][System.Windows.MessageBox]::Show($o, $Text, $Title, 'OK', $img) }
-    else { [void][System.Windows.MessageBox]::Show($Text, $Title, 'OK', $img) }
+    [void](Show-HUDialogBox -Text $Text -Title $Title -Mode 'OK' -Icon $Icon -Owner $Owner)
 }
 
 function Confirm-HU {
     param([string]$Text, [string]$Title = 'HU-MultiTenant', [switch]$Warning, $Owner = $null)
-    $img = if ($Warning) { 'Warning' } else { 'Question' }
-    $o = if ($Owner) { $Owner } elseif ($script:Window -and $script:Window.IsLoaded) { $script:Window } else { $null }
-    $r = if ($o) { [System.Windows.MessageBox]::Show($o, $Text, $Title, 'YesNo', $img) } else { [System.Windows.MessageBox]::Show($Text, $Title, 'YesNo', $img) }
-    return ("$r" -eq 'Yes')
+    return ((Show-HUDialogBox -Text $Text -Title $Title -Mode 'YesNo' -Icon $(if ($Warning) { 'Warning' } else { 'Question' }) -Owner $Owner) -eq 'Yes')
 }
 
 # Ja / Nein / Abbrechen -> 'Yes' | 'No' | 'Cancel'
 function Confirm-HUYesNoCancel {
     param([string]$Text, [string]$Title = 'HU-MultiTenant', $Owner = $null)
-    $o = if ($Owner) { $Owner } elseif ($script:Window -and $script:Window.IsLoaded) { $script:Window } else { $null }
-    $r = if ($o) { [System.Windows.MessageBox]::Show($o, $Text, $Title, 'YesNoCancel', 'Question') } else { [System.Windows.MessageBox]::Show($Text, $Title, 'YesNoCancel', 'Question') }
-    return "$r"
+    return (Show-HUDialogBox -Text $Text -Title $Title -Mode 'YesNoCancel' -Icon 'Question' -Owner $Owner)
 }
 
 # Kleiner Dialog: Name + Beschreibung (Snippet speichern unter / umbenennen). Rueckgabe $null = abgebrochen.

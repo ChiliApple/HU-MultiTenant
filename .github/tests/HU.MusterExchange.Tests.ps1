@@ -267,3 +267,70 @@ Describe 'Dateiname (067 B6)' {
         ConvertTo-HUMxFileName 'CA <Schule> / "Praxis"' ([datetime]'2026-10-27') | Should -Be 'CA _Schule_ _ _Praxis_2026-10-27.humuster'
     }
 }
+
+Describe 'Microsoft-Vorlagen (2.5.8)' {
+    It 'Vorlage -> CA Nur Bericht, Platzhalter-Text in excludeUsers entfernt, nur ausgewaehlte, geprueft' {
+        $t = [pscustomobject]@{ name = 'Require multifactor authentication for admins'; description = 'MFA fuer Admins'; id = 'c7503427-338e-4c5e-902d-abe252abfb43'; scenarios = 'secureFoundation,zeroTrust'
+            details = [pscustomobject]@{ sessionControls = $null; grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @('mfa'); termsOfUse = @() }
+                conditions = [pscustomobject]@{ clientAppTypes = @('all'); applications = [pscustomobject]@{ includeApplications = @('All') }
+                    users = [pscustomobject]@{ includeUsers = @(); excludeUsers = @('Current administrator will be excluded'); includeRoles = @('62e90394-69f5-4237-9190-012177145e10') } } } }
+        $t2 = [pscustomobject]@{ name = 'Block legacy authentication'; id = 'x'; details = [pscustomobject]@{ grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @('block') }; conditions = [pscustomobject]@{ clientAppTypes = @('exchangeActiveSync', 'other'); applications = [pscustomobject]@{ includeApplications = @('All') }; users = [pscustomobject]@{ includeUsers = @('All') } } } }
+        $pl = ConvertFrom-HUMxTemplates @($t, $t2)
+        $pl.Ok | Should -BeTrue
+        @($pl.Rows).Count | Should -Be 2
+        $r = $pl.Rows[0]
+        $r.Obj.state | Should -Be 'enabledForReportingButNotEnforced'
+        @($r.Obj.conditions.users.excludeUsers).Count | Should -Be 0
+        $r.Hinweise | Should -Match 'secureFoundation'
+        $r.Pick | Should -BeTrue; $r.Entfernt | Should -Not -Match 'Metadaten'
+        $b = & $script:NewBase; $set = & $script:Set $b
+        $p = Save-HUMusterImport -Settings $set -Plan $pl -OnlyKeys @('Conditional Access|Block legacy authentication') -Checked
+        @($p.Items).Count | Should -Be 1
+        $p.Checked | Should -BeTrue
+        $p.Publisher | Should -Match 'Microsoft'; $p.Origin | Should -Be 'vorlage'
+    }
+}
+
+Describe 'Microsoft-Vorlagen: Lizenzen und eingebaute Staerken (069 B3)' {
+    It 'Eingebaute Authentifizierungsstaerke bleibt (ok, vorgewaehlt), nur id/displayName' {
+        $t = [pscustomobject]@{ name = 'Require phishing-resistant MFA for admins'; id = 'p'; details = [pscustomobject]@{
+                grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @(); authenticationStrength = [pscustomobject]@{ id = '00000000-0000-0000-0000-000000000004'; displayName = 'Phishing-resistant MFA'; allowedCombinations = @('fido2') } }
+                conditions = [pscustomobject]@{ clientAppTypes = @('all'); applications = [pscustomobject]@{ includeApplications = @('All') }; users = [pscustomobject]@{ includeRoles = @('62e90394-69f5-4237-9190-012177145e10') } } } }
+        $r = (ConvertFrom-HUMxTemplates @($t)).Rows[0]
+        $r.Status | Should -Be 'ok'; $r.Pick | Should -BeTrue
+        $r.Obj.grantControls.authenticationStrength.id | Should -Be '00000000-0000-0000-0000-000000000004'
+        $r.Obj.grantControls.authenticationStrength.PSObject.Properties['allowedCombinations'] | Should -BeNullOrEmpty
+    }
+    It 'Insider-Risiko und Dienstprinzipal-Risiko: nicht vorgewaehlt, Lizenz genannt' {
+        foreach ($f in 'insiderRiskLevels', 'servicePrincipalRiskLevels') {
+            $c = [pscustomobject]@{ clientAppTypes = @('all'); applications = [pscustomobject]@{ includeApplications = @('All') }; users = [pscustomobject]@{ includeUsers = @('All') } }
+            $c | Add-Member -NotePropertyName $f -NotePropertyValue @('high')
+            $t = [pscustomobject]@{ name = "Vorlage $f"; id = 'x'; details = [pscustomobject]@{ grantControls = [pscustomobject]@{ operator = 'OR'; builtInControls = @('block') }; conditions = $c } }
+            $r = (ConvertFrom-HUMxTemplates @($t)).Rows[0]
+            $r.Pick | Should -BeFalse
+            $r.Hinweise | Should -Match $(if ($f -eq 'insiderRiskLevels') { 'Purview' } else { 'Workload ID Premium' })
+        }
+    }
+}
+
+Describe 'Pruefbefunde 072 (Gemini)' {
+    It 'B1: doppelte Schluessel auch mit JSON-Escapes (a\/b = a/b), kein Fehlalarm bei \\u0061' {
+        Test-HUMxJsonText '{"a/b":1,"a\/b":2}' | Should -Match 'doppelt'
+        Test-HUMxJsonText '{"a":1,"a":2}' | Should -Match 'doppelt'
+        Test-HUMxJsonText '{"\\u0061":1,"a":2}' | Should -BeNullOrEmpty
+        Test-HUMxJsonText '{"x":"ä\"\\","y":[1,2]}' | Should -BeNullOrEmpty
+    }
+    It 'B3: kurzes Kennwort im OMA-Wert wird gesperrt' {
+        $o = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CustomConfiguration'; displayName = 'Test'; omaSettings = @([pscustomobject]@{ '@odata.type' = '#microsoft.graph.omaSettingString'; omaUri = './Vendor/MSFT/Policy/Config/Test/X'; value = '<Password>Geheim1!</Password>' }) }
+        (Invoke-HUMusterSanitize -Typ 'Konfiguration' -Name 'Test' -Obj $o).Status | Should -Be 'gesperrt'
+    }
+    It 'B3: UTF-16-kodiertes Base64 mit Kennwort wird erkannt' {
+        $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes('net user x /add; <Password>Geheim1!</Password>'))
+        $o = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CustomConfiguration'; displayName = 'Test'; omaSettings = @([pscustomobject]@{ '@odata.type' = '#microsoft.graph.omaSettingBase64'; omaUri = './Vendor/MSFT/Policy/Config/Test/Y'; value = $b64 }) }
+        (Invoke-HUMusterSanitize -Typ 'Konfiguration' -Name 'Test' -Obj $o).Status | Should -Be 'gesperrt'
+    }
+    It 'B3: Name/Beschreibung mit "Password:" sperrt nicht' {
+        $o = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10GeneralConfiguration'; displayName = 'Password: 12 Zeichen'; description = 'Password: mindestens 12'; passwordRequired = $true }
+        (Invoke-HUMusterSanitize -Typ 'Konfiguration' -Name 'Password: 12 Zeichen' -Obj $o).Status | Should -Be 'ok'
+    }
+}

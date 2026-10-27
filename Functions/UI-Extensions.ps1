@@ -296,15 +296,11 @@ function Register-HUExtensionHandlers {
         # ReadWrite warning for write-capable extensions
         $extMode = if ($script:SelectedExtension.Mode) { $script:SelectedExtension.Mode } else { 'ReadOnly' }
         if ($extMode -eq 'ReadWrite' -and -not $isDryRun) {
-            $rwConfirm = [System.Windows.MessageBox]::Show(
-                "ACHTUNG: Diese Extension kann Aenderungen am Tenant '$tenantKey' vornehmen!`n`n" +
+            $rwOk = Confirm-HU ("ACHTUNG: Diese Extension kann Aenderungen am Tenant '$tenantKey' vornehmen!`n`n" +
                 "Extension: $($script:SelectedExtension.Name)`n" +
                 "Mode: READ/WRITE (Schreibzugriff)`n`n" +
-                "Sicher fortfahren?",
-                'Write-Access Warnung',
-                'YesNo', 'Warning'
-            )
-            if ($rwConfirm -ne 'Yes') { return }
+                "Sicher fortfahren?") 'Write-Access Warnung' -Warning
+            if (-not $rwOk) { return }
         }
 
         # Collect custom parameters
