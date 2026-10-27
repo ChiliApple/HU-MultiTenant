@@ -85,6 +85,15 @@ function Add-HUOutputTools($Rtb) {
     $p = $Rtb.Parent
     if (-not ($p -is [System.Windows.Controls.Panel] -or $p -is [System.Windows.Controls.Decorator])) { return }
     [void]$script:HUOutputDone.Add($Rtb)
+    # eigener "Leeren"-Knopf rechts oben ueber der Ausgabe (z. B. in Modulen) -> ausblenden, unser "Loeschen" loest ihn aus
+    $old = $null
+    if ($p -is [System.Windows.Controls.Panel]) {
+        foreach ($sib in @($p.Children)) {
+            if ($sib -is [System.Windows.Controls.Button] -and "$($sib.HorizontalAlignment)" -eq 'Right' -and "$($sib.VerticalAlignment)" -eq 'Top' -and "$($sib.Content)" -match '^\s*(Leeren|L(oe|\u00F6)schen)\s*$') {
+                $old = $sib; $sib.Visibility = 'Collapsed'
+            }
+        }
+    }
     $k = Get-HUOutputStateKey $Rtb
     $bottom = $false
     if ($k) { try { $bottom = ("$(Get-HUStateValue $k 'nein')" -eq 'ja') } catch { } }
@@ -121,9 +130,14 @@ function Add-HUOutputTools($Rtb) {
     }
     $bRev = & $mk ([string][char]0x21C5 + ' Umkehren') 'Reihenfolge umkehren: neuestes oben oder unten (wird je Ausgabe gemerkt)'
     $bDel = & $mk ([string][char]0x2715 + ' L' + [char]0x00F6 + 'schen') 'Ausgabe leeren'
-    $bRev.Tag = $Rtb; $bDel.Tag = $Rtb
+    $bRev.Tag = $Rtb; $bDel.Tag = [pscustomobject]@{ Rtb = $Rtb; Old = $old }
     $bRev.Add_Click({ try { Switch-HUOutputOrder $this.Tag } catch { } })
-    $bDel.Add_Click({ try { Clear-HUOutput $this.Tag } catch { } })
+    $bDel.Add_Click({
+            try {
+                $t = $this.Tag
+                if ($t.Old) { $t.Old.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) } else { Clear-HUOutput $t.Rtb }
+            } catch { }
+        })
     [void]$bar.Children.Add($bRev); [void]$bar.Children.Add($bDel)
     [void]$g.Children.Add($bar)
 }

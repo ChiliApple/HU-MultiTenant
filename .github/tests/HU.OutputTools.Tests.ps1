@@ -87,4 +87,10 @@ Describe 'Ausgabe: alle Schreiber gehen ueber die gemeinsame Logik' {
         (Get-Content -Raw -LiteralPath (Join-Path $script:Root 'Functions\UI-Common.ps1')) | Should -Match 'Set-HUOutputTools \$w'
         (Get-Content -Raw -LiteralPath (Join-Path $script:Root 'Functions\UI-Addons.ps1')) | Should -Match 'Set-HUOutputTools \$tab'
     }
+    It 'eigener Leeren-Knopf ueber der Ausgabe (Module) wird ausgeblendet und von Loeschen ausgeloest' {
+        $src = Get-Content -Raw -LiteralPath (Join-Path $script:Root 'Functions\UI-Common.ps1')
+        $src | Should -Match "Leeren\|L\(oe"
+        $src | Should -Match '\$sib\.Visibility = .Collapsed.'
+        $src | Should -Match '\$t\.Old\.RaiseEvent'
+    }
 }
