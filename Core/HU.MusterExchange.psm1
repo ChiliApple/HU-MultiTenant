@@ -77,6 +77,15 @@ function Get-HUMxSha256([byte[]]$Bytes) {
 }
 
 # Dateiname aus einem Titel (067 B6): nur sichere Zeichen, kurz
+# 072 G21: Freitext aus fremden Dateien (Herausgeber, Titel, Kategorie, Tags) - Steuer- und Richtungszeichen raus,
+# Leerraum zusammenfassen, Laenge begrenzen. Angezeigt wird es nur als Angabe (nicht verifiziert).
+function ConvertTo-HUMxPlainText([string]$Text, [int]$Max = 200) {
+    $t = [regex]::Replace("$Text", '[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]', ' ')
+    $t = [regex]::Replace($t, '\s+', ' ').Trim()
+    if ($t.Length -gt $Max) { $t = $t.Substring(0, $Max).TrimEnd() + '...' }
+    return $t
+}
+
 function ConvertTo-HUMxFileName([string]$Title, [datetime]$Now = (Get-Date)) {
     $t = ("$Title" -replace '[^\p{L}\p{Nd} ._()-]', '_') -replace '\s+', ' '
     $t = $t.Trim(' ', '.', '_')
@@ -249,7 +258,7 @@ function Invoke-HUMusterSanitize {
         else {
             $txt = ''
             try { $txt = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("$(Get-HUMxProp $o 'scriptContent')$(Get-HUMxProp $o 'detectionScriptContent')")) } catch { }
-            # 072 (Gemini B3): UTF-16-kodierte Skripte (Nullbytes zwischen den Zeichen) vor der Pruefung bereinigen
+            # 072 (B3): UTF-16-kodierte Skripte (Nullbytes zwischen den Zeichen) vor der Pruefung bereinigen
             $txt = "$txt" -replace "`0", ''
             if ($txt -match '(?i)(password|passwort|kennwort|secret|apikey|api_key|token)\s*[=:]') { & $block 'Skript enthaelt vermutlich ein Kennwort oder einen Schluessel.' }
         }
@@ -257,7 +266,7 @@ function Invoke-HUMusterSanitize {
     # 068 B2: eingebettete Inhalte (Base64-Werte, z. B. omaSettingBase64, iOS/macOS-payload, Zertifikate) entpacken und pruefen
     foreach ($s1 in @(Get-HUMxStrings $o)) {
         $v = "$($s1.Value)"
-        # 072 (Gemini B3): auch kurze Werte pruefen (ab 12 Zeichen; Base64 ab 24), Name und Beschreibung nicht (die markiert die Pruefansicht)
+        # 072 (B3): auch kurze Werte pruefen (ab 12 Zeichen; Base64 ab 24), Name und Beschreibung nicht (die markiert die Pruefansicht)
         if ($v.Length -lt 12 -or $s1.Path -match '(?i)(scriptContent|detectionScriptContent|remediationScriptContent)$' -or $s1.Path -match '(?i)(^|\.)(displayName|description)$') { continue }
         $txt = $null
         if ($v.Length -ge 24 -and $v -match '^[A-Za-z0-9+/=\s]+$' -and ($v.Trim().Length % 4) -eq 0) { try { $txt = ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($v.Trim()))) -replace "`0", '' } catch { $txt = $null } }
@@ -410,7 +419,7 @@ function Test-HUMxJsonText([string]$Text, [int]$MaxDepth = 64) {
                     if ($i + 1 -ge $len) { $i++; continue }
                     $e = $Text[$i + 1]
                     [void]$sb.Append($c2).Append($e)
-                    # 072 (Gemini B1): alle JSON-Escapes aufloesen - "a\/b" ist derselbe Schluessel wie "a/b", "\\u0061" ist kein "a"
+                    # 072 (B1): alle JSON-Escapes aufloesen - "a\/b" ist derselbe Schluessel wie "a/b", "\\u0061" ist kein "a"
                     # (kein continue im switch - das wuerde nur den switch verlassen)
                     $step = 2
                     $hx = $(if ($e -ceq 'u' -and $i + 5 -lt $len) { $Text.Substring($i + 2, 4) } else { '' })
@@ -650,11 +659,11 @@ function Get-HUMusterImportPlan {
         $plan.Sha256 = $a.Sha256
         if (-not $a.Ok) { foreach ($e in $a.Errors) { $plan.Errors.Add($e) }; return $plan }
         $p = $a.Paket
-        $plan.Title = "$($p.Title)".Trim(); if (-not $plan.Title) { $plan.Title = "Import $($Now.ToString('dd.MM.yyyy'))" }
-        $plan.Category = "$($p.Category)"; $plan.Tags = @($p.Tags | Where-Object { "$_" } | ForEach-Object { "$_" } | Select-Object -First 20)
+        $plan.Title = ConvertTo-HUMxPlainText "$($p.Title)" 200; if (-not $plan.Title) { $plan.Title = "Import $($Now.ToString('dd.MM.yyyy'))" }
+        $plan.Category = ConvertTo-HUMxPlainText "$($p.Category)" 60; $plan.Tags = @($p.Tags | ForEach-Object { ConvertTo-HUMxPlainText "$_" 40 } | Where-Object { $_ } | Select-Object -First 20)
         $plan.Note = "$($p.Note)"; if ($plan.Note.Length -gt 4000) { $plan.Note = $plan.Note.Substring(0, 4000) }
         $plan.Learn = @($p.Learn | Where-Object { "$_" -match '^https://' } | ForEach-Object { "$_" } | Select-Object -First 10)
-        $plan.Publisher = "$($a.Manifest.Publisher)"; $plan.Exported = "$($a.Manifest.Exported)"
+        $plan.Publisher = ConvertTo-HUMxPlainText "$($a.Manifest.Publisher)" 80; $plan.Exported = ConvertTo-HUMxPlainText "$($a.Manifest.Exported)" 40
         $plan.Names = @(Get-HUMxCatalog $a.Names)
         foreach ($it in @($a.Index.Items)) {
             $f = "$($it.File)".Replace('\', '/')
@@ -801,6 +810,6 @@ function Get-HUMusterReviewRows {
     }
 }
 
-Export-ModuleMember -Function Get-HUMxLimits, Get-HUMxImportSource, ConvertTo-HUMxFileName, Get-HUMxTenantMarkers, Invoke-HUMusterSanitize, Get-HUMusterExportPlan, Save-HUMusterExport,
+Export-ModuleMember -Function Get-HUMxLimits, Get-HUMxImportSource, ConvertTo-HUMxFileName, ConvertTo-HUMxPlainText, Get-HUMxTenantMarkers, Invoke-HUMusterSanitize, Get-HUMusterExportPlan, Save-HUMusterExport,
     Test-HUMxJsonText, ConvertFrom-HUMxJson, Test-HUMxEntryName, Get-HUMxZipDirectory, Test-HUMusterArchive, Get-HUMxJsonKind, Get-HUMxJsonObjects,
     Get-HUMusterImportPlan, Save-HUMusterImport, Get-HUMusterReviewRows, ConvertFrom-HUMxTemplates, Get-HUMusterTemplatePlan

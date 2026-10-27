@@ -432,6 +432,13 @@ function Show-HUDialogBox {
         }
         $c.icoCircle.Fill = [System.Windows.Media.BrushConverter]::new().ConvertFrom($ic[0])
         $c.icoGlyph.Text = $ic[1]
+        # 072 G3: Screenreader - Fenster, Symbol und Text benennen; Knoepfe tragen die Meldung als Hilfetext
+        $kind = switch ($Icon) { 'Warning' { 'Warnung' } 'Error' { 'Fehler' } 'Question' { 'Frage' } default { 'Hinweis' } }
+        $ap = [System.Windows.Automation.AutomationProperties]
+        $short = $(if ($txt.Length -gt 400) { $txt.Substring(0, 400) + ' ...' } else { $txt })
+        $ap::SetName($w, "${kind}: $Title")
+        $ap::SetName($c.icoBox, $kind)
+        $ap::SetName($c.txt, $short)
         if ($Icon -eq 'Error') { $c.icoGlyph.FontSize = 16; $c.icoGlyph.Margin = [System.Windows.Thickness]::new(0) }
         $st = @{ R = $(switch ($Mode) { 'YesNo' { 'No' } 'YesNoCancel' { 'Cancel' } default { 'OK' } }) }
         $defs = @(switch ($Mode) {
@@ -444,7 +451,9 @@ function Show-HUDialogBox {
         $first = $null
         foreach ($b in $defs) {
             $btn = New-Object System.Windows.Controls.Button
-            $btn.Content = $b[1]; $btn.Tag = $b[0]; $btn.MinWidth = 96; $btn.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
+            $btn.Content = $b[1]; $btn.Tag = $b[0]; $btn.MinWidth = 96
+            [System.Windows.Automation.AutomationProperties]::SetName($btn, $(if ($b[0] -eq $defaultKey -and $defs.Count -gt 1) { "$($b[1]) (Enter)" } else { "$($b[1])" }))
+            [System.Windows.Automation.AutomationProperties]::SetHelpText($btn, $short); $btn.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
             $btn.Style = $w.FindResource('DarkButton')
             $btn.Background = [System.Windows.Media.BrushConverter]::new().ConvertFrom($b[2])
             if ($b[0] -eq $defaultKey) { $btn.IsDefault = $true; $first = $btn }

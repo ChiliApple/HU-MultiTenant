@@ -372,6 +372,26 @@ Export-ModuleMember -Function Get-GraphToken
         $r = Invoke-HUTeamsScript -Code "Send-HUNotify -Title 'T' -Lines @('x'); break" -Name 'X' -Tenants @('a') -Settings $script:Set -AppRoot $script:App
         $r.Calls | Should -Be 1
     }
+    It 'G28: gesetzte Abbruch-Marke - kein Tenant laeuft, nichts gesendet' {
+        $c = [hashtable]::Synchronized(@{ CancelReq = $true })
+        $r = Invoke-HUTeamsScript -Code "Send-HUNotify -Title 'T' -Lines @('x')" -Name 'X' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App -Cancel $c
+        $r.Calls | Should -Be 0
+        @($r.Errors | Where-Object { $_ -match 'abgebrochen' }).Count | Should -Be 2
+    }
+    It 'G28: Abbruch waehrend des Laufs - Lauf endet sofort, danach keine Karte' {
+        $c = [hashtable]::Synchronized(@{ CancelReq = $false })
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $r = Invoke-HUTeamsScript -Code "`$__Cancel['CancelReq'] = `$true; Start-Sleep -Seconds 30; Send-HUNotify -Title 'T' -Lines @('x')" -Name 'X' -Tenants @('a', 'b') -Settings $script:Set -AppRoot $script:App -Cancel $c
+        $sw.Stop()
+        $sw.Elapsed.TotalSeconds | Should -BeLessThan 15
+        $r.Calls | Should -Be 0
+        @($r.Errors | Where-Object { $_ -match 'abgebrochen' }).Count | Should -BeGreaterOrEqual 1
+    }
+    It 'G28: Send-HUNotify nach gesetzter Marke sendet nicht' {
+        $r = Invoke-HUTeamsScript -Code "`$__Cancel['CancelReq'] = `$true; Send-HUNotify -Title 'T' -Lines @('x')" -Name 'X' -Tenants @('a') -Settings $script:Set -AppRoot $script:App -Cancel ([hashtable]::Synchronized(@{ CancelReq = $false }))
+        $r.Calls | Should -Be 0
+        $r.Ok | Should -Be 0
+    }
     It 'B33: geaendertes oder unbestaetigtes Skript laeuft nicht (Code 3)' {
         $j = New-HUTeamsJob -Name 'X' -Kind Script -Options @{ snippet = 'Drucker'; snippetHash = 'abc' }; $j.Id = ''
         $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set -AppRoot $script:App

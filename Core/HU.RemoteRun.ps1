@@ -100,6 +100,12 @@ function Invoke-HURemoteChild($S, [hashtable]$Vars, [string]$Script, [string]$Pr
             if ($TailFile) { Read-HURemoteLogTail $TailFile $pos $S $Prefix $Secrets $Log }
             if ($S.CancelReq -or (Get-Date) -gt $Deadline) {
                 $res = 'cancel'
+                # Abbruch-Marke zuerst setzen (Teams: nichts mehr senden), dem Lauf kurz Zeit geben, selbst zu enden
+                if ($Vars.ContainsKey('__Cancel') -and $Vars['__Cancel']) {
+                    $Vars['__Cancel']['CancelReq'] = $true
+                    $w0 = Get-Date
+                    while (-not $h.IsCompleted -and ((Get-Date) - $w0).TotalSeconds -lt 15) { [void]$h.AsyncWaitHandle.WaitOne(250) }
+                }
                 if ((Get-Date) -gt $Deadline) { Add-HURemoteLineTo $S "${Prefix}Zeitlimit erreicht - abgebrochen" 'Error' }
                 try { $sh = $ps.BeginStop($null, $null); if (-not $sh.AsyncWaitHandle.WaitOne([TimeSpan]::FromSeconds(10))) { $hung = $true } } catch { }
                 break
@@ -235,12 +241,14 @@ function Invoke-HURemoteRun($S, $Req, $Settings, [string]$AppRoot, [int]$LimitMi
                 if (-not $it.FixedTenants) { $job.Tenants = @($tenants) }
                 if (@($it.Params).Count) { $job.Options | Add-Member -NotePropertyName params -NotePropertyValue ([pscustomobject]$Req.Values) -Force }
                 $ids = @(); if ("$($Req.Target)") { $ids = @("$($Req.Target)") }
-                $vars = @{ AppRoot = $AppRoot; Settings = $Settings; __Job = $job; __Ids = $ids; __Tail = $tail }
+                # eigene Abbruch-Marke je Lauf (G28): wird beim Abbruch gesetzt und nie zurueckgesetzt - auch ein
+                # haengender Lauf sendet danach keine Karte mehr
+                $vars = @{ AppRoot = $AppRoot; Settings = $Settings; __Job = $job; __Ids = $ids; __Tail = $tail; __Cancel = [hashtable]::Synchronized(@{ CancelReq = $false }) }
                 $r = Invoke-HURemoteChild $S $vars {
                     foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Notify', 'HU.TeamsJobs') { $p = Join-Path $AppRoot "Core\$m.psm1"; if (Test-Path $p) { Import-Module $p -Force -DisableNameChecking -ErrorAction Stop } }
                     Initialize-Logging -LogFilePath $__Tail -MinLevel 'INFO'
                     Grant-HUSendApproval -Reason 'Handy: Meldung'   # Bestaetigung am Handy ist die Freigabe
-                    $res = Invoke-HUTeamsJob -Job $__Job -Settings $Settings -AppRoot $AppRoot -TargetIds $__Ids
+                    $res = Invoke-HUTeamsJob -Job $__Job -Settings $Settings -AppRoot $AppRoot -TargetIds $__Ids -Cancel $__Cancel
                     if ($res.Success) { Write-Host "$($res.Message)" -ForegroundColor Green } else { Write-Host "$($res.Message)" -ForegroundColor Red; Write-Error "$($res.Message)" -ErrorAction Continue }
                 }.ToString() "" $secrets $log $tail $deadline
                 Remove-Item -LiteralPath $tail -Force -ErrorAction SilentlyContinue
@@ -340,7 +348,7 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
         }
         catch {
             $err = "$($_.Exception.Message)"
-            if ($q.Op -notin 'sec', 'secitems', 'addon' -and $err -match '403|Forbidden|Authorization') { $err = 'Berechtigung fehlt (DeviceManagementApps.ReadWrite.All bzw. DeviceManagementScripts.ReadWrite.All, Group.Read.All)' }
+            if ($q.Op -notin 'sec', 'secitems', 'addon' -and $err -match '403|Forbidden|Authorization') { $err = 'Berechtigung fehlt (lesen: DeviceManagementApps.Read.All bzw. DeviceManagementScripts.Read.All, Group.Read.All; aendern: die ReadWrite-Rechte - am PC unter Rechte erteilen)' }
             if ($err.Length -gt 300) { $err = $err.Substring(0, 300) }
         }
         $json = ''

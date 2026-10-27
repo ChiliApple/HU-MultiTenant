@@ -1,5 +1,38 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.1 (Testversion)
+
+Nacharbeiten zur Stable 2.6.0: weniger Rechte von Haus aus, mehr Schutz beim Import und Wiederherstellen.
+
+### 🔐 Rechte
+- **Tenant einrichten mit Umfang:** Knöpfe **Nur lesen** und **Lesen + verteilen**. Ein neuer Tenant startet mit *Lesen + verteilen* (Apps hochladen und zuweisen, Wartung anlegen, *Jetzt ausführen*); *Rechte erteilen* bei einem bestehenden Tenant startet mit *Nur lesen*. Weitreichende Rechte werden weiter eigens bestätigt.
+- **Lesen für Apps und Wartung** braucht nur noch `DeviceManagementApps.Read.All` bzw. `DeviceManagementScripts.Read.All`.
+- **Fehlt ein Schreibrecht** beim Hochladen, Zuweisen oder *Jetzt ausführen*, bietet die App nach dem Lauf an, genau dieses Recht zu erteilen („Nein“ vorgewählt). Bereits erteilte Rechte bleiben unverändert.
+
+### ⭐ Muster-Bibliothek
+- **Ungeprüfte Pakete einzeln bestätigen:** beim Anwenden eine Prüfansicht je Paket („Paket 1 von 3“); Abbrechen stoppt, vorher bestätigte Pakete bleiben bestätigt.
+- **Import:** Herausgeber, Titel, Kategorie und Tags aus fremden Dateien werden bereinigt (Steuer- und Richtungszeichen) und gekürzt; der Herausgeber ist als „nicht verifiziert“ gekennzeichnet.
+
+### 💾 App-Sicherung
+- **Wiederherstellen:** Snippets, Wartungsskripte, Teams-Aufträge und Teams-Ziele sind **orange und nicht vorgewählt** – sie enthalten Skripte bzw. Webhook-Adressen. Nur anhaken, wenn die Sicherung von dir stammt.
+- **Falsches Kennwort:** die Meldung sagt jetzt, was zu prüfen ist (Tastatur, richtige Datei, vollständig kopiert).
+- **Sicherung auf Freigabe oder USB** wird vor dem Öffnen lokal kopiert; Prüfung und Entschlüsseln lesen so sicher dieselbe Datei. Liegen gebliebene Temp-Dateien früherer Läufe werden aufgeräumt.
+- **PowerShell 7:** Schlüssel über das aktuelle .NET-Verfahren; unter PowerShell 5.1 klare Meldung, wenn .NET Framework 4.7.2 fehlt.
+
+### 📱 Fernbedienung
+- **Abbruch einer Teams-Meldung greift sofort:** nach dem Abbruch geht keine Karte mehr raus – auch nicht aus einem Skript, das gerade läuft oder hängt.
+
+### 🎨 Oberfläche
+- **Erster Start:** der Starter `HU-MultiTenant.exe` (eigenes Logo, ohne Konsolenfenster) wird gleich angelegt, dazu einmal die Frage nach einem Desktop-Symbol und das Angebot, den Einstieg im Browser zu öffnen.
+- **Meldungsfenster für Screenreader:** Fenster, Symbol, Text und Knöpfe sind benannt; der vorgewählte Knopf wird als „(Enter)“ angesagt.
+
+### 🗺️ Doku
+- **Einstieg mit 12 Situationen:** neu „Die neuen Schüler-Notebooks sind da“ (Hash-Archiv, auch für die bestehende Flotte), „Schulschluss: Abgänger-Geräte“, „Sind wir sicher eingestellt?“ und „MFA für alle Lehrkräfte“. „Neuer PC“ und „Ich bin nicht am PC“ stehen nur noch in der Anleitung.
+- Anleitung und Installation: Rechte-Umfang, Wiederherstellen, .NET Framework 4.7.2.
+
+### ⚠️ Nach dem Update
+- Bestehende Tenants behalten ihre Rechte. Wer einen Tenant bewusst nur lesend betreiben will, entzieht die Schreibrechte im Entra Admin Center.
+
 ## v2.6.0 (Stable, 27.10.2026)
 
 Stable-Release der Testversionen 2.5.6 bis 2.5.9 – „Austausch und Sicherung“. Alle Punkte im Detail stehen in den Abschnitten darunter.

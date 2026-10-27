@@ -14,6 +14,27 @@
 #>
 
 $script:TSU = $null   # offenes Einrichtungsfenster (Zustand)
+$script:HUMissWofuer = ''
+$script:HUMissRight = @()   # nach einem Lauf: Tenants, denen ein Schreibrecht fehlte (fuer das Angebot 'jetzt erteilen')
+
+# Nach einem Lauf mit 403: anbieten, das fehlende Recht gleich zu erteilen (Rechte werden nur bei Bedarf erteilt).
+# $Results: Objekte mit Tenant und Missing (Recht); ohne Missing wird nichts angeboten.
+function Request-HUMissingRight($Results, [string]$Wofuer = 'diese Aktion') {
+    $miss = @(@($Results) | Where-Object { $_ -and $_.PSObject.Properties['Missing'] -and "$($_.Missing)" } |
+        Group-Object { "$($_.Tenant)" } | ForEach-Object { [pscustomobject]@{ Tenant = $_.Name; Rechte = @($_.Group | ForEach-Object { "$($_.Missing)" } | Select-Object -Unique) } })
+    if (-not $miss.Count) { return }
+    $script:HUMissRight = $miss
+    $script:HUMissWofuer = $Wofuer
+    # erst nach dem Abschluss des Laufs (eigener Takt), damit das Fenster nicht im Job-Abschluss haengt
+    Invoke-HUDelayed 1 {
+        $m = @($script:HUMissRight); $script:HUMissRight = @()
+        if (-not $m.Count) { return }
+        $txt = "Fuer $($script:HUMissWofuer) fehlt der App ein Recht:`n`n" + (@($m | ForEach-Object { "  $(Get-HUTenantDisplayName $_.Tenant): $($_.Rechte -join ', ')" }) -join "`n") +
+            "`n`nJetzt erteilen? Es oeffnet sich 'Rechte erteilen' mit genau diesem Recht vorgewaehlt (Anmeldung als Global Admin)."
+        if (-not (Confirm-HU -Warning $txt)) { return }
+        foreach ($x in $m) { try { [void](Show-HUTenantSetupDialog -TenantKey $x.Tenant -Preselect $x.Rechte) } catch { Show-HUMessage "$($_.Exception.Message)" -Icon Warning } }
+    }
+}
 
 function Add-HUTsuLog([string]$Text, [string]$Level = 'Info') {
     $u = $script:TSU
@@ -76,6 +97,8 @@ function Update-HUTsuPermList {
         $cat = @($u.Catalog.permissions | Where-Object { "$($_.name)" -eq $n })[0]
         $risky = Test-HUPermissionRisky $n $u.Catalog
         $granted = ($u.Granted -contains $n)
+        # X.Read.All ist durch ein erteiltes X.ReadWrite.All abgedeckt - nicht als fehlend zeigen, nicht erteilen
+        $covered = (-not $granted -and $n -match '^(.+)\.Read\.All$' -and $u.Granted -contains "$($Matches[1]).ReadWrite.All")
         $why = if ($cat) { "$($cat.why)" } else { '' }
         if ($usage[$n]) { $why = (@($why, "Extensions: $(@($usage[$n]) -join ', ')") | Where-Object { $_ }) -join ' | ' }
         if (-not $why -and $u.Extra -contains $n) { $why = 'selbst hinzugefuegt' }
@@ -84,21 +107,23 @@ function Update-HUTsuPermList {
         $cb.Tag = $n
         $sp = New-Object System.Windows.Controls.StackPanel
         $t1 = New-Object System.Windows.Controls.TextBlock
-        $t1.Text = "$n$(if ($granted) { "   $([char]0x2714) erteilt" } elseif ($u.Mode -eq 'Grant' -and $u.GrantedKnown) { "   $([char]0x2716) fehlt" })$(if ($risky) { '   (weitreichend)' })"
-        $t1.Foreground = Get-HUBrush $(if ($risky) { '#EF5350' } elseif ($granted) { '#81C784' } else { '#E0E0E0' })
+        $t1.Text = "$n$(if ($granted) { "   $([char]0x2714) erteilt" } elseif ($covered) { "   $([char]0x2714) abgedeckt durch ReadWrite" } elseif ($u.Mode -eq 'Grant' -and $u.GrantedKnown) { "   $([char]0x2716) fehlt" })$(if ($risky) { '   (weitreichend)' })"
+        $t1.Foreground = Get-HUBrush $(if ($risky) { '#EF5350' } elseif ($granted -or $covered) { '#81C784' } else { '#E0E0E0' })
         $t1.FontWeight = 'SemiBold'
         [void]$sp.Children.Add($t1)
         if ($why) { $t2 = New-Object System.Windows.Controls.TextBlock; $t2.Text = $why; $t2.Foreground = Get-HUBrush '#909090'; $t2.FontSize = 11; $t2.TextWrapping = 'Wrap'; [void]$sp.Children.Add($t2) }
         $cb.Content = $sp
         if ($granted) { $cb.IsChecked = $true; $cb.IsEnabled = $false }
+        elseif ($covered) { $cb.IsChecked = $false; $cb.IsEnabled = $false; $cb.ToolTip = 'Lesen ist im erteilten ReadWrite-Recht enthalten' }
         elseif ($u.Checked.ContainsKey($n)) { $cb.IsChecked = [bool]$u.Checked[$n] }
         elseif ($u.NurVorauswahl) { $cb.IsChecked = $false }   # Aufruf mit -Preselect (z. B. Zusatzmodul): nur genau diese Rechte
         else {
             # Vorauswahl: Standard-Rechte; beim Erteilen zusaetzlich alles, was eine Extension braucht
-            $cb.IsChecked = (($cat -and $cat.default -eq $true) -or ($u.Mode -eq 'Grant' -and $usage[$n] -and -not $risky) -or ($u.Extra -contains $n))
+            # Umfang 'verteilen': zusaetzlich die Schreibrechte fuer Apps, Wartung und Jetzt ausfuehren
+            $cb.IsChecked = (($cat -and $cat.default -eq $true) -or ($u.Scope -eq 'verteilen' -and @($u.Catalog.verteilen) -contains $n) -or ($u.Mode -eq 'Grant' -and $usage[$n] -and -not $risky) -or ($u.Extra -contains $n))
         }
         $cb.Add_Click({ $script:TSU.Checked["$($this.Tag)"] = [bool]$this.IsChecked; Update-HUTsuState })
-        if ($granted) { $cb.Opacity = 0.75 }
+        if ($granted -or $covered) { $cb.Opacity = 0.75 }
         [void]$c.lstPerms.Items.Add($cb)
     }
     Update-HUTsuState
@@ -116,7 +141,7 @@ function Update-HUTsuState {
     $sel = @(Get-HUTsuSelected)
     $risky = @($sel | Where-Object { Test-HUPermissionRisky $_ $u.Catalog })
     $busy = ($u.Phase -ne 'Idle')
-    foreach ($x in @($u.C.lstPerms, $u.C.txtKey, $u.C.txtName, $u.C.txtExtraPerm, $u.C.btnAddPerm, $u.C.btnSelDefault, $u.C.btnSelNone)) { $x.IsEnabled = -not $busy }
+    foreach ($x in @($u.C.lstPerms, $u.C.txtKey, $u.C.txtName, $u.C.txtExtraPerm, $u.C.btnAddPerm, $u.C.btnSelDefault, $u.C.btnSelVerteilen, $u.C.btnSelNone)) { $x.IsEnabled = -not $busy }
     $u.C.btnStart.IsEnabled = (-not $busy -and $sel.Count -gt 0)
     if (-not $busy) {
         $u.C.txtState.Text = if ($u.Mode -eq 'Grant') { "$($sel.Count) Recht(e) zum Erteilen ausgewaehlt$(if ($risky.Count) { ", davon $($risky.Count) weitreichend" })" }
@@ -326,6 +351,7 @@ function Show-HUTenantSetupDialog {
         Window = $w; C = $c; Catalog = $catalog; Mode = $(if ($tenant) { 'Grant' } else { 'Setup' }); Tenant = $tenant
         Granted = $granted; GrantedKnown = $known; Extra = @(); Checked = @{}; Phase = 'Idle'; LoginCtx = $null; Login = $null; Worker = $null
         Key = ''; WorkStarted = $null; Result = $null; Done = @(); Sel = @(); NurVorauswahl = (@($Preselect | Where-Object { "$_" }).Count -gt 0)
+        Scope = $(if ($tenant) { 'lesen' } else { 'verteilen' })   # neuer Tenant: Lesen + verteilen vorgewaehlt; Rechte erteilen: nur lesen
     }
     foreach ($p in $Preselect) { if ("$p") { $script:TSU.Checked["$p"] = $true; if (-not @($catalog.permissions | Where-Object { "$($_.name)" -eq "$p" }).Count) { $script:TSU.Extra += "$p" } } }
 
@@ -339,7 +365,8 @@ function Show-HUTenantSetupDialog {
         $c.txtIntro.Text = "Ein Global Administrator meldet sich einmal im Browser an (Microsoft-App 'Graph Command Line Tools'). HU-MultiTenant legt dann im Tenant die App-Registrierung 'HU-MultiTenant' an, erzeugt auf diesem PC ein nicht exportierbares Zertifikat (12 Monate, wird automatisch erneuert), erteilt die ausgewaehlten Rechte, testet die Anmeldung und traegt den Tenant ein. Kein Secret, nichts abzutippen."
     }
 
-    $c.btnSelDefault.Add_Click({ $script:TSU.Checked = @{}; Update-HUTsuPermList })
+    $c.btnSelDefault.Add_Click({ $script:TSU.Checked = @{}; $script:TSU.Scope = 'lesen'; $script:TSU.NurVorauswahl = $false; Update-HUTsuPermList })
+    $c.btnSelVerteilen.Add_Click({ $script:TSU.Checked = @{}; $script:TSU.Scope = 'verteilen'; $script:TSU.NurVorauswahl = $false; Update-HUTsuPermList })
     $c.btnSelNone.Add_Click({ foreach ($cb in $script:TSU.C.lstPerms.Items) { if ($script:TSU.Granted -notcontains "$($cb.Tag)") { $cb.IsChecked = $false; $script:TSU.Checked["$($cb.Tag)"] = $false } }; Update-HUTsuState })
     $addPerm = {
         $u = $script:TSU

@@ -524,8 +524,26 @@ $script:Window.Add_ContentRendered({
         $script:SmokeTimer.Start()
         return
     }
+    # Starter HU-MultiTenant.exe (eigenes Logo, ohne Konsolenfenster) gleich bereitstellen, falls er fehlt
+    try { [void](New-HULauncher) } catch { }
     if ($script:FirstRun) {
         Write-HULogWarn 'Noch keine Tenants eingerichtet - Einstellungen > Tenants (Anleitung: F1).'
+        # Neuer Benutzer: einmal fragen, ob ein Symbol auf den Desktop soll (spaeter: Einstellungen > Allgemein)
+        $asked = $false; try { $asked = [bool](Get-HUStateValue 'shortcutAsked' $false) } catch { }
+        if (-not $asked -and -not (Test-HUShortcut)) {
+            try { Set-HUStateValue 'shortcutAsked' $true; Save-HUUIState } catch { }
+            if (Confirm-HU "HU-MultiTenant-Symbol auf den Desktop legen?`n`nDamit startest du die App kuenftig mit Doppelklick (eigenes Logo, ohne Konsolenfenster). Geht auch spaeter unter Einstellungen > Allgemein.") {   # Warnung: nein - nur lokal
+                try { $l = New-HUShortcut -Location Desktop; Write-HULogOK "Verknuepfung erstellt: $l" } catch { Show-HUMessage "Verknuepfung fehlgeschlagen:`n$($_.Exception.Message)" -Icon Warning }
+            }
+        }
+        # Neuer Benutzer: einmal den Einstieg anbieten (Situationen, 'In 10 Minuten startklar'); Anleitung jederzeit mit F1
+        $docAsked = $false; try { $docAsked = [bool](Get-HUStateValue 'docAsked' $false) } catch { }
+        if (-not $docAsked) {
+            try { Set-HUStateValue 'docAsked' $true; Save-HUUIState } catch { }
+            if (Confirm-HU "Neu bei HU-MultiTenant? Dann zuerst kurz den Einstieg ansehen.`n`nJetzt im Browser oeffnen? Er zeigt typische Situationen und 'In 10 Minuten startklar' (Tenant einrichten, erster Versuch ohne Risiko).`n`nDie ausfuehrliche Anleitung gibt es jederzeit mit F1 bzw. dem Knopf ? oben rechts.") {
+                try { Show-HUManual -Page Einstieg } catch { }
+            }
+        }
         if (Confirm-HU "Willkommen bei HU-MultiTenant.`n`nJetzt den ersten Tenant einrichten? Dazu meldet sich ein Global Administrator einmal im Browser an - App-Registrierung, Zertifikat und Rechte legt HU-MultiTenant selbst an.`n`nNein = Einstellungen > Tenants (manuell mit App-ID und Secret)." 'Tenant einrichten') {
             [void](Show-HUTenantSetupDialog)
         }

@@ -101,7 +101,7 @@ function Start-HUIntLoad([string[]]$Keys = @(), [switch]$Force, [scriptblock]$Th
                 try { [pscustomobject]@{ Tenant = $k; Rows = @(Get-HUTenantAppList -TenantKey $k -Settings $Settings); Error = '' } }
                 catch {
                     $m = $_.Exception.Message
-                    if ($m -match '403|Forbidden|Authorization') { $m = 'Berechtigung DeviceManagementApps.ReadWrite.All (und Group.Read.All) fehlt' }
+                    if ($m -match '403|Forbidden|Authorization') { $m = 'Berechtigung DeviceManagementApps.Read.All (und Group.Read.All) fehlt - zum Zuweisen/Aufheben DeviceManagementApps.ReadWrite.All' }
                     Write-HULog -Message $m -Level 'ERROR' -Tenant $k
                     [pscustomobject]@{ Tenant = $k; Rows = @(); Error = $m }
                 }

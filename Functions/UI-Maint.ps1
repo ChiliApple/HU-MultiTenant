@@ -388,7 +388,7 @@ function Get-HURemScheduleText($Rem) {
 $script:RemDeployCode = {
     $results = New-Object System.Collections.Generic.List[object]
     foreach ($tk in $Tenants) {
-        $r = [ordered]@{ Tenant = $tk; Ok = $false; ScriptId = ''; Error = '' }
+        $r = [ordered]@{ Tenant = $tk; Ok = $false; ScriptId = ''; Error = ''; Missing = '' }
         try {
             Write-HULog -Message "--- $tk ---" -Level 'INFO' -Tenant $tk
             $sid = if ($Deployments.ContainsKey($tk)) { "$($Deployments[$tk])" } else { '' }
@@ -411,7 +411,7 @@ $script:RemDeployCode = {
             $r.Error = $_.Exception.Message
             $hint = ''
             if ($r.Error -match '(?i)licen|lizenz') { $hint = ' -> Intune Admin Center: Mandantenverwaltung > Connectors und Token > Windows-Datenverarbeitung > "Windows-Lizenzueberpruefung" einschalten (A3/E3 noetig)' }
-            elseif ($r.Error -match '403|Forbidden|Authorization') { $hint = ' -> Berechtigung DeviceManagementScripts.ReadWrite.All (und Group.Read.All) erteilen' }
+            elseif ($r.Error -match '403|Forbidden|Authorization') { $hint = ' -> Berechtigung DeviceManagementScripts.ReadWrite.All (und Group.Read.All) erteilen'; $r.Missing = 'DeviceManagementScripts.ReadWrite.All' }
             Write-HULog -Message "$($r.Error)$hint" -Level 'ERROR' -Tenant $tk
         }
         $results.Add([pscustomobject]$r)
@@ -457,6 +457,7 @@ function Start-HURemDeploy([switch]$Release) {
 }
 
 function Complete-HURemDeploy($Result) {
+    Request-HUMissingRight $Result 'das Hochladen und Zuweisen von Wartungspaketen'
     $r = Get-HURemById $script:RemJobId
     $okN = 0; $failN = 0
     if ($r) {
@@ -592,11 +593,12 @@ function Show-HURemRunNowDialog([string]$Name, $Deps, $Rtb, [string]$JobName) {
                         Write-HULog -Message "$($dv.deviceName): gestartet (letzter Sync $(try { ([datetime]$dv.lastSyncDateTime).ToLocalTime().ToString('dd.MM. HH:mm') } catch { '?' }))" -Level 'OK' -Tenant $Tk
                     }
                 } catch {
-                    $hint = if ("$($_.Exception.Message)" -match '403|Forbidden|Authorization') { ' -> Berechtigung DeviceManagementManagedDevices.PrivilegedOperations.All erteilen' } else { '' }
+                    $hint = ''
+                    if ("$($_.Exception.Message)" -match '403|Forbidden|Authorization') { $hint = ' -> Berechtigung DeviceManagementManagedDevices.PrivilegedOperations.All erteilen'; [pscustomobject]@{ Tenant = $Tk; Missing = 'DeviceManagementManagedDevices.PrivilegedOperations.All' } }
                     Write-HULog -Message "${n}: $($_.Exception.Message)$hint" -Level 'ERROR' -Tenant $Tk
                 }
             }
-        } -OnDone { param($Result, $Errors) Update-HURemButtons; Update-HURintButtons })
+        } -OnDone { param($Result, $Errors) Update-HURemButtons; Update-HURintButtons; Request-HUMissingRight $Result 'Jetzt ausfuehren' })
     Update-HURemButtons; Update-HURintButtons
 }
 

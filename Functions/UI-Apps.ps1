@@ -764,7 +764,7 @@ $script:AppDeployCode = {
         }
     }
     foreach ($tk in $Tenants) {
-        $r = [ordered]@{ Tenant = $tk; Ok = $false; AppId = ''; Signature = ''; Error = ''; Deps = New-Object System.Collections.Generic.List[object] }
+        $r = [ordered]@{ Tenant = $tk; Ok = $false; AppId = ''; Signature = ''; Error = ''; Missing = ''; Deps = New-Object System.Collections.Generic.List[object] }
         try {
             Write-HULog -Message "--- $tk ---" -Level 'INFO' -Tenant $tk
             $ids = @{}
@@ -836,7 +836,7 @@ $script:AppDeployCode = {
                 elseif (-not $r.AppId) { $r.AppId = $failId }
             }
             $hint = ''
-            if ($r.Error -match '403|Forbidden|Authorization') { $hint = ' -> Berechtigung DeviceManagementApps.ReadWrite.All (und Group.Read.All) in der App-Registrierung erteilen' }
+            if ($r.Error -match '403|Forbidden|Authorization') { $hint = ' -> Berechtigung DeviceManagementApps.ReadWrite.All (und Group.Read.All) erteilen'; $r.Missing = 'DeviceManagementApps.ReadWrite.All' }
             Write-HULog -Message "$($r.Error)$hint" -Level 'ERROR' -Tenant $tk
         }
         $r.Deps = $r.Deps.ToArray()
@@ -899,6 +899,7 @@ function Start-HUAppDeploy([switch]$Release) {
 }
 
 function Complete-HUAppDeploy($Result) {
+    Request-HUMissingRight $Result 'das Hochladen und Zuweisen von Apps'
     $a = Get-HUAppById $script:AppJobApp
     $okN = 0; $failN = 0
     if ($a) {

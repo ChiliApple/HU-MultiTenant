@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     HU.AppBackup - verschluesselte App-Sicherung (Format .husicherung).
@@ -22,7 +22,7 @@ $script:HUAbMinPw   = 10
 $script:HUAbMaxHead = 64KB
 $script:HUAbIterMin  = 600000
 $script:HUAbIterMax  = 5000000
-$script:HUAbFailMsg = 'Kennwort falsch oder Datei veraendert/beschaedigt - nichts entschluesselt.'
+$script:HUAbFailMsg = "Kennwort falsch oder Datei veraendert/beschaedigt - nichts entschluesselt.`n`nBitte pruefen: Gross-/Kleinschreibung und Tastaturbelegung (z/y, Feststelltaste), die richtige Datei (PC-Name und Datum stehen im Dateinamen), Datei vollstaendig kopiert (Groesse wie am Quell-PC). Ohne das richtige Kennwort ist die Sicherung nicht zu oeffnen."
 
 function Get-HUAbPlain([object]$Password) {
     if ($Password -is [securestring]) {
@@ -41,14 +41,55 @@ function Test-HUAbPassword {
     return $null
 }
 
+# 072 G12: PBKDF2-SHA256. PS 7 (.NET 6+): statisches Pbkdf2 (der Konstruktor ist dort veraltet, SYSLIB0060);
+# PS 5.1: Konstruktor mit HashAlgorithmName - braucht .NET Framework 4.7.2 oder neuer, sonst klare Meldung.
+function Get-HUAbPbkdf2([byte[]]$Pw, [byte[]]$Salt, [int]$Iterations) {
+    $t = [Security.Cryptography.Rfc2898DeriveBytes]
+    if ($t.GetMethod('Pbkdf2', [type[]]@([byte[]], [byte[]], [int], [Security.Cryptography.HashAlgorithmName], [int]))) {
+        return [Security.Cryptography.Rfc2898DeriveBytes]::Pbkdf2($Pw, $Salt, $Iterations, [Security.Cryptography.HashAlgorithmName]::SHA256, 32)
+    }
+    if (-not $t.GetConstructor([type[]]@([byte[]], [byte[]], [int], [Security.Cryptography.HashAlgorithmName]))) {
+        throw 'App-Sicherung braucht .NET Framework 4.7.2 oder neuer (Windows 10 ab 1803 hat es) - bitte .NET aktualisieren.'
+    }
+    $kdf = New-Object Security.Cryptography.Rfc2898DeriveBytes -ArgumentList $Pw, $Salt, $Iterations, ([Security.Cryptography.HashAlgorithmName]::SHA256)
+    try { return $kdf.GetBytes(32) } finally { $kdf.Dispose() }
+}
+
+# 072 B4: Temp-ZIP (Klartext, DeleteOnClose) kann nach einem Absturz liegen bleiben - alte Reste beim naechsten Lauf entfernen
+function Clear-HUAbTempZips {
+    try {
+        $lim = (Get-Date).AddHours(-1)
+        foreach ($f in @(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^HU-(Sicherung|Wiederherstellung|Quelle)-[0-9a-f]{32}\.(zip|husicherung)$' -and $_.LastWriteTime -lt $lim })) {
+            try { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop } catch { }
+        }
+    } catch { }
+}
+
+# 072 G13: liegt die Sicherung nicht auf einer lokalen Platte (Freigabe, USB), erst lokal kopieren - Pruefung (MAC)
+# und Entschluesseln lesen dann sicher dieselben Bytes. Rueckgabe: lesbarer Stream (Temp-Kopie verschwindet beim Schliessen).
+function Open-HUAbSourceStream([string]$Path, [switch]$ForceCopy) {
+    $local = -not $ForceCopy
+    try {
+        if (-not $local) { }
+        elseif ($Path -match '^(\\\\|//)') { $local = $false }
+        elseif ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { $local = ([IO.DriveInfo]::new([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path))).DriveType -eq [IO.DriveType]::Fixed) }
+    } catch { $local = $false }
+    $src = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    if ($local) { return $src }
+    try {
+        $tmp = New-Object IO.FileStream((Join-Path ([IO.Path]::GetTempPath()) ("HU-Quelle-" + [guid]::NewGuid().ToString('N') + '.husicherung')), [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None, 65536, [IO.FileOptions]::DeleteOnClose)
+        $src.CopyTo($tmp, 1MB); [void]$tmp.Seek(0, 'Begin')
+        return $tmp
+    } finally { $src.Dispose() }
+}
+
 function Get-HUAbKeys {
     # 070 B2: PBKDF2 liefert nur 32 Byte (ein Block - sonst rechnet die App doppelt, ein Angreifer aber nur einmal);
     # AES- und MAC-Schluessel werden daraus per HMAC-SHA256 mit festen Bezeichnern abgeleitet.
     param([object]$Password, [byte[]]$Salt, [int]$Iterations = $script:HUAbIter)
     $pw = [Text.Encoding]::UTF8.GetBytes((Get-HUAbPlain $Password))
     try {
-        $kdf = New-Object Security.Cryptography.Rfc2898DeriveBytes -ArgumentList $pw, $Salt, $Iterations, ([Security.Cryptography.HashAlgorithmName]::SHA256)
-        try { $master = $kdf.GetBytes(32) } finally { $kdf.Dispose() }
+        $master = Get-HUAbPbkdf2 $pw $Salt $Iterations
     } finally { [Array]::Clear($pw, 0, $pw.Length) }
     $hm = New-Object Security.Cryptography.HMACSHA256 -ArgumentList (, $master)
     try {
@@ -251,6 +292,10 @@ $script:HUAbFileRx = '^HU-Sicherung_[A-Za-z0-9-]{1,40}_\d{4}-\d{2}-\d{2}_\d{6}\.
 # 071 B3: alles wird beim Lesen im Speicher gehalten -> Gesamtgrenze 2 GB
 $script:HUAbLimits = @{ Files = 200000; EntryBytes = 512MB; TotalBytes = 2GB }
 
+# G2: Bereiche mit ausfuehrbarem Code bzw. Webhook-Adressen - beim Wiederherstellen nicht vorgewaehlt
+$script:HUAbCodeNames = @('config/quick-snippets.json', 'config/remediations.json', 'config/teams-jobs.json', 'special/teams-ziele.json')
+function Test-HUAppBackupCodeName([string]$Name) { return ($script:HUAbCodeNames -contains $Name) }
+
 function Get-HUAppBackupArea([string]$Name) {
     foreach ($k in $script:HUAbAreaOf.Keys) { if (($k.EndsWith('/') -and $Name.StartsWith($k)) -or $Name -eq $k) { return $script:HUAbAreaOf[$k] } }
     return ''
@@ -398,6 +443,7 @@ function New-HUAppBackup {
     $final = Join-Path $Folder $name
     $tmp = "$final.tmp"
     # 070 B7: ZIP im Speicher; nur mit Tenant-Backups eine Temp-Datei, die beim Schliessen verschwindet
+    Clear-HUAbTempZips
     $zs = if ($Large) { New-Object IO.FileStream((Join-Path ([IO.Path]::GetTempPath()) ("HU-Sicherung-" + [guid]::NewGuid().ToString('N') + '.zip')), [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None, 65536, [IO.FileOptions]::DeleteOnClose) } else { New-Object IO.MemoryStream }
     $man = New-Object System.Collections.Generic.List[object]
     $bytes = [int64]0
@@ -474,7 +520,8 @@ function Open-HUAppBackup {
     Add-Type -AssemblyName System.IO.Compression -ErrorAction SilentlyContinue
     $pg = { param($ph, $d, $t) if ($null -ne $Progress) { $Progress['Phase'] = $ph; $Progress['Done'] = $d; $Progress['Total'] = $t } }
     $res = [pscustomobject]@{ Header = $null; Manifest = $null; Entries = @{}; Rows = @(); Errors = (New-Object System.Collections.Generic.List[string]) }
-    $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    Clear-HUAbTempZips
+    $fs = Open-HUAbSourceStream $Path
     $big = $fs.Length -gt 256MB
     $zs = if ($big) { New-Object IO.FileStream((Join-Path ([IO.Path]::GetTempPath()) ("HU-Wiederherstellung-" + [guid]::NewGuid().ToString('N') + '.zip')), [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None, 65536, [IO.FileOptions]::DeleteOnClose) } else { New-Object IO.MemoryStream }
     try {
@@ -658,5 +705,5 @@ function Test-HUAppBackupDue {
 
 Export-ModuleMember -Function Test-HUAbPassword, Protect-HUAppBackupStream, Read-HUAppBackupHeaderStream, Unprotect-HUAppBackupStream,
     Protect-HUAppBackupBytes, Read-HUAppBackupHeader, Unprotect-HUAppBackupBytes,
-    Get-HUAppBackupArea, Resolve-HUAppBackupTarget, Get-HUAppBackupSources, Get-HUAbModuleList, Get-HUAppBackupFileName, New-HUAppBackup, Get-HUAppBackupList,
+    Get-HUAppBackupArea, Test-HUAppBackupCodeName, Resolve-HUAppBackupTarget, Get-HUAppBackupSources, Get-HUAbModuleList, Get-HUAppBackupFileName, New-HUAppBackup, Get-HUAppBackupList,
     Remove-HUAppBackupOld, Open-HUAppBackup, Update-HUAbTeamsJobs, Restore-HUAppBackup, Save-HUAppBackupPassword, Get-HUAppBackupPassword, Remove-HUAppBackupPassword, Test-HUAppBackupDue
