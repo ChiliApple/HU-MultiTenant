@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Pester-Tests fuer Core\HU.AppBackup.psm1 (2.5.9): Verschluesselung, Kopf, Manipulation, Kennwort.
@@ -256,5 +256,108 @@ Describe 'App-Sicherung: Skripte beim Wiederherstellen nicht vorgewaehlt (072 G2
     }
     It 'jeder Code-Bereich hat einen Bereichsnamen' {
         foreach ($n in 'config/quick-snippets.json', 'config/remediations.json', 'config/teams-jobs.json', 'special/teams-ziele.json') { Get-HUAppBackupArea $n | Should -Not -BeNullOrEmpty }
+    }
+}
+
+Describe 'App-Sicherung: Schutzpruefungen beim Oeffnen (072 G4)' {
+    BeforeAll {
+        Add-Type -AssemblyName System.IO.Compression -ErrorAction SilentlyContinue
+        $script:G4 = Join-Path ([IO.Path]::GetTempPath()) ("HU-G4-" + [guid]::NewGuid().ToString('N'))
+        foreach ($d in 'app', 'data', 'bk') { New-Item -ItemType Directory -Path (Join-Path $script:G4 $d) -Force | Out-Null }
+        $script:G4Pw = 'Korrekt-Pferd-42'
+        # Sicherung von Hand bauen: Eintraege (Name -> byte[]) + Manifest (Name -> Sha256; $null = automatisch)
+        $script:Build = {
+            param([System.Collections.Specialized.OrderedDictionary]$Files, [hashtable]$ShaOverride = @{}, [string[]]$Skip = @(), [string]$App = '2.6.1', [switch]$NoManifest)
+            $sha = { param([byte[]]$b) $h = [Security.Cryptography.SHA256]::Create(); try { -join ($h.ComputeHash($b) | ForEach-Object { $_.ToString('x2') }) } finally { $h.Dispose() } }
+            $man = @(foreach ($k in $Files.Keys) { if ($Skip -contains $k) { continue }; [pscustomobject]@{ Name = $k; Sha256 = $(if ($ShaOverride.ContainsKey($k)) { $ShaOverride[$k] } else { & $sha $Files[$k] }); Changed = '2026-10-27T10:00:00' } })
+            $ms = New-Object IO.MemoryStream
+            $zip = New-Object IO.Compression.ZipArchive($ms, [IO.Compression.ZipArchiveMode]::Create, $true)
+            try {
+                foreach ($k in $Files.Keys) { $e = $zip.CreateEntry($k); $s = $e.Open(); try { $s.Write($Files[$k], 0, $Files[$k].Length) } finally { $s.Dispose() } }
+                if (-not $NoManifest) {
+                    $mb = [Text.Encoding]::UTF8.GetBytes((@{ Format = 1; Files = $man } | ConvertTo-Json -Depth 5))
+                    $e = $zip.CreateEntry('meta/manifest.json'); $s = $e.Open(); try { $s.Write($mb, 0, $mb.Length) } finally { $s.Dispose() }
+                }
+            } finally { $zip.Dispose() }
+            [void]$ms.Seek(0, 'Begin')
+            $p = Join-Path $script:G4 ("t-" + [guid]::NewGuid().ToString('N') + '.husicherung')
+            $fs = [IO.File]::Create($p)
+            try { Protect-HUAppBackupStream -InStream $ms -OutStream $fs -Password $script:G4Pw -Iterations 600000 -Header @{ App = $App; Files = $Files.Count } } finally { $fs.Dispose(); $ms.Dispose() }
+            $p
+        }
+        $script:OpenG4 = { param($p) Open-HUAppBackup -Path $p -Password $script:G4Pw -AppVersion '2.6.1' -AppRoot (Join-Path $script:G4 'app') -DataRoot (Join-Path $script:G4 'data') -BackupRoot (Join-Path $script:G4 'bk') }
+        $script:B = { param([string]$t) [Text.Encoding]::UTF8.GetBytes($t) }
+    }
+    AfterAll { Remove-Item -LiteralPath $script:G4 -Recurse -Force -ErrorAction SilentlyContinue }
+    It 'saubere Sicherung oeffnet ohne Fehler' {
+        $f = [ordered]@{ 'config/settings.json' = (& $B '{"tenants":[]}') }
+        $r = & $OpenG4 (& $Build $f)
+        @($r.Errors).Count | Should -Be 0
+        @($r.Rows).Count | Should -Be 1
+    }
+    It 'unerlaubter Name (Pfad nach draussen, fremde Datei) wird abgelehnt' {
+        foreach ($bad in '../evil.ps1', 'config/../../x.json', 'appdata/HU-SCHULE1.cred', 'C:/Windows/x.txt') {
+            $f = [ordered]@{ $bad = (& $B 'x') }
+            $r = & $OpenG4 (& $Build $f)
+            @($r.Errors | Where-Object { $_ -match 'kein erlaubter Inhalt' }).Count | Should -BeGreaterThan 0 -Because $bad
+        }
+    }
+    It 'doppelter Name (Gross/Klein) wird abgelehnt' {
+        $f = New-Object System.Collections.Specialized.OrderedDictionary ([StringComparer]::Ordinal)
+        $f.Add('config/settings.json', (& $B '{}')); $f.Add('CONFIG/Settings.json', (& $B '{}'))
+        $r = & $OpenG4 (& $Build $f)
+        @($r.Errors | Where-Object { $_ -match 'doppelt' }).Count | Should -Be 1
+    }
+    It 'falsche Pruefsumme im Manifest wird erkannt' {
+        $f = [ordered]@{ 'config/settings.json' = (& $B '{}') }
+        $r = & $OpenG4 (& $Build $f -ShaOverride @{ 'config/settings.json' = ('0' * 64) })
+        @($r.Errors | Where-Object { $_ -match 'Pruefsumme passt nicht' }).Count | Should -Be 1
+    }
+    It 'Datei nicht im Manifest bzw. Manifest fehlt' {
+        $f = [ordered]@{ 'config/settings.json' = (& $B '{}'); 'config/apps.json' = (& $B '{}') }
+        $r = & $OpenG4 (& $Build $f -Skip @('config/apps.json'))
+        @($r.Errors | Where-Object { $_ -match 'nicht im Manifest' }).Count | Should -Be 1
+        $r = & $OpenG4 (& $Build $f -NoManifest)
+        @($r.Errors | Where-Object { $_ -match 'Manifest fehlt' }).Count | Should -Be 1
+    }
+    It 'Sicherung aus neuerer App wird abgelehnt' {
+        $f = [ordered]@{ 'config/settings.json' = (& $B '{}') }
+        $r = & $OpenG4 (& $Build $f -App '9.0.0')
+        @($r.Errors | Where-Object { $_ -match 'zuerst aktualisieren' }).Count | Should -Be 1
+    }
+    It 'zu grosser Eintrag wird abgelehnt (Grenze im Test verkleinert)' {
+        $f = [ordered]@{ 'config/settings.json' = (New-Object byte[] 4096) }
+        $p = & $Build $f
+        $mod = Get-Module HU.AppBackup
+        $old = & $mod { $script:HUAbLimits.EntryBytes }
+        try {
+            & $mod { $script:HUAbLimits.EntryBytes = 1024 }
+            $r = & $OpenG4 $p
+            @($r.Errors | Where-Object { $_ -match 'zu gross' }).Count | Should -Be 1
+        } finally { & $mod { param($v) $script:HUAbLimits.EntryBytes = $v } $old }
+    }
+    It 'falsches Kennwort: Meldung sagt, was zu pruefen ist' {
+        $f = [ordered]@{ 'config/settings.json' = (& $B '{}') }
+        $p = & $Build $f
+        $r = Open-HUAppBackup -Path $p -Password 'Falsches-Kennwort-1' -AppVersion '2.6.1' -AppRoot (Join-Path $script:G4 'app') -DataRoot (Join-Path $script:G4 'data')
+        (@($r.Errors) -join ' ') | Should -Match 'Tastaturbelegung'
+        $r.Entries.Count | Should -Be 0
+    }
+    It 'G13: Quelle wird bei Bedarf lokal kopiert, Kopie verschwindet beim Schliessen' {
+        $f = [ordered]@{ 'config/settings.json' = (& $B '{}') }
+        $p = & $Build $f
+        $mod = Get-Module HU.AppBackup
+        $s = & $mod { param($x) Open-HUAbSourceStream $x -ForceCopy } $p
+        try {
+            $s.Name | Should -Match 'HU-Quelle-'
+            $s.Length | Should -Be (Get-Item -LiteralPath $p).Length
+            $tmp = $s.Name
+        } finally { $s.Dispose() }
+        Test-Path -LiteralPath $tmp | Should -BeFalse
+    }
+    It 'G12: PBKDF2 liefert dasselbe wie der Referenzwert (RFC 6070-artig, SHA-256)' {
+        $mod = Get-Module HU.AppBackup
+        $k = & $mod { Get-HUAbPbkdf2 ([Text.Encoding]::UTF8.GetBytes('password')) ([Text.Encoding]::UTF8.GetBytes('salt')) 1 }
+        (-join ($k | ForEach-Object { $_.ToString('x2') })) | Should -Be '120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b'
     }
 }
