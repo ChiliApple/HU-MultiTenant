@@ -524,8 +524,18 @@ $script:Window.Add_ContentRendered({
         $script:SmokeTimer.Start()
         return
     }
+    # Starter HU-MultiTenant.exe (eigenes Logo, ohne Konsolenfenster) gleich bereitstellen, falls er fehlt
+    try { [void](New-HULauncher) } catch { }
     if ($script:FirstRun) {
         Write-HULogWarn 'Noch keine Tenants eingerichtet - Einstellungen > Tenants (Anleitung: F1).'
+        # Neuer Benutzer: einmal fragen, ob ein Symbol auf den Desktop soll (spaeter: Einstellungen > Allgemein)
+        $asked = $false; try { $asked = [bool](Get-HUStateValue 'shortcutAsked' $false) } catch { }
+        if (-not $asked -and -not (Test-HUShortcut)) {
+            try { Set-HUStateValue 'shortcutAsked' $true; Save-HUUIState } catch { }
+            if (Confirm-HU "HU-MultiTenant-Symbol auf den Desktop legen?`n`nDamit startest du die App kuenftig mit Doppelklick (eigenes Logo, ohne Konsolenfenster). Geht auch spaeter unter Einstellungen > Allgemein.") {   # Warnung: nein - nur lokal
+                try { $l = New-HUShortcut -Location Desktop; Write-HULogOK "Verknuepfung erstellt: $l" } catch { Show-HUMessage "Verknuepfung fehlgeschlagen:`n$($_.Exception.Message)" -Icon Warning }
+            }
+        }
         if (Confirm-HU "Willkommen bei HU-MultiTenant.`n`nJetzt den ersten Tenant einrichten? Dazu meldet sich ein Global Administrator einmal im Browser an - App-Registrierung, Zertifikat und Rechte legt HU-MultiTenant selbst an.`n`nNein = Einstellungen > Tenants (manuell mit App-ID und Secret)." 'Tenant einrichten') {
             [void](Show-HUTenantSetupDialog)
         }
