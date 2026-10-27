@@ -165,8 +165,11 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     <a href="#programm" style="--c: var(--blue)"><b>Ein Programm soll an alle Standorte</b><small>testen, hochladen, zuweisen</small></a>
     <a href="#updates" style="--c: var(--peach)"><b>Programme aktuell halten</b><small>neue Versionen erkennen und nachziehen</small></a>
     <a href="#wartung" style="--c: var(--green)"><b>Auf den Notebooks klemmt etwas</b><small>Wartungsskript mit KI, prüfen und reparieren</small></a>
+    <a href="#geraete" style="--c: var(--blue)"><b>Die neuen Schüler-Notebooks sind da</b><small>Autopilot: Hash archivieren, aufnehmen, ausscheiden</small></a>
     <a href="#bekommt" style="--c: var(--mauve)"><b>„Warum hat das Gerät das nicht?“</b><small>Zuweisungen über alle Tenants</small></a>
     <a href="#vergleich" style="--c: var(--teal)"><b>Sind alle Standorte gleich eingestellt?</b><small>vergleichen, kopieren, sichern</small></a>
+    <a href="#sicher" style="--c: var(--red)"><b>Sind wir sicher eingestellt?</b><small>Security Baseline, Ampel, Nachweis</small></a>
+    <a href="#mfa" style="--c: var(--green)"><b>MFA für alle Lehrkräfte</b><small>ohne dass sich jemand aussperrt</small></a>
     <a href="#liste" style="--c: var(--yellow)"><b>Schnell eine Liste für die Direktion</b><small>Lizenzen, inaktive Konten, Geräte</small></a>
     <a href="#morgens" style="--c: var(--red)"><b>Morgens wissen, ob alles läuft</b><small>Meldungen in Teams</small></a>
     <a href="#unterwegs" style="--c: var(--teal)"><b>Ich bin nicht am PC</b><small>vom Handy aus starten</small></a>
@@ -265,6 +268,36 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     </div>
   </article>
 
+  <article class="scn" id="geraete" style="--c: var(--blue)">
+    <div class="scn-head">
+      <span class="tag">Modul Autopilot</span>
+      <h3>Die neuen Schüler-Notebooks sind da</h3>
+      <p class="quote">„Der Lieferant hat die Hash-Datei für 120 neue Geräte geschickt. Und von den Notebooks, die schon im Einsatz sind, habe ich die Hashes nirgends – wenn eines neu aufgesetzt werden muss, fehlt er mir.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Autopilot</span> › <span class="ui">Hash-Archiv</span>: die Lieferanten-Datei (CSV/Excel) hineinziehen. Geräte, die laut Autopilot zu einer anderen Schule gehören, legt die App auf Wunsch gleich dort ab.</span></li>
+          <li><span><b>Bestehende Flotte:</b> <span class="ui">Hash anfordern …</span> – ein Wartungspaket liest auf den markierten (oder allen) Geräten ohne Hash den Hardware-Hash einmal aus und meldet ihn an Intune zurück; die App legt ihn im Archiv ab.</span></li>
+          <li><span><span class="ui">Aufnehmen</span>: Group Tag wählen – die App zeigt, welche dynamische Gruppe ihn trifft und welches Autopilot-Profil die Geräte bekommen (fehlt die Gruppe: <span class="ui">Gruppe anlegen …</span>). <span class="ui">Vorschau &amp; Import …</span> und mitverfolgen, bis Gruppe und Profil da sind.</span></li>
+          <li><span>Schulschluss: <span class="ui">Ausscheiden</span> mit der Abgängerliste – Gerät kommt zurück (Wipe) oder bleibt bei der Familie (Zurückziehen mit BitLocker-Schlüssel und Übergabe-Blatt, Paket für die Eltern).</span></li>
+        </ol>
+        <div class="meta"><span>Archiv verschlüsselt je Schule</span><span>Übersicht mit Ampel bereit / Warnung / fehlt</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Von jedem Gerät den Hash – auch von denen, die schon Jahre laufen</li>
+          <li>Neue Geräte mit richtigem Group Tag, Gruppe und Profil, bevor sie ausgepackt werden</li>
+          <li>Abgänger sauber aus Autopilot und Intune draußen, mit Protokoll je Gerät</li>
+        </ul>
+        <p class="tip"><b>Gut zu wissen:</b> „Hash anfordern“ braucht Lizenzen mit Remediations (z. B. A3/A5). Geräte, die bei der Familie bleiben, nie wipen.</p>
+        <figure class="shot wide"><img src="screenshot-autopilot.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot-autopilot.png'" alt="Reiter Autopilot" loading="lazy"><figcaption>Autopilot: Übersicht mit Ampel, Hash-Archiv, Aufnehmen, Ausscheiden</figcaption></figure>
+      </div>
+    </div>
+  </article>
+
   <article class="scn" id="bekommt" style="--c: var(--mauve)">
     <div class="scn-head">
       <span class="tag">Analyse</span>
@@ -316,8 +349,66 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
           <li>Wiederherstellen eines alten Stands als neuer Eintrag – Bestehendes bleibt unberührt</li>
         </ul>
         <p class="tip"><b>Gut zu wissen:</b> Gesichert wird die Intune-Konfiguration und Conditional Access – kein Ersatz für ein Backup von Benutzern, Postfächern oder OneDrive.</p>
-        <figure class="shot wide"><img src="screenshot-sicherheit.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot-sicherheit.png'" alt="Sicherheitskatalog" loading="lazy"><figcaption>Analyse › Sicherheit: alle Regeln gegen alle Tenants auf einen Blick</figcaption></figure>
         <figure class="shot wide"><img src="screenshot-muster.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot-muster.png'" alt="Muster-Bibliothek" loading="lazy"><figcaption>Muster-Bibliothek: Soll-Pakete für den Vergleich und zum Übertragen</figcaption></figure>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="sicher" style="--c: var(--red)">
+    <div class="scn-head">
+      <span class="tag">Analyse · Sicherheit</span>
+      <h3>Sind wir sicher eingestellt?</h3>
+      <p class="quote">„Die Bildungsdirektion will wissen, wie weit wir mit der Security Baseline sind – für alle fünf Schulen. Und ich will merken, wenn sich wieder etwas verschlechtert.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Analyse</span> › <span class="ui">Sicherheit</span> › <span class="ui">Prüfen</span>: 68 Regeln aus den Security Baselines gegen alle Tenants, als Matrix mit Ampel je Schule – nur lesend.</span></li>
+          <li><span>Doppelklick auf eine Zelle zeigt die betroffenen Konten, Richtlinien oder Apps. Was bewusst anders ist, als <b>Ausnahme</b> mit Begründung und Ablaufdatum festhalten.</span></li>
+          <li><span>Punkte, die Graph nicht sieht (lokales AD, Freigabelinks), als <b>Handprüfung</b> je Schule bestätigen – gilt 12 Monate.</span></li>
+          <li><span><span class="ui">Soll speichern</span> – ab dann meldet Teams täglich, wenn eine Regel schlechter wird.</span></li>
+        </ol>
+        <div class="meta"><span>Tabelle und Excel-Export</span><span>Ausnahmen mit Begründung</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Ein Stand je Schule, den du der Direktion zeigen kannst</li>
+          <li>Begründete Ausnahmen statt roter Felder ohne Erklärung</li>
+          <li>Eine Meldung, sobald jemand etwas aufweicht</li>
+        </ul>
+        <p class="tip"><b>Gut zu wissen:</b> Der Katalog ändert nichts – zum Beheben dient die Muster-Bibliothek (siehe nächste Situation).</p>
+        <figure class="shot wide"><img src="screenshot-sicherheit.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot-sicherheit.png'" alt="Sicherheitskatalog" loading="lazy"><figcaption>Analyse › Sicherheit: alle Regeln gegen alle Tenants auf einen Blick</figcaption></figure>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="mfa" style="--c: var(--green)">
+    <div class="scn-head">
+      <span class="tag">Muster · Conditional Access</span>
+      <h3>MFA für alle Lehrkräfte</h3>
+      <p class="quote">„MFA für die Lehrkräfte muss kommen – an allen Schulen gleich. Aber wenn ich mich dabei selbst aussperre oder die Direktion Montag früh nicht mehr hineinkommt, habe ich ein Problem.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Muster</span>: ein mitgeliefertes Paket (z. B. <i>CA-Grundschutz</i>, <i>CA Schule</i>) nehmen oder <span class="ui">☁ Microsoft-Vorlagen holen …</span>.</span></li>
+          <li><span><span class="ui">Muster anwenden</span>: Schulen anhaken, Gruppen zuordnen (z. B. Lehrkräfte), Vorschau ansehen. Jede Richtlinie kommt im Modus <i>Nur Bericht</i> an, die Notfallkonten jeder Schule sind ausgenommen.</span></li>
+          <li><span>Ein paar Tage laufen lassen, im Entra-Anmeldeprotokoll bzw. im Tenant-Vergleich prüfen, wen es treffen würde – dann im Portal einschalten.</span></li>
+          <li><span>Falls doch etwas nicht passt: <span class="ui">Rückgängig</span> nimmt das ganze Paket wieder zurück.</span></li>
+        </ol>
+        <div class="meta"><span>immer erst Nur Bericht</span><span>Rechte nur für die Dauer des Ablaufs</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Dieselben Richtlinien an allen Schulen – mit gleichen Namen</li>
+          <li>Notfallkonten überall ausgenommen</li>
+          <li>Kein Aussperren durch einen Klick zu viel</li>
+        </ul>
+        <p class="tip"><b>Gut zu wissen:</b> Vorlagen mit Risiko-Bedingungen brauchen Entra ID P2 – mit P1 sind sie nicht vorgewählt.</p>
       </div>
     </div>
   </article>
