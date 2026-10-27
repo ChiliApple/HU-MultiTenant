@@ -392,7 +392,8 @@ function Invoke-HUTeamsScript {
         [string[]]$TargetIds = @(),
         [System.Collections.IDictionary]$Params = @{},   # Werte fuer die @param-Zeilen (an der Meldung gespeichert); fehlende = Standard
         [switch]$RunOnce,
-        [switch]$SendOutput
+        [switch]$SendOutput,
+        [System.Collections.IDictionary]$Cancel = $null   # Abbruch-Marke (CancelReq = $true): kein weiterer Tenant, keine Karte mehr
     )
     $out = [pscustomobject]@{ Calls = 0; Ok = 0; Failed = 0; Errors = @() }
     $errs = New-Object System.Collections.Generic.List[string]
@@ -404,6 +405,7 @@ function Invoke-HUTeamsScript {
     $multi = (-not $RunOnce) -and $runs.Count -gt 1
     foreach ($tk in $runs) {
         $tag = if ($RunOnce) { 'einmal' } else { $tk }
+        if ($Cancel -and $Cancel['CancelReq']) { $errs.Add("[$tag] uebersprungen - abgebrochen"); continue }
         $left = ($deadline - (Get-Date)).TotalMilliseconds
         if ($left -le 0) { $errs.Add("[$tag] uebersprungen - Zeitlimit $($script:TeamsScriptTimeoutMin) Minuten erreicht"); continue }
         $rs = [runspacefactory]::CreateRunspace()
@@ -422,6 +424,7 @@ function Invoke-HUTeamsScript {
             $rs.SessionStateProxy.SetVariable('__Ids', [string[]]@($TargetIds))
             $rs.SessionStateProxy.SetVariable('__Vals', $Params)
             $rs.SessionStateProxy.SetVariable('__Collect', [bool]$SendOutput)
+            $rs.SessionStateProxy.SetVariable('__Cancel', $Cancel)
             $ps = [powershell]::Create()
             $ps.Runspace = $rs
             [void]$ps.AddScript({
@@ -434,6 +437,7 @@ function Invoke-HUTeamsScript {
                 . (Join-Path $AppRoot 'Core\HU.QSRuntime.ps1')
                 Grant-HUSendApproval -Reason "Meldung $__Name"     # gespeicherte Meldung = freigegeben (Review 030 B4a/B33)
                 Set-HUNotifyRoute -Name $__Name -TargetIds $__Ids
+                if ($__Cancel) { Set-HUNotifyCancel $__Cancel }      # nach Abbruch sendet Send-HUNotify nichts mehr
                 $global:Tenants = [string[]]$__Tenants             # einmal-Modus: Schleife ueber die gewaehlten Tenants
                 $tokOk = $true
                 if ($__Tk) {
@@ -461,9 +465,15 @@ function Invoke-HUTeamsScript {
                 }
             }.ToString())
             $h = $ps.BeginInvoke()
-            if (-not $h.AsyncWaitHandle.WaitOne([TimeSpan]::FromMilliseconds($left))) {
+            # in kurzen Schritten warten, damit ein Abbruch (Fernbedienung) sofort greift
+            $stopWhy = ''
+            while (-not $h.AsyncWaitHandle.WaitOne(250)) {
+                if ($Cancel -and $Cancel['CancelReq']) { $stopWhy = 'abgebrochen'; break }
+                if ((Get-Date) -ge $deadline) { $stopWhy = "abgebrochen - Zeitlimit $($script:TeamsScriptTimeoutMin) Minuten erreicht"; break }
+            }
+            if ($stopWhy) {
                 # Review 030 B53: Stop wartet auf blockierende .NET-Aufrufe - hoechstens 10 s, dann aufgeben
-                $errs.Add("[$tag] abgebrochen - Zeitlimit $($script:TeamsScriptTimeoutMin) Minuten erreicht")
+                $errs.Add("[$tag] $stopWhy")
                 try { $sh = $ps.BeginStop($null, $null); if (-not $sh.AsyncWaitHandle.WaitOne([TimeSpan]::FromSeconds(10))) { $hung = $true; $errs.Add("[$tag] haengt - Lauf aufgegeben") } } catch { }
             }
             else {
@@ -771,9 +781,11 @@ function Invoke-HUTeamsJob {
         [Parameter(Mandatory)][PSCustomObject]$Settings,
         [Parameter(Mandatory)][string]$AppRoot,
         [switch]$NoSend,
-        [string[]]$TargetIds = @()
+        [string[]]$TargetIds = @(),
+        [System.Collections.IDictionary]$Cancel = $null   # Abbruch-Marke der Fernbedienung
     )
     $res = [pscustomobject]@{ Success = $false; Message = ''; Sent = ''; Spec = $null; Code = 1 }
+    if ($Cancel -and (Get-Command Set-HUNotifyCancel -ErrorAction SilentlyContinue)) { Set-HUNotifyCancel $Cancel }
     try {
         $keys = @($Job.Tenants | Where-Object { "$_" })
         if (-not $keys.Count) { $keys = @($Settings.tenants | ForEach-Object { "$($_.key)" } | Where-Object { "$_" }) }   # Eintraege ohne key ueberspringen (Review 029 B18)
@@ -802,7 +814,7 @@ function Invoke-HUTeamsJob {
             # von Hand bearbeitet: "false"/"0"/"nein"/Unbekanntes = aus; nur 'once' = einmal (Review 030 B69/S1)
             $once = [bool]($Job.Options.PSObject.Properties['runMode'] -and "$($Job.Options.runMode)".Trim() -eq 'once')
             $sendOut = [bool]($Job.Options.PSObject.Properties['sendOutput'] -and (ConvertTo-HUTeamsBool $Job.Options.sendOutput -Default $false))
-            $sr = Invoke-HUTeamsScript -Code $code -Name "$($Job.Name)" -Tenants $keys -Settings $Settings -AppRoot $AppRoot -TargetIds $ids -Params $pv -RunOnce:$once -SendOutput:$sendOut
+            $sr = Invoke-HUTeamsScript -Code $code -Name "$($Job.Name)" -Tenants $keys -Settings $Settings -AppRoot $AppRoot -TargetIds $ids -Params $pv -RunOnce:$once -SendOutput:$sendOut -Cancel $Cancel
             $errTxt = $(if (@($sr.Errors).Count) { " - Fehler: $((@($sr.Errors) | Select-Object -First 2) -join '; ')$(if (@($sr.Errors).Count -gt 2) { " (+$(@($sr.Errors).Count - 2))" })" } else { '' })
             $cards = Get-HUTeamsCountText $sr.Calls 'Meldung' 'Meldungen'
             $res.Sent = "$($sr.Ok) gesendet, $($sr.Failed) fehlgeschlagen"

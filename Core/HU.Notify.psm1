@@ -35,6 +35,7 @@ $script:NotifyFile      = [System.IO.Path]::Combine($script:NotifyBasePath, 'not
 $script:NotifyHistFile  = [System.IO.Path]::Combine($script:NotifyBasePath, 'notify-history.json')
 $script:NotifyEntropy   = [System.Text.Encoding]::UTF8.GetBytes('HU-Notify-v1')
 $script:NotifyMaxTargets = 10
+$script:NotifyCancel     = $null   # Abbruch-Marke (Hashtable mit CancelReq) - gesetzt, wird nichts mehr gesendet
 $script:NotifyMaxHistory = 300
 $script:NotifyMaxLines   = 20
 $script:NotifyMaxFacts   = 15
@@ -665,6 +666,10 @@ function ConvertTo-HUTeamsCardJson {
 # SENDEN
 # ============================================================================
 
+# Abbruch-Marke fuer diesen Runspace setzen (Fernbedienung: nach Abbruch keine Karte mehr senden)
+function Set-HUNotifyCancel($State) { $script:NotifyCancel = $State }
+function Test-HUNotifyCancelled { $c = $script:NotifyCancel; return [bool]($c -and $c['CancelReq']) }
+
 function Grant-HUSendApproval {
     <#
     .SYNOPSIS
@@ -895,6 +900,7 @@ function Send-HUNotify {
         [string]$Preview = ''
     )
     $res = [pscustomobject]@{ Ok = 0; Failed = 0; Text = '' }
+    if (Test-HUNotifyCancelled) { $res.Text = 'Teams: nichts gesendet - Lauf abgebrochen'; return $res }
     $route = $script:NotifyRoute
     if ($route) {
         # Meldung aus Skript: Ziele der Meldung, Kategorie egal (Fusszeile/Protokoll zeigen den Namen der Meldung)
@@ -983,6 +989,8 @@ Export-ModuleMember -Function @(
     'Send-HUTeamsCard',
     'Send-HUNotify',
     'Grant-HUSendApproval',
+    'Set-HUNotifyCancel',
+    'Test-HUNotifyCancelled',
     'Revoke-HUSendApproval',
     'Test-HUSendApproval',
     'Set-HUNotifyRoute',
