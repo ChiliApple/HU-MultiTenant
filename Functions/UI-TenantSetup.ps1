@@ -97,6 +97,8 @@ function Update-HUTsuPermList {
         $cat = @($u.Catalog.permissions | Where-Object { "$($_.name)" -eq $n })[0]
         $risky = Test-HUPermissionRisky $n $u.Catalog
         $granted = ($u.Granted -contains $n)
+        # X.Read.All ist durch ein erteiltes X.ReadWrite.All abgedeckt - nicht als fehlend zeigen, nicht erteilen
+        $covered = (-not $granted -and $n -match '^(.+)\.Read\.All$' -and $u.Granted -contains "$($Matches[1]).ReadWrite.All")
         $why = if ($cat) { "$($cat.why)" } else { '' }
         if ($usage[$n]) { $why = (@($why, "Extensions: $(@($usage[$n]) -join ', ')") | Where-Object { $_ }) -join ' | ' }
         if (-not $why -and $u.Extra -contains $n) { $why = 'selbst hinzugefuegt' }
@@ -105,13 +107,14 @@ function Update-HUTsuPermList {
         $cb.Tag = $n
         $sp = New-Object System.Windows.Controls.StackPanel
         $t1 = New-Object System.Windows.Controls.TextBlock
-        $t1.Text = "$n$(if ($granted) { "   $([char]0x2714) erteilt" } elseif ($u.Mode -eq 'Grant' -and $u.GrantedKnown) { "   $([char]0x2716) fehlt" })$(if ($risky) { '   (weitreichend)' })"
-        $t1.Foreground = Get-HUBrush $(if ($risky) { '#EF5350' } elseif ($granted) { '#81C784' } else { '#E0E0E0' })
+        $t1.Text = "$n$(if ($granted) { "   $([char]0x2714) erteilt" } elseif ($covered) { "   $([char]0x2714) abgedeckt durch ReadWrite" } elseif ($u.Mode -eq 'Grant' -and $u.GrantedKnown) { "   $([char]0x2716) fehlt" })$(if ($risky) { '   (weitreichend)' })"
+        $t1.Foreground = Get-HUBrush $(if ($risky) { '#EF5350' } elseif ($granted -or $covered) { '#81C784' } else { '#E0E0E0' })
         $t1.FontWeight = 'SemiBold'
         [void]$sp.Children.Add($t1)
         if ($why) { $t2 = New-Object System.Windows.Controls.TextBlock; $t2.Text = $why; $t2.Foreground = Get-HUBrush '#909090'; $t2.FontSize = 11; $t2.TextWrapping = 'Wrap'; [void]$sp.Children.Add($t2) }
         $cb.Content = $sp
         if ($granted) { $cb.IsChecked = $true; $cb.IsEnabled = $false }
+        elseif ($covered) { $cb.IsChecked = $false; $cb.IsEnabled = $false; $cb.ToolTip = 'Lesen ist im erteilten ReadWrite-Recht enthalten' }
         elseif ($u.Checked.ContainsKey($n)) { $cb.IsChecked = [bool]$u.Checked[$n] }
         elseif ($u.NurVorauswahl) { $cb.IsChecked = $false }   # Aufruf mit -Preselect (z. B. Zusatzmodul): nur genau diese Rechte
         else {
@@ -120,7 +123,7 @@ function Update-HUTsuPermList {
             $cb.IsChecked = (($cat -and $cat.default -eq $true) -or ($u.Scope -eq 'verteilen' -and @($u.Catalog.verteilen) -contains $n) -or ($u.Mode -eq 'Grant' -and $usage[$n] -and -not $risky) -or ($u.Extra -contains $n))
         }
         $cb.Add_Click({ $script:TSU.Checked["$($this.Tag)"] = [bool]$this.IsChecked; Update-HUTsuState })
-        if ($granted) { $cb.Opacity = 0.75 }
+        if ($granted -or $covered) { $cb.Opacity = 0.75 }
         [void]$c.lstPerms.Items.Add($cb)
     }
     Update-HUTsuState
