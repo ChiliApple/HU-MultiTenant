@@ -340,7 +340,7 @@ function Start-HURemoteIntuneWorker($S, $Settings, [string]$AppRoot) {
         }
         catch {
             $err = "$($_.Exception.Message)"
-            if ($q.Op -notin 'sec', 'secitems', 'addon' -and $err -match '403|Forbidden|Authorization') { $err = 'Berechtigung fehlt (DeviceManagementApps.ReadWrite.All bzw. DeviceManagementScripts.ReadWrite.All, Group.Read.All)' }
+            if ($q.Op -notin 'sec', 'secitems', 'addon' -and $err -match '403|Forbidden|Authorization') { $err = 'Berechtigung fehlt (lesen: DeviceManagementApps.Read.All bzw. DeviceManagementScripts.Read.All, Group.Read.All; aendern: die ReadWrite-Rechte - am PC unter Rechte erteilen)' }
             if ($err.Length -gt 300) { $err = $err.Substring(0, 300) }
         }
         $json = ''

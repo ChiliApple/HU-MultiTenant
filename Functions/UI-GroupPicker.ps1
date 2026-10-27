@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Auswahl aus mehreren Tenants fuer Apps und Wartung: Gruppen (Ziel/Pilot) und vorhandene Win32-Apps
@@ -85,7 +85,7 @@ function Start-HUGroupLoad([string[]]$Keys, [string]$Kind = 'group') {
                     [pscustomobject]@{ Tenant = $k; Rows = $rows; Error = '' }
                 } catch {
                     $m = $_.Exception.Message
-                    if ($m -match '403|Forbidden|Authorization') { $m = $(if ($Kind -eq 'win32') { 'Berechtigung DeviceManagementApps.ReadWrite.All fehlt' } else { 'Berechtigung Group.Read.All fehlt' }) }
+                    if ($m -match '403|Forbidden|Authorization') { $m = $(if ($Kind -eq 'win32') { 'Berechtigung DeviceManagementApps.Read.All fehlt' } else { 'Berechtigung Group.Read.All fehlt' }) }
                     [pscustomobject]@{ Tenant = $k; Rows = @(); Error = $m }
                 }
             }

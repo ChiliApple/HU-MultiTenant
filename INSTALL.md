@@ -44,10 +44,12 @@ Umsteigen von Secret: bestehenden Tenant einfach einrichten (wird an der Tenant-
 | `Organization.Read.All` | Tenant-Übersicht, Lizenzen, Sicherheitskatalog (Lizenzen, Verzeichnissync A38) |
 | `SecurityAlert.Read.All` | Teams: Defender-Alarm, Defender-Report |
 | `Directory.Read.All` | optional: ältere Extensions (Enterprise-App-Inventur: Berechtigungen) |
-| `DeviceManagementApps.ReadWrite.All` | Reiter **Apps** (hochladen, zuweisen, Status), Remote FB › Intune |
-| `DeviceManagementScripts.ReadWrite.All` | Reiter **Wartung** (Remediations), Remote FB › Intune – **weitreichend**: erlaubt Skripte als SYSTEM auf allen verwalteten Geräten |
+| `DeviceManagementApps.Read.All` | Reiter **Apps**: *In Intune* und Installationsstand lesen |
+| `DeviceManagementScripts.Read.All` | Reiter **Wartung**: *In Intune* und Ergebnisse lesen |
+| `DeviceManagementApps.ReadWrite.All` | erst bei Bedarf: Reiter **Apps** hochladen, zuweisen, aufheben; Remote FB › Intune |
+| `DeviceManagementScripts.ReadWrite.All` | erst bei Bedarf: Reiter **Wartung** anlegen, zuweisen; Remote FB › Intune – **weitreichend**: erlaubt Skripte als SYSTEM auf allen verwalteten Geräten |
 | `Group.Read.All` | Apps/Wartung: Zielgruppe per Name finden, Sicherheitskatalog (Sync-Fehler A39) |
-| `DeviceManagementManagedDevices.PrivilegedOperations.All` | Wartung: *Jetzt auf Gerät ausführen*, Sync – **weitreichend**: erlaubt auch Löschen, Zurücksetzen und Außerbetriebnahme von Geräten |
+| `DeviceManagementManagedDevices.PrivilegedOperations.All` | erst bei Bedarf: Wartung: *Jetzt auf Gerät ausführen*, Sync – **weitreichend**: erlaubt auch Löschen, Zurücksetzen und Außerbetriebnahme von Geräten |
 | `Policy.Read.All` | Analyse: Conditional Access im Vergleich und Backup, Namen benannter Orte; Sicherheitskatalog (Richtlinien, Anmeldemethoden, Zustimmungs-Workflow); Muster: Microsoft-Vorlagen für bedingten Zugriff holen |
 | `SharePointTenantSettings.Read.All` | Sicherheitskatalog: externe Freigabe (A33), nur lesend |
 | `Device.Read.All` | Analyse: *Was bekommt …?* für Geräte (Gerätegruppen) |
@@ -55,7 +57,7 @@ Umsteigen von Secret: bestehenden Tenant einfach einrichten (wird an der Tenant-
 | `RoleManagement.Read.Directory` | Rollennamen statt IDs im Tenant-Vergleich; Sicherheitskatalog (Admin-Rollen A08, A27, A37 – ohne das Recht nicht prüfbar) |
 | `Policy.ReadWrite.ConditionalAccess` | optional: Conditional Access aus Backup wiederherstellen (wird deaktiviert angelegt) |
 
-   Bei der Einrichtung im Programm sind alle Zeilen außer den *optionalen* und `DeviceManagementConfiguration.ReadWrite.All` vorausgewählt (Liste: `Config\graph-permissions.json`); die beiden *weitreichenden* werden dabei eigens bestätigt.
+   Bei der Einrichtung im Programm sind nur die lesenden Rechte vorausgewählt (Liste: `Config\graph-permissions.json`). Schreibrechte (*erst bei Bedarf*, *optional*) erteilst du, wenn du sie brauchst: Fehlt eines beim Hochladen, Zuweisen oder *Jetzt ausführen*, bietet die App an, genau dieses Recht zu erteilen. *Weitreichende* Rechte werden dabei eigens bestätigt.
    Jede Extension zeigt ihre Berechtigungen im Reiter *Extensions*; der Knopf **Berechtigungen** vergleicht sie mit dem Token.
    Schreibende Extensions (`READ/WRITE`) brauchen zusätzlich die passenden `ReadWrite`-Berechtigungen.
 4. **Zertifikate & Geheimnisse › Neuer geheimer Clientschlüssel** – den **Wert** sofort kopieren (wird nur einmal angezeigt).

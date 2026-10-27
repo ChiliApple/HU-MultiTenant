@@ -14,6 +14,27 @@
 #>
 
 $script:TSU = $null   # offenes Einrichtungsfenster (Zustand)
+$script:HUMissWofuer = ''
+$script:HUMissRight = @()   # nach einem Lauf: Tenants, denen ein Schreibrecht fehlte (fuer das Angebot 'jetzt erteilen')
+
+# Nach einem Lauf mit 403: anbieten, das fehlende Recht gleich zu erteilen (Rechte werden nur bei Bedarf erteilt).
+# $Results: Objekte mit Tenant und Missing (Recht); ohne Missing wird nichts angeboten.
+function Request-HUMissingRight($Results, [string]$Wofuer = 'diese Aktion') {
+    $miss = @(@($Results) | Where-Object { $_ -and $_.PSObject.Properties['Missing'] -and "$($_.Missing)" } |
+        Group-Object { "$($_.Tenant)" } | ForEach-Object { [pscustomobject]@{ Tenant = $_.Name; Rechte = @($_.Group | ForEach-Object { "$($_.Missing)" } | Select-Object -Unique) } })
+    if (-not $miss.Count) { return }
+    $script:HUMissRight = $miss
+    $script:HUMissWofuer = $Wofuer
+    # erst nach dem Abschluss des Laufs (eigener Takt), damit das Fenster nicht im Job-Abschluss haengt
+    Invoke-HUDelayed 1 {
+        $m = @($script:HUMissRight); $script:HUMissRight = @()
+        if (-not $m.Count) { return }
+        $txt = "Fuer $($script:HUMissWofuer) fehlt der App ein Recht:`n`n" + (@($m | ForEach-Object { "  $(Get-HUTenantDisplayName $_.Tenant): $($_.Rechte -join ', ')" }) -join "`n") +
+            "`n`nJetzt erteilen? Es oeffnet sich 'Rechte erteilen' mit genau diesem Recht vorgewaehlt (Anmeldung als Global Admin)."
+        if (-not (Confirm-HU -Warning $txt)) { return }
+        foreach ($x in $m) { try { [void](Show-HUTenantSetupDialog -TenantKey $x.Tenant -Preselect $x.Rechte) } catch { Show-HUMessage "$($_.Exception.Message)" -Icon Warning } }
+    }
+}
 
 function Add-HUTsuLog([string]$Text, [string]$Level = 'Info') {
     $u = $script:TSU

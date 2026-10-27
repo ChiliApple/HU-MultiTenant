@@ -93,9 +93,18 @@ Describe 'Rechte-Katalog (Config\graph-permissions.json)' {
         @($script:Cat.permissions | Where-Object { $_.default -eq $true }).Count | Should -BeGreaterThan 5
         $n | Should -Contain 'Organization.Read.All'
     }
-    It 'weitreichend unter den Standard-Rechten nur Geraeteaktionen und Wartungsskripte (Review 033 Frage 3)' {
-        $r = @($script:Cat.permissions | Where-Object { $_.default -eq $true -and (Test-HUPermissionRisky $_.name $script:Cat) } | ForEach-Object { "$($_.name)" } | Sort-Object)
-        $r | Should -Be @('DeviceManagementManagedDevices.PrivilegedOperations.All', 'DeviceManagementScripts.ReadWrite.All')
+    It 'keine weitreichenden Rechte unter den Standard-Rechten (Schreibrechte erst bei Bedarf)' {
+        $r = @($script:Cat.permissions | Where-Object { $_.default -eq $true -and (Test-HUPermissionRisky $_.name $script:Cat) } | ForEach-Object { "$($_.name)" })
+        $r.Count | Should -Be 0
+    }
+    It 'Standard-Rechte nur lesend' {
+        $w = @($script:Cat.permissions | Where-Object { $_.default -eq $true -and "$($_.name)" -match 'ReadWrite|PrivilegedOperations|\.Write|Create' } | ForEach-Object { "$($_.name)" })
+        $w.Count | Should -Be 0
+    }
+    It 'Lesen fuer Apps und Wartung ist vorgewaehlt' {
+        $n = @($script:Cat.permissions | Where-Object { $_.default -eq $true } | ForEach-Object { "$($_.name)" })
+        $n | Should -Contain 'DeviceManagementApps.Read.All'
+        $n | Should -Contain 'DeviceManagementScripts.Read.All'
     }
     It 'risky-Eintraege ohne Platzhalter sehen wie Rechtenamen aus' {
         foreach ($x in @($script:Cat.risky | Where-Object { $_ -notmatch '\*' })) { $x | Should -Match '^[A-Za-z-]+(\.[A-Za-z]+)+$' }

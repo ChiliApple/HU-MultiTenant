@@ -86,7 +86,7 @@ function Start-HURintLoad([string[]]$Keys = @(), [switch]$Force, [scriptblock]$T
                 try { [pscustomobject]@{ Tenant = $k; Rows = @(Get-HUTenantRemediationList -TenantKey $k -Settings $Settings); Error = '' } }
                 catch {
                     $m = $_.Exception.Message
-                    if ($m -match '403|Forbidden|Authorization') { $m = 'Berechtigung DeviceManagementScripts.ReadWrite.All (und Group.Read.All) fehlt' }
+                    if ($m -match '403|Forbidden|Authorization') { $m = 'Berechtigung DeviceManagementScripts.Read.All (und Group.Read.All) fehlt - zum Zuweisen/Aufheben DeviceManagementScripts.ReadWrite.All' }
                     elseif ($m -match '(?i)licen|lizenz') { $m += ' -> Windows-Lizenzueberpruefung im Intune Admin Center einschalten (A3/E3)' }
                     Write-HULog -Message $m -Level 'ERROR' -Tenant $k
                     [pscustomobject]@{ Tenant = $k; Rows = @(); Error = $m }
