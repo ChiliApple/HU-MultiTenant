@@ -540,7 +540,7 @@ $script:Window.Add_ContentRendered({
         $docAsked = $false; try { $docAsked = [bool](Get-HUStateValue 'docAsked' $false) } catch { }
         if (-not $docAsked) {
             try { Set-HUStateValue 'docAsked' $true; Save-HUUIState } catch { }
-            if (Confirm-HU "Neu bei HU-MultiTenant? Dann zuerst kurz den Einstieg ansehen.`n`nJetzt im Browser oeffnen? Er zeigt typische Situationen und 'In 10 Minuten startklar' (Tenant einrichten, erster Versuch ohne Risiko).`n`nDie ausfuehrliche Anleitung gibt es jederzeit mit F1 bzw. dem Knopf Anleitung.") {
+            if (Confirm-HU "Neu bei HU-MultiTenant? Dann zuerst kurz den Einstieg ansehen.`n`nJetzt im Browser oeffnen? Er zeigt typische Situationen und 'In 10 Minuten startklar' (Tenant einrichten, erster Versuch ohne Risiko).`n`nDie ausfuehrliche Anleitung gibt es jederzeit mit F1 bzw. dem Knopf ? oben rechts.") {
                 try { Show-HUManual -Page Einstieg } catch { }
             }
         }
