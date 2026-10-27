@@ -63,7 +63,7 @@ Describe 'App-Sicherung: Kennwort' {
     It 'Wiederholung abweichend' { Test-HUAbPassword 'Lang-genug-123' 'Lang-genug-124' | Should -Match 'nicht ueberein' }
     It 'in Ordnung' { Test-HUAbPassword 'Lang-genug-123' 'Lang-genug-123' | Should -BeNullOrEmpty }
     It 'SecureString wird akzeptiert' {
-        $s = ConvertTo-SecureString $script:Pw -AsPlainText -Force
+        $s = New-Object Security.SecureString; foreach ($ch in $script:Pw.ToCharArray()) { $s.AppendChar($ch) }
         $r = Unprotect-HUAppBackupBytes -Data $script:Enc -Password $s
         $r.Plain.Length | Should -Be $script:Plain.Length
     }
@@ -178,7 +178,7 @@ Describe 'App-Sicherung: Inhalt, Sichern, Wiederherstellen' {
         $t0 = Get-Date '2026-01-01'
         for ($i = 0; $i -lt 4; $i++) { $f = Join-Path $d (Get-HUAppBackupFileName 'PC' $t0.AddDays($i)); Set-Content -LiteralPath $f -Value 'x'; (Get-Item $f).LastWriteTime = $t0.AddDays($i) }
         Set-Content -LiteralPath (Join-Path $d 'fremd.husicherung') -Value 'x'
-        $rm = @(Remove-HUAppBackupOld -Folder $d -Keep 2)
+        $rm = @(Remove-HUAppBackupOld -Folder $d -Keep 2 -Pc 'PC')
         $rm.Count | Should -Be 2
         @(Get-HUAppBackupList $d).Count | Should -Be 2
         Test-Path -LiteralPath (Join-Path $d 'fremd.husicherung') | Should -BeTrue
