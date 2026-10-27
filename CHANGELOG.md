@@ -12,6 +12,9 @@ Erste Stufe von 2.6.0 „Austausch und Sicherung“.
 - **Prüfung 068 eingearbeitet:** Custom-Profile mit OMA-URI für WLAN, VPN oder Zertifikate sind gesperrt; eingebettete Inhalte (Base64, z. B. iOS/macOS-Profile) werden entpackt und auf Schlüssel, Zertifikate und Kennwörter geprüft. Gruppen-Platzhalter aus fremden Dateien erscheinen in der Prüfansicht, Ausnahme-Gruppen hervorgehoben. Ungeprüfte importierte Einträge lassen sich weder anwenden noch aus dem Tenant-Vergleich übertragen. Dazu strengere Prüfungen beim Lesen (ZIP-Verzeichnis gegen Einträge, 5 MB je Eintrag, Kommentare und kodierte doppelte Schlüssel in JSON, Tenant-Domains auch in Feldnamen).
 - **Herkunft bleibt:** Importierte Pakete behalten Herausgeber und Kennzeichen auch beim Bearbeiten und erneuten Exportieren.
 
+### 💻 Modul Autopilot 0.5.2
+- **Hash speichern:** Der Dateiname enthält die Seriennummer (`Autopilot-Hash_<Seriennummer>_<Datum>.csv`, bei mehreren Geräten `Autopilot-Hash_<Tenant>_<Anzahl>-Geraete_<Datum>.csv`).
+
 ## v2.5.6 (Testversion)
 
 ### 🛡️ Sicherheitskatalog

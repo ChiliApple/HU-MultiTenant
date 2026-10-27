@@ -1,5 +1,10 @@
 # Changelog – Zusatzmodul Autopilot
 
+## v0.5.2 – 27.10.2026 (mit HU-MultiTenant 2.5.7 Test)
+
+### 💾 Hash-Archiv
+- **Dateiname mit Seriennummer:** „Hashes speichern …“ schlägt `Autopilot-Hash_<Seriennummer>_<Datum>.csv` vor, bei mehreren Geräten `Autopilot-Hash_<Tenant>_<Anzahl>-Geraete_<Datum>.csv`.
+
 ## v0.5.1 – 26.10.2026 (mit HU-MultiTenant 2.5.5 Stable)
 
 ### 🏷️ Anzeige

@@ -82,3 +82,17 @@ Describe 'Modul-Aufbau (wie die CI eines Zusatzmoduls)' {
         foreach ($v in @([regex]::Matches($code, '\$script:(AP\w+)') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)) { $init | Should -Contain $v }
     }
 }
+
+Describe 'Hash speichern: Dateiname mit Seriennummer' {
+    BeforeAll {
+        $r = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $r 'Modules\Autopilot\Addon.ps1'), [ref]$null, [ref]$null)
+        $fn = $ast.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq 'Get-APHashDateiname' }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    It 'ein Geraet, mehrere Geraete, unsichere Zeichen' {
+        Get-APHashDateiname @('PF4W22X6') 'Schule A' ([datetime]'2026-10-27') | Should -Be 'Autopilot-Hash_PF4W22X6_20261027.csv'
+        Get-APHashDateiname @('A1', 'B2', 'C3') 'Schule A' ([datetime]'2026-10-27') | Should -Be 'Autopilot-Hash_Schule_A_3-Geraete_20261027.csv'
+        Get-APHashDateiname @('X/Y:Z') '' ([datetime]'2026-10-27') | Should -Be 'Autopilot-Hash_X_Y_Z_20261027.csv'
+    }
+}

@@ -506,6 +506,17 @@ function Start-APArchivWartung {
     if (-not $ok) { Set-APDot $script:Controls['apDotArchiv'] $false }
 }
 
+# Dateiname: ein Geraet -> Autopilot-Hash_<SN>_<Datum>.csv, mehrere -> Autopilot-Hash_<Tenant>_<N>-Geraete_<Datum>.csv
+function Get-APHashDateiname([string[]]$Seriennummern, [string]$Tenant = '', [datetime]$Jetzt = (Get-Date)) {
+    $safe = { param([string]$v) (("$v".Trim() -replace '[^\p{L}\p{Nd}._-]+', '_').Trim('_', '.')) }
+    $sn = @($Seriennummern | Where-Object { "$_".Trim() } | ForEach-Object { & $safe $_ })
+    $tn = & $safe $Tenant
+    $d = $Jetzt.ToString('yyyyMMdd')
+    if ($sn.Count -eq 1) { return "Autopilot-Hash_$($sn[0])_$d.csv" }
+    $teile = @('Autopilot-Hash') + @($(if ($tn) { $tn })) + @($(if ($sn.Count) { "$($sn.Count)-Geraete" })) + @($d)
+    return "$(@($teile | Where-Object { $_ }) -join '_').csv"
+}
+
 # Export im Microsoft-Format (markierte Geraete mit Hash)
 function Export-APArchiv {
     $t = Get-APArchivTenant; if (-not $t) { return }
@@ -513,7 +524,8 @@ function Export-APArchiv {
     if (-not $sel.Count) { Show-HUMessage 'Bitte die Geraete markieren (nur solche mit Hash).' -Icon Info; return }
     if (-not (Confirm-HU "$($sel.Count) Hash(es) als CSV speichern?`n`nDie Datei ist NICHT verschluesselt. Der Hardware-Hash gehoert dem Eigentuemer des Geraets - nur bewusst weitergeben (Haendler, neue Schule) und danach loeschen." 'Autopilot' -Warning)) { return }
     $dlg = New-Object Microsoft.Win32.SaveFileDialog
-    $dlg.Filter = 'CSV (*.csv)|*.csv'; $dlg.FileName = "Autopilot-Hash_$(Get-Date -Format 'yyyyMMdd').csv"
+    $dlg.Filter = 'CSV (*.csv)|*.csv'; $tName = "$(@($script:Settings.tenants | Where-Object { "$($_.key)" -eq $t } | ForEach-Object { $_.displayName })[0])"; if (-not $tName) { $tName = $t }
+    $dlg.FileName = (Get-APHashDateiname @($sel | ForEach-Object { "$($_.Seriennummer)" }) $tName)
     if (-not $dlg.ShowDialog()) { return }
     $daten = @(Get-APArchivDaten $t)
     $zeilen = @($sel | ForEach-Object { $e = Get-APNeuesterHash $daten $_.Seriennummer; if ($e) { [pscustomobject]@{ 'Device Serial Number' = "$($e.Seriennummer)"; 'Windows Product ID' = "$($e.ProductId)"; 'Hardware Hash' = "$($e.Hash)" } } })
