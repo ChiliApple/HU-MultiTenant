@@ -444,7 +444,7 @@ function Show-HUAbout {
 # --- Doku-Seiten (F1 = Anleitung): Fassung der installierten Version von GitHub, sonst die mitgelieferte ---
 # Nur feste Seiten; der Aufrufer gibt nie einen Pfad oder Dateinamen vor.
 $script:HUDocPages = [ordered]@{ Anleitung = 'Anleitung.html'; Einstieg = 'Einstieg.html'; Funktionen = 'Funktionen.html'; Roadmap = 'Roadmap.html' }
-$script:HUDocImages = @('screenshot.png', 'screenshot-apps.png', 'screenshot-extensions.png', 'screenshot-sperre.png', 'screenshot-wartung.png')
+$script:HUDocImages = @('screenshot-quickscript.png', 'screenshot-apps.png', 'screenshot-sperre.png', 'screenshot-wartung.png', 'screenshot-sicherheit.png', 'screenshot-muster.png', 'screenshot-autopilot.png')
 function Show-HUManual {
     param([ValidateSet('Anleitung', 'Einstieg', 'Funktionen', 'Roadmap')][string]$Page = 'Anleitung')
     $file = $script:HUDocPages[$Page]

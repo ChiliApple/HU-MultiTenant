@@ -26,11 +26,14 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
 </p>
 
 <p align="center">
-  <a href="Docs/screenshot.png"><img src="Docs/screenshot.png" width="200" alt="Quick Script"/></a>
-  <a href="Docs/screenshot-extensions.png"><img src="Docs/screenshot-extensions.png" width="200" alt="Extensions"/></a>
-  <a href="Docs/screenshot-apps.png"><img src="Docs/screenshot-apps.png" width="200" alt="Apps"/></a>
-  <a href="Docs/screenshot-wartung.png"><img src="Docs/screenshot-wartung.png" width="200" alt="Wartung"/></a>
-  <br><sub>Quick Script · Extensions · Apps · Wartung – zum Vergrößern anklicken</sub>
+  <a href="Docs/screenshot-sicherheit.png"><img src="Docs/screenshot-sicherheit.png" width="250" alt="Sicherheitskatalog"/></a>
+  <a href="Docs/screenshot-muster.png"><img src="Docs/screenshot-muster.png" width="250" alt="Muster-Bibliothek"/></a>
+  <a href="Docs/screenshot-autopilot.png"><img src="Docs/screenshot-autopilot.png" width="250" alt="Autopilot"/></a>
+  <br>
+  <a href="Docs/screenshot-quickscript.png"><img src="Docs/screenshot-quickscript.png" width="250" alt="Quick Script"/></a>
+  <a href="Docs/screenshot-apps.png"><img src="Docs/screenshot-apps.png" width="250" alt="Apps"/></a>
+  <a href="Docs/screenshot-wartung.png"><img src="Docs/screenshot-wartung.png" width="250" alt="Wartung"/></a>
+  <br><sub>Sicherheit · Muster · Autopilot · Quick Script · Apps · Wartung – zum Vergrößern anklicken</sub>
 </p>
 
 ---

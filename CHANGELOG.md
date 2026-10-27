@@ -15,6 +15,7 @@
 - **Kopfzeile:** Die Zertifikat-Anzeige zeigt nur noch den farbigen Schlüssel (grün/orange/rot) – Ablaufdatum und Details je Tenant stehen im Tooltip.
 
 ### 🗺️ Doku
+- **Neue Screenshots (v2.5.6):** Sicherheit, Muster, Autopilot, Quick Script, Apps und Wartung im README – Tenants anonymisiert (Schule A–E).
 - **Autopilot V1 und V2:** Roadmap, Funktionsübersicht, Anleitung und Modul-README nennen das jetzige Modul V1 (klassisch, mit Hardware-Hash); V2 (Windows Autopilot device preparation) folgt im selben Reiter.
 
 ## v2.5.5 (Stable, 26.10.2026)
