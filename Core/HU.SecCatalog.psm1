@@ -856,7 +856,9 @@ function Get-HUSecPolicyItems($Policies, [scriptblock]$Match) {
         $gilt = if (Test-HUSecCaTargetsAll $pol) { 'Alle Benutzer' } elseif (@($u.includeRoles | Where-Object { $_ }).Count) { "$(@($u.includeRoles | Where-Object { $_ }).Count) Admin-Rollen" } elseif (@($u.includeGroups | Where-Object { $_ }).Count) { 'Gruppen' } elseif ($u.includeGuestsOrExternalUsers) { 'Gaeste' } else { 'einzelne Benutzer' }
         $why = if ($m -and $state -eq 'enabled') { '' } elseif ($m) { "Status $state" } else { 'trifft die Regel nicht' }
         if ($pol.PSObject.Properties['__OnlyBeta']) { $why = ("$why (nur ueber beta sichtbar)").Trim() }
-        [pscustomobject]@{ Richtlinie = "$($pol.displayName)"; Status = $state; Aktion = $aktion; GiltFuer = $gilt; ZaehltFuerRegel = $(if ($m -and $state -eq 'enabled') { 'Ja' } else { 'Nein' }); Grund = $why }
+        [pscustomobject]@{ Richtlinie = "$($pol.displayName)"; Status = $state; Aktion = $aktion; GiltFuer = $gilt; ZaehltFuerRegel = $(if ($m -and $state -eq 'enabled') { 'Ja' } else { 'Nein' }); Grund = $why
+            # 2.5.6: wuerde zaehlen, ist aber nicht aktiv -> Zeile dezent einfaerben
+            Bewertung = $(if ($m -and $state -ne 'enabled') { "abweichend: zaehlt erst aktiv (Status $state)" } else { '' }) }
     }
 }
 
@@ -1095,7 +1097,9 @@ $script:HUSecRules = @(
     @{ Id = 'V5'; Area = 'Entra'; Sev = 'Kritisch'; Title = 'MFA-Grundschutz vorhanden (Security Defaults oder CA-Richtlinie fuer alle)'; Facts = @('ca', 'secdef'); Min = $true; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
         Items = { param($F, $B)
             $want = @($B.policies | Where-Object { "$_".Trim() })
-            Get-HUSecPolicyItems $F.ca { param($P) ((Test-HUSecCaMfaAny $P) -and (Test-HUSecCaTargetsAll $P)) -or [bool]@($want | Where-Object { Test-HUSecPolicyNameMatch $_ "$($P.displayName)" }).Count }
+            # mit Sollwert policies (und ohne Security Defaults) zaehlen nur die genannten Richtlinien
+            if ($want.Count -and -not [bool]$F.secdef.isEnabled) { Get-HUSecPolicyItems $F.ca { param($P) [bool]@($want | Where-Object { Test-HUSecPolicyNameMatch $_ "$($P.displayName)" }).Count } }
+            else { Get-HUSecPolicyItems $F.ca { param($P) ((Test-HUSecCaMfaAny $P) -and (Test-HUSecCaTargetsAll $P)) -or [bool]@($want | Where-Object { Test-HUSecPolicyNameMatch $_ "$($P.displayName)" }).Count } }
         }
         Eval = { param($F, $B)
             $sd = [bool]$F.secdef.isEnabled
@@ -1403,7 +1407,8 @@ $script:HUSecRules = @(
                 if (-not $why -and -not $zaehlt) { $why = "Status $($pol.state)" }
                 [pscustomobject]@{ Richtlinie = "$($pol.displayName)"; Status = "$($pol.state)"; AusgenommeneRollen = @($pol.conditions.users.excludeRoles | Where-Object { $_ }).Count
                     AusgenommeneGruppen = @($pol.conditions.users.excludeGroups | Where-Object { $_ }).Count; AusgenommeneBenutzer = @($pol.conditions.users.excludeUsers | Where-Object { $_ }).Count
-                    ZaehltFuerRegel = $(if ($zaehlt) { 'Ja' } else { 'Nein' }); Grund = $why }
+                    ZaehltFuerRegel = $(if ($zaehlt) { 'Ja' } else { 'Nein' }); Grund = $why
+                    Bewertung = $(if (-not $zaehlt -and "$why" -like 'Status *') { "abweichend: zaehlt erst aktiv ($why)" } else { '' }) }
             }
         }
         Eval = { param($F, $B)
@@ -1766,7 +1771,8 @@ $script:HUSecRules = @(
                 [pscustomobject]@{ Richtlinie = "$($pol.displayName)"; Status = "$($pol.state)"; Aktion = $(if (Test-HUSecCaBlocks $pol) { 'Blockieren' } else { (@($pol.grantControls.builtInControls) -join ', ') })
                     OrteEingeschlossen = $(if ($inc -contains 'All') { 'Alle' } else { "$($inc.Count) Orte" }); OrteAusgenommen = @($pol.conditions.locations.excludeLocations | Where-Object { $_ }).Count
                     AusgenommeneBenutzer = @($pol.conditions.users.excludeUsers | Where-Object { $_ }).Count; AusgenommeneGruppen = @($pol.conditions.users.excludeGroups | Where-Object { $_ }).Count
-                    ZaehltFuerRegel = $(if ($zaehlt) { 'Ja' } else { 'Nein' }); Grund = $why }
+                    ZaehltFuerRegel = $(if ($zaehlt) { 'Ja' } else { 'Nein' }); Grund = $why
+                    Bewertung = $(if (-not $zaehlt -and "$why" -like 'Status *') { "abweichend: zaehlt erst aktiv ($why)" } else { '' }) }
             }
         }
         Eval = { param($F, $B)

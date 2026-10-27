@@ -687,6 +687,11 @@ Describe 'V5 Sollwert policies (Grundschutz aus mehreren Richtlinien)' {
         $r = Run 'V5'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -BeLike '*fehlt: 203*'
         $global:HUSecFx['conditionalAccess'] = @((NP '100 - Adminportale' 'enabled'), (NP '201 - MFA Lehrer' 'disabled'), (NP '203 - MFA Cloud' 'enabled'))
         $r = Run 'V5'; $r.Detail | Should -BeLike '*nicht aktiv: 201*'
+        # Liste: genannte, aber nicht aktive Richtlinie ist "abweichend" (Zeile eingefaerbt), aktive nicht
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'V5')
+        ($it | Where-Object Richtlinie -like '201*').Bewertung | Should -BeLike 'abweichend*'
+        ($it | Where-Object Richtlinie -like '100*').Bewertung | Should -Be ''
+        ($it | Where-Object Richtlinie -like '100*').ZaehltFuerRegel | Should -Be 'Ja'
     }
     It 'Namen-Sollwert: Leerzeichen im Namen erlaubt, zu viele Eintraege abgelehnt' {
         @(Save-HUSecBaselineEdit -Values @{ 'V5.policies' = 'MFA fuer alle Benutzer; 100' }).Count | Should -Be 0
