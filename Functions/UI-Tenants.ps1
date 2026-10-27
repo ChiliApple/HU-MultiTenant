@@ -179,7 +179,10 @@ function Update-HUSecretFit {
     try {
         $t.Text = $full; $t.Margin = [System.Windows.Thickness]::new(76, 0, 0, 0)
         $left.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
-        $avail = $bar.ActualWidth - $bar.Padding.Left - $bar.Padding.Right - $right.ActualWidth - 12
+        # rechte Knopfleiste mit ihrer vollen Wunschbreite (ActualWidth ist schon gestaucht, wenn es eng wird) + Abstand
+        $right.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
+        $rw = [Math]::Max($right.ActualWidth, $right.DesiredSize.Width) + $right.Margin.Left + $right.Margin.Right
+        $avail = $bar.ActualWidth - $bar.Padding.Left - $bar.Padding.Right - $rw - 24
         if ($bar.ActualWidth -gt 0 -and $left.DesiredSize.Width -gt $avail) {
             $t.Text = "$($script:KeyIcon)"; $t.Margin = [System.Windows.Thickness]::new(12, 0, 0, 0)
             $t.ToolTip = "$($full -replace '^\S+\s', '')`n`n$($script:HdrSecretTip)"
