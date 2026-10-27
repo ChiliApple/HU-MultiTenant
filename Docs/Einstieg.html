@@ -165,16 +165,15 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     <a href="#programm" style="--c: var(--blue)"><b>Ein Programm soll an alle Standorte</b><small>testen, hochladen, zuweisen</small></a>
     <a href="#updates" style="--c: var(--peach)"><b>Programme aktuell halten</b><small>neue Versionen erkennen und nachziehen</small></a>
     <a href="#wartung" style="--c: var(--green)"><b>Auf den Notebooks klemmt etwas</b><small>Wartungsskript mit KI, prüfen und reparieren</small></a>
-    <a href="#geraete" style="--c: var(--blue)"><b>Die neuen Schüler-Notebooks sind da</b><small>Autopilot: Hash archivieren, aufnehmen, ausscheiden</small></a>
+    <a href="#geraete" style="--c: var(--blue)"><b>Die neuen Schüler-Notebooks sind da</b><small>Autopilot: Hash archivieren und aufnehmen</small></a>
+    <a href="#schulschluss" style="--c: var(--peach)"><b>Schulschluss: Abgänger-Geräte</b><small>zurückgeben oder bei der Familie lassen</small></a>
     <a href="#bekommt" style="--c: var(--mauve)"><b>„Warum hat das Gerät das nicht?“</b><small>Zuweisungen über alle Tenants</small></a>
     <a href="#vergleich" style="--c: var(--teal)"><b>Sind alle Standorte gleich eingestellt?</b><small>vergleichen, kopieren, sichern</small></a>
     <a href="#sicher" style="--c: var(--red)"><b>Sind wir sicher eingestellt?</b><small>Security Baseline, Ampel, Nachweis</small></a>
     <a href="#mfa" style="--c: var(--green)"><b>MFA für alle Lehrkräfte</b><small>ohne dass sich jemand aussperrt</small></a>
     <a href="#liste" style="--c: var(--yellow)"><b>Schnell eine Liste für die Direktion</b><small>Lizenzen, inaktive Konten, Geräte</small></a>
     <a href="#morgens" style="--c: var(--red)"><b>Morgens wissen, ob alles läuft</b><small>Meldungen in Teams</small></a>
-    <a href="#unterwegs" style="--c: var(--teal)"><b>Ich bin nicht am PC</b><small>vom Handy aus starten</small></a>
     <a href="#teilen" style="--c: var(--mauve)"><b>Ein Kollege soll meine Einstellungen haben</b><small>Muster exportieren, Microsoft-Vorlagen</small></a>
-    <a href="#umzug" style="--c: var(--peach)"><b>Neuer PC</b><small>App-Sicherung und Wiederherstellen</small></a>
   </nav>
 </section>
 
@@ -281,7 +280,6 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
           <li><span>Reiter <span class="ui">Autopilot</span> › <span class="ui">Hash-Archiv</span>: die Lieferanten-Datei (CSV/Excel) hineinziehen. Geräte, die laut Autopilot zu einer anderen Schule gehören, legt die App auf Wunsch gleich dort ab.</span></li>
           <li><span><b>Bestehende Flotte:</b> <span class="ui">Hash anfordern …</span> – ein Wartungspaket liest auf den markierten (oder allen) Geräten ohne Hash den Hardware-Hash einmal aus und meldet ihn an Intune zurück; die App legt ihn im Archiv ab.</span></li>
           <li><span><span class="ui">Aufnehmen</span>: Group Tag wählen – die App zeigt, welche dynamische Gruppe ihn trifft und welches Autopilot-Profil die Geräte bekommen (fehlt die Gruppe: <span class="ui">Gruppe anlegen …</span>). <span class="ui">Vorschau &amp; Import …</span> und mitverfolgen, bis Gruppe und Profil da sind.</span></li>
-          <li><span>Schulschluss: <span class="ui">Ausscheiden</span> mit der Abgängerliste – Gerät kommt zurück (Wipe) oder bleibt bei der Familie (Zurückziehen mit BitLocker-Schlüssel und Übergabe-Blatt, Paket für die Eltern).</span></li>
         </ol>
         <div class="meta"><span>Archiv verschlüsselt je Schule</span><span>Übersicht mit Ampel bereit / Warnung / fehlt</span></div>
       </div>
@@ -290,10 +288,37 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
         <ul class="gets">
           <li>Von jedem Gerät den Hash – auch von denen, die schon Jahre laufen</li>
           <li>Neue Geräte mit richtigem Group Tag, Gruppe und Profil, bevor sie ausgepackt werden</li>
-          <li>Abgänger sauber aus Autopilot und Intune draußen, mit Protokoll je Gerät</li>
         </ul>
-        <p class="tip"><b>Gut zu wissen:</b> „Hash anfordern“ braucht Lizenzen mit Remediations (z. B. A3/A5). Geräte, die bei der Familie bleiben, nie wipen.</p>
-        <figure class="shot wide"><img src="screenshot-autopilot.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot-autopilot.png'" alt="Reiter Autopilot" loading="lazy"><figcaption>Autopilot: Übersicht mit Ampel, Hash-Archiv, Aufnehmen, Ausscheiden</figcaption></figure>
+        <p class="tip"><b>Gut zu wissen:</b> „Hash anfordern“ braucht Lizenzen mit Remediations (z. B. A3/A5). Abgänger am Schulschluss: siehe <a href="#schulschluss">Schulschluss</a>.</p>
+        <figure class="shot wide"><img src="screenshot-autopilot.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot-autopilot.png'" alt="Reiter Autopilot" loading="lazy"><figcaption>Autopilot: Übersicht mit Ampel, Hash-Archiv, Aufnehmen</figcaption></figure>
+      </div>
+    </div>
+  </article>
+
+  <article class="scn" id="schulschluss" style="--c: var(--peach)">
+    <div class="scn-head">
+      <span class="tag">Modul Autopilot</span>
+      <h3>Schulschluss: Abgänger-Geräte</h3>
+      <p class="quote">„Die Abschlussklassen gehen. Manche Notebooks werden gelöscht und gehen weg, andere bleiben bei den Familien – raus aus unserer Verwaltung müssen alle.“</p>
+    </div>
+    <div class="scn-body">
+      <div>
+        <h4>So gehst du vor</h4>
+        <ol class="steps">
+          <li><span>Reiter <span class="ui">Autopilot</span> › <span class="ui">Ausscheiden</span>: Tenant wählen, <span class="ui">Laden</span> – die App liest die Geräte und prüft die Rechte. Abgänger markieren (bis 25 je Durchgang).</span></li>
+          <li><span><b>Gerät verlässt die Schule:</b> <span class="ui">Ausscheiden</span> – Benutzer aufheben, Autopilot-Eintrag entfernen, erst dann Wipe. Den Intune-Eintrag löschst du nach erledigtem Wipe.</span></li>
+          <li><span><b>Gerät bleibt bei der Familie:</b> <span class="ui">Zurückziehen</span> – BitLocker-Schlüssel und Übergabe-Blatt, Paket für die Eltern, ohne Wipe.</span></li>
+        </ol>
+        <div class="meta"><span>Nachverfolgung je Gerät</span><span>private Geräte gesperrt</span></div>
+      </div>
+      <div>
+        <h4>Was du am Ende hast</h4>
+        <ul class="gets">
+          <li>Abgänger sauber aus Autopilot und Intune draußen, mit Protokoll je Gerät</li>
+          <li>Übergabe-Blatt mit BitLocker-Schlüssel für die Familie</li>
+          <li>Im Hash-Archiv als ausgeschieden gekennzeichnet – der Hash bleibt erhalten</li>
+        </ul>
+        <p class="tip"><b>Wichtig:</b> Geräte, die bei der Familie bleiben, nie wipen. Jeder Abruf eines BitLocker-Schlüssels steht im Entra-Überwachungsprotokoll.</p>
       </div>
     </div>
   </article>
@@ -469,33 +494,6 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     </div>
   </article>
 
-  <article class="scn" id="unterwegs" style="--c: var(--teal)">
-    <div class="scn-head">
-      <span class="tag">Handy-Fernbedienung</span>
-      <h3>Ich bin nicht am PC</h3>
-      <p class="quote">„Eine Lehrerin ruft an: das Programm fehlt auf ihrem Notebook. Ich sitze aber nicht am Schreibtisch.“</p>
-    </div>
-    <div class="scn-body">
-      <div>
-        <h4>So gehst du vor</h4>
-        <ol class="steps">
-          <li><span>Am PC einmal <span class="ui">Remote FB</span> einrichten und das Handy per QR-Code koppeln.</span></li>
-          <li><span>Am Handy: freigegebenes Snippet, Extension oder Teams-Meldung wählen, Tenants und Felder setzen, starten.</span></li>
-          <li><span>Intune-Apps und Wartung: Installationsstand je Gerät, Zuweisungen setzen oder aufheben – echte Läufe nur mit PIN.</span></li>
-        </ol>
-        <div class="meta"><span>Web-App im Heimnetz oder über VPN</span><span>Zugangsdaten bleiben am PC</span></div>
-      </div>
-      <div>
-        <h4>Was du am Ende hast</h4>
-        <ul class="gets">
-          <li>Live-Ausgabe und Ergebnis je Tenant am Handy</li>
-          <li>Push-Meldung, wenn der Lauf fertig ist</li>
-          <li>Nur freigegebene Aktionen – nicht das ganze Programm</li>
-        </ul>
-        <p class="tip"><b>Empfehlung:</b> Die Fernbedienung nur in einer sicheren Homeoffice-Umgebung verwenden.</p>
-      </div>
-    </div>
-  </article>
 
   <article class="scn" id="teilen" style="--c: var(--mauve)">
     <div class="scn-head">
@@ -526,33 +524,6 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     </div>
   </article>
 
-  <article class="scn" id="umzug" style="--c: var(--peach)">
-    <div class="scn-head">
-      <span class="tag">App-Sicherung</span>
-      <h3>Neuer PC</h3>
-      <p class="quote">„Das Notebook wird getauscht. Snippets, Teams-Meldungen, App-Bibliothek – das will ich nicht alles neu einrichten.“</p>
-    </div>
-    <div class="scn-body">
-      <div>
-        <h4>So gehst du vor</h4>
-        <ol class="steps">
-          <li><span><span class="ui">⚙ Einstellungen</span> › <span class="ui">Sicherung</span>: Ordner wählen, Kennwort festlegen, <span class="ui">Jetzt sichern</span> – oder automatisch täglich.</span></li>
-          <li><span>Am neuen PC HU-MultiTenant installieren, <span class="ui">Wiederherstellen …</span>, Datei und Kennwort angeben, Bereiche anhaken.</span></li>
-          <li><span>Die App startet neu und sagt, was noch fehlt: Zertifikate bzw. Secrets je Tenant neu einrichten, Zusatzmodule installieren.</span></li>
-        </ol>
-        <div class="meta"><span>AES-256, Kennwort Pflicht</span><span>Prüfen ohne zu schreiben</span></div>
-      </div>
-      <div>
-        <h4>Was du am Ende hast</h4>
-        <ul class="gets">
-          <li>Einstellungen, Snippets, Wartung, Apps und Teams-Meldungen samt Zielen wieder da</li>
-          <li>Vorher-Stand liegt für alle Fälle daneben</li>
-          <li>💾 in der Kopfzeile zeigt die letzte Sicherung</li>
-        </ul>
-        <p class="tip"><b>Wichtig:</b> Kennwort vergessen = Sicherung verloren. Kennwort im Kennwort-Manager aufbewahren und die Datei wie ein Geheimnis behandeln.</p>
-      </div>
-    </div>
-  </article>
 </section>
 
 <section class="first">
