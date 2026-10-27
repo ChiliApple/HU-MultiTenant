@@ -313,7 +313,7 @@ Describe 'Microsoft-Vorlagen: Lizenzen und eingebaute Staerken (069 B3)' {
     }
 }
 
-Describe 'Pruefbefunde 072 (Gemini)' {
+Describe 'Pruefbefunde 072 (Zweitpruefung)' {
     It 'B1: doppelte Schluessel auch mit JSON-Escapes (a\/b = a/b), kein Fehlalarm bei \\u0061' {
         Test-HUMxJsonText '{"a/b":1,"a\/b":2}' | Should -Match 'doppelt'
         Test-HUMxJsonText '{"a":1,"a":2}' | Should -Match 'doppelt'

@@ -258,7 +258,7 @@ function Invoke-HUMusterSanitize {
         else {
             $txt = ''
             try { $txt = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("$(Get-HUMxProp $o 'scriptContent')$(Get-HUMxProp $o 'detectionScriptContent')")) } catch { }
-            # 072 (Gemini B3): UTF-16-kodierte Skripte (Nullbytes zwischen den Zeichen) vor der Pruefung bereinigen
+            # 072 (B3): UTF-16-kodierte Skripte (Nullbytes zwischen den Zeichen) vor der Pruefung bereinigen
             $txt = "$txt" -replace "`0", ''
             if ($txt -match '(?i)(password|passwort|kennwort|secret|apikey|api_key|token)\s*[=:]') { & $block 'Skript enthaelt vermutlich ein Kennwort oder einen Schluessel.' }
         }
@@ -266,7 +266,7 @@ function Invoke-HUMusterSanitize {
     # 068 B2: eingebettete Inhalte (Base64-Werte, z. B. omaSettingBase64, iOS/macOS-payload, Zertifikate) entpacken und pruefen
     foreach ($s1 in @(Get-HUMxStrings $o)) {
         $v = "$($s1.Value)"
-        # 072 (Gemini B3): auch kurze Werte pruefen (ab 12 Zeichen; Base64 ab 24), Name und Beschreibung nicht (die markiert die Pruefansicht)
+        # 072 (B3): auch kurze Werte pruefen (ab 12 Zeichen; Base64 ab 24), Name und Beschreibung nicht (die markiert die Pruefansicht)
         if ($v.Length -lt 12 -or $s1.Path -match '(?i)(scriptContent|detectionScriptContent|remediationScriptContent)$' -or $s1.Path -match '(?i)(^|\.)(displayName|description)$') { continue }
         $txt = $null
         if ($v.Length -ge 24 -and $v -match '^[A-Za-z0-9+/=\s]+$' -and ($v.Trim().Length % 4) -eq 0) { try { $txt = ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($v.Trim()))) -replace "`0", '' } catch { $txt = $null } }
@@ -419,7 +419,7 @@ function Test-HUMxJsonText([string]$Text, [int]$MaxDepth = 64) {
                     if ($i + 1 -ge $len) { $i++; continue }
                     $e = $Text[$i + 1]
                     [void]$sb.Append($c2).Append($e)
-                    # 072 (Gemini B1): alle JSON-Escapes aufloesen - "a\/b" ist derselbe Schluessel wie "a/b", "\\u0061" ist kein "a"
+                    # 072 (B1): alle JSON-Escapes aufloesen - "a\/b" ist derselbe Schluessel wie "a/b", "\\u0061" ist kein "a"
                     # (kein continue im switch - das wuerde nur den switch verlassen)
                     $step = 2
                     $hx = $(if ($e -ceq 'u' -and $i + 5 -lt $len) { $Text.Substring($i + 2, 4) } else { '' })

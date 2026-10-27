@@ -203,7 +203,7 @@ function Start-HUAppBackupNow([switch]$FromDialog, [switch]$Auto) {
         $folder = $cfg.Path; $keep = $cfg.Keep; $muster = $cfg.Muster; $tenant = $cfg.Tenant
     }
     if (-not $folder) { if (-not $Auto) { Show-HUMessage 'Bitte zuerst einen Sicherungsordner angeben.' -Icon Warning -Owner $owner }; return }
-    # 072 (Gemini B6): "Jetzt sichern" uebernimmt Ordner, Haken und Automatik gleich in die Einstellungen -
+    # 072 (B6): "Jetzt sichern" uebernimmt Ordner, Haken und Automatik gleich in die Einstellungen -
     # sonst laeuft die Automatik nie, wenn das Fenster danach mit Abbrechen geschlossen wird
     if ($FromDialog -and $script:AbDlg) {
         $why = Save-HUAbSettingsFromForm $script:AbDlg.C $script:Settings

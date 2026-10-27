@@ -55,7 +55,7 @@ function Get-HUAbPbkdf2([byte[]]$Pw, [byte[]]$Salt, [int]$Iterations) {
     try { return $kdf.GetBytes(32) } finally { $kdf.Dispose() }
 }
 
-# Gemini B4: Temp-ZIP (Klartext, DeleteOnClose) kann nach einem Absturz liegen bleiben - alte Reste beim naechsten Lauf entfernen
+# 072 B4: Temp-ZIP (Klartext, DeleteOnClose) kann nach einem Absturz liegen bleiben - alte Reste beim naechsten Lauf entfernen
 function Clear-HUAbTempZips {
     try {
         $lim = (Get-Date).AddHours(-1)
