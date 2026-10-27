@@ -23,7 +23,7 @@ Nacharbeiten zur Stable 2.6.0: weniger Rechte von Haus aus, mehr Schutz beim Imp
 - **Abbruch einer Teams-Meldung greift sofort:** nach dem Abbruch geht keine Karte mehr raus – auch nicht aus einem Skript, das gerade läuft oder hängt.
 
 ### 🎨 Oberfläche
-- **Erster Start:** der Starter `HU-MultiTenant.exe` (eigenes Logo, ohne Konsolenfenster) wird gleich angelegt, dazu einmal die Frage nach einem Desktop-Symbol.
+- **Erster Start:** der Starter `HU-MultiTenant.exe` (eigenes Logo, ohne Konsolenfenster) wird gleich angelegt, dazu einmal die Frage nach einem Desktop-Symbol und das Angebot, den Einstieg im Browser zu öffnen.
 - **Meldungsfenster für Screenreader:** Fenster, Symbol, Text und Knöpfe sind benannt; der vorgewählte Knopf wird als „(Enter)“ angesagt.
 
 ### 🗺️ Doku
