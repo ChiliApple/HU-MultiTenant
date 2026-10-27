@@ -11,7 +11,7 @@
 - **Knöpfe nie abgeschnitten (global):** Knöpfe in Knopfleisten wachsen mit ihrer Beschriftung, auch wenn der Text erst später gesetzt wird (z. B. „Zustimmungen anzeigen“ im Sicherheitskatalog) – in allen Fenstern, Reitern und Modulen.
 - **Ausgaben: neuestes Ereignis oben (global):** Jede Ausgabe (Protokoll, Quick Script, Apps, Wartung, Analyse, Muster, Module) zeigt das Neueste oben. Rechts oben sitzen die kleinen Knöpfe **Umkehren** (neuestes oben/unten, wird je Ausgabe gemerkt) und **Löschen**. Ein eigener „Leeren“-Knopf über der Ausgabe (z. B. in Modulen) wird dabei ausgeblendet, Löschen übernimmt seine Aufgabe.
 - **Sicherheitskatalog – Doppelklick:** Im Detailfenster einer Regel öffnet ein Doppelklick auf eine Tenant-Zeile dieselbe Liste wie der Knopf (Konten, Richtlinien, Lizenzen … anzeigen) bzw. „Von Hand geprüft …“.
-- **Kopfzeile:** Ist das Fenster zu schmal, zeigt die Zertifikat-Anzeige nur noch den farbigen Schlüssel – der volle Text steht im Tooltip.
+- **Kopfzeile:** Die Zertifikat-Anzeige zeigt nur noch den farbigen Schlüssel (grün/orange/rot) – Ablaufdatum und Details je Tenant stehen im Tooltip.
 
 ### 🗺️ Doku
 - **Autopilot V1 und V2:** Roadmap, Funktionsübersicht, Anleitung und Modul-README nennen das jetzige Modul V1 (klassisch, mit Hardware-Hash); V2 (Windows Autopilot device preparation) folgt im selben Reiter.

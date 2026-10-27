@@ -171,22 +171,14 @@ function Start-HUSecretCheckAll([switch]$Force, [scriptblock]$Done = $null) {
 $script:HdrSecretFull = ''
 $script:HdrSecretTip = ''
 function Update-HUSecretFit {
-    $c = $script:Controls
-    $t = $c['txtSecretExpiry']; $bar = $c['hdrBar']; $left = $c['hdrLeft']; $right = $c['hdrRight']
-    if (-not $t -or -not $bar -or -not $left -or -not $right) { return }
+    # 2.5.6: Kopfzeile zeigt immer nur den farbigen Schluessel - der volle Text steht im Tooltip
+    $t = $script:Controls['txtSecretExpiry']
+    if (-not $t) { return }
     $full = "$script:HdrSecretFull"
     if (-not $full) { return }
     try {
-        $t.Text = $full; $t.Margin = [System.Windows.Thickness]::new(76, 0, 0, 0)
-        $left.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
-        # rechte Knopfleiste mit ihrer vollen Wunschbreite (ActualWidth ist schon gestaucht, wenn es eng wird) + Abstand
-        $right.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
-        $rw = [Math]::Max($right.ActualWidth, $right.DesiredSize.Width) + $right.Margin.Left + $right.Margin.Right
-        $avail = $bar.ActualWidth - $bar.Padding.Left - $bar.Padding.Right - $rw - 24
-        if ($bar.ActualWidth -gt 0 -and $left.DesiredSize.Width -gt $avail) {
-            $t.Text = "$($script:KeyIcon)"; $t.Margin = [System.Windows.Thickness]::new(12, 0, 0, 0)
-            $t.ToolTip = "$($full -replace '^\S+\s', '')`n`n$($script:HdrSecretTip)"
-        } else { $t.ToolTip = "$($script:HdrSecretTip)" }
+        $t.Text = "$($script:KeyIcon)"; $t.Margin = [System.Windows.Thickness]::new(12, 0, 0, 0)
+        $t.ToolTip = "$($full -replace '^\S+\s', '')`n`n$($script:HdrSecretTip)"
     } catch { }
 }
 
@@ -488,8 +480,5 @@ function Register-HUTenantHandlers {
 
     $c['txtSecretWarning'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' })
     $c['txtSecretExpiry'].Cursor = [System.Windows.Input.Cursors]::Hand
-    # schmales Fenster: Zertifikat-Anzeige auf das Symbol verkuerzen (Fenster- und Knopfleisten-Breite aendern sich)
-    if ($c['hdrBar']) { $c['hdrBar'].Add_SizeChanged({ Update-HUSecretFit }) }
-    if ($c['hdrRight']) { $c['hdrRight'].Add_SizeChanged({ Update-HUSecretFit }) }
     $c['txtSecretExpiry'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' $(if ($script:HdrSecretKey) { $script:HdrSecretKey } else { Get-SelectedTenantKey }) })
 }
