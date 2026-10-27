@@ -5,7 +5,7 @@
 ### 🛡️ Sicherheitskatalog
 - **V5 MFA-Grundschutz – neuer Sollwert `policies`:** Richtlinien, die zusammen den Grundschutz bilden (z. B. je Gruppe für Admins, Verwaltung, Lehrkräfte, Cloud-Konten, Gäste). Eintrag als Nummer am Namensanfang (`100` trifft „100 - …“, nicht „1000“) oder voller Name. Sind alle vorhanden und aktiv, ist V5 erfüllt; sonst nennt die Zelle, welche fehlt oder nicht aktiv ist. Die Liste „Richtlinien anzeigen“ zählt sie mit.
 - **A42 Apps mit kritischen Rechten – neuer Sollwert `allowedApps`:** gewollte Apps (Anzeigename oder Objekt-ID, z. B. die Sync-App der Schulverwaltung) stehen weiter in der Liste, zählen aber nicht. Die Liste hat dazu die Spalte *Zaehlt* (Ja / dieses Programm / erlaubt).
-- **Auffällige Zeilen dezent eingefärbt (global):** Listen im Katalog haben die Spalte *Bewertung* – z. B. K03 Lizenzen („überbucht“ / „ab 95 %“), K04 Fehlversuche, A42 zählende Apps. Diese Zeilen bekommen dieselbe dezente Färbung wie „abweichend“ in den Vergleichen.
+- **Auffällige Zeilen dezent eingefärbt (global):** Listen im Katalog haben die Spalte *Bewertung* – z. B. K03 Lizenzen („überbucht“ / „ab 95 %“), K04 Fehlversuche, A42 zählende Apps. Diese Zeilen bekommen dieselbe dezente Färbung wie „abweichend“ in den Vergleichen. Auch im Detailfenster einer Regel sind Tenants mit *Abweichung* eingefärbt; die Färbung greift jetzt zuverlässig schon beim Öffnen des Fensters.
 
 ### 🖥️ Oberfläche
 - **Knöpfe nie abgeschnitten (global):** Knöpfe in Knopfleisten wachsen mit ihrer Beschriftung, auch wenn der Text erst später gesetzt wird (z. B. „Zustimmungen anzeigen“ im Sicherheitskatalog) – in allen Fenstern, Reitern und Modulen.

@@ -216,16 +216,31 @@ function Test-HUDiffItem($Item) {
     } else {
         foreach ($n in $script:HUDiffTintCols) { $p = $Item.PSObject.Properties[$n]; if ($p) { $vals += "$($p.Value)" } }
     }
-    foreach ($v in $vals) { if ($v -match '(?i)\babweichend\b') { return $true } }
+    # "abweichend" (Vergleiche, Bewertung) und "Abweichung" (Status im Sicherheitskatalog); "keine Abweichung" zaehlt nicht
+    foreach ($v in $vals) { if ($v -match '(?i)\b(abweichend|abweichung)\b' -and $v -notmatch '(?i)\b(keine|ohne)\s+abweichung') { return $true } }
     return $false
 }
-function Set-HUDiffRowTint($Row) {
+$script:HUTintQueue = New-Object System.Collections.ArrayList
+function Set-HUDiffRowTint($Row, [switch]$Retry) {
     try {
         if ($null -eq $Row) { return }
         if ($null -eq $script:HUDiffTintBrush) { $b = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#3A321F')); $b.Freeze(); $script:HUDiffTintBrush = $b }
         # nur in Fenstern, die aufgehen (Detail/Ergebnis) - nicht im Hauptfenster (Udo 25.10.)
         $win = [System.Windows.Window]::GetWindow($Row)
-        if ($null -eq $win -or ($script:Window -and [object]::ReferenceEquals($win, $script:Window))) { return }
+        if ($null -eq $win) {
+            # LoadingRow kommt, bevor die Zeile im Fenster haengt -> einmal nachholen, sobald sie geladen ist
+            if (-not $Retry) {
+                [void]$script:HUTintQueue.Add($Row)
+                if ($script:HUTintQueue.Count -eq 1) {
+                    [void]$Row.Dispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Loaded, [System.Action]{
+                            $q = @($script:HUTintQueue); $script:HUTintQueue.Clear()
+                            foreach ($x in $q) { Set-HUDiffRowTint $x -Retry }
+                        })
+                }
+            }
+            return
+        }
+        if ($script:Window -and [object]::ReferenceEquals($win, $script:Window)) { return }
         if (Test-HUDiffItem $Row.Item) { $Row.Background = $script:HUDiffTintBrush }
         elseif ([object]::ReferenceEquals($Row.Background, $script:HUDiffTintBrush)) { $Row.ClearValue([System.Windows.Controls.Control]::BackgroundProperty) }
     } catch { }

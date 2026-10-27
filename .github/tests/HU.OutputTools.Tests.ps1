@@ -94,3 +94,21 @@ Describe 'Ausgabe: alle Schreiber gehen ueber die gemeinsame Logik' {
         $src | Should -Match '\$t\.Old\.RaiseEvent'
     }
 }
+
+Describe 'Zeilenfaerbung: Test-HUDiffItem (global)' {
+    BeforeAll {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $script:Root 'Functions\UI-Common.ps1'), [ref]$null, [ref]$null)
+        $fn = $ast.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq 'Test-HUDiffItem' }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+        $script:HUDiffTintCols = @('Unterschied', 'Abweichung', 'Status', 'Ergebnis', 'Vergleich', 'Bewertung')
+    }
+    It 'Status Abweichung (Katalog-Detail) und Bewertung abweichend werden gefaerbt' {
+        Test-HUDiffItem ([pscustomobject]@{ Tenant = 'A'; Status = ([string][char]0x2716 + ' Abweichung') }) | Should -BeTrue
+        Test-HUDiffItem ([pscustomobject]@{ Lizenz = 'X'; Bewertung = 'abweichend: ueberbucht (1 zu viel)' }) | Should -BeTrue
+    }
+    It 'OK, leer und "keine Abweichung" bleiben ungefaerbt' {
+        Test-HUDiffItem ([pscustomobject]@{ Status = 'OK' }) | Should -BeFalse
+        Test-HUDiffItem ([pscustomobject]@{ Bewertung = '' }) | Should -BeFalse
+        Test-HUDiffItem ([pscustomobject]@{ Ergebnis = 'keine Abweichung' }) | Should -BeFalse
+    }
+}
