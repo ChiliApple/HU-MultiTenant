@@ -1032,7 +1032,7 @@ function Start-HUBakRestore {
     $k = $script:BakTenant
     $stamp = (Split-Path $script:BakA -Leaf).Substring(0, 10)
     $lines = @($sel | Select-Object -First 15 | ForEach-Object { "  $($_.Typ): $($_.Name)" })
-    if (-not (Confirm-HU "$($sel.Count) Eintrag/Eintraege aus dem Stand $stamp in $(Get-HUAnaTenantName $k) NEU anlegen:`n`n$($lines -join "`n")$(if ($sel.Count -gt 15) { "`n  ..." })`n`nName mit Zusatz '(wiederhergestellt $stamp)', OHNE Zuweisungen - der bestehende Eintrag bleibt unveraendert.`n`nDanach vergleichen, zuweisen und den alten Eintrag selbst entfernen.$(if ($skip.Count) { "`n`nNicht dabei ($($skip.Count)): $(@($skip | ForEach-Object { $_.Typ } | Sort-Object -Unique) -join ', ') - lassen sich so nicht wiederherstellen." })")) { return }
+    if (-not (Confirm-HU -Warning "$($sel.Count) Eintrag/Eintraege aus dem Stand $stamp in $(Get-HUAnaTenantName $k) NEU anlegen:`n`n$($lines -join "`n")$(if ($sel.Count -gt 15) { "`n  ..." })`n`nName mit Zusatz '(wiederhergestellt $stamp)', OHNE Zuweisungen - der bestehende Eintrag bleibt unveraendert.`n`nDanach vergleichen, zuweisen und den alten Eintrag selbst entfernen.$(if ($skip.Count) { "`n`nNicht dabei ($($skip.Count)): $(@($skip | ForEach-Object { $_.Typ } | Sort-Object -Unique) -join ', ') - lassen sich so nicht wiederherstellen." })")) { return }
     $jobs = @($sel | ForEach-Object { [pscustomobject]@{ Typ = $_.Typ; Name = $_.Name; File = $_.FileA } })
     [void](Start-HUJob -Name 'BakRestore' -Output $c['rtbAna'] -Vars @{ TK = $k; Jobs = $jobs; Stamp = $stamp } -Code {
             foreach ($j in $Jobs) {

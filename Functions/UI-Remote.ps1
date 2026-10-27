@@ -707,7 +707,7 @@ function Show-HURemoteDialog {
         })
     $c['btnRemSetup'].Add_Click({ if (Invoke-HURemoteSetup 'Install' $script:HURemDlg.Window) { Show-HUMessage 'Fernbedienung eingerichtet. Jetzt im Reiter Status einschalten.' -Icon Info -Owner $script:HURemDlg.Window }; Update-HURemoteDialog })
     $c['btnRemUnsetup'].Add_Click({
-            if (-not (Confirm-HU 'Einrichtung entfernen (HTTPS-Bindung, Port-Freigabe, Firewall-Regel, Server-Zertifikat)? Die gemeinsame CA bleibt fuer HUMig.' -Owner $script:HURemDlg.Window)) { return }
+            if (-not (Confirm-HU -Warning 'Einrichtung entfernen (HTTPS-Bindung, Port-Freigabe, Firewall-Regel, Server-Zertifikat)? Die gemeinsame CA bleibt fuer HUMig.' -Owner $script:HURemDlg.Window)) { return }
             if ($script:HURem) { Stop-HURemote 'Einrichtung entfernt' }
             [void](Invoke-HURemoteSetup 'Uninstall' $script:HURemDlg.Window); Update-HURemoteDialog
         })

@@ -171,6 +171,9 @@ function Show-HUSettingsDialog {
         if ($f.ShowDialog() -eq 'OK') { $c.txtReports.Text = $f.SelectedPath }
     })
 
+    # ---------------- Sicherung (2.5.9) ----------------
+    Initialize-HUAbSettingsTab $c $w
+
     # ---------------- Tenants ----------------
     $secretLine = {
         param($t)
@@ -362,7 +365,7 @@ function Show-HUSettingsDialog {
         $t = $st.Tenants[$st.Cur]
         $saved = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq "$($t.key)" -and "$($_.tenantId)" -eq "$($t.tenantId)" })[0]
         if (-not $saved -or -not (Test-HUTenantCertAuth $saved)) { Show-HUMessage 'Zuerst speichern (der Tenant ist noch nicht in settings.json).' -Icon Warning -Owner $w; return }
-        if (-not (Confirm-HU "Zertifikat fuer '$($t.displayName)' jetzt erneuern?`n`nNeues Zertifikat (12 Monate) an der App eintragen, testen, altes entfernen. Dauert bis zu 2 Minuten." -Owner $w)) { return }
+        if (-not (Confirm-HU -Warning "Zertifikat fuer '$($t.displayName)' jetzt erneuern?`n`nNeues Zertifikat (12 Monate) an der App eintragen, testen, altes entfernen. Dauert bis zu 2 Minuten." -Owner $w)) { return }
         $c.btnCertRenew.IsEnabled = $false
         $c.tTestResult.Text = 'Erneuere Zertifikat ... (Ergebnis auch im Protokoll)'; $c.tTestResult.Foreground = Get-HUBrush '#90CAF9'
         $started = Start-HUCertRenew "$($t.key)" -Done {
@@ -472,6 +475,8 @@ function Show-HUSettingsDialog {
             $cur = @($script:Settings.tenants | Where-Object { "$($_.tenantId)" -eq "$($t.tenantId)" -and "$($_.appId)" -eq "$($t.appId)" })[0]
             if ($cur -and "$($cur.certThumbprint)" -and "$($cur.certThumbprint)" -ne "$($t.certThumbprint)") { Set-HUProp $t 'certThumbprint' "$($cur.certThumbprint)" }
         }
+        $abErr = Save-HUAbSettingsFromForm $c $S
+        if ($abErr) { $c.tabSettings.SelectedItem = $c.tabAppBackup; Show-HUMessage $abErr -Icon Warning -Owner $w; return }
         Set-HUProp $S 'tenants' @($st.Tenants.ToArray())
         Set-HUProp $S.ui 'startTab' "$($c.cmbStartTab.SelectedItem.Tag)"
         Set-HUProp $S.ui 'secretWarnDays' $wd
@@ -512,14 +517,14 @@ function Show-HUSettingsDialog {
         $w.Close()
     })
     $c.btnCancel.Add_Click({ $w.Close() })
-    $w.Add_Closing({ Save-HUDialogState $w 'SettingsWindow' })
+    $w.Add_Closing({ Save-HUDialogState $w 'SettingsWindow'; $script:AbDlg = $null })
 
     # Start-Reiter / Tenant
     & $refreshList -1
     $idx = 0
     if ($TenantKey) { for ($i = 0; $i -lt $st.Tenants.Count; $i++) { if ("$($st.Tenants[$i].key)" -eq $TenantKey) { $idx = $i } } }
     if ($st.Tenants.Count) { $st.Cur = -1; $c.lstTenants.SelectedIndex = $idx } else { $st.Cur = -1; & $tenantToForm }
-    switch ($Tab) { 'Tenants' { $c.tabSettings.SelectedItem = $c.tabTenants } 'Update' { $c.tabSettings.SelectedItem = $c.tabUpdate } default { } }
+    switch ($Tab) { 'Tenants' { $c.tabSettings.SelectedItem = $c.tabTenants } 'Update' { $c.tabSettings.SelectedItem = $c.tabUpdate } 'Sicherung' { $c.tabSettings.SelectedItem = $c.tabAppBackup } default { } }
     $c.txtSettingsInfo.Text = "Programmordner: $($script:AppRoot)"
     [void]$w.ShowDialog()
     return ($st.Saved -or $st.SetupDone)

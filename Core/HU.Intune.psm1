@@ -2533,7 +2533,7 @@ function Get-HUCompareMatrix([object[]]$Rows, [string[]]$Keys) {
         $miss = @($Keys | Where-Object { $have -notcontains $_ -and $unk -notcontains $_ })
         $hashes = @($g.Group | Where-Object { $_.Hash } | ForEach-Object { $_.Hash } | Select-Object -Unique)
         $dupe = @($g.Group | Group-Object Tenant | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
-        $st = if (-not $miss.Count -and -not $unk.Count) { 'ueberall' } elseif (-not $miss.Count) { 'vorhanden, wo lesbar' } elseif ($have.Count -eq 1 -and $Keys.Count -gt 1 -and -not $unk.Count) { 'nur in einem' } else { 'fehlt teilweise' }
+        $st = if (-not $miss.Count -and -not $unk.Count) { 'ueberall' } elseif (-not $miss.Count) { 'vorhanden, wo lesbar' } elseif ($have.Count -eq 1 -and $Keys.Count -gt 1 -and -not $unk.Count) { $(if ("$($have[0])" -eq '__MUSTER__') { 'nur im Muster (fehlt in allen Tenants)' } else { 'nur in einem' }) } else { 'fehlt teilweise' }
         if ($unk.Count) { $st += ", nicht lesbar in $($unk -join ', ')" }
         if ($hashes.Count -gt 1) {
             # Fingerabdruck verschieden, Feld fuer Feld aber gleich (z. B. nur andere Reihenfolge einer einfachen Liste):

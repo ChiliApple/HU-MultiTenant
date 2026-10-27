@@ -1,5 +1,5 @@
 ﻿<!--
-    HU-MultiTenant - Einstellungen: Allgemein | Tenants | Update.
+    HU-MultiTenant - Einstellungen: Allgemein | Tenants | Sicherung | Update.
     Gespeichert in Config\settings.json (Sicherung settings.json.bak) und Config\update.json.
 -->
 <Window
@@ -259,6 +259,58 @@
                         </ScrollViewer>
                     </Border>
                 </Grid>
+            </TabItem>
+
+            <!-- ================= SICHERUNG (2.5.9) ================= -->
+            <TabItem Header="Sicherung" x:Name="tabAppBackup" Style="{StaticResource DarkTabItem}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="4,12,4,4">
+                        <TextBlock Text="App-Sicherung" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Style="{StaticResource HintText}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"
+                                   Text="Sichert Einstellungen und Tenants, Snippets, Wartungsskripte, Apps, Teams-Auftr&#xE4;ge mit ihren Zielen (Webhook-Adressen), Fensterzustand und die Daten der Zusatzmodule (welche Module installiert sind, wird vermerkt - installiert werden sie danach neu). Immer mit Kennwort verschl&#xFC;sselt (AES-256). Nicht enthalten: Secrets und Zertifikate (an diesen PC gebunden), gekoppelte Handys und Freigaben der Fernbedienung."/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="Sicherungsordner" Style="{StaticResource FieldLabel}"/>
+                            <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,6">
+                                <Button x:Name="btnAbBrowse" DockPanel.Dock="Right" Content="..." Style="{StaticResource ToolButton}" Width="34" Margin="6,0,0,0"/>
+                                <TextBox x:Name="txtAbPath" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Auch eine Netzwerkfreigabe oder ein USB-Laufwerk. Am besten nicht auf demselben Laufwerk wie der PC."/>
+                            </DockPanel>
+                            <TextBlock Grid.Row="1" Text="Kennwort" Style="{StaticResource FieldLabel}"/>
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,6">
+                                <Button x:Name="btnAbPw" Content="Kennwort festlegen ..." Style="{StaticResource ToolButton}" Margin="0,0,10,0"/>
+                                <TextBlock x:Name="txtAbPwInfo" Foreground="#AAAAAA" VerticalAlignment="Center" FontSize="12"/>
+                            </StackPanel>
+                            <TextBlock Grid.Row="2" Text="Zus&#xE4;tzlich" Style="{StaticResource FieldLabel}"/>
+                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,6">
+                                <CheckBox x:Name="chkAbMuster" Content="Muster-Bibliothek und Mustertenant" ToolTip="Eigene Pakete und der aktuell festgehaltene Mustertenant - nicht die fr&#xFC;heren St&#xE4;nde, Papierkorb und Abl&#xE4;ufe" Style="{StaticResource DarkCheckBox}"/>
+                                <CheckBox x:Name="chkAbTenant" Content="Tenant-Backups (kann gro&#xDF; werden)" Style="{StaticResource DarkCheckBox}"/>
+                            </StackPanel>
+                            <TextBlock Grid.Row="3" Text="Automatisch" Style="{StaticResource FieldLabel}"/>
+                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,6">
+                                <ComboBox x:Name="cmbAbMode" Width="140" Style="{StaticResource DarkComboBox}" FontSize="12"
+                                          ToolTip="L&#xE4;uft beim Start bzw. solange die App offen ist. Braucht ein gespeichertes Kennwort.">
+                                    <ComboBoxItem Content="aus" Tag="aus"/>
+                                    <ComboBoxItem Content="t&#xE4;glich" Tag="taeglich"/>
+                                    <ComboBoxItem Content="w&#xF6;chentlich" Tag="woechentlich"/>
+                                </ComboBox>
+                                <TextBlock Text="aufbewahren" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="14,0,6,0"/>
+                                <TextBox x:Name="txtAbKeep" Width="50" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Anzahl Sicherungen im Ordner (die &#xE4;ltesten eigenen werden gel&#xF6;scht)"/>
+                                <TextBlock Text="Sicherungen" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock Grid.Row="4" Text="Letzte Sicherung" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" x:Name="txtAbLast" Foreground="#AAAAAA" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        </Grid>
+                        <WrapPanel Margin="0,10,0,0">
+                            <Button x:Name="btnAbNow" Content="Jetzt sichern" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,6"/>
+                            <Button x:Name="btnAbCheck" Content="Sicherung pr&#xFC;fen ..." Style="{StaticResource ToolButton}" Margin="0,0,8,6"/>
+                            <Button x:Name="btnAbRestore" Content="Wiederherstellen ..." Style="{StaticResource ToolButton}" Margin="0,0,8,6"/>
+                            <Button x:Name="btnAbOpen" Content="Ordner &#xF6;ffnen" Style="{StaticResource ToolButton}" Margin="0,0,8,6"/>
+                        </WrapPanel>
+                        <TextBlock Style="{StaticResource HintText}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Text="Ordner, Haken und Automatik gelten nach &#x201E;Speichern&#x201C; oder &#x201E;Jetzt sichern&#x201C;. Ein ge&#xE4;ndertes Kennwort gilt nur f&#xFC;r neue Sicherungen - alte bleiben mit dem alten Kennwort lesbar. Ohne Kennwort ist eine Sicherung nicht zu &#xF6;ffnen."/>
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ================= UPDATE ================= -->

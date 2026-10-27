@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Pester-Tests (Pester 5) aus dem Review 029 (Lueckentests von Grok) fuer Core\HU.Notify.psm1.
+    Pester-Tests (Pester 5) aus dem Review 029 (Lueckentests aus der Pruefung) fuer Core\HU.Notify.psm1.
 .NOTES
     Aufruf: Invoke-Pester .github\tests   (oder ueber Invoke-CITests.ps1). Ohne Netzwerk (Mocks).
     Tests mit [029] im Namen waren beim Stand 1362001/ec1b03a rot und sind seit v2.1.10 behoben.

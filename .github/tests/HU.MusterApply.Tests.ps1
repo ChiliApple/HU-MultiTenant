@@ -224,3 +224,21 @@ Describe 'Muster anwenden (2.5.2): Ausfuehren und Paket-Rueckgaengig' {
         Remove-Variable -Name MaOrder -Scope Global -ErrorAction SilentlyContinue
     }
 }
+
+Describe 'Muster anwenden: Admin-Anmeldung kommt nach dem Schliessen zurueck (069 B1)' {
+    It 'offener Assistent mit gleicher Kennung: gilt' {
+        Test-HUMaLoginCurrent @{ Sid = 'abc'; Closed = $false } 'abc' | Should -BeTrue
+    }
+    It 'Fenster geschlossen (Zustand weg): nichts erteilen' {
+        Test-HUMaLoginCurrent $null 'abc' | Should -BeFalse
+    }
+    It 'als geschlossen markiert: nichts erteilen' {
+        Test-HUMaLoginCurrent @{ Sid = 'abc'; Closed = $true } 'abc' | Should -BeFalse
+    }
+    It 'inzwischen neuer Assistent offen: nichts erteilen' {
+        Test-HUMaLoginCurrent @{ Sid = 'neu'; Closed = $false } 'abc' | Should -BeFalse
+    }
+    It 'ohne Kennung: nichts erteilen' {
+        Test-HUMaLoginCurrent @{ Sid = ''; Closed = $false } '' | Should -BeFalse
+    }
+}

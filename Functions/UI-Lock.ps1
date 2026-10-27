@@ -274,6 +274,7 @@ function Lock-HUApp([switch]$AtStart) {
     $cfg = Get-HULockConfig
     if (-not $cfg.Enabled) { return }
     $script:LockActive = $true
+    try { Close-HUToasts } catch { }
     try { Clear-TokenCache } catch { }
     $main = $script:Window
     # Inhalt und offene Unterfenster verbergen

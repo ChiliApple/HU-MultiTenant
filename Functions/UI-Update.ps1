@@ -316,7 +316,7 @@ function Start-HUReleaseSigning([switch]$Addon) {
             $script:SignCtx = $null; return
         }
         Write-HUPub "Nicht signiert: $($tags -join ', ')" INFO
-        if (-not (Confirm-HU "Diese Releases jetzt signieren?`n`n$($tags -join ', ')`n`nDanach werden sie allen Installationen angeboten (je nach Kanal Stabil/Test)." 'Release signieren')) { Write-HUPub 'Signieren abgebrochen.' WARN; $script:SignCtx = $null; return }
+        if (-not (Confirm-HU -Warning "Diese Releases jetzt signieren?`n`n$($tags -join ', ')`n`nDanach werden sie allen Installationen angeboten (je nach Kanal Stabil/Test)." 'Release signieren')) { Write-HUPub 'Signieren abgebrochen.' WARN; $script:SignCtx = $null; return }
         Write-HUPub "Signiere $($tags -join ', ') ... (Pruefsumme laden, signieren, Signatur pruefen, hochladen)" INFO
         $sc = $script:SignCtx
         $script:SignTokFile = if ($sc.Addon) { Get-HUSignTokenFile $sc.Owner $sc.Repo } else { Get-HUSignTokenFile }
@@ -389,7 +389,7 @@ function Start-HUReleasePublish([switch]$Addon) {
             $script:PubCtx = $null; return
         }
         Write-HUPub "Kandidat: $tag (signiert)" INFO
-        if (-not (Confirm-HU "$tag jetzt freigeben?`n`nDanach ist es im Kanal Stabil die neueste Version und wird ALLEN Installationen als Update angeboten.`nBisher freigegeben: $(if ($stable) { $stable } else { '-' })" 'Release freigeben')) { Write-HUPub 'Freigabe abgebrochen.' WARN; $script:PubCtx = $null; return }
+        if (-not (Confirm-HU -Warning "$tag jetzt freigeben?`n`nDanach ist es im Kanal Stabil die neueste Version und wird ALLEN Installationen als Update angeboten.`nBisher freigegeben: $(if ($stable) { $stable } else { '-' })" 'Release freigeben')) { Write-HUPub 'Freigabe abgebrochen.' WARN; $script:PubCtx = $null; return }
         Write-HUPub "Gebe $tag frei ... (Signatur wird vorher erneut geprueft)" INFO
         $pc = $script:PubCtx
         Invoke-AsyncCommand -ScriptBlock {

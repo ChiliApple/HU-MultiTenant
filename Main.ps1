@@ -37,7 +37,7 @@ $script:AppRoot = $PSScriptRoot
 # Zustandsvariablen (StrictMode: vor dem ersten Lesen setzen)
 $script:Window = $null; $script:Controls = @{}; $script:AppIcon = $null
 $script:CurrentToken = $null; $script:UiScale = 1.0
-$script:StartupDone = $false; $script:SkipCloseChecks = $false
+$script:StartupDone = $false; $script:SkipCloseChecks = $false; $script:AbRestored = $false
 $script:TenantSelectBusy = $false; $script:PersistBusy = $false
 $script:SecretCheckDone = $null; $script:SettingsRefresh = $null; $script:UpdateQuiet = $false
 $script:SignCtx = $null; $script:PubCtx = $null; $script:UpdMenuSign = @(); $script:ManualLocal = ''
@@ -172,7 +172,7 @@ $script:Version = '0.0.0'
 try { $script:Version = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
 
 Set-HUSplashStatus 'Module werden geladen ...'
-foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs', 'HU.Setup', 'HU.SecCatalog', 'HU.EntraRestore', 'HU.Muster', 'HU.Transfer', 'HU.MusterApply', 'HU.MusterExchange')) {
+foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs', 'HU.Setup', 'HU.SecCatalog', 'HU.EntraRestore', 'HU.Muster', 'HU.Transfer', 'HU.MusterApply', 'HU.MusterExchange', 'HU.AppBackup')) {
     $modPath = Join-Path $script:AppRoot "Core\$mod.psm1"
     if (-not (Test-Path -LiteralPath $modPath)) { Show-HUFatal "Core-Modul fehlt: $modPath`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     Import-Module $modPath -Force -DisableNameChecking
@@ -183,7 +183,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 $uiFiles = @('Core-Async', 'Core-Update', 'Core-Addons', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-MusterApply', 'UI-MusterExchange', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
+             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-MusterApply', 'UI-MusterExchange', 'UI-AppBackup', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
 # ohne Oberflaeche nur das Noetige (Einstellungen lesen/ergaenzen)
 if ($Headless) { $uiFiles = @('UI-Common', 'UI-Settings') }
 foreach ($f in $uiFiles) {
@@ -382,6 +382,8 @@ $script:Window.Add_ContentRendered({
         # Schreibrechte fuer Uebertragen/Zurueckschreiben laenger als 7 Tage an? (einmal am Tag)
         try { Test-HUWritePkgReminder } catch { }
         try { Test-HUMaMarkerReminder } catch { }
+        # 2.5.9: automatische App-Sicherung (taeglich/woechentlich, nur mit gespeichertem Kennwort)
+        try { Register-HUAbMainStatus; Start-HUAppBackupScheduler } catch { }
     }
     if ($script:SmokeTestFile) {
         # automatischer Test (CI): Fenster laeuft, Ergebnis schreiben, beenden
@@ -546,7 +548,9 @@ $script:Window.Add_Closing({
             if (-not (Confirm-HU 'Ein Upload/Auftrag in Apps oder Wartung laeuft noch und wird abgebrochen. Trotzdem beenden?' -Warning)) { $e.Cancel = $true; return }
         }
     }
-    Save-HUWindowState
+    # 2.5.9: nach dem Wiederherstellen nichts aus dem Speicher zurueckschreiben (Fensterzustand, Apps, Wartung) - sonst waere der wiederhergestellte Stand weg
+    if (-not $script:AbRestored) { Save-HUWindowState }
+    try { Close-HUToasts } catch { }
     Write-HULog -Message '=== Beenden: alle Tenants trennen ===' -Level 'INFO'
     foreach ($t in @($script:Settings.tenants)) {
         try { Clear-TokenCache -TenantKey $t.key; Update-TenantStatusCache -TenantKey $t.key -Connected $false } catch { }
@@ -557,7 +561,7 @@ $script:Window.Add_Closing({
     }
     Close-HUQuickScript
     try { Close-HURemote } catch { }
-    try { Close-HUApps; Close-HUMaint } catch { }
+    if (-not $script:AbRestored) { try { Close-HUApps; Close-HUMaint } catch { } }
     try { if ($script:BgPowerShell) { $script:BgPowerShell.Stop() } } catch { }
     try { if ($script:BgProcess -and -not $script:BgProcess.HasExited) { $script:BgProcess.Kill() } } catch { }
     Close-AsyncPool

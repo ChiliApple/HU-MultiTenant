@@ -15,14 +15,14 @@ $script:MA = $null   # offener Assistent (Zustand)
 function Get-HUMaTenant([string]$Key) { return @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $Key })[0] }
 
 # Admin-Anmeldung (Browser) mit Rueckmeldung im UI-Takt; $OnLogin bekommt das Anmelde-Ergebnis
-function Start-HUMaAdminLogin([string]$TenantKey, [scriptblock]$OnLogin) {
+function Start-HUMaAdminLogin([string]$TenantKey, [scriptblock]$OnLogin, [string]$Sid = '') {
     $t = Get-HUMaTenant $TenantKey
     if (-not $t -or -not "$($t.tenantId)" -or -not "$($t.appId)") { Show-HUMessage 'Tenant-ID bzw. Anwendungs-ID fehlen in den Einstellungen.' -Icon Warning; return $false }
     $ctx = $null
     try { $ctx = Start-HUAdminLogin -TenantId "$($t.tenantId)" } catch { Show-HUMessage "Anmeldung nicht gestartet: $($_.Exception.Message)" -Icon Error; return $false }
     $tm = New-Object System.Windows.Threading.DispatcherTimer
     $tm.Interval = [TimeSpan]::FromMilliseconds(500)
-    $st = @{ Ctx = $ctx; Timer = $tm; On = $OnLogin }
+    $st = @{ Ctx = $ctx; Timer = $tm; On = $OnLogin; Sid = $Sid }
     $tm.Tag = $st
     $tm.Add_Tick({
             $s = $this.Tag
@@ -30,10 +30,10 @@ function Start-HUMaAdminLogin([string]$TenantKey, [scriptblock]$OnLogin) {
             try { $res = Receive-HUAdminLogin -Context $s.Ctx } catch { $res = [pscustomobject]@{ Ok = $false; Error = "$($_.Exception.Message)" } }
             if ($null -eq $res) { return }
             $this.Stop()
-            & $s.On $res
+            & $s.On $res $s.Sid
         })
     $tm.Start()
-    return $true
+    return $st
 }
 # Admin-Token noch mind. 3 Minuten gueltig? (dann ohne zweite Anmeldung zurueckgeben)
 function Test-HUMaLoginValid($Login) {
@@ -249,7 +249,7 @@ function Show-HUMusterApply {
     $mt = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $mt.Groups[1].Value))
     $w = $d.Window; $c = $d.C
-    $S = @{ W = $w; C = $c; Sel = $sel; Step = 1; Tenant = ''; Needed = @(); Rights = $null; RightsOk = $false; Bg = $null; Login = $null; Logins = @{}; Queue = @(); Off = @{}
+    $S = @{ W = $w; C = $c; LoginPending = $false; Sid = [guid]::NewGuid().ToString('N'); Closed = $false; LoginCtl = $null; Sel = $sel; Step = 1; Tenant = ''; Needed = @(); Rights = $null; RightsOk = $false; Bg = $null; Login = $null; Logins = @{}; Queue = @(); Off = @{}
         Rows = @(); Slots = $null; Groups = @{}; Countries = @{}; RunFile = ''; Running = $false; Cancel = [hashtable]::Synchronized(@{ Stop = $false }); Prog = [hashtable]::Synchronized(@{ Lines = [System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList)); Total = 0; Done = $false }) }
     $script:MA = $S
     $c.lblPkgs.Text = "Pakete: $($sel.Titles)"
@@ -345,13 +345,18 @@ function Show-HUMusterApply {
             $S2 = $script:MA
             $miss = @($S2.Missing)
             if (-not $miss.Count) { return }
-            if (-not (Confirm-HU "Fuer $(Get-HUAnaTenantName $S2.Tenant) diese Rechte erteilen?`n`n$($miss -join "`n")`n`nNur fuer diesen Ablauf: am Ende 'Rechte zurueckgeben' entzieht genau diese wieder. Es oeffnet sich der Browser zur Admin-Anmeldung." -Owner $S2.W)) { return }
+            if (-not (Confirm-HU -Warning "Fuer $(Get-HUAnaTenantName $S2.Tenant) diese Rechte erteilen?`n`n$($miss -join "`n")`n`nNur fuer diesen Ablauf: am Ende 'Rechte zurueckgeben' entzieht genau diese wieder. Es oeffnet sich der Browser zur Admin-Anmeldung." -Owner $S2.W)) { return }
             # Markierung VOR dem Erteilen (Absturz-Sicherung)
             try { [void](Write-HUMaMarker -TenantKey $S2.Tenant -TenantName (Get-HUAnaTenantName $S2.Tenant) -Planned $miss -Before @($S2.Present) -Stage 'vor dem Erteilen') } catch { Show-HUMessage "Markierung nicht schreibbar - es wird nichts erteilt: $($_.Exception.Message)" -Icon Error -Owner $S2.W; return }
             & $S2.SetBusy 'Bitte im Browser als Admin anmelden ...'
+            # Anmeldung laeuft: bis zur Rueckmeldung ist sicher nichts erteilt (erteilt wird erst danach)
+            $S2.LoginPending = $true
             $ok = Start-HUMaAdminLogin $S2.Tenant {
-                param($L)
-                $S3 = $script:MA; if (-not $S3) { return }
+                param($L, $Sid)
+                $S3 = $script:MA
+                # 069 B1: Fenster inzwischen geschlossen (oder ein neuer Assistent offen) -> nichts erteilen
+                if (-not (Test-HUMaLoginCurrent $S3 $Sid)) { Write-HULog -Message 'Muster anwenden: Admin-Anmeldung kam nach dem Schliessen zurueck - nichts erteilt.' -Level 'WARN'; return }
+                $S3.LoginPending = $false
                 & $S3.SetBusy ''
                 if (-not $L.Ok) { Clear-HUMaPlannedRights $S3.Tenant; Show-HUMessage "Nicht erteilt: $($L.Error)" -Icon Error -Owner $S3.W; return }
                 if (-not (Test-HUAdminCanGrant $L)) { Clear-HUMaPlannedRights $S3.Tenant; Show-HUMessage 'Das angemeldete Konto darf keine App-Rechte erteilen (Global Admin oder Privileged Role Admin noetig). Nichts geaendert.' -Icon Warning -Owner $S3.W; return }
@@ -381,8 +386,9 @@ function Show-HUMusterApply {
                         & $S4.SetBusy ''
                         & $S4.CheckRights
                     })
-            }
-            if (-not $ok) { Clear-HUMaPlannedRights $S2.Tenant; & $S2.SetBusy '' }
+            } $S2.Sid
+            $S2.LoginCtl = $ok
+            if (-not $ok) { $S2.LoginPending = $false; Clear-HUMaPlannedRights $S2.Tenant; & $S2.SetBusy '' }
         })
 
     # ---- Schritt 3: Plan lesen und Zuordnen aufbauen
@@ -643,6 +649,12 @@ function Show-HUMusterApply {
             param($sd, $e)
             $S2 = $script:MA; if (-not $S2) { return }
             if ($S2.Running) { Show-HUMessage 'Es wird gerade angewendet - erst abbrechen (Knopf Abbrechen) und das Ende abwarten.' -Icon Warning -Owner $S2.W; $e.Cancel = $true; return }
+            # Schliessen, waehrend die Admin-Anmeldung noch offen ist: es wurde nichts erteilt -> geplante Rechte verwerfen, nicht nachfragen
+            if ($S2.LoginPending -and $S2.Tenant) {
+                Clear-HUMaPlannedRights $S2.Tenant; $S2.LoginPending = $false
+                # 069 B1: auf die Anmeldung nicht mehr warten - kommt sie doch zurueck, wird nichts erteilt (Test-HUMaLoginCurrent)
+                if ($S2.LoginCtl -is [hashtable] -and $S2.LoginCtl.Timer) { try { $S2.LoginCtl.Timer.Stop() } catch { } }
+            }
             $open = @(& $S2.OpenRights)
             if ($open.Count) {
                 $lst = ($open | ForEach-Object { "$(Get-HUAnaTenantName $_): $(@(Get-HUMaOpenRights (Get-HUMaMarker $_)) -join ', ')" }) -join "`n"
@@ -657,6 +669,7 @@ function Show-HUMusterApply {
             }
             if ($S2.Tenant) { $m = Get-HUMaMarker $S2.Tenant; if ($m -and -not @(Get-HUMaOpenRights $m).Count) { Remove-HUMaMarker $S2.Tenant } }
             if ($S2.Tenant) { Exit-HUMaLock $S2.Tenant }
+            $S2.Closed = $true
             $script:MA = $null
         })
     & $S.ShowStep 1

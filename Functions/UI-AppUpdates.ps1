@@ -249,7 +249,7 @@ function Start-HUUpdGet {
     if ($a.Version -and (Compare-HUVersion $a.Version $ver) -ge 0 -and -not (Confirm-HU "Die Bibliothek hat schon v$($a.Version) (winget: v$ver).`n`nTrotzdem neu herunterladen?")) { return }
     $safe = ("$($a.Name)" -replace '[\\/:*?"<>|]', '_').Trim()
     $dir = Join-Path $env:USERPROFILE "Downloads\HU-App-Updates\$safe\$ver"
-    if (-not (Confirm-HU "$($a.Name): v$ver von winget herunterladen?`n`nOrdner: $dir`n`nDie Datei wird als neue Version der Bibliotheks-App uebernommen - hochgeladen wird noch nichts. Danach: Testinstallation in der Sandbox, dann Hochladen mit Pilotgruppe.")) { return }
+    if (-not (Confirm-HU "$($a.Name): v$ver von winget herunterladen?`n`nOrdner: $dir`n`nDie Datei wird als neue Version der Bibliotheks-App uebernommen - hochgeladen wird noch nichts. Danach: Testinstallation in der Sandbox, dann Hochladen mit Pilotgruppe.")) { return }   # Warnung: nein - nur lokal, Ja ist empfohlen
     $script:UpdGetApp = $a.Id
     $script:Controls['btnUpdGet'].IsEnabled = $false
     $ok = Start-HUJob -Name 'AppUpdGet' -Output $script:Controls['rtbApps'] -Vars @{ WId = "$($a.WingetId)"; Ver = $ver; Dir = $dir; Msi = ($a.Kind -eq 'msi'); AName = "$($a.Name)"; Src = (Get-HUUpdSource) } -Code {

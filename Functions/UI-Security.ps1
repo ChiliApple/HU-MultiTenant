@@ -869,7 +869,7 @@ function Register-HUSecHandlers {
                     $txt += "`n`nACHTUNG: Der neue Stand ist bei $($w.Count) Regel(n) SCHLECHTER als der bisherige Soll, z. B. $ex$(if ($w.Count -gt 5) { ' ...' }). Diese Verschlechterungen gelten danach als normal und werden nicht mehr gemeldet. Die Teams-Meldung weist einmal darauf hin."
                 }
             }
-            if (-not (Confirm-HU $txt)) { return }
+            if (-not (Confirm-HU -Warning $txt)) { return }
             try { [void](Save-HUSecReference -Results $script:SecResults); Show-HUMessage 'Soll-Stand gespeichert.' -Icon Info }
             catch { Show-HUMessage "Soll-Stand nicht gespeichert: $($_.Exception.Message)" -Icon Warning }
         })

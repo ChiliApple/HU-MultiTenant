@@ -197,7 +197,7 @@ function Start-HUWritePkgRevoke([string]$Key) {
     $t = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $Key })[0]
     if (-not $t -or -not "$($t.appId)" -or -not "$($t.tenantId)") { Show-HUMessage 'Tenant-ID bzw. Anwendungs-ID fehlen.' -Icon Warning; return }
     if ($script:HUWriteRevoke) { Show-HUMessage 'Eine Anmeldung zum Entziehen laeuft schon - bitte im Browser abschliessen.' -Icon Info; return }
-    if (-not (Confirm-HU "Entra-Schreibrechte fuer $(Get-HUTenantDisplayName $Key) entziehen?`n`n$($script:HUWritePackage -join "`n")`n`nAndere Schreibrechte (Intune, Benutzer, Apps) bleiben. Es oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $(if ($ui) { $ui.Window } else { $null }))) { return }
+    if (-not (Confirm-HU -Warning "Entra-Schreibrechte fuer $(Get-HUTenantDisplayName $Key) entziehen?`n`n$($script:HUWritePackage -join "`n")`n`nAndere Schreibrechte (Intune, Benutzer, Apps) bleiben. Es oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $(if ($ui) { $ui.Window } else { $null }))) { return }
     $ctx = $null
     try { $ctx = Start-HUAdminLogin -TenantId "$($t.tenantId)" } catch { Show-HUMessage "Anmeldung nicht gestartet: $($_.Exception.Message)" -Icon Error; return }
     if ($ui) { $ui.C.txtStatus.Text = 'Bitte im Browser als Admin anmelden ...' }

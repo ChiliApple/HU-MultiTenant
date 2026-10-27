@@ -183,7 +183,7 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
             $have = @($Rows | Where-Object { $_.Cat -eq $n } | ForEach-Object { $_.Tenant })
             $miss = @($catKeys | Where-Object { $have -notcontains $_ })
             if (-not $miss.Count) { Show-HUMessage "'$n' gibt es schon in allen Tenants." -Icon Info -Owner $w; return }
-            if (-not (Confirm-HU "Kategorie '$n' im Unternehmensportal anlegen?`n`nTenants: $(@($miss | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nIm Intune-Portal erscheint sie erst nach dem Neuladen der Seite." 'Kategorien' -Owner $w)) { return }
+            if (-not (Confirm-HU -Warning "Kategorie '$n' im Unternehmensportal anlegen?`n`nTenants: $(@($miss | ForEach-Object { Get-HUTenantDisplayName $_ }) -join ', ')`n`nIm Intune-Portal erscheint sie erst nach dem Neuladen der Seite." 'Kategorien' -Owner $w)) { return }
             $st.Ok = $true; $st.Create = $n; $st.Miss = $miss; $w.Close()
         })
     $dc.btnDelete.Add_Click({
@@ -548,7 +548,7 @@ function Add-HUAppFromFile([string]$Path, $Target = $null, [switch]$NoNameCheck)
         $a.Name = $info.Name; $a.Publisher = $info.Publisher
         # Version im Namen -> spaetere Updates wuerden als eigene App gelten
         $base = Get-HUAppBaseName $info.Name
-        if ($info.Name -and $base -ne $info.Name -and (Confirm-HU "Der Name enthaelt die Version:`n'$($info.Name)'`n`nOhne Version als '$base' anlegen? (empfohlen - dann landen spaetere Updates in derselben Intune-App; die Version steht trotzdem bei der App)")) { $a.Name = $base }
+        if ($info.Name -and $base -ne $info.Name -and (Confirm-HU "Der Name enthaelt die Version:`n'$($info.Name)'`n`nOhne Version als '$base' anlegen? (empfohlen - dann landen spaetere Updates in derselben Intune-App; die Version steht trotzdem bei der App)")) { $a.Name = $base }   # Warnung: nein - nur lokal, Ja ist empfohlen
         $a.Tenants = @(Get-HUStateValue 'appTenants' @())
         $a.TargetGroup = "$(Get-HUStateValue 'appLastGroup' '')"
     }
@@ -879,7 +879,7 @@ function Start-HUAppDeploy([switch]$Release) {
     if (($depOrder.Count -or $iAll.Count) -and $a.DepAuto) { $msg += "`n  -> werden vor der App automatisch installiert" }
     if (-not $Release -and $a.Type -eq 'win32' -and -not $a.SandboxNote) { $msg += "`n`nHinweis: noch keine Testinstallation in der Sandbox." }
     if (-not $Release -and -not (Test-Path -LiteralPath (Get-HUAppIconPath $a))) { $msg += "`nHinweis: ohne Symbol (im Unternehmensportal erscheint ein Platzhalter)." }
-    if (-not (Confirm-HU "$msg`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
+    if (-not (Confirm-HU -Warning "$msg`n`nJetzt $(if ($Release) { 'freigeben' } else { 'hochladen und zuweisen' })?")) { return }
 
     Set-HUStateValue 'appTenants' @($a.Tenants)
     if ($a.TargetGroup) { Set-HUStateValue 'appLastGroup' $a.TargetGroup }

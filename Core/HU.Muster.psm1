@@ -312,7 +312,7 @@ function Read-HUMusterPackage([string]$Folder, [switch]$BuiltIn) {
         Learn = @($p.Learn | Where-Object { "$_" } | ForEach-Object { "$_" })
         # 2.5.7 importierte Pakete: Herausgeber, Import-Datum, Pruefsumme; ungeprueft = Anwenden erst nach Bestaetigung
         Publisher = "$($p.Publisher)"; Imported = $(& $iso $p.Imported); ImportSha256 = "$($p.ImportSha256)"
-        Checked = $(if ("$($p.Origin)" -eq 'importiert' -or @($items | Where-Object { "$($_.Source)" -eq 'importiert' }).Count) { [bool]$p.Checked } else { $true })
+        Checked = $(if ("$($p.Origin)" -in 'importiert', 'vorlage' -or @($items | Where-Object { "$($_.Source)" -eq 'importiert' }).Count) { [bool]$p.Checked } else { $true })
         Raw = $p
     }
 }
@@ -491,11 +491,11 @@ function Save-HUMusterPackage {
         Write-HUBackupJson (Join-Path $tmp 'names.json') ([pscustomobject]@{ Format = 1; Items = $cat })
         $pj = [pscustomobject]@{
             Format = 1; Id = $Id; Title = $Title; Category = $Category; Tags = @(ConvertTo-HUMusterTags ($Tags -join ' ')); Note = "$Note"
-            Created = $(if ($old -and $old.Created) { $old.Created } else { $Now.ToString('s') }); Changed = $Now.ToString('s'); By = $(if ($By) { $By } elseif ($old -and $old.Origin -eq 'importiert') { $old.By } else { "$env:USERNAME" })
+            Created = $(if ($old -and $old.Created) { $old.Created } else { $Now.ToString('s') }); Changed = $Now.ToString('s'); By = $(if ($By) { $By } elseif ($old -and $old.Origin -in 'importiert', 'vorlage') { $old.By } else { "$env:USERNAME" })
             Origin = $(if ($Origin) { $Origin } elseif ($old) { $old.Origin } else { 'eigen' }); Complete = [bool]$Complete
         }
         # Importierte Pakete behalten beim Bearbeiten Herausgeber, Pruefsumme und Pruefstand
-        if ($old -and $old.Origin -eq 'importiert') { foreach ($k in 'Publisher', 'Imported', 'ImportSha256', 'ImportKind', 'Checked', 'CheckedAt', 'CheckedBy') { if ($old.Raw -and $old.Raw.PSObject.Properties[$k]) { $pj | Add-Member -NotePropertyName $k -NotePropertyValue $old.Raw.$k -Force } } }
+        if ($old -and $old.Origin -in 'importiert', 'vorlage') { foreach ($k in 'Publisher', 'Imported', 'ImportSha256', 'ImportKind', 'Checked', 'CheckedAt', 'CheckedBy') { if ($old.Raw -and $old.Raw.PSObject.Properties[$k]) { $pj | Add-Member -NotePropertyName $k -NotePropertyValue $old.Raw.$k -Force } } }
         # 2.5.7 (068 P5): importierte Eintraege bleiben ungeprueft, auch in Kopien und eigenen Paketen - bestaetigt bleibt ein Paket nur,
         # wenn es vorher bestaetigt war und keine neuen importierten Eintraege dazugekommen sind
         $impNew = @($ixItems | Where-Object { "$($_.Source)" -eq 'importiert' } | ForEach-Object { "$($_.Typ)|$(ConvertTo-HUMuName $_.Name)" })

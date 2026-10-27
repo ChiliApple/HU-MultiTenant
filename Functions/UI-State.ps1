@@ -29,6 +29,8 @@ function Set-HUStateValue([string]$Name, $Value) {
     if ($s.PSObject.Properties[$Name]) { $s.$Name = $Value } else { $s | Add-Member -NotePropertyName $Name -NotePropertyValue $Value }
 }
 function Save-HUUIState {
+    # 2.5.9: nach dem Wiederherstellen einer App-Sicherung nichts mehr aus dem Speicher zurueckschreiben (bis zum Neustart)
+    if ((Get-Variable -Name AbRestored -Scope Script -ErrorAction SilentlyContinue).Value) { return }
     try { Write-HUJsonFile -Path $script:StateFilePath -Object (Get-HUUIState) -Depth 5 } catch { Write-Verbose "[UIState] Speichern fehlgeschlagen: $_" }
 }
 

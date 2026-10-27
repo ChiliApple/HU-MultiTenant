@@ -332,6 +332,13 @@ function Invoke-HUMaStep {
     }
 }
 
-Export-ModuleMember -Function Get-HUMaTokenRoles, Get-HUMaRightsRows, Set-HUMaStateRoot, Get-HUMaStateRoot, Get-HUMaItemKind, Get-HUMaPermission, Get-HUMaNeededPermissions, Get-HUMaOrder,
+# 069 B1: Rueckmeldung der Admin-Anmeldung gilt nur fuer den Assistenten, der sie gestartet hat und noch offen ist
+function Test-HUMaLoginCurrent($State, [string]$Sid) {
+    if ($null -eq $State -or -not $Sid) { return $false }
+    if ($State.ContainsKey('Closed') -and $State.Closed) { return $false }
+    return ("$($State.Sid)" -ceq $Sid)
+}
+
+Export-ModuleMember -Function Test-HUMaLoginCurrent, Get-HUMaTokenRoles, Get-HUMaRightsRows, Set-HUMaStateRoot, Get-HUMaStateRoot, Get-HUMaItemKind, Get-HUMaPermission, Get-HUMaNeededPermissions, Get-HUMaOrder,
     Get-HUMaMarkerFile, Write-HUMaMarker, Get-HUMaOpenRights, Get-HUMaMarker, Get-HUMaMarkers, Remove-HUMaMarker, Enter-HUMaLock, Exit-HUMaLock,
     Get-HUMaRow, Get-HUMaPlan, Set-HUMaChoices, Get-HUMaSlots, Get-HUMaRunDir, New-HUMaRun, Save-HUMaRun, Add-HUMaRunStep, Complete-HUMaRun, Get-HUMaRuns, Undo-HUMaRun, Invoke-HUMaStep
