@@ -270,15 +270,20 @@ function Start-HUMuImport([string[]]$Paths = @()) {
     } catch { Show-HUMessage "Import fehlgeschlagen: $($_.Exception.Message)" -Icon Error }
 }
 
-# Vor dem Anwenden: ungepruefte Pakete einmal ansehen und bestaetigen (Udo 27.10.). $true = weiter
+# Vor dem Anwenden: ungepruefte Pakete ansehen und bestaetigen - je Paket eine eigene Pruefansicht (G27). $true = weiter
+# Abbrechen stoppt; vorher bestaetigte Pakete bleiben bestaetigt.
 function Confirm-HUMuChecked([object[]]$Packages) {
     $open = @($Packages | Where-Object { $_ -and -not $_.Checked })
     if (-not $open.Count) { return $true }
-    $rows = @(foreach ($p in $open) { @(Get-HUMusterReviewRows -Settings $script:Settings -Package $p) })
-    $r = Show-HUMuReview -Mode Apply -Heading "$($open.Count) importierte(s) Paket(e) noch ungeprueft: $(@($open | ForEach-Object { $_.Title }) -join ', ')" -Rows $rows `
-        -Info 'Importierte Pakete kommen aus einer fremden Datei. Bitte die Eintraege ansehen - vor allem Namen, Beschreibungen und Hinweise. Angewendet wird wie immer: Conditional Access NEU im Modus Nur Bericht, Intune ohne Zuweisungen, Notfallkonten des Ziels ausgenommen.'
-    if (-not $r.Ok) { return $false }
-    foreach ($p in $open) { try { [void](Set-HUMusterChecked -Settings $script:Settings -Id $p.Id) } catch { Show-HUMessage "'$($p.Title)' nicht bestaetigt: $($_.Exception.Message)" -Icon Error; return $false } }
+    $i = 0
+    foreach ($p in $open) {
+        $i++
+        $rows = @(Get-HUMusterReviewRows -Settings $script:Settings -Package $p)
+        $head = $(if ($open.Count -gt 1) { "Paket $i von $($open.Count) noch ungeprueft: $($p.Title)" } else { "Importiertes Paket noch ungeprueft: $($p.Title)" })
+        $r = Show-HUMuReview -Mode Apply -Heading $head -Rows $rows -Info 'Importierte Pakete kommen aus einer fremden Datei. Bitte die Eintraege ansehen - vor allem Namen, Beschreibungen und Hinweise. Angewendet wird wie immer: Conditional Access NEU im Modus Nur Bericht, Intune ohne Zuweisungen, Notfallkonten des Ziels ausgenommen.'
+        if (-not $r.Ok) { try { Update-HUMuList } catch { }; return $false }
+        try { [void](Set-HUMusterChecked -Settings $script:Settings -Id $p.Id) } catch { Show-HUMessage "'$($p.Title)' nicht bestaetigt: $($_.Exception.Message)" -Icon Error; try { Update-HUMuList } catch { }; return $false }
+    }
     try { Update-HUMuList } catch { }
     return $true
 }
