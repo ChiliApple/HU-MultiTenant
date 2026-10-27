@@ -30,6 +30,7 @@ function Add-HUAddonTab($Info) {
     if (-not $tab.Style) { try { $tab.Style = $script:Window.FindResource('DarkTabItem') } catch { } }
     $tab.Tag = 'addon'
     try { Set-HUButtonFit $tab } catch { }   # Knoepfe wachsen mit ihrer Beschriftung (global)
+    try { Set-HUOutputTools $tab } catch { }  # Ausgaben: Umkehren/Loeschen, neuestes oben (global)
     $script:Controls[$tab.Name] = $tab
     [void]$script:Controls['tabMain'].Items.Add($tab)
 }

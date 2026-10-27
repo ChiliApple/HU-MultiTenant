@@ -43,6 +43,106 @@ function Set-HUButtonFit($Root) {
     }
 }
 
+# ----------------------------------------------------------------------------
+# 2.5.6 GLOBAL Ausgabefenster (RichTextBox, schreibgeschuetzt): Neuestes oben (Standard) oder unten.
+# Merker im FlowDocument.Tag ('bottom' = klassisch unten) - so koennen auch Module (HU.Logging) ohne UI-Funktionen danach schreiben.
+# ----------------------------------------------------------------------------
+$script:HUOutputDone = New-Object System.Collections.ArrayList
+$script:HUOutputClear = @{}
+function Add-HUOutputBlock($Rtb, $Block, [int]$Max = 1500, [switch]$NoScroll) {
+    if (-not $Rtb -or -not $Block) { return }
+    $doc = $Rtb.Document
+    if ("$($doc.Tag)" -eq 'bottom') {
+        $doc.Blocks.Add($Block)
+        while ($doc.Blocks.Count -gt $Max) { [void]$doc.Blocks.Remove($doc.Blocks.FirstBlock) }
+        if (-not $NoScroll) { $Rtb.ScrollToEnd() }
+    } else {
+        if ($doc.Blocks.FirstBlock) { $doc.Blocks.InsertBefore($doc.Blocks.FirstBlock, $Block) } else { $doc.Blocks.Add($Block) }
+        while ($doc.Blocks.Count -gt $Max) { [void]$doc.Blocks.Remove($doc.Blocks.LastBlock) }
+        if (-not $NoScroll) { $Rtb.ScrollToHome() }
+    }
+}
+function Get-HUOutputStateKey($Rtb) { $n = "$($Rtb.Name)"; if ($n) { "outBottom_$n" } else { '' } }
+function Switch-HUOutputOrder($Rtb) {
+    $doc = $Rtb.Document
+    $list = @($doc.Blocks)
+    $doc.Blocks.Clear()
+    for ($i = $list.Count - 1; $i -ge 0; $i--) { $doc.Blocks.Add($list[$i]) }
+    $bottom = ("$($doc.Tag)" -ne 'bottom')
+    $doc.Tag = $(if ($bottom) { 'bottom' } else { 'top' })
+    $k = Get-HUOutputStateKey $Rtb
+    if ($k) { try { Set-HUStateValue $k $(if ($bottom) { 'ja' } else { 'nein' }) } catch { } }
+    if ($bottom) { $Rtb.ScrollToEnd() } else { $Rtb.ScrollToHome() }
+}
+function Clear-HUOutput($Rtb) {
+    $n = "$($Rtb.Name)"
+    if ($n -and $script:HUOutputClear.ContainsKey($n)) { & $script:HUOutputClear[$n] } else { $Rtb.Document.Blocks.Clear() }
+}
+# kleine Knoepfe "Umkehren" und "Loeschen" rechts oben in der Ausgabe
+function Add-HUOutputTools($Rtb) {
+    if (-not $Rtb -or $Rtb -isnot [System.Windows.Controls.RichTextBox]) { return }
+    foreach ($d in $script:HUOutputDone) { if ([object]::ReferenceEquals($d, $Rtb)) { return } }
+    $p = $Rtb.Parent
+    if (-not ($p -is [System.Windows.Controls.Panel] -or $p -is [System.Windows.Controls.Decorator])) { return }
+    [void]$script:HUOutputDone.Add($Rtb)
+    $k = Get-HUOutputStateKey $Rtb
+    $bottom = $false
+    if ($k) { try { $bottom = ("$(Get-HUStateValue $k 'nein')" -eq 'ja') } catch { } }
+    $doc = $Rtb.Document
+    if ($bottom) { $doc.Tag = 'bottom' } else {
+        $doc.Tag = 'top'
+        # schon vorhandener Inhalt (vor dem Einhaengen geschrieben) ebenfalls neuestes oben
+        if ($doc.Blocks.Count -gt 1) { $list = @($doc.Blocks); $doc.Blocks.Clear(); for ($i = $list.Count - 1; $i -ge 0; $i--) { $doc.Blocks.Add($list[$i]) } }
+    }
+    # Huelle: Grid an der Stelle der Ausgabe, angehaengte Eigenschaften wandern mit
+    $g = New-Object System.Windows.Controls.Grid
+    $att = @([System.Windows.Controls.Grid]::RowProperty, [System.Windows.Controls.Grid]::ColumnProperty, [System.Windows.Controls.Grid]::RowSpanProperty,
+        [System.Windows.Controls.Grid]::ColumnSpanProperty, [System.Windows.Controls.DockPanel]::DockProperty)
+    foreach ($dp in $att) {
+        $v = $Rtb.ReadLocalValue($dp)
+        if ($v -ne [System.Windows.DependencyProperty]::UnsetValue) { $g.SetValue($dp, $v); $Rtb.ClearValue($dp) }
+    }
+    if ($p -is [System.Windows.Controls.Panel]) {
+        $idx = $p.Children.IndexOf($Rtb); $p.Children.RemoveAt($idx); [void]$g.Children.Add($Rtb); $p.Children.Insert($idx, $g)
+    } else { $p.Child = $null; [void]$g.Children.Add($Rtb); $p.Child = $g }
+    $bar = New-Object System.Windows.Controls.StackPanel
+    $bar.Orientation = 'Horizontal'; $bar.HorizontalAlignment = 'Right'; $bar.VerticalAlignment = 'Top'
+    $bar.Margin = [System.Windows.Thickness]::new(0, 3, 22, 0); $bar.Opacity = 0.55
+    $bar.Add_MouseEnter({ $this.Opacity = 1 }); $bar.Add_MouseLeave({ $this.Opacity = 0.55 })
+    $sty = $Rtb.TryFindResource('DarkButton')
+    if (-not $sty -and $script:Window) { $sty = $script:Window.TryFindResource('DarkButton') }
+    $mk = {
+        param([string]$Text, [string]$Tip)
+        $b = New-Object System.Windows.Controls.Button
+        if ($sty) { $b.Style = $sty }
+        $b.Content = $Text; $b.ToolTip = $Tip; $b.FontSize = 10; $b.Padding = [System.Windows.Thickness]::new(7, 1, 7, 1)
+        $b.Margin = [System.Windows.Thickness]::new(4, 0, 0, 0); $b.Background = Get-HUBrush '#3E3E42'; $b.Cursor = 'Hand'
+        $b
+    }
+    $bRev = & $mk ([string][char]0x21C5 + ' Umkehren') 'Reihenfolge umkehren: neuestes oben oder unten (wird je Ausgabe gemerkt)'
+    $bDel = & $mk ([string][char]0x2715 + ' L' + [char]0x00F6 + 'schen') 'Ausgabe leeren'
+    $bRev.Tag = $Rtb; $bDel.Tag = $Rtb
+    $bRev.Add_Click({ try { Switch-HUOutputOrder $this.Tag } catch { } })
+    $bDel.Add_Click({ try { Clear-HUOutput $this.Tag } catch { } })
+    [void]$bar.Children.Add($bRev); [void]$bar.Children.Add($bDel)
+    [void]$g.Children.Add($bar)
+}
+# alle schreibgeschuetzten Ausgaben unter $Root ausstatten (Hauptfenster, Fenster, Modul-Reiter)
+function Set-HUOutputTools($Root) {
+    if (-not $Root) { return }
+    $todo = New-Object System.Collections.ArrayList
+    $walk = {
+        param($n)
+        foreach ($ch in @([System.Windows.LogicalTreeHelper]::GetChildren($n))) {
+            if ($ch -isnot [System.Windows.DependencyObject]) { continue }
+            if ($ch -is [System.Windows.Controls.RichTextBox]) { if ($ch.IsReadOnly) { [void]$todo.Add($ch) }; continue }
+            & $walk $ch
+        }
+    }
+    & $walk $Root
+    foreach ($r in $todo) { try { Add-HUOutputTools $r } catch { try { Write-HULog -Message "Ausgabe-Knoepfe: $($_.Exception.Message)" -Level 'WARN' } catch { } } }
+}
+
 # Fenster aus XAML erzeugen; liefert @{ Window = ...; C = @{ Name = Element } } mit allen x:Name-Elementen
 function New-HUWindow([string]$Name, [string]$XamlText = '') {
     $x = if ($XamlText) { $XamlText } else { Get-HUXaml $Name }
@@ -66,6 +166,8 @@ function New-HUWindow([string]$Name, [string]$XamlText = '') {
     catch { try { Write-HULog -Message "Spaltenbreiten (Fenster): $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" -Level 'WARN' } catch { } }
     # 2.5.6 GLOBAL: Knoepfe mit fester Breite in Knopfleisten wachsen mit ihrer Beschriftung (nie abgeschnitten, auch wenn der Text spaeter wechselt)
     try { Set-HUButtonFit $w } catch { }
+    # 2.5.6 GLOBAL: Ausgaben mit Umkehren/Loeschen, neuestes oben
+    try { Set-HUOutputTools $w } catch { }
     # jedes groessenveraenderbare Fenster mit sichtbarem Anfasser rechts unten
     try { if ($w.ResizeMode -eq [System.Windows.ResizeMode]::CanResize) { $w.ResizeMode = [System.Windows.ResizeMode]::CanResizeWithGrip } } catch { }
     $script:LastDialog = $w
@@ -90,7 +192,7 @@ function Set-HUColumnsFit($Columns) {
     } catch { try { Write-HULog -Message "Spaltenbreiten: $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" -Level 'WARN' } catch { } }
 }
 # Zeile "abweichend"? Spalte Unterschied/Abweichung/Status/Ergebnis (Objekte oder DataTable mit echtem Namen in Caption)
-$script:HUDiffTintCols = @('Unterschied', 'Abweichung', 'Status', 'Ergebnis', 'Vergleich')
+$script:HUDiffTintCols = @('Unterschied', 'Abweichung', 'Status', 'Ergebnis', 'Vergleich', 'Bewertung')
 $script:HUDiffTintBrush = $null
 function Test-HUDiffItem($Item) {
     if ($null -eq $Item) { return $false }
@@ -380,6 +482,7 @@ function Add-HUOutputMenu($RichTextBox, [scriptblock]$Clear) {
     [void]$menu.Items.Add($miClear)
     $menu.Add_Opened({ $this.Items[0].IsEnabled = ($this.PlacementTarget -and -not $this.PlacementTarget.Selection.IsEmpty) })
     $RichTextBox.ContextMenu = $menu
+    if ("$($RichTextBox.Name)" -and $Clear) { $script:HUOutputClear["$($RichTextBox.Name)"] = $Clear }
 }
 
 # ----------------------------------------------------------------------------

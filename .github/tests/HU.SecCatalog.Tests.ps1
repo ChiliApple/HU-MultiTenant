@@ -669,7 +669,7 @@ Describe 'A37 bis A42 neue Regeln' {
         $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
         $r.Status | Should -Be 'OK'; $r.Detail | Should -BeLike '*1 erlaubt laut Sollwert*'
         $it = @(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'A42' | Where-Object { $_.App -eq 'Fremd' })[0]
-        $it.Zaehlt | Should -BeLike 'Nein*'
+        $it.Zaehlt | Should -BeLike 'Nein*'; $it.Bewertung | Should -Be ''
         Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force
     }
 }
@@ -1472,5 +1472,23 @@ Describe 'Ausnahmen fuer mehrere Tenants, Regelliste vor dem Pruefen' {
         $sec | Should -Not -Match 'cmbTenant'
         $sec | Should -Match 'function Show-HUSecPreview'
         $ana | Should -Match "if \(\`$Mode -eq 'sec'\) \{ try \{ Show-HUSecPreview \}"
+    }
+}
+
+Describe 'Bewertung-Spalte (globale Zeilenfaerbung in Katalog-Listen)' {
+    BeforeEach { Base }
+    It 'K03: ueberbucht und ab maxPercent sind abweichend, normale Lizenz nicht' {
+        $global:HUSecFx['subscribedSkus'] = @(
+            [pscustomobject]@{ skuPartNumber = 'UEBER'; consumedUnits = 48; prepaidUnits = [pscustomobject]@{ enabled = 47 }; capabilityStatus = 'Enabled' },
+            [pscustomobject]@{ skuPartNumber = 'KNAPP'; consumedUnits = 74; prepaidUnits = [pscustomobject]@{ enabled = 77 }; capabilityStatus = 'Enabled' },
+            [pscustomobject]@{ skuPartNumber = 'FREI';  consumedUnits = 10; prepaidUnits = [pscustomobject]@{ enabled = 100 }; capabilityStatus = 'Enabled' })
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'K03')
+        ($it | Where-Object Lizenz -eq 'UEBER').Bewertung | Should -BeLike 'abweichend: ueberbucht (1 zu viel)'
+        ($it | Where-Object Lizenz -eq 'KNAPP').Bewertung | Should -BeLike 'abweichend: ab 95*'
+        ($it | Where-Object Lizenz -eq 'FREI').Bewertung | Should -Be ''
+    }
+    It 'Bewertung steht in den Faerbe-Spalten der Oberflaeche' {
+        $src = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\Functions\UI-Common.ps1')
+        $src | Should -Match "HUDiffTintCols = @\([^)]*'Bewertung'"
     }
 }

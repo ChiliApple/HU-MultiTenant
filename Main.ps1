@@ -339,6 +339,8 @@ Remove-Variable __n -ErrorAction SilentlyContinue
 # Rechtsklick in den Ausgaben: Kopieren / Alles kopieren / Ausgabe leeren
 Add-HUOutputMenu $script:Controls['rtbQSOutput'] { $script:Controls['rtbQSOutput'].Document.Blocks.Clear() }
 Add-HUOutputMenu $script:Controls['rtbLog'] { Clear-LogBuffer -IncludeGui }
+# 2.5.6 GLOBAL: alle Ausgaben mit Umkehren/Loeschen rechts oben, neuestes Ereignis oben
+try { Set-HUOutputTools $script:Window } catch { }
 
 # Tastatur: F1 Anleitung, Strg+0 Groesse 100 %, Quick-Script-Kuerzel
 $script:Window.Add_PreviewKeyDown({

@@ -1332,7 +1332,10 @@ $script:HUSecRules = @(
         Items = { param($F, $B)
             foreach ($k in @($F.skus | Where-Object { $_ -and [int]$_.prepaidUnits.enabled -gt 0 })) {
                 $e = [int]$k.prepaidUnits.enabled; $c = [int]$k.consumedUnits
-                [pscustomobject]@{ Lizenz = "$($k.skuPartNumber)"; Belegt = $c; Vorhanden = $e; Prozent = [math]::Round(100.0 * $c / $e, 1); Status = "$($k.capabilityStatus)" }
+                $pz = [math]::Round(100.0 * $c / $e, 1)
+                # Spalte Bewertung: "abweichend ..." faerbt die Zeile im Ergebnisfenster dezent ein (global)
+                $bw = if ($c -gt $e) { "abweichend: ueberbucht ($($c - $e) zu viel)" } elseif ((100.0 * $c / $e) -ge [double]$B.maxPercent) { "abweichend: ab $([double]$B.maxPercent) %" } else { '' }
+                [pscustomobject]@{ Lizenz = "$($k.skuPartNumber)"; Belegt = $c; Vorhanden = $e; Prozent = $pz; Status = "$($k.capabilityStatus)"; Bewertung = $bw }
             }
         }
         Eval = { param($F, $B)
@@ -1347,7 +1350,7 @@ $script:HUSecRules = @(
     @{ Id = 'K04'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine Haeufung falscher Kennwoerter je Konto (letzte 24 Stunden)'; Facts = @('signfail'); Min = $false; ItemsLabel = 'Konten'; ItemsSort = 'Konto'
         Items = { param($F, $B)
             foreach ($g in @($F.signfail | Where-Object { $_ } | Group-Object { "$($_.userPrincipalName)".ToLowerInvariant() } | Sort-Object Count -Descending)) {
-                [pscustomobject]@{ Konto = "$($g.Group[0].userPrincipalName)"; Fehlversuche = $g.Count; Laender = (@($g.Group | ForEach-Object { "$($_.location.countryOrRegion)" } | Where-Object { $_ } | Sort-Object -Unique) -join ', '); Adressen = @($g.Group | ForEach-Object { "$($_.ipAddress)" } | Sort-Object -Unique).Count; Ueber = $(if ($g.Count -ge [int]$B.maxFailed) { 'ja' } else { '' }) }
+                [pscustomobject]@{ Konto = "$($g.Group[0].userPrincipalName)"; Fehlversuche = $g.Count; Laender = (@($g.Group | ForEach-Object { "$($_.location.countryOrRegion)" } | Where-Object { $_ } | Sort-Object -Unique) -join ', '); Adressen = @($g.Group | ForEach-Object { "$($_.ipAddress)" } | Sort-Object -Unique).Count; Ueber = $(if ($g.Count -ge [int]$B.maxFailed) { 'ja' } else { '' }); Bewertung = $(if ($g.Count -ge [int]$B.maxFailed) { "abweichend: ab $([int]$B.maxFailed) Fehlversuchen" } else { '' }) }
             }
         }
         Eval = { param($F, $B)
@@ -1548,7 +1551,7 @@ $script:HUSecRules = @(
             foreach ($g in (@($F.graphapps | Where-Object { $script:HUSecCriticalPerms -contains $_.perm }) | Group-Object principalId)) {
                 $a = $g.Group[0]
                 $ok = @($B.allowedApps | Where-Object { "$_".Trim() -and ("$($a.app)" -ieq "$_".Trim() -or "$($a.principalId)" -ieq "$_".Trim()) }).Count
-                [pscustomobject]@{ App = "$($a.app)$(if ($a.own) { ' (dieses Programm)' })"; Zaehlt = $(if ($a.own) { 'Nein - dieses Programm' } elseif ($ok) { 'Nein - erlaubt (Sollwert)' } else { 'Ja' }); Rechte = (@($g.Group | ForEach-Object { $_.perm } | Sort-Object -Unique) -join ', ') }
+                [pscustomobject]@{ App = "$($a.app)$(if ($a.own) { ' (dieses Programm)' })"; Zaehlt = $(if ($a.own) { 'Nein - dieses Programm' } elseif ($ok) { 'Nein - erlaubt (Sollwert)' } else { 'Ja' }); Bewertung = $(if (-not $a.own -and -not $ok) { 'abweichend' } else { '' }); Rechte = (@($g.Group | ForEach-Object { $_.perm } | Sort-Object -Unique) -join ', ') }
             }
         }
         Eval = { param($F, $B)
