@@ -8,6 +8,7 @@ Erste Stufe von 2.6.0 „Austausch und Sicherung“.
 - **Exportieren:** Paket als Datei `.humuster` speichern. Vorher zeigt eine **Prüfansicht**, was mitgeht und was gesperrt ist. Bereinigt werden Zuweisungen, Benutzer, IP-Bereiche, Prüfer der Administratorzustimmung, Bereichsmarkierungen (auf Standard) und Benachrichtigungen; Gruppen gehen nur als Name mit. Gesperrt sind Einträge mit Geheimnissen, Kennungen oder Domains eigener Tenants, Zertifikat-, WLAN- und VPN-Profile sowie Skripte ohne Einzelfreigabe. Namen, Beschreibungen, Links und Geräteregeln sind zum Ansehen markiert. Prüfsumme (SHA-256) zum Weitergeben.
 - **Importieren:** Knopf oder Dateien auf die Bibliothek ziehen – `.humuster` oder **JSON-Dateien** aus dem Portal bzw. der Community (Conditional Access, benannte Orte, Authentifizierungsstärken, bekannte Intune-Objekte). Geprüft werden Größe, Anzahl, entpackte Größe, Pfade, Prüfsummen, Mindestversion, Verschachtelung und doppelte Schlüssel; bereinigt wird wie beim Export. Es entsteht immer ein **neues** Paket.
 - **Ungeprüft:** Importierte Pakete sind gekennzeichnet und lassen sich erst nach **„Als geprüft bestätigen“** anwenden – rechts am Paket oder automatisch beim Start von „Muster anwenden“.
+- **Speicherort direkt in der Prüfansicht:** „Speichern unter …“ öffnet den Dialog über der Prüfansicht (Abbrechen führt zurück); Start im zuletzt verwendeten Ordner, sonst in *Downloads*.
 - **Herkunft bleibt:** Importierte Pakete behalten Herausgeber und Kennzeichen auch beim Bearbeiten und erneuten Exportieren.
 
 ## v2.5.6 (Testversion)

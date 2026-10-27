@@ -10,7 +10,7 @@
 # Pruefansicht: Mode Export | Import | Apply. Rueckgabe: @{ Ok; Publisher; Note; Title; AllowScripts } (Ok = $false bei Abbruch)
 function Show-HUMuReview {
     param([ValidateSet('Export', 'Import', 'Apply')][string]$Mode, [string]$Heading, [string]$Info, [object[]]$Rows, [string[]]$NameMarks = @(),
-        [string]$Title = '', [string]$Publisher = '', [scriptblock]$Replan = $null, $Owner = $null)
+        [string]$Title = '', [string]$Publisher = '', [scriptblock]$Replan = $null, $Owner = $null, [string]$SaveName = '')
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Width="1100" Height="680" MinWidth="760" MinHeight="420" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
@@ -74,7 +74,7 @@ function Show-HUMuReview {
     if ($Mode -eq 'Import') { foreach ($n in 'lblPub', 'txtPub', 'lblNote', 'txtNote') { $c[$n].Visibility = 'Collapsed' } }
     if ($Mode -eq 'Export') { foreach ($n in 'lblTitle', 'txtTitle') { $c[$n].Visibility = 'Collapsed' } }
     $c.txtNames.Text = $(if (@($NameMarks).Count) { @($NameMarks) -join "`n" } else { '(keine)' })
-    $st = @{ Ok = $false; Rows = $Rows }
+    $st = @{ Ok = $false; Rows = $Rows; Path = '' }
     $show = {
         $vm = @(foreach ($r in @($st.Rows)) {
                 $erg = switch ("$($r.Status)") { 'ok' { 'uebernommen' } 'gesperrt' { 'gesperrt' } 'entfaellt' { 'entfaellt' } default { "$($r.Status)" } }
@@ -106,11 +106,24 @@ function Show-HUMuReview {
         })
     $c.btnOk.Add_Click({
             if ($Mode -eq 'Import' -and -not $c.txtTitle.Text.Trim()) { Show-HUMessage 'Bitte einen Namen fuer das Paket eingeben.' -Icon Warning -Owner $w; return }
+            # Export: Speicherort noch im Fenster waehlen (Pruefansicht bleibt offen, Abbrechen fuehrt zurueck)
+            if ($Mode -eq 'Export') {
+                $dlg = New-Object Microsoft.Win32.SaveFileDialog
+                $dlg.Filter = 'Muster-Paket (*.humuster)|*.humuster'
+                $dlg.FileName = $SaveName
+                $dlg.AddExtension = $true; $dlg.OverwritePrompt = $true
+                # zuletzt verwendeter Ordner, sonst Downloads (Dokumente liegt oft in OneDrive und oeffnet langsam)
+                $last = "$(Get-HUStateValue 'muExportDir' '')"
+                $dlg.InitialDirectory = $(if ($last -and (Test-Path -LiteralPath $last)) { $last } else { Join-Path $env:USERPROFILE 'Downloads' })
+                if (-not $dlg.ShowDialog($w)) { return }
+                $st.Path = $dlg.FileName
+                try { Set-HUStateValue 'muExportDir' (Split-Path -Parent $dlg.FileName) } catch { }
+            }
             $st.Ok = $true; $w.Close()
         })
     $c.btnCancel.Add_Click({ $w.Close() })
     [void]$w.ShowDialog()
-    return [pscustomobject]@{ Ok = $st.Ok; Publisher = "$($c.txtPub.Text)".Trim(); Note = "$($c.txtNote.Text)".Trim(); Title = "$($c.txtTitle.Text)".Trim()
+    return [pscustomobject]@{ Ok = $st.Ok; Path = "$($st.Path)"; Publisher = "$($c.txtPub.Text)".Trim(); Note = "$($c.txtNote.Text)".Trim(); Title = "$($c.txtTitle.Text)".Trim()
         AllowScripts = @(@($c.grid.ItemsSource) | Where-Object { $_.IsScript -and $_.Freigeben } | ForEach-Object { $_.Key }); Rows = $st.Rows }
 }
 
@@ -126,18 +139,14 @@ function Start-HUMuExport {
     $script:MuExpPlan = $plan
     $pub = "$(Get-HUStateValue 'muPublisher' '')"
     if (-not $pub -and $plan.OrigPublisher) { $pub = $plan.OrigPublisher }
-    $r = Show-HUMuReview -Mode Export -Heading "Exportieren: $($p.Title)" -Rows @($plan.Rows) -NameMarks @($plan.NameMarks) -Publisher $pub -Replan $replan `
+    $r = Show-HUMuReview -Mode Export -Heading "Exportieren: $($p.Title)" -Rows @($plan.Rows) -NameMarks @($plan.NameMarks) -Publisher $pub -Replan $replan -SaveName (ConvertTo-HUMxFileName $p.Title) `
         -Info 'Bevor die Datei entsteht, wird bereinigt: keine Zuweisungen, Benutzer, IP-Bereiche, Pruefer, Bereichsmarkierungen (Standard) und Benachrichtigungen; Gruppen nur als Name. Gesperrt sind Eintraege mit Geheimnissen, Kennungen oder Domains eigener Tenants, Zertifikat/WLAN/VPN - und Skripte, solange du sie nicht einzeln freigibst. Bitte Namen und Beschreibungen ansehen: sie gehen so in die Datei.'
     if (-not $r.Ok) { return }
     $plan = $script:MuExpPlan
     try { Set-HUStateValue 'muPublisher' $r.Publisher; Save-HUUIState } catch { }
-    $dlg = New-Object Microsoft.Win32.SaveFileDialog
-    $dlg.Filter = 'Muster-Paket (*.humuster)|*.humuster'
-    $dlg.FileName = ConvertTo-HUMxFileName $p.Title
-    $dlg.InitialDirectory = $(try { [Environment]::GetFolderPath('MyDocuments') } catch { '' })
-    if (-not $dlg.ShowDialog($script:Window)) { return }
+    if (-not $r.Path) { return }
     try {
-        $o = Save-HUMusterExport -Plan $plan -Path $dlg.FileName -Publisher $r.Publisher -Note $r.Note -AppVersion $script:Version
+        $o = Save-HUMusterExport -Plan $plan -Path $r.Path -Publisher $r.Publisher -Note $r.Note -AppVersion $script:Version
         Add-HURtbLine $script:Controls['rtbMu'] "Exportiert: $($o.Path) - $($o.Count) Eintraege, SHA-256 $($o.Sha256)" '#81C784'
         Show-HUMessage "Gespeichert: $($o.Path)`n`n$($o.Count) Eintraege.`nPruefsumme (SHA-256), zum Vergleich beim Empfaenger:`n$($o.Sha256)" -Icon Info
     } catch { Show-HUMessage "Export fehlgeschlagen: $($_.Exception.Message)" -Icon Error }
@@ -149,8 +158,11 @@ function Start-HUMuImport([string[]]$Paths = @()) {
         $dlg = New-Object Microsoft.Win32.OpenFileDialog
         $dlg.Filter = 'Muster-Paket oder JSON (*.humuster;*.json)|*.humuster;*.json|Muster-Paket (*.humuster)|*.humuster|JSON-Dateien (*.json)|*.json'
         $dlg.Multiselect = $true
+        $last = "$(Get-HUStateValue 'muImportDir' '')"
+        $dlg.InitialDirectory = $(if ($last -and (Test-Path -LiteralPath $last)) { $last } else { Join-Path $env:USERPROFILE 'Downloads' })
         if (-not $dlg.ShowDialog($script:Window)) { return }
         $Paths = @($dlg.FileNames)
+        try { Set-HUStateValue 'muImportDir' (Split-Path -Parent $Paths[0]) } catch { }
     }
     try { $plan = Get-HUMusterImportPlan -Settings $script:Settings -Paths $Paths -AppVersion $script:Version }
     catch { Show-HUMessage "Import nicht moeglich: $($_.Exception.Message)" -Icon Error; return }
