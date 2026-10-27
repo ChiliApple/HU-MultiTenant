@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     HU.AppBackup - verschluesselte App-Sicherung (Format .husicherung).
@@ -250,6 +250,10 @@ $script:HUAbSpecial = @{ 'special/teams-ziele.json' = 'notify-targets.json' }
 $script:HUAbFileRx = '^HU-Sicherung_[A-Za-z0-9-]{1,40}_\d{4}-\d{2}-\d{2}_\d{6}\.husicherung$'
 # 071 B3: alles wird beim Lesen im Speicher gehalten -> Gesamtgrenze 2 GB
 $script:HUAbLimits = @{ Files = 200000; EntryBytes = 512MB; TotalBytes = 2GB }
+
+# G2: Bereiche mit ausfuehrbarem Code bzw. Webhook-Adressen - beim Wiederherstellen nicht vorgewaehlt
+$script:HUAbCodeNames = @('config/quick-snippets.json', 'config/remediations.json', 'config/teams-jobs.json', 'special/teams-ziele.json')
+function Test-HUAppBackupCodeName([string]$Name) { return ($script:HUAbCodeNames -contains $Name) }
 
 function Get-HUAppBackupArea([string]$Name) {
     foreach ($k in $script:HUAbAreaOf.Keys) { if (($k.EndsWith('/') -and $Name.StartsWith($k)) -or $Name -eq $k) { return $script:HUAbAreaOf[$k] } }
@@ -658,5 +662,5 @@ function Test-HUAppBackupDue {
 
 Export-ModuleMember -Function Test-HUAbPassword, Protect-HUAppBackupStream, Read-HUAppBackupHeaderStream, Unprotect-HUAppBackupStream,
     Protect-HUAppBackupBytes, Read-HUAppBackupHeader, Unprotect-HUAppBackupBytes,
-    Get-HUAppBackupArea, Resolve-HUAppBackupTarget, Get-HUAppBackupSources, Get-HUAbModuleList, Get-HUAppBackupFileName, New-HUAppBackup, Get-HUAppBackupList,
+    Get-HUAppBackupArea, Test-HUAppBackupCodeName, Resolve-HUAppBackupTarget, Get-HUAppBackupSources, Get-HUAbModuleList, Get-HUAppBackupFileName, New-HUAppBackup, Get-HUAppBackupList,
     Remove-HUAppBackupOld, Open-HUAppBackup, Update-HUAbTeamsJobs, Restore-HUAppBackup, Save-HUAppBackupPassword, Get-HUAppBackupPassword, Remove-HUAppBackupPassword, Test-HUAppBackupDue

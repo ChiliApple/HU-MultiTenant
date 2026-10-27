@@ -246,3 +246,15 @@ Describe 'App-Sicherung: Teams-Auftraege pausieren (072 G10)' {
         $r.Paused | Should -Contain 'Falsey'
     }
 }
+
+Describe 'App-Sicherung: Skripte beim Wiederherstellen nicht vorgewaehlt (072 G2)' {
+    It 'Snippets, Wartung, Teams-Auftraege und Teams-Ziele gelten als Code-Bereiche' {
+        foreach ($n in 'config/quick-snippets.json', 'config/remediations.json', 'config/teams-jobs.json', 'special/teams-ziele.json') { Test-HUAppBackupCodeName $n | Should -BeTrue }
+    }
+    It 'Einstellungen, Apps, Muster und Backups sind keine Code-Bereiche' {
+        foreach ($n in 'config/settings.json', 'config/apps.json', 'muster/bibliothek.json', 'appdata/ui-state.json') { Test-HUAppBackupCodeName $n | Should -BeFalse }
+    }
+    It 'jeder Code-Bereich hat einen Bereichsnamen' {
+        foreach ($n in 'config/quick-snippets.json', 'config/remediations.json', 'config/teams-jobs.json', 'special/teams-ziele.json') { Get-HUAppBackupArea $n | Should -Not -BeNullOrEmpty }
+    }
+}

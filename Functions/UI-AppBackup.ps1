@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     App-Sicherung (2.5.9): Reiter "Sicherung" in den Einstellungen, Jetzt sichern, Pruefen, Wiederherstellen, Automatik.
@@ -443,7 +443,9 @@ function Show-HUAbRestorePick($Opened, $Owner) {
     <DockPanel Margin="14">
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"
                    Text="Haken = wird aus der Sicherung zurueckgeschrieben (ueberschreibt den aktuellen Stand). Nicht angehakte Bereiche bleiben, wie sie sind."/>
-        <CheckBox x:Name="chkAll" DockPanel.Dock="Top" Content="Alle" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="6,0,0,6"/>
+        <TextBlock x:Name="txtCode" DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="#FFB74D"
+                   Text="Orange = enthaelt Skripte oder Webhook-Adressen. Diese Bereiche sind nicht vorgewaehlt: Skripte laufen danach mit den Rechten der Tenants bzw. als SYSTEM auf den Geraeten. Nur anhaken, wenn die Sicherung von dir selbst stammt."/>
+        <CheckBox x:Name="chkAll" DockPanel.Dock="Top" Content="Alle" IsChecked="False" Style="{StaticResource DarkCheckBox}" Margin="6,0,0,6"/>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button x:Name="btnOk" Content="Weiter" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
             <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
@@ -457,7 +459,13 @@ function Show-HUAbRestorePick($Opened, $Owner) {
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Bereich" Binding="{Binding Area}" IsReadOnly="True"/>
+                <DataGridTemplateColumn Header="Bereich">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Area}" Foreground="{Binding Color}" VerticalAlignment="Center" Margin="4,0"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Dateien" Binding="{Binding Count}" IsReadOnly="True"/>
                 <DataGridTextColumn Header="Stand in der Sicherung" Binding="{Binding Saved}" IsReadOnly="True"/>
                 <DataGridTextColumn Header="Aktuell hier" Binding="{Binding Current}" IsReadOnly="True"/>
@@ -476,10 +484,13 @@ function Show-HUAbRestorePick($Opened, $Owner) {
         $sv = @($g.Group | ForEach-Object { "$($_.Changed)" } | Where-Object { $_ } | Sort-Object -Descending)[0]
         $ex = @($g.Group | Where-Object Exists)
         $cv = @($ex | ForEach-Object { "$($_.CurChanged)" } | Where-Object { $_ } | Sort-Object -Descending)[0]
-        [pscustomobject]@{ Pick = $true; Area = $g.Name; Count = $g.Count; Saved = (& $fmt $sv); Current = $(if ($ex.Count) { "$($ex.Count) vorhanden, neueste $(& $fmt $cv)" } else { 'nicht vorhanden' }) }
+        $code = (@($g.Group | Where-Object { Test-HUAppBackupCodeName "$($_.Name)" }).Count -gt 0)
+        [pscustomobject]@{ Pick = (-not $code); Code = $code; Color = $(if ($code) { '#FFB74D' } else { '#E0E0E0' }); Area = $g.Name; Count = $g.Count; Saved = (& $fmt $sv); Current = $(if ($ex.Count) { "$($ex.Count) vorhanden, neueste $(& $fmt $cv)" } else { 'nicht vorhanden' }) }
     }
     $c.grid.ItemsSource = @($rows)
     $st = @{ R = $null; Busy = $false }
+    $c.chkAll.IsChecked = (-not @($rows | Where-Object { -not $_.Pick }).Count)
+    if (-not @($rows | Where-Object { $_.Code }).Count) { $c.txtCode.Visibility = 'Collapsed' }
     # "Alle": setzt bzw. entfernt alle Haken (ein Klick je Zeile genuegt - Haken direkt in der Zelle)
     $setAll = { param([bool]$v) if ($st.Busy) { return }; foreach ($r in @($c.grid.ItemsSource)) { $r.Pick = $v }; $c.grid.Items.Refresh() }
     $c.chkAll.Add_Checked({ & $setAll $true })
