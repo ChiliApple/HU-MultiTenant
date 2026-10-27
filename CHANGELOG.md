@@ -1,5 +1,20 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.5.7 (Testversion)
+
+Erste Stufe von 2.6.0 „Austausch und Sicherung“.
+
+### ⭐ Muster-Bibliothek
+- **Exportieren:** Paket als Datei `.humuster` speichern. Vorher zeigt eine **Prüfansicht**, was mitgeht und was gesperrt ist. Bereinigt werden Zuweisungen, Benutzer, IP-Bereiche, Prüfer der Administratorzustimmung, Bereichsmarkierungen (auf Standard) und Benachrichtigungen; Gruppen gehen nur als Name mit. Gesperrt sind Einträge mit Geheimnissen, Kennungen oder Domains eigener Tenants, Zertifikat-, WLAN- und VPN-Profile sowie Skripte ohne Einzelfreigabe. Namen, Beschreibungen, Links und Geräteregeln sind zum Ansehen markiert. Prüfsumme (SHA-256) zum Weitergeben.
+- **Importieren:** Knopf oder Dateien auf die Bibliothek ziehen – `.humuster` oder **JSON-Dateien** aus dem Portal bzw. der Community (Conditional Access, benannte Orte, Authentifizierungsstärken, bekannte Intune-Objekte). Geprüft werden Größe, Anzahl, entpackte Größe, Pfade, Prüfsummen, Mindestversion, Verschachtelung und doppelte Schlüssel; bereinigt wird wie beim Export. Es entsteht immer ein **neues** Paket.
+- **Ungeprüft:** Importierte Pakete sind gekennzeichnet und lassen sich erst nach **„Als geprüft bestätigen“** anwenden – rechts am Paket oder automatisch beim Start von „Muster anwenden“.
+- **Speicherort direkt in der Prüfansicht:** „Speichern unter …“ öffnet den Dialog über der Prüfansicht (Abbrechen führt zurück); Start im zuletzt verwendeten Ordner, sonst in *Downloads*.
+- **Prüfung 068 eingearbeitet:** Custom-Profile mit OMA-URI für WLAN, VPN oder Zertifikate sind gesperrt; eingebettete Inhalte (Base64, z. B. iOS/macOS-Profile) werden entpackt und auf Schlüssel, Zertifikate und Kennwörter geprüft. Gruppen-Platzhalter aus fremden Dateien erscheinen in der Prüfansicht, Ausnahme-Gruppen hervorgehoben. Ungeprüfte importierte Einträge lassen sich weder anwenden noch aus dem Tenant-Vergleich übertragen. Dazu strengere Prüfungen beim Lesen (ZIP-Verzeichnis gegen Einträge, 5 MB je Eintrag, Kommentare und kodierte doppelte Schlüssel in JSON, Tenant-Domains auch in Feldnamen).
+- **Herkunft bleibt:** Importierte Pakete behalten Herausgeber und Kennzeichen auch beim Bearbeiten und erneuten Exportieren.
+
+### 💻 Modul Autopilot 0.5.2
+- **Hash speichern:** Der Dateiname enthält die Seriennummer (`Autopilot-Hash_<Seriennummer>_<Datum>.csv`, bei mehreren Geräten `Autopilot-Hash_<Tenant>_<Anzahl>-Geraete_<Datum>.csv`).
+
 ## v2.5.6 (Testversion)
 
 ### 🛡️ Sicherheitskatalog

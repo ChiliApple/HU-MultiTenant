@@ -125,6 +125,9 @@ function Show-HUMusterApply {
     $sel = Get-HUMusterSelectionUi
     if (-not $sel) { Show-HUMessage 'Bitte links mindestens ein Paket anhaken - diese Pakete werden angewendet.' -Icon Info; return }
     if ($script:MA) { try { $script:MA.W.Activate() } catch { }; return }
+    # 2.5.7: importierte, ungepruefte Pakete zuerst ansehen und bestaetigen (Udo 27.10.)
+    if (-not (Confirm-HUMuChecked @($sel.Packages))) { return }
+    $sel = Get-HUMusterSelectionUi
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Muster anwenden" Width="1100" Height="720" MinWidth="820" MinHeight="520" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ResizeMode="CanResizeWithGrip">

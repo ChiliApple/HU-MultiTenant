@@ -47,6 +47,7 @@ function Get-HUAnaTenantName([string]$Key) {
         $m = $null; try { $m = Get-HUMusterSelectionUi } catch { }; if ($m) { return $m.Label }; return 'Muster'
     }
     if (Test-HUMusterBuiltinSource $Key) { return 'Mitgeliefert' }
+    if ("$Key" -eq 'importiert') { return 'Importiert' }
     $t = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $Key }) | Select-Object -First 1
     if ($t -and "$($t.displayName)") { return "$($t.displayName)" }
     return $Key
@@ -415,6 +416,10 @@ function Start-HUCmpCopy {
         $srcKey = $pick[0]
     }
     $srcItem = @($m.Items | Where-Object { $_.Tenant -eq $srcKey })[0]
+    if ($srcKey -eq $mk) {
+        $deny = Test-HUMusterTransferAllowed "$(if ($srcItem.PSObject.Properties['Origin']) { $srcItem.Origin })" $(if ($srcItem.PSObject.Properties['Checked']) { $srcItem.Checked } else { $null })
+        if ($deny) { Show-HUMessage "'$($m.Name)': $deny" -Icon Warning; return }
+    }
     $missing = @($m.Missing | Where-Object { $_ -ne $mk })
     # 2.4.2 Angleichen: Ziele, in denen es den Eintrag gibt, aber mit anderem Fingerabdruck (nur Arten mit PATCH-Weg)
     $diff = @()
@@ -464,6 +469,8 @@ function Start-HUCmpEntraCopy($M) {
     if (-not $mi.Count -or $null -eq $mi[0].Obj) { Show-HUMessage "Entra-Einstellungen und Conditional Access werden nur aus dem Muster uebertragen (bewusst festgehaltener Soll-Stand).`n`nIm Reiter Muster ein Paket mit '$($M.Name)' anhaken, hier den Haken 'Muster' setzen und Vergleich einlesen." -Icon Info; return }
     # Quell-Tenant des Muster-Eintrags (Namen dort nachschlagen; dieser Tenant wird nicht als Ziel angeboten)
     $src = "$(if ($mi[0].PSObject.Properties['Origin']) { $mi[0].Origin })"
+    $deny = Test-HUMusterTransferAllowed $src $(if ($mi[0].PSObject.Properties['Checked']) { $mi[0].Checked } else { $null })
+    if ($deny) { Show-HUMessage "'$($M.Name)': $deny" -Icon Warning; return }
     if (-not $src) { Show-HUMessage "Fuer '$($M.Name)' im Muster ist der Quell-Tenant nicht bekannt - bitte das Paket neu speichern." -Icon Warning; return }
     $mh = "$($mi[0].Hash)"
     $missing = @($M.Missing | Where-Object { $_ -ne $mk -and $_ -ne $src })
