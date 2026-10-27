@@ -664,6 +664,33 @@ Describe 'A37 bis A42 neue Regeln' {
         $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
         $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
         $r.Detail | Should -BeLike '*nicht mitgezaehlt*'
+        # Sollwert A42 allowedApps: erlaubte App wird angezeigt, aber nicht gezaehlt
+        @(Save-HUSecBaselineEdit -Values @{ 'A42.allowedApps' = 'Fremd' }).Count | Should -Be 0
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
+        $r.Status | Should -Be 'OK'; $r.Detail | Should -BeLike '*1 erlaubt laut Sollwert*'
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'A42' | Where-Object { $_.App -eq 'Fremd' })[0]
+        $it.Zaehlt | Should -BeLike 'Nein*'
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force
+    }
+}
+
+Describe 'V5 Sollwert policies (Grundschutz aus mehreren Richtlinien)' {
+    BeforeEach { Base; Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    It 'alle genannten Richtlinien aktiv = OK, eine aus = Abweichung mit Nummer; Nummer trifft nur den Namensanfang' {
+        function NP($name, $state) { $p = Pol $state @('All') @('g1'); $p.conditions.users.includeUsers = @(); $p | Add-Member -NotePropertyName displayName -NotePropertyValue $name -Force; $p }
+        $global:HUSecFx['conditionalAccess'] = @((NP '100 - Adminportale' 'enabled'), (NP '201 - MFA Lehrer' 'enabled'), (NP '2010 - Test' 'disabled'))
+        (Run 'V5').Status | Should -Be 'Abweichung'
+        @(Save-HUSecBaselineEdit -Values @{ 'V5.policies' = '100, 201' }).Count | Should -Be 0
+        $r = Run 'V5'; $r.Status | Should -Be 'OK'; $r.Detail | Should -BeLike '*alle 2 Richtlinien aktiv*'
+        @(Save-HUSecBaselineEdit -Values @{ 'V5.policies' = '100, 201, 203' }).Count | Should -Be 0
+        $r = Run 'V5'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -BeLike '*fehlt: 203*'
+        $global:HUSecFx['conditionalAccess'] = @((NP '100 - Adminportale' 'enabled'), (NP '201 - MFA Lehrer' 'disabled'), (NP '203 - MFA Cloud' 'enabled'))
+        $r = Run 'V5'; $r.Detail | Should -BeLike '*nicht aktiv: 201*'
+    }
+    It 'Namen-Sollwert: Leerzeichen im Namen erlaubt, zu viele Eintraege abgelehnt' {
+        @(Save-HUSecBaselineEdit -Values @{ 'V5.policies' = 'MFA fuer alle Benutzer; 100' }).Count | Should -Be 0
+        @(Save-HUSecBaselineEdit -Values @{ 'V5.policies' = ((1..51) -join ',') }).Count | Should -Be 1
     }
 }
 

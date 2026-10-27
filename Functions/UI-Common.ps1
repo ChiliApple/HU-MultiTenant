@@ -25,6 +25,24 @@ function Get-HUXaml([string]$Name) {
     return $xaml
 }
 
+# Feste Knopfbreite -> Mindestbreite: in waagrechten StackPanels und WrapPanels (Knopfleisten) richtet sich der Knopf dann nach
+# seinem Text. In Grids und DockPanels bleibt die Breite fest (dort wuerde der Knopf sonst die ganze Zelle fuellen).
+function Set-HUButtonFit($Root) {
+    if (-not $Root) { return }
+    foreach ($ch in @([System.Windows.LogicalTreeHelper]::GetChildren($Root))) {
+        if ($ch -isnot [System.Windows.DependencyObject]) { continue }
+        if ($ch -is [System.Windows.Controls.Button] -and -not [double]::IsNaN($ch.Width)) {
+            $p = $ch.Parent
+            $row = (($p -is [System.Windows.Controls.StackPanel] -and $p.Orientation -eq 'Horizontal') -or $p -is [System.Windows.Controls.WrapPanel])
+            if ($row) {
+                $ch.MinWidth = [Math]::Max($ch.MinWidth, $ch.Width); $ch.Width = [double]::NaN
+                if ($ch.Padding.Left -lt 10) { $ch.Padding = [System.Windows.Thickness]::new(12, $ch.Padding.Top, 12, $ch.Padding.Bottom) }
+            }
+        }
+        Set-HUButtonFit $ch
+    }
+}
+
 # Fenster aus XAML erzeugen; liefert @{ Window = ...; C = @{ Name = Element } } mit allen x:Name-Elementen
 function New-HUWindow([string]$Name, [string]$XamlText = '') {
     $x = if ($XamlText) { $XamlText } else { Get-HUXaml $Name }
@@ -46,6 +64,8 @@ function New-HUWindow([string]$Name, [string]$XamlText = '') {
     # zusaetzlich direkt: alle Tabellen dieses Fensters (auch ohne Namen) - wirkt auch, falls der Klassen-Handler nicht greift
     try { foreach ($g in @(Get-HUDataGrids $w)) { Set-HUGridFit $g } }
     catch { try { Write-HULog -Message "Spaltenbreiten (Fenster): $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" -Level 'WARN' } catch { } }
+    # 2.5.6 GLOBAL: Knoepfe mit fester Breite in Knopfleisten wachsen mit ihrer Beschriftung (nie abgeschnitten, auch wenn der Text spaeter wechselt)
+    try { Set-HUButtonFit $w } catch { }
     # jedes groessenveraenderbare Fenster mit sichtbarem Anfasser rechts unten
     try { if ($w.ResizeMode -eq [System.Windows.ResizeMode]::CanResize) { $w.ResizeMode = [System.Windows.ResizeMode]::CanResizeWithGrip } } catch { }
     $script:LastDialog = $w

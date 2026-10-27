@@ -1,5 +1,18 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.5.6 (Testversion)
+
+### 🛡️ Sicherheitskatalog
+- **V5 MFA-Grundschutz – neuer Sollwert `policies`:** Richtlinien, die zusammen den Grundschutz bilden (z. B. je Gruppe für Admins, Verwaltung, Lehrkräfte, Cloud-Konten, Gäste). Eintrag als Nummer am Namensanfang (`100` trifft „100 - …“, nicht „1000“) oder voller Name. Sind alle vorhanden und aktiv, ist V5 erfüllt; sonst nennt die Zelle, welche fehlt oder nicht aktiv ist. Die Liste „Richtlinien anzeigen“ zählt sie mit.
+- **A42 Apps mit kritischen Rechten – neuer Sollwert `allowedApps`:** gewollte Apps (Anzeigename oder Objekt-ID, z. B. die Sync-App der Schulverwaltung) stehen weiter in der Liste, zählen aber nicht. Die Liste hat dazu die Spalte *Zaehlt* (Ja / dieses Programm / erlaubt).
+
+### 🖥️ Oberfläche
+- **Knöpfe nie abgeschnitten (global):** Knöpfe in Knopfleisten wachsen mit ihrer Beschriftung, auch wenn der Text erst später gesetzt wird (z. B. „Zustimmungen anzeigen“ im Sicherheitskatalog) – in allen Fenstern, Reitern und Modulen.
+- **Kopfzeile:** Ist das Fenster zu schmal, zeigt die Zertifikat-Anzeige nur noch den farbigen Schlüssel – der volle Text steht im Tooltip.
+
+### 🗺️ Doku
+- **Autopilot V1 und V2:** Roadmap, Funktionsübersicht, Anleitung und Modul-README nennen das jetzige Modul V1 (klassisch, mit Hardware-Hash); V2 (Windows Autopilot device preparation) folgt im selben Reiter.
+
 ## v2.5.5 (Stable, 26.10.2026)
 
 Stable-Release der Testversionen 2.5.1 bis 2.5.4 – „Muster-Bibliothek und Autopilot“. Alle Punkte im Detail stehen in den Abschnitten darunter.

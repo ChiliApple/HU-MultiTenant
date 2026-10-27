@@ -528,6 +528,8 @@ $script:HUSecDefaults = @{
     K03 = @{ maxPercent = 95 }
     K04 = @{ maxFailed = 20 }
     K05 = @{ countries = @('AT', 'DE'); accounts = @() }
+    V5  = @{ policies = @() }
+    A42 = @{ allowedApps = @() }
     # Katalog-weite Einstellungen: abgeschaltete Regeln (z. B. ohne P2-Lizenz)
     # statusOnly: nur Wechsel ok <-> Abweichung melden, nicht jede Aenderung der Anzahl (Regeln mit taeglich schwankenden Zahlen)
     # silent: in der Teams-Meldung und beim Soll-Hinweis gar nicht melden (Matrix bleibt unveraendert)
@@ -540,6 +542,8 @@ $script:HUSecBaselineInfo = @(
     @{ Rule = 'Katalog'; Key = 'statusOnly';    Kind = 'rules'; Text = 'Teams-Meldung: bei diesen Regeln nur den Wechsel ok/Abweichung melden, nicht jede Aenderung der Anzahl (z. B. Defender-Alarme, Konten, Geraete). Regeln mit Mindeststandard werden immer voll gemeldet.' }
     @{ Rule = 'Katalog'; Key = 'silent';        Kind = 'rules'; Text = 'Teams-Meldung: diese Regeln gar nicht melden (Matrix und Ampel bleiben). Regeln mit Mindeststandard werden immer gemeldet.' }
     @{ Rule = 'V1';  Key = 'accounts';          Kind = 'guids'; Text = 'Notfallkonten (Objekt-IDs der Benutzer, mit Komma getrennt). Jedes muss in jeder aussperrfaehigen Richtlinie ausgenommen sein; gilt auch fuer A25 und A27.' }
+    @{ Rule = 'V5';  Key = 'policies';          Kind = 'names'; Text = 'Richtlinien, die zusammen den MFA-Grundschutz bilden (Nummer am Namensanfang wie 100, 200 oder voller Name; mit Komma getrennt). Sind alle vorhanden und aktiv, gilt V5 als erfuellt - auch ohne eine einzelne Richtlinie fuer alle Benutzer.' }
+    @{ Rule = 'A42'; Key = 'allowedApps';       Kind = 'names'; Text = 'Apps, deren kritische Rechte gewollt sind (Anzeigename oder Objekt-ID des Dienstprinzipals, mit Komma getrennt, z. B. die Sync-App der Schulverwaltung). Sie werden angezeigt, aber nicht mitgezaehlt.' }
     @{ Rule = 'A25'; Key = 'adminGroups';       Kind = 'guids'; Text = 'Admin-Gruppen (Objekt-IDs), die bei der Adminportal-Sperre ausgenommen sein duerfen.' }
     @{ Rule = 'A25'; Key = 'maxUsers';          Kind = 'int';   Text = 'Hoechstens so viele einzelne Konten duerfen bei der Adminportal-Sperre ausgenommen sein (Notfallkonten zaehlen nicht).' }
     @{ Rule = 'A01'; Key = 'minEnabled';        Kind = 'int';   Text = 'Mindestens so viele aktive Richtlinien fuer bedingten Zugriff.' }
@@ -615,6 +619,13 @@ function Save-HUSecBaselineEdit {
             $hit = @($i.Choices | Where-Object { $_ -eq $t.ToLowerInvariant() })
             if (-not $hit.Count) { $errs.Add("$k`: erlaubt sind $($i.Choices -join ', ') ('$t')"); continue }
             $clean[$k] = $hit[0]
+        }
+        elseif ($i.Kind -eq 'names') {
+            # Namen (Richtlinien, Apps): mit Komma oder Semikolon getrennt, Leerzeichen im Namen erlaubt
+            $parts = @($t -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            $bad = @($parts | Where-Object { $_.Length -gt 150 -or $_ -match '[\p{Cc}]' })
+            if ($bad.Count -or $parts.Count -gt 50) { $errs.Add("$k`: hoechstens 50 Namen mit je bis zu 150 Zeichen"); continue }
+            $clean[$k] = @($parts | Sort-Object -Unique)
         }
         elseif ($i.Kind -eq 'codes') {
             $parts = @($t -split '[,;\s]+' | Where-Object { $_ })
@@ -826,6 +837,14 @@ function Test-HUSecCaMfaAny($P) {
 }
 
 # Liste der Richtlinien fuer "Richtlinien anzeigen": alle Richtlinien, mit Hinweis ob und warum sie fuer die Regel zaehlen
+# Sollwert-Eintrag zu Richtlinie: Nummer am Namensanfang ("100" trifft "100 - ...", nicht "1000") oder voller Name
+function Test-HUSecPolicyNameMatch([string]$Entry, [string]$Name) {
+    $e = "$Entry".Trim(); $n = "$Name".Trim()
+    if (-not $e) { return $false }
+    if ($e -match '^\d+$') { return ($n -match ('^' + [regex]::Escape($e) + '(?!\d)')) }
+    return ($n -ieq $e)
+}
+
 function Get-HUSecPolicyItems($Policies, [scriptblock]$Match) {
     foreach ($pol in @($Policies)) {
         $m = $false; try { $m = [bool](& $Match $pol) } catch { }
@@ -1074,9 +1093,24 @@ $script:HUSecRules = @(
             else { @{ Status = 'Abweichung'; Count = $bad; Detail = "Benutzer-Consent aktiv: $names$(if ($al -ne 'keine' -and $al) { " (Sollwert A17 erlaubt: $al)" })" } }
         } }
     @{ Id = 'V5'; Area = 'Entra'; Sev = 'Kritisch'; Title = 'MFA-Grundschutz vorhanden (Security Defaults oder CA-Richtlinie fuer alle)'; Facts = @('ca', 'secdef'); Min = $true; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
-        Items = { param($F, $B) Get-HUSecPolicyItems $F.ca { param($P) (Test-HUSecCaMfaAny $P) -and (Test-HUSecCaTargetsAll $P) } }
+        Items = { param($F, $B)
+            $want = @($B.policies | Where-Object { "$_".Trim() })
+            Get-HUSecPolicyItems $F.ca { param($P) ((Test-HUSecCaMfaAny $P) -and (Test-HUSecCaTargetsAll $P)) -or [bool]@($want | Where-Object { Test-HUSecPolicyNameMatch $_ "$($P.displayName)" }).Count }
+        }
         Eval = { param($F, $B)
             $sd = [bool]$F.secdef.isEnabled
+            # Sollwert V5 policies: diese Richtlinien zusammen gelten als Grundschutz (alle vorhanden und aktiv)
+            $want = @($B.policies | Where-Object { "$_".Trim() })
+            if (-not $sd -and $want.Count) {
+                $miss = @(); $off = @()
+                foreach ($w in $want) {
+                    $hit = @($F.ca | Where-Object { Test-HUSecPolicyNameMatch $w "$($_.displayName)" })
+                    if (-not $hit.Count) { $miss += $w } elseif (-not @($hit | Where-Object { "$($_.state)" -eq 'enabled' }).Count) { $off += $w }
+                }
+                if (-not $miss.Count -and -not $off.Count) { return @{ Status = 'OK'; Count = $want.Count; Detail = "Grundschutz laut Sollwert: alle $($want.Count) Richtlinien aktiv ($($want -join ', '))" } }
+                $txt = @(); if ($miss.Count) { $txt += "fehlt: $($miss -join ', ')" }; if ($off.Count) { $txt += "nicht aktiv: $($off -join ', ')" }
+                return @{ Status = 'Abweichung'; Count = ($miss.Count + $off.Count); Detail = "Grundschutz laut Sollwert unvollstaendig - $($txt -join '; ')" }
+            }
             $mfa = @($F.ca | Where-Object {
                     "$($_.state)" -eq 'enabled' -and (Test-HUSecCaTargetsAll $_) -and (@($_.conditions.applications.includeApplications) -contains 'All') -and
                     ((@($_.grantControls.builtInControls) -contains 'mfa') -or $_.grantControls.authenticationStrength)
@@ -1513,13 +1547,18 @@ $script:HUSecRules = @(
         Items = { param($F, $B)
             foreach ($g in (@($F.graphapps | Where-Object { $script:HUSecCriticalPerms -contains $_.perm }) | Group-Object principalId)) {
                 $a = $g.Group[0]
-                [pscustomobject]@{ App = "$($a.app)$(if ($a.own) { ' (dieses Programm)' })"; Rechte = (@($g.Group | ForEach-Object { $_.perm } | Sort-Object -Unique) -join ', ') }
+                $ok = @($B.allowedApps | Where-Object { "$_".Trim() -and ("$($a.app)" -ieq "$_".Trim() -or "$($a.principalId)" -ieq "$_".Trim()) }).Count
+                [pscustomobject]@{ App = "$($a.app)$(if ($a.own) { ' (dieses Programm)' })"; Zaehlt = $(if ($a.own) { 'Nein - dieses Programm' } elseif ($ok) { 'Nein - erlaubt (Sollwert)' } else { 'Ja' }); Rechte = (@($g.Group | ForEach-Object { $_.perm } | Sort-Object -Unique) -join ', ') }
             }
         }
         Eval = { param($F, $B)
             $crit = @($F.graphapps | Where-Object { $script:HUSecCriticalPerms -contains $_.perm })
-            $apps = @($crit | Where-Object { -not $_.own } | Select-Object -ExpandProperty principalId -Unique)
+            $allow = @($B.allowedApps | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+            $isOk = { param($x) [bool]@($allow | Where-Object { "$($x.app)" -ieq $_ -or "$($x.principalId)" -ieq $_ }).Count }
+            $apps = @($crit | Where-Object { -not $_.own -and -not (& $isOk $_) } | Select-Object -ExpandProperty principalId -Unique)
+            $nAllow = @($crit | Where-Object { -not $_.own -and (& $isOk $_) } | Select-Object -ExpandProperty principalId -Unique).Count
             $ownTxt = if (@($crit | Where-Object { $_.own }).Count) { ' (dieses Programm nicht mitgezaehlt)' } else { '' }
+            if ($nAllow) { $ownTxt += " ($nAllow erlaubt laut Sollwert)" }
             if ($apps.Count) { return @{ Status = 'Abweichung'; Count = $apps.Count; Detail = "$($apps.Count) App(s) mit kritischen Rechten$ownTxt - bitte pruefen, ob noetig" } }
             @{ Status = 'OK'; Count = 0; Detail = "keine weitere App mit kritischen Rechten$ownTxt" }
         } }
@@ -1787,7 +1826,7 @@ $script:HUSecWhy = @{
     A14 = 'Gaeste sollen im Verzeichnis moeglichst wenig sehen koennen (eingeschraenkteste Rolle).'
     A15 = 'Wer Gaeste einladen darf, bestimmt, wer externe Konten anlegen kann.'
     A17 = 'Duerfen Benutzer Apps selbst zustimmen, kann eine Phishing-App Zugriff auf Daten bekommen. Ueber Sollwert A17 allowed laesst sich die Portal-Einstellung "verifizierte Herausgeber, schwach eingestufte Berechtigungen" (gering) bzw. "von Microsoft verwaltet" (empfohlen) als ok werten - alles andere dann mit Admin-Freigabe (A41).'
-    V5  = 'Ohne MFA-Grundschutz reicht ein gestohlenes Passwort. Entweder Security Defaults oder eine MFA-Richtlinie fuer alle Benutzer.'
+    V5  = 'Ohne MFA-Grundschutz reicht ein gestohlenes Passwort. Entweder Security Defaults, eine MFA-Richtlinie fuer alle Benutzer oder mehrere Richtlinien, die zusammen alle abdecken (z. B. je Gruppe) - diese im Sollwert V5 policies eintragen (Nummer am Namensanfang oder voller Name); dann muessen alle vorhanden und aktiv sein.'
     A02 = 'Administratorkonten sind das beliebteste Angriffsziel. Ohne MFA reicht ein gestohlenes Passwort fuer Vollzugriff.'
     A03 = 'Gast-Konten werden oft schwach geschuetzt. MFA soll auch fuer sie gelten.'
     A09 = 'Ein Administratorkonto ohne MFA-Registrierung ist ein Einfallstor, auch wenn eine MFA-Richtlinie besteht. Notfallkonten sind bewusst ohne MFA.'
@@ -1840,7 +1879,7 @@ $script:HUSecWhy = @{
     A39 = 'Sync-Fehler entstehen meist durch doppelte UPN oder Mailadressen; das Objekt wird dann nicht oder nur teilweise synchronisiert. Die Liste zeigt Objekt, Eigenschaft und Wert.'
     A40 = 'SMS und Sprachanruf lassen sich per SIM-Tausch oder Weiterleitung abfangen. Microsoft empfiehlt Authenticator-App, Passkey oder FIDO2. Der E-Mail-Code wird nicht gewertet, weil Gaeste ihn zur Anmeldung brauchen koennen.'
     A41 = 'Duerfen Benutzer Apps nicht selbst zustimmen (A17), sollen sie wenigstens eine Freigabe anfragen koennen - sonst weichen sie auf Umwege aus.'
-    A42 = 'Diese Rechte erlauben einer App ohne angemeldeten Benutzer, Rollen zu vergeben, das Verzeichnis oder Richtlinien zu aendern oder alle Postfaecher und Dateien zu lesen bzw. zu aendern. Geprueft werden nur Anwendungsrechte auf Microsoft Graph (nicht Exchange- oder SharePoint-eigene Schnittstellen und keine delegierten Zustimmungen fuer alle Benutzer). Die App dieses Programms wird angezeigt, aber nicht mitgezaehlt.'
+    A42 = 'Diese Rechte erlauben einer App ohne angemeldeten Benutzer, Rollen zu vergeben, das Verzeichnis oder Richtlinien zu aendern oder alle Postfaecher und Dateien zu lesen bzw. zu aendern. Geprueft werden nur Anwendungsrechte auf Microsoft Graph (nicht Exchange- oder SharePoint-eigene Schnittstellen und keine delegierten Zustimmungen fuer alle Benutzer). Die App dieses Programms wird angezeigt, aber nicht mitgezaehlt. Gewollte Apps (z. B. die Sync-App der Schulverwaltung) im Sollwert A42 allowedApps eintragen - sie stehen dann in der Liste, zaehlen aber nicht.'
     A32 = 'Der Secure Score von Microsoft zeigt in Prozent, wie viele Sicherheitsempfehlungen umgesetzt sind. Verlauf ueber den Katalog-Verlauf vergleichbar (Baseline 3.1).'
     A26 = 'Gaeste, die ihre Einladung nie angenommen haben, sind totes Gewicht und koennen spaeter von Dritten uebernommen werden (Mailadresse faellt weg oder wird neu vergeben). Laut Baseline 1.12 entfernen. Sollwert: Einladungen aelter als 30 Tage, gezaehlt ab der letzten (erneut gesendeten) Einladung.'
     A21 = 'Das alte MSOL-PowerShell wird nicht mehr unterstuetzt und umgeht moderne Schutzfunktionen. Blockieren, sobald keine Skripte es mehr nutzen.'

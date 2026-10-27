@@ -167,6 +167,26 @@ function Start-HUSecretCheckAll([switch]$Force, [scriptblock]$Done = $null) {
     }
 }
 
+# Kopfzeile: passt die Zertifikat-Anzeige nicht neben die Knoepfe, nur das Schluessel-Symbol zeigen (volle Fassung im Tooltip)
+$script:HdrSecretFull = ''
+$script:HdrSecretTip = ''
+function Update-HUSecretFit {
+    $c = $script:Controls
+    $t = $c['txtSecretExpiry']; $bar = $c['hdrBar']; $left = $c['hdrLeft']; $right = $c['hdrRight']
+    if (-not $t -or -not $bar -or -not $left -or -not $right) { return }
+    $full = "$script:HdrSecretFull"
+    if (-not $full) { return }
+    try {
+        $t.Text = $full; $t.Margin = [System.Windows.Thickness]::new(76, 0, 0, 0)
+        $left.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
+        $avail = $bar.ActualWidth - $bar.Padding.Left - $bar.Padding.Right - $right.ActualWidth - 12
+        if ($bar.ActualWidth -gt 0 -and $left.DesiredSize.Width -gt $avail) {
+            $t.Text = "$($script:KeyIcon)"; $t.Margin = [System.Windows.Thickness]::new(12, 0, 0, 0)
+            $t.ToolTip = "$($full -replace '^\S+\s', '')`n`n$($script:HdrSecretTip)"
+        } else { $t.ToolTip = "$($script:HdrSecretTip)" }
+    } catch { }
+}
+
 function Update-HUSecretDisplay([switch]$LogWarnings) {
     $c = $script:Controls
     # 2.5.2: Ablauf in der Kopfzeile (neben Version/Kanal) - fuer den Tenant des offenen Reiters (Quick Script: dessen Tenant)
@@ -202,6 +222,10 @@ function Update-HUSecretDisplay([switch]$LogWarnings) {
         $c['txtSecretExpiry'].Foreground = Get-HUBrush $info.Color
         $c['txtSecretExpiry'].ToolTip = "$($info.Tooltip)`n`nKlick: Einstellungen > Tenants"
     }
+    # 2.5.6: volle Fassung merken; bei schmalem Fenster nur den (farbigen) Schluessel zeigen
+    $script:HdrSecretFull = "$($c['txtSecretExpiry'].Text)"
+    $script:HdrSecretTip = "$($c['txtSecretExpiry'].ToolTip)"
+    Update-HUSecretFit
     # Warnung in der Titelleiste
     $bad = @()
     foreach ($t in @($script:Settings.tenants)) {
@@ -461,5 +485,8 @@ function Register-HUTenantHandlers {
 
     $c['txtSecretWarning'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' })
     $c['txtSecretExpiry'].Cursor = [System.Windows.Input.Cursors]::Hand
+    # schmales Fenster: Zertifikat-Anzeige auf das Symbol verkuerzen (Fenster- und Knopfleisten-Breite aendern sich)
+    if ($c['hdrBar']) { $c['hdrBar'].Add_SizeChanged({ Update-HUSecretFit }) }
+    if ($c['hdrRight']) { $c['hdrRight'].Add_SizeChanged({ Update-HUSecretFit }) }
     $c['txtSecretExpiry'].Add_MouseLeftButtonUp({ Open-HUSettings 'Tenants' $(if ($script:HdrSecretKey) { $script:HdrSecretKey } else { Get-SelectedTenantKey }) })
 }
