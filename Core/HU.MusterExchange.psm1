@@ -633,6 +633,8 @@ function Get-HUMusterImportPlan {
                 $rows.Add([pscustomobject]@{ Typ = $kind; Name = $nm; Id = $oid; Status = $s.Status; Grund = ($s.Reasons -join ' '); Entfernt = ($s.Removed -join '; '); Hinweise = ($s.Marks -join ' | '); P2 = $s.P2; Obj = $s.Obj; IsScript = $false })
             }
         }
+        $okRows = @($rows | Where-Object { $_.Status -eq 'ok' })
+        if ($okRows.Count -eq 1) { $plan.Title = "$($okRows[0].Name)" }
         $plan.Category = $(if ($kinds.Count -eq 1 -and $kinds.ContainsKey('Compliance')) { 'Compliance' } elseif ($kinds.Count -eq 1 -and $kinds.ContainsKey('Conditional Access')) { 'Conditional Access' } elseif ($kinds.Count -gt 1) { 'Gesamtstand' } else { 'Conditional Access' })
         # Orte aus den Dateien: Namen fuer Verweise in CA-Richtlinien (gleiche Kennung)
         $plan.Names = @($rows | Where-Object { $_.Typ -eq 'Benannter Ort' -and $_.Status -eq 'ok' -and "$($_.Id)" -match $script:HUMxGuidRx } |

@@ -208,7 +208,7 @@ function Update-HUMuHint {
     $c = $script:Controls
     Update-HUMuRunDot
     if (Test-HUMuJobRunning) { $c['lblMuHint'].Text = 'Arbeite ...'; return }
-    $c['lblMuHint'].Text = 'Doppelklick auf einen Eintrag zeigt seine Einstellungen. Muster anwenden (gefuehrt in einen anderen oder neuen Tenant, mit Rechten nur fuer die Dauer des Ablaufs) folgt mit der naechsten Version.'
+    $c['lblMuHint'].Text = 'Doppelklick auf einen Eintrag zeigt seine Einstellungen. Pakete tauschen: Exportieren (Datei .humuster) bzw. Importieren oder Dateien (.humuster, .json) auf die Bibliothek ziehen. Muster anwenden bringt die angehakten Pakete gefuehrt in einen oder mehrere Tenants.'
 }
 
 # Einstellungen eines Eintrags (Doppelklick) - immer mit Werten; Kennungen im Quell-Tenant zu Namen
