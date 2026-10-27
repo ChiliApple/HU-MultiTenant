@@ -355,9 +355,9 @@ Describe 'App-Sicherung: Schutzpruefungen beim Oeffnen (072 G4)' {
         } finally { $s.Dispose() }
         Test-Path -LiteralPath $tmp | Should -BeFalse
     }
-    It 'G12: PBKDF2 liefert dasselbe wie der Referenzwert (RFC 6070-artig, SHA-256)' {
+    It 'G12: PBKDF2 liefert dasselbe wie der Referenzwert (SHA-256, Salz mit mindestens 8 Byte wie .NET Framework verlangt)' {
         $mod = Get-Module HU.AppBackup
-        $k = & $mod { Get-HUAbPbkdf2 ([Text.Encoding]::UTF8.GetBytes('password')) ([Text.Encoding]::UTF8.GetBytes('salt')) 1 }
-        (-join ($k | ForEach-Object { $_.ToString('x2') })) | Should -Be '120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b'
+        $k = & $mod { Get-HUAbPbkdf2 ([Text.Encoding]::UTF8.GetBytes('password')) ([Text.Encoding]::UTF8.GetBytes('saltSALTsaltSALT')) 4096 }
+        (-join ($k | ForEach-Object { $_.ToString('x2') })) | Should -Be '9150fa34ce258f3fa0f49507e456a9a71924f682d42f36482b2618848fd38e5a'
     }
 }
