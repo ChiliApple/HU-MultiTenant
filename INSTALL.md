@@ -2,6 +2,7 @@
 
 ## Voraussetzungen
 - Windows 10/11, **Windows PowerShell 5.1** (vorinstalliert) – PowerShell 7 ist nicht nötig (nur für Extensions mit `.RUNTIME PS7`)
+- **.NET Framework 4.7.2** oder neuer (ab Windows 10 1803 dabei) – nötig für die App-Sicherung
 - Internet: `login.microsoftonline.com`, `graph.microsoft.com`; für Updates `api.github.com`, `raw.githubusercontent.com`
 - je Tenant einmalig ein Konto mit der Rolle **Global Administrator** (oder Privileged Role Administrator zusammen mit Application Administrator) – HU-MultiTenant legt die App-Registrierung selbst an (siehe unten); alternativ eine selbst angelegte App-Registrierung mit Secret
 - für Excel-Reports das Modul **ImportExcel** (wird beim ersten Report installiert; Excel selbst ist nicht nötig)
