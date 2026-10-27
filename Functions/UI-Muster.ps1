@@ -125,7 +125,7 @@ function Update-HUMuList([string]$SelectId = '') {
         }
         if (-not $ok) { continue }
         $herk = @($p.Sources | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', '
-        if ("$($p.Origin)" -eq 'vorlage') { $herk = "Microsoft-Vorlagen (Graph)" } elseif ("$($p.Origin)" -eq 'importiert') { $herk = "importiert$(if ($p.Publisher) { " von $($p.Publisher)" })$(if (-not $p.Checked) { ', ungeprueft' })" }
+        if ("$($p.Origin)" -eq 'vorlage') { $herk = "Microsoft-Vorlagen (Graph)" } elseif ("$($p.Origin)" -eq 'importiert') { $herk = "importiert$(if ($p.Publisher) { " von $($p.Publisher) (nicht verifiziert)" })$(if (-not $p.Checked) { ', ungeprueft' })" }
         $sub = @(@($p.TagText) + @($herk) | Where-Object { $_ }) -join '  |  '
         $lock = if ($p.BuiltIn) { "$([char]::ConvertFromUtf32(0x1F512)) " } elseif ("$($p.Origin)" -in 'importiert', 'vorlage' -and -not $p.Checked) { "$([char]0x26A0) " } else { '' }
         [pscustomobject]@{

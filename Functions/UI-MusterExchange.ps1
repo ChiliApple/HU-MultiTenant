@@ -257,7 +257,7 @@ function Start-HUMuImport([string[]]$Paths = @()) {
         return
     }
     $info = if ($plan.Kind -eq 'humuster') {
-        "Datei von '$(if ($plan.Publisher) { $plan.Publisher } else { 'unbekannt' })'$(if ($plan.Exported) { ", exportiert $(try { ([datetime]$plan.Exported).ToLocalTime().ToString('dd.MM.yyyy HH:mm') } catch { $plan.Exported })" }). Pruefsumme (SHA-256): $($plan.Sha256) - mit dem Herausgeber vergleichen (belegt, dass die Datei unveraendert ist, nicht wer sie gemacht hat). "
+        "Datei von '$(if ($plan.Publisher) { $plan.Publisher } else { 'unbekannt' })' (Angabe in der Datei, nicht verifiziert)$(if ($plan.Exported) { ", exportiert $(try { ([datetime]$plan.Exported).ToLocalTime().ToString('dd.MM.yyyy HH:mm') } catch { $plan.Exported })" }). Pruefsumme (SHA-256): $($plan.Sha256) - mit dem Herausgeber vergleichen (belegt, dass die Datei unveraendert ist, nicht wer sie gemacht hat). "
     } else { 'JSON-Dateien: erkannt werden Conditional Access, benannte Orte, Authentifizierungsstaerken und bekannte Intune-Objekte. ' }
     $info += 'Bereinigt wie beim Export. Das Paket kommt als NEUES Paket in die Bibliothek, gekennzeichnet "ungeprueft": anwenden laesst es sich erst nach deiner Bestaetigung.'
     if (-not $plan.Ok) { $info += "`nHinweis: $(@($plan.Errors) -join ' ')" }

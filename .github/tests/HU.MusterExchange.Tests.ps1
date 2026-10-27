@@ -334,3 +334,11 @@ Describe 'Pruefbefunde 072 (Gemini)' {
         (Invoke-HUMusterSanitize -Typ 'Konfiguration' -Name 'Password: 12 Zeichen' -Obj $o).Status | Should -Be 'ok'
     }
 }
+
+Describe 'Muster-Austausch: Freitext aus fremden Dateien (072 G21)' {
+    It 'entfernt Steuer- und Richtungszeichen und begrenzt die Laenge' {
+        ConvertTo-HUMxPlainText ("Kolleg" + [char]0x202E + "in`t`r`nSchule" + [char]0) 80 | Should -Be 'Kolleg in Schule'
+        (ConvertTo-HUMxPlainText ('x' * 500) 80).Length | Should -Be 83
+        ConvertTo-HUMxPlainText '' 80 | Should -Be ''
+    }
+}
