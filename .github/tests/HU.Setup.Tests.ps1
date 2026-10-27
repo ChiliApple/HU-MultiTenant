@@ -101,6 +101,12 @@ Describe 'Rechte-Katalog (Config\graph-permissions.json)' {
         $w = @($script:Cat.permissions | Where-Object { $_.default -eq $true -and "$($_.name)" -match 'ReadWrite|PrivilegedOperations|\.Write|Create' } | ForEach-Object { "$($_.name)" })
         $w.Count | Should -Be 0
     }
+    It 'Umfang verteilen: genau die Schreibrechte fuer Apps, Wartung und Jetzt ausfuehren, alle im Katalog' {
+        $v = @($script:Cat.verteilen | Sort-Object)
+        $v | Should -Be @('DeviceManagementApps.ReadWrite.All', 'DeviceManagementManagedDevices.PrivilegedOperations.All', 'DeviceManagementScripts.ReadWrite.All')
+        $n = @($script:Cat.permissions | ForEach-Object { "$($_.name)" })
+        foreach ($x in $v) { $n | Should -Contain $x }
+    }
     It 'Lesen fuer Apps und Wartung ist vorgewaehlt' {
         $n = @($script:Cat.permissions | Where-Object { $_.default -eq $true } | ForEach-Object { "$($_.name)" })
         $n | Should -Contain 'DeviceManagementApps.Read.All'

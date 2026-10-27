@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     HU-MultiTenant - Tenant einrichten (Admin-Anmeldung im Browser) bzw. fehlende Rechte erteilen.
     Ein Fenster fuer beide Faelle; Texte und sichtbare Felder setzt Functions\UI-TenantSetup.ps1.
 -->
@@ -66,7 +66,8 @@
 
             <DockPanel Grid.Row="1" Margin="0,0,0,4">
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                    <Button x:Name="btnSelDefault" Content="Standard" Style="{StaticResource ToolButton}" Margin="0,0,4,0" ToolTip="Auswahl auf die Standard-Rechte zur&#xFC;cksetzen"/>
+                    <Button x:Name="btnSelDefault" Content="Nur lesen" Style="{StaticResource ToolButton}" Margin="0,0,4,0" ToolTip="Nur lesende Standard-Rechte: Reports, Vergleich, Sicherheit, Apps und Wartung ansehen"/>
+                    <Button x:Name="btnSelVerteilen" Content="Lesen + verteilen" Style="{StaticResource ToolButton}" Margin="0,0,4,0" ToolTip="Zus&#xE4;tzlich Apps hochladen und zuweisen, Wartung anlegen und Jetzt ausf&#xFC;hren (weitreichende Rechte werden eigens best&#xE4;tigt)"/>
                     <Button x:Name="btnSelNone" Content="Keine" Style="{StaticResource ToolButton}"/>
                 </StackPanel>
                 <TextBlock x:Name="lblPerms" Style="{StaticResource SectionTitle}" Text="Rechte (Microsoft Graph, Anwendungsberechtigungen)"/>

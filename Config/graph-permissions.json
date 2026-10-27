@@ -38,6 +38,7 @@
     { "name": "Group.Create", "default": false, "why": "Zusatzmodul Autopilot: dynamische Gruppe fuer einen Group Tag anlegen (nur neue Gruppen, aendert keine bestehenden)" },
     { "name": "BitlockerKey.Read.All", "default": false, "why": "Zusatzmodul Autopilot: Zurueckziehen - BitLocker-Wiederherstellungsschluessel fuer die Uebergabe lesen (jeder Abruf steht im Entra-Ueberwachungsprotokoll)" }
   ],
+  "verteilen": [ "DeviceManagementApps.ReadWrite.All", "DeviceManagementScripts.ReadWrite.All", "DeviceManagementManagedDevices.PrivilegedOperations.All" ],
   "risky": [
     "Application.ReadWrite.All", "Application.ReadWrite.OwnedBy", "AppRoleAssignment.ReadWrite.All",
     "RoleManagement.ReadWrite.Directory", "Directory.ReadWrite.All", "DelegatedPermissionGrant.ReadWrite.All",

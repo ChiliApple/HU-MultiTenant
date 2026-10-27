@@ -57,7 +57,7 @@ Umsteigen von Secret: bestehenden Tenant einfach einrichten (wird an der Tenant-
 | `RoleManagement.Read.Directory` | Rollennamen statt IDs im Tenant-Vergleich; Sicherheitskatalog (Admin-Rollen A08, A27, A37 – ohne das Recht nicht prüfbar) |
 | `Policy.ReadWrite.ConditionalAccess` | optional: Conditional Access aus Backup wiederherstellen (wird deaktiviert angelegt) |
 
-   Bei der Einrichtung im Programm sind nur die lesenden Rechte vorausgewählt (Liste: `Config\graph-permissions.json`). Schreibrechte (*erst bei Bedarf*, *optional*) erteilst du, wenn du sie brauchst: Fehlt eines beim Hochladen, Zuweisen oder *Jetzt ausführen*, bietet die App an, genau dieses Recht zu erteilen. *Weitreichende* Rechte werden dabei eigens bestätigt.
+   Bei der Einrichtung im Programm ist **Lesen + verteilen** vorausgewählt: die lesenden Rechte plus die drei *erst bei Bedarf*-Rechte (Liste: `Config\graph-permissions.json`). Mit **Nur lesen** bleiben sie weg; *optionale* Rechte erteilst du, wenn du sie brauchst: Fehlt eines beim Hochladen, Zuweisen oder *Jetzt ausführen*, bietet die App an, genau dieses Recht zu erteilen. *Weitreichende* Rechte werden dabei eigens bestätigt.
    Jede Extension zeigt ihre Berechtigungen im Reiter *Extensions*; der Knopf **Berechtigungen** vergleicht sie mit dem Token.
    Schreibende Extensions (`READ/WRITE`) brauchen zusätzlich die passenden `ReadWrite`-Berechtigungen.
 4. **Zertifikate & Geheimnisse › Neuer geheimer Clientschlüssel** – den **Wert** sofort kopieren (wird nur einmal angezeigt).

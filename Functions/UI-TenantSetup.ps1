@@ -116,7 +116,8 @@ function Update-HUTsuPermList {
         elseif ($u.NurVorauswahl) { $cb.IsChecked = $false }   # Aufruf mit -Preselect (z. B. Zusatzmodul): nur genau diese Rechte
         else {
             # Vorauswahl: Standard-Rechte; beim Erteilen zusaetzlich alles, was eine Extension braucht
-            $cb.IsChecked = (($cat -and $cat.default -eq $true) -or ($u.Mode -eq 'Grant' -and $usage[$n] -and -not $risky) -or ($u.Extra -contains $n))
+            # Umfang 'verteilen': zusaetzlich die Schreibrechte fuer Apps, Wartung und Jetzt ausfuehren
+            $cb.IsChecked = (($cat -and $cat.default -eq $true) -or ($u.Scope -eq 'verteilen' -and @($u.Catalog.verteilen) -contains $n) -or ($u.Mode -eq 'Grant' -and $usage[$n] -and -not $risky) -or ($u.Extra -contains $n))
         }
         $cb.Add_Click({ $script:TSU.Checked["$($this.Tag)"] = [bool]$this.IsChecked; Update-HUTsuState })
         if ($granted) { $cb.Opacity = 0.75 }
@@ -137,7 +138,7 @@ function Update-HUTsuState {
     $sel = @(Get-HUTsuSelected)
     $risky = @($sel | Where-Object { Test-HUPermissionRisky $_ $u.Catalog })
     $busy = ($u.Phase -ne 'Idle')
-    foreach ($x in @($u.C.lstPerms, $u.C.txtKey, $u.C.txtName, $u.C.txtExtraPerm, $u.C.btnAddPerm, $u.C.btnSelDefault, $u.C.btnSelNone)) { $x.IsEnabled = -not $busy }
+    foreach ($x in @($u.C.lstPerms, $u.C.txtKey, $u.C.txtName, $u.C.txtExtraPerm, $u.C.btnAddPerm, $u.C.btnSelDefault, $u.C.btnSelVerteilen, $u.C.btnSelNone)) { $x.IsEnabled = -not $busy }
     $u.C.btnStart.IsEnabled = (-not $busy -and $sel.Count -gt 0)
     if (-not $busy) {
         $u.C.txtState.Text = if ($u.Mode -eq 'Grant') { "$($sel.Count) Recht(e) zum Erteilen ausgewaehlt$(if ($risky.Count) { ", davon $($risky.Count) weitreichend" })" }
@@ -347,6 +348,7 @@ function Show-HUTenantSetupDialog {
         Window = $w; C = $c; Catalog = $catalog; Mode = $(if ($tenant) { 'Grant' } else { 'Setup' }); Tenant = $tenant
         Granted = $granted; GrantedKnown = $known; Extra = @(); Checked = @{}; Phase = 'Idle'; LoginCtx = $null; Login = $null; Worker = $null
         Key = ''; WorkStarted = $null; Result = $null; Done = @(); Sel = @(); NurVorauswahl = (@($Preselect | Where-Object { "$_" }).Count -gt 0)
+        Scope = $(if ($tenant) { 'lesen' } else { 'verteilen' })   # neuer Tenant: Lesen + verteilen vorgewaehlt; Rechte erteilen: nur lesen
     }
     foreach ($p in $Preselect) { if ("$p") { $script:TSU.Checked["$p"] = $true; if (-not @($catalog.permissions | Where-Object { "$($_.name)" -eq "$p" }).Count) { $script:TSU.Extra += "$p" } } }
 
@@ -360,7 +362,8 @@ function Show-HUTenantSetupDialog {
         $c.txtIntro.Text = "Ein Global Administrator meldet sich einmal im Browser an (Microsoft-App 'Graph Command Line Tools'). HU-MultiTenant legt dann im Tenant die App-Registrierung 'HU-MultiTenant' an, erzeugt auf diesem PC ein nicht exportierbares Zertifikat (12 Monate, wird automatisch erneuert), erteilt die ausgewaehlten Rechte, testet die Anmeldung und traegt den Tenant ein. Kein Secret, nichts abzutippen."
     }
 
-    $c.btnSelDefault.Add_Click({ $script:TSU.Checked = @{}; Update-HUTsuPermList })
+    $c.btnSelDefault.Add_Click({ $script:TSU.Checked = @{}; $script:TSU.Scope = 'lesen'; $script:TSU.NurVorauswahl = $false; Update-HUTsuPermList })
+    $c.btnSelVerteilen.Add_Click({ $script:TSU.Checked = @{}; $script:TSU.Scope = 'verteilen'; $script:TSU.NurVorauswahl = $false; Update-HUTsuPermList })
     $c.btnSelNone.Add_Click({ foreach ($cb in $script:TSU.C.lstPerms.Items) { if ($script:TSU.Granted -notcontains "$($cb.Tag)") { $cb.IsChecked = $false; $script:TSU.Checked["$($cb.Tag)"] = $false } }; Update-HUTsuState })
     $addPerm = {
         $u = $script:TSU
