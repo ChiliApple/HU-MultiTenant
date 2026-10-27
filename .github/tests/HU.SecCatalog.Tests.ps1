@@ -670,6 +670,24 @@ Describe 'A37 bis A42 neue Regeln' {
         $r.Status | Should -Be 'OK'; $r.Detail | Should -BeLike '*1 erlaubt laut Sollwert*'
         $it = @(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'A42' | Where-Object { $_.App -eq 'Fremd' })[0]
         $it.Zaehlt | Should -BeLike 'Nein*'; $it.Bewertung | Should -Be ''
+        # Review 066 B2: gleichnamige fremde App -> Name mehrdeutig, keine wird abgezogen; Objekt-ID ist eindeutig
+        $global:HUSecFx['servicePrincipals'] = {
+            if ($global:HUSecEp -like '*appRoleAssignedTo*') {
+                @([pscustomobject]@{ principalId = 'sp1'; principalDisplayName = 'Fremd'; appRoleId = 'r1' }, [pscustomobject]@{ principalId = 'sp3'; principalDisplayName = 'Fremd'; appRoleId = 'r1' },
+                  [pscustomobject]@{ principalId = 'own'; principalDisplayName = 'Eigen'; appRoleId = 'r1' })
+            }
+            elseif ($global:HUSecEp -like '*00000003*') { [pscustomobject]@{ id = 'g'; appRoles = @([pscustomobject]@{ id = 'r1'; value = 'Directory.ReadWrite.All' }) } }
+            else { [pscustomobject]@{ id = 'own' } }
+        }
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
+        $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 2; $r.Detail | Should -BeLike '*Name mehrfach vorhanden*'
+        @(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'A42' | Where-Object { $_.App -eq 'Fremd' -and $_.Bewertung -eq 'abweichend' }).Count | Should -Be 2
+        @(Save-HUSecBaselineEdit -Values @{ 'A42.allowedApps' = 'sp1' }).Count | Should -Be 0
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
+        $r.Count | Should -Be 1
+        (@(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'A42' | Where-Object { $_.ObjektId -eq 'sp1' })[0]).Zaehlt | Should -BeLike '*Objekt-ID*'
+        # Format-Zeichen (Bidi) im Sollwert abgelehnt
+        @(Save-HUSecBaselineEdit -Values @{ 'A42.allowedApps' = ("App" + [char]0x202E + "x") }).Count | Should -Be 1
         Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force
     }
 }

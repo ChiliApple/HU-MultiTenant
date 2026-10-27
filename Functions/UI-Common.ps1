@@ -84,15 +84,20 @@ function Add-HUOutputTools($Rtb) {
     foreach ($d in $script:HUOutputDone) { if ([object]::ReferenceEquals($d, $Rtb)) { return } }
     $p = $Rtb.Parent
     if (-not ($p -is [System.Windows.Controls.Panel] -or $p -is [System.Windows.Controls.Decorator])) { return }
+    if ($p -is [System.Windows.Controls.Panel] -and $p.IsItemsHost) { return }
     [void]$script:HUOutputDone.Add($Rtb)
     # eigener "Leeren"-Knopf rechts oben ueber der Ausgabe (z. B. in Modulen) -> ausblenden, unser "Loeschen" loest ihn aus
     $old = $null
     if ($p -is [System.Windows.Controls.Panel]) {
-        foreach ($sib in @($p.Children)) {
-            if ($sib -is [System.Windows.Controls.Button] -and "$($sib.HorizontalAlignment)" -eq 'Right' -and "$($sib.VerticalAlignment)" -eq 'Top' -and "$($sib.Content)" -match '^\s*(Leeren|L(oe|\u00F6)schen)\s*$') {
-                $old = $sib; $sib.Visibility = 'Collapsed'
-            }
-        }
+        # Review 066 B1: nie einen fremden Loesch-Knopf treffen - nur ausdruecklich markiert (Tag 'HUOutputClear') oder
+        # exakt "Leeren"/"Ausgabe leeren", rechts oben und in derselben Grid-Zelle wie die Ausgabe; hoechstens ein Knopf
+        $cell = { param($e) "$([System.Windows.Controls.Grid]::GetRow($e))/$([System.Windows.Controls.Grid]::GetColumn($e))" }
+        $cands = @(foreach ($sib in @($p.Children)) {
+                if ($sib -isnot [System.Windows.Controls.Button]) { continue }
+                if ("$($sib.Tag)" -eq 'HUOutputClear') { $sib; continue }
+                if ("$($sib.HorizontalAlignment)" -eq 'Right' -and "$($sib.VerticalAlignment)" -eq 'Top' -and "$($sib.Content)" -match '^\s*(Ausgabe\s+)?leeren\s*$' -and (& $cell $sib) -eq (& $cell $Rtb)) { $sib }
+            })
+        if ($cands.Count -eq 1) { $old = $cands[0]; $old.Visibility = 'Collapsed' }
     }
     $k = Get-HUOutputStateKey $Rtb
     $bottom = $false
@@ -106,7 +111,7 @@ function Add-HUOutputTools($Rtb) {
     # Huelle: Grid an der Stelle der Ausgabe, angehaengte Eigenschaften wandern mit
     $g = New-Object System.Windows.Controls.Grid
     $att = @([System.Windows.Controls.Grid]::RowProperty, [System.Windows.Controls.Grid]::ColumnProperty, [System.Windows.Controls.Grid]::RowSpanProperty,
-        [System.Windows.Controls.Grid]::ColumnSpanProperty, [System.Windows.Controls.DockPanel]::DockProperty)
+        [System.Windows.Controls.Grid]::ColumnSpanProperty, [System.Windows.Controls.DockPanel]::DockProperty, [System.Windows.Controls.Panel]::ZIndexProperty)
     foreach ($dp in $att) {
         $v = $Rtb.ReadLocalValue($dp)
         if ($v -ne [System.Windows.DependencyProperty]::UnsetValue) { $g.SetValue($dp, $v); $Rtb.ClearValue($dp) }
@@ -135,7 +140,11 @@ function Add-HUOutputTools($Rtb) {
     $bDel.Add_Click({
             try {
                 $t = $this.Tag
-                if ($t.Old) { $t.Old.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) } else { Clear-HUOutput $t.Rtb }
+                if ($t.Old) {
+                    # gebundenes Command ausfuehren (RaiseEvent loest es nicht aus), sonst Click
+                    if ($t.Old.Command) { if ($t.Old.Command.CanExecute($t.Old.CommandParameter)) { $t.Old.Command.Execute($t.Old.CommandParameter) } }
+                    else { $t.Old.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) }
+                } else { Clear-HUOutput $t.Rtb }
             } catch { }
         })
     [void]$bar.Children.Add($bRev); [void]$bar.Children.Add($bDel)
@@ -217,10 +226,14 @@ function Test-HUDiffItem($Item) {
         foreach ($n in $script:HUDiffTintCols) { $p = $Item.PSObject.Properties[$n]; if ($p) { $vals += "$($p.Value)" } }
     }
     # "abweichend" (Vergleiche, Bewertung) und "Abweichung" (Status im Sicherheitskatalog); "keine Abweichung" zaehlt nicht
-    foreach ($v in $vals) { if ($v -match '(?i)\b(abweichend|abweichung)\b' -and $v -notmatch '(?i)\b(keine|ohne)\s+abweichung') { return $true } }
+    # Review 066 B6: jede Form von "abweich..." ausser verneint ("keine/ohne/nicht ...") oder mit Anzahl 0 ("Abweichung: 0", "0 Abweichungen")
+    foreach ($v in $vals) {
+        if ($v -match '(?i)abweich' -and $v -notmatch '(?i)\b(keine|kein|ohne|nicht)\s+abweich|abweich\w*\s*:\s*0\b|(^|\D)0\s+abweich') { return $true }
+    }
     return $false
 }
 $script:HUTintQueue = New-Object System.Collections.ArrayList
+$script:HUTintWarned = $false
 function Set-HUDiffRowTint($Row, [switch]$Retry) {
     try {
         if ($null -eq $Row) { return }
@@ -243,7 +256,9 @@ function Set-HUDiffRowTint($Row, [switch]$Retry) {
         if ($script:Window -and [object]::ReferenceEquals($win, $script:Window)) { return }
         if (Test-HUDiffItem $Row.Item) { $Row.Background = $script:HUDiffTintBrush }
         elseif ([object]::ReferenceEquals($Row.Background, $script:HUDiffTintBrush)) { $Row.ClearValue([System.Windows.Controls.Control]::BackgroundProperty) }
-    } catch { }
+    } catch {
+        if (-not $script:HUTintWarned) { $script:HUTintWarned = $true; try { Write-HULog -Message "Zeilenfaerbung: $($_.Exception.Message)" -Level 'WARN' } catch { } }
+    }
 }
 
 function Set-HUGridFit($Grid) {

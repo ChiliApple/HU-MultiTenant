@@ -89,9 +89,12 @@ Describe 'Ausgabe: alle Schreiber gehen ueber die gemeinsame Logik' {
     }
     It 'eigener Leeren-Knopf ueber der Ausgabe (Module) wird ausgeblendet und von Loeschen ausgeloest' {
         $src = Get-Content -Raw -LiteralPath (Join-Path $script:Root 'Functions\UI-Common.ps1')
-        $src | Should -Match "Leeren\|L\(oe"
-        $src | Should -Match '\$sib\.Visibility = .Collapsed.'
-        $src | Should -Match '\$t\.Old\.RaiseEvent'
+        # Review 066 B1: nur markiert (Tag HUOutputClear) oder exakt Leeren/Ausgabe leeren in derselben Zelle, nie "Loeschen"
+        $src | Should -Match "HUOutputClear"
+        $src | Should -Match "\(Ausgabe\\s\+\)\?leeren"
+        $src | Should -Not -Match "Leeren\|L\(oe"
+        $src | Should -Match '\$cands\.Count -eq 1'
+        $src | Should -Match 'Command\.Execute'
     }
 }
 
@@ -110,5 +113,11 @@ Describe 'Zeilenfaerbung: Test-HUDiffItem (global)' {
         Test-HUDiffItem ([pscustomobject]@{ Status = 'OK' }) | Should -BeFalse
         Test-HUDiffItem ([pscustomobject]@{ Bewertung = '' }) | Should -BeFalse
         Test-HUDiffItem ([pscustomobject]@{ Ergebnis = 'keine Abweichung' }) | Should -BeFalse
+        # Review 066 B6
+        Test-HUDiffItem ([pscustomobject]@{ Status = '3 Abweichungen' }) | Should -BeTrue
+        Test-HUDiffItem ([pscustomobject]@{ Status = '10 Abweichungen' }) | Should -BeTrue
+        Test-HUDiffItem ([pscustomobject]@{ Status = 'Abweichung: 0' }) | Should -BeFalse
+        Test-HUDiffItem ([pscustomobject]@{ Status = '0 Abweichungen' }) | Should -BeFalse
+        Test-HUDiffItem ([pscustomobject]@{ Vergleich = 'nicht abweichend' }) | Should -BeFalse
     }
 }

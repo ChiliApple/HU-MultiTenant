@@ -543,7 +543,7 @@ $script:HUSecBaselineInfo = @(
     @{ Rule = 'Katalog'; Key = 'silent';        Kind = 'rules'; Text = 'Teams-Meldung: diese Regeln gar nicht melden (Matrix und Ampel bleiben). Regeln mit Mindeststandard werden immer gemeldet.' }
     @{ Rule = 'V1';  Key = 'accounts';          Kind = 'guids'; Text = 'Notfallkonten (Objekt-IDs der Benutzer, mit Komma getrennt). Jedes muss in jeder aussperrfaehigen Richtlinie ausgenommen sein; gilt auch fuer A25 und A27.' }
     @{ Rule = 'V5';  Key = 'policies';          Kind = 'names'; Text = 'Richtlinien, die zusammen den MFA-Grundschutz bilden (Nummer am Namensanfang wie 100, 200 oder voller Name; mit Komma getrennt). Sind alle vorhanden und aktiv, gilt V5 als erfuellt - auch ohne eine einzelne Richtlinie fuer alle Benutzer.' }
-    @{ Rule = 'A42'; Key = 'allowedApps';       Kind = 'names'; Text = 'Apps, deren kritische Rechte gewollt sind (Anzeigename oder Objekt-ID des Dienstprinzipals, mit Komma getrennt, z. B. die Sync-App der Schulverwaltung). Sie werden angezeigt, aber nicht mitgezaehlt.' }
+    @{ Rule = 'A42'; Key = 'allowedApps';       Kind = 'names'; Text = 'Apps, deren kritische Rechte gewollt sind (am besten Objekt-ID des Dienstprinzipals - steht in der Liste; Anzeigename gilt nur, solange er eindeutig ist; mit Komma getrennt, z. B. die Sync-App der Schulverwaltung). Sie werden angezeigt, aber nicht mitgezaehlt.' }
     @{ Rule = 'A25'; Key = 'adminGroups';       Kind = 'guids'; Text = 'Admin-Gruppen (Objekt-IDs), die bei der Adminportal-Sperre ausgenommen sein duerfen.' }
     @{ Rule = 'A25'; Key = 'maxUsers';          Kind = 'int';   Text = 'Hoechstens so viele einzelne Konten duerfen bei der Adminportal-Sperre ausgenommen sein (Notfallkonten zaehlen nicht).' }
     @{ Rule = 'A01'; Key = 'minEnabled';        Kind = 'int';   Text = 'Mindestens so viele aktive Richtlinien fuer bedingten Zugriff.' }
@@ -623,7 +623,7 @@ function Save-HUSecBaselineEdit {
         elseif ($i.Kind -eq 'names') {
             # Namen (Richtlinien, Apps): mit Komma oder Semikolon getrennt, Leerzeichen im Namen erlaubt
             $parts = @($t -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-            $bad = @($parts | Where-Object { $_.Length -gt 150 -or $_ -match '[\p{Cc}]' })
+            $bad = @($parts | Where-Object { $_.Length -gt 150 -or $_ -match '[\p{Cc}\p{Cf}]' })
             if ($bad.Count -or $parts.Count -gt 50) { $errs.Add("$k`: hoechstens 50 Namen mit je bis zu 150 Zeichen"); continue }
             $clean[$k] = @($parts | Sort-Object -Unique)
         }
@@ -837,12 +837,36 @@ function Test-HUSecCaMfaAny($P) {
 }
 
 # Liste der Richtlinien fuer "Richtlinien anzeigen": alle Richtlinien, mit Hinweis ob und warum sie fuer die Regel zaehlen
+# A42 Sollwert allowedApps (Review 066 B2): Objekt-ID des Dienstprinzipals ist eindeutig; Anzeigename nur, wenn er unter den
+# Apps mit kritischen Rechten genau einmal vorkommt - sonst zaehlt keine davon als erlaubt (gleichnamige fremde App).
+# Ergebnis je principalId: 'id' | 'name' | 'mehrdeutig' (Name passt, aber mehrfach vorhanden)
+function Get-HUSecA42Allowed($Crit, $Allow) {
+    $allow = @($Allow | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    $res = @{}
+    if (-not $allow.Count) { return $res }
+    $byName = @{}
+    foreach ($x in @($Crit | Where-Object { -not $_.own })) {
+        $n = "$($x.app)".Trim().ToLowerInvariant()
+        if (-not $byName.ContainsKey($n)) { $byName[$n] = New-Object System.Collections.Generic.HashSet[string] }
+        [void]$byName[$n].Add("$($x.principalId)")
+    }
+    foreach ($x in @($Crit | Where-Object { -not $_.own })) {
+        $id = "$($x.principalId)"
+        if ($res.ContainsKey($id) -and $res[$id] -eq 'id') { continue }
+        if (@($allow | Where-Object { $_ -ieq $id }).Count) { $res[$id] = 'id'; continue }
+        if (@($allow | Where-Object { $_ -ieq "$($x.app)".Trim() }).Count) {
+            $res[$id] = $(if ($byName["$($x.app)".Trim().ToLowerInvariant()].Count -eq 1) { 'name' } else { 'mehrdeutig' })
+        }
+    }
+    return $res
+}
+
 # Sollwert-Eintrag zu Richtlinie: Nummer am Namensanfang ("100" trifft "100 - ...", nicht "1000") oder voller Name
 function Test-HUSecPolicyNameMatch([string]$Entry, [string]$Name) {
     $e = "$Entry".Trim(); $n = "$Name".Trim()
     if (-not $e) { return $false }
     if ($e -match '^\d+$') { return ($n -match ('^' + [regex]::Escape($e) + '(?!\d)')) }
-    return ($n -ieq $e)
+    return (($n -replace '\s+', ' ') -ieq ($e -replace '\s+', ' '))
 }
 
 function Get-HUSecPolicyItems($Policies, [scriptblock]$Match) {
@@ -1109,7 +1133,7 @@ $script:HUSecRules = @(
                 $miss = @(); $off = @()
                 foreach ($w in $want) {
                     $hit = @($F.ca | Where-Object { Test-HUSecPolicyNameMatch $w "$($_.displayName)" })
-                    if (-not $hit.Count) { $miss += $w } elseif (-not @($hit | Where-Object { "$($_.state)" -eq 'enabled' }).Count) { $off += $w }
+                    if (-not $hit.Count) { $miss += $w } elseif (-not @($hit | Where-Object { "$($_.state)" -eq 'enabled' }).Count) { $off += $(if (@($hit | Where-Object { "$($_.state)" -eq 'enabledForReportingButNotEnforced' }).Count) { "$w (nur Bericht)" } else { $w }) }
                 }
                 if (-not $miss.Count -and -not $off.Count) { return @{ Status = 'OK'; Count = $want.Count; Detail = "Grundschutz laut Sollwert: alle $($want.Count) Richtlinien aktiv ($($want -join ', '))" } }
                 $txt = @(); if ($miss.Count) { $txt += "fehlt: $($miss -join ', ')" }; if ($off.Count) { $txt += "nicht aktiv: $($off -join ', ')" }
@@ -1553,20 +1577,24 @@ $script:HUSecRules = @(
         } }
     @{ Id = 'A42'; Area = 'Apps'; Sev = 'Hoch'; Title = 'Apps mit kritischen Anwendungsrechten auf Microsoft Graph'; Facts = @('graphapps'); Min = $false; ItemsLabel = 'Apps'; ItemsSort = 'App'; Export = $true
         Items = { param($F, $B)
-            foreach ($g in (@($F.graphapps | Where-Object { $script:HUSecCriticalPerms -contains $_.perm }) | Group-Object principalId)) {
-                $a = $g.Group[0]
-                $ok = @($B.allowedApps | Where-Object { "$_".Trim() -and ("$($a.app)" -ieq "$_".Trim() -or "$($a.principalId)" -ieq "$_".Trim()) }).Count
-                [pscustomobject]@{ App = "$($a.app)$(if ($a.own) { ' (dieses Programm)' })"; Zaehlt = $(if ($a.own) { 'Nein - dieses Programm' } elseif ($ok) { 'Nein - erlaubt (Sollwert)' } else { 'Ja' }); Bewertung = $(if (-not $a.own -and -not $ok) { 'abweichend' } else { '' }); Rechte = (@($g.Group | ForEach-Object { $_.perm } | Sort-Object -Unique) -join ', ') }
+            $crit = @($F.graphapps | Where-Object { $script:HUSecCriticalPerms -contains $_.perm })
+            $al = Get-HUSecA42Allowed $crit $B.allowedApps
+            foreach ($g in ($crit | Group-Object principalId)) {
+                $a = $g.Group[0]; $k = $(if ($al.ContainsKey("$($a.principalId)")) { $al["$($a.principalId)"] } else { '' })
+                $z = if ($a.own) { 'Nein - dieses Programm' } elseif ($k -eq 'id') { 'Nein - erlaubt (Sollwert, Objekt-ID)' } elseif ($k -eq 'name') { 'Nein - erlaubt (Sollwert, nur Name)' } elseif ($k -eq 'mehrdeutig') { 'Ja - Name mehrfach vorhanden, bitte Objekt-ID eintragen' } else { 'Ja' }
+                [pscustomobject]@{ App = "$($a.app)$(if ($a.own) { ' (dieses Programm)' })"; ObjektId = "$($a.principalId)"; Zaehlt = $z; Bewertung = $(if (-not $a.own -and $k -notin 'id', 'name') { 'abweichend' } else { '' }); Rechte = (@($g.Group | ForEach-Object { $_.perm } | Sort-Object -Unique) -join ', ') }
             }
         }
         Eval = { param($F, $B)
             $crit = @($F.graphapps | Where-Object { $script:HUSecCriticalPerms -contains $_.perm })
-            $allow = @($B.allowedApps | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
-            $isOk = { param($x) [bool]@($allow | Where-Object { "$($x.app)" -ieq $_ -or "$($x.principalId)" -ieq $_ }).Count }
+            $al = Get-HUSecA42Allowed $crit $B.allowedApps
+            $isOk = { param($x) $al.ContainsKey("$($x.principalId)") -and $al["$($x.principalId)"] -in 'id', 'name' }
             $apps = @($crit | Where-Object { -not $_.own -and -not (& $isOk $_) } | Select-Object -ExpandProperty principalId -Unique)
             $nAllow = @($crit | Where-Object { -not $_.own -and (& $isOk $_) } | Select-Object -ExpandProperty principalId -Unique).Count
+            $nAmb = @($al.Values | Where-Object { $_ -eq 'mehrdeutig' }).Count
             $ownTxt = if (@($crit | Where-Object { $_.own }).Count) { ' (dieses Programm nicht mitgezaehlt)' } else { '' }
             if ($nAllow) { $ownTxt += " ($nAllow erlaubt laut Sollwert)" }
+            if ($nAmb) { $ownTxt += " ($nAmb mit erlaubtem Namen gezaehlt - Name mehrfach vorhanden, Objekt-ID eintragen)" }
             if ($apps.Count) { return @{ Status = 'Abweichung'; Count = $apps.Count; Detail = "$($apps.Count) App(s) mit kritischen Rechten$ownTxt - bitte pruefen, ob noetig" } }
             @{ Status = 'OK'; Count = 0; Detail = "keine weitere App mit kritischen Rechten$ownTxt" }
         } }
