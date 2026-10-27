@@ -29,6 +29,8 @@ function Add-HUAddonTab($Info) {
     if ($Info.Header -and -not $tab.Header) { $tab.Header = $Info.Header }
     if (-not $tab.Style) { try { $tab.Style = $script:Window.FindResource('DarkTabItem') } catch { } }
     $tab.Tag = 'addon'
+    try { Set-HUButtonFit $tab } catch { }   # Knoepfe wachsen mit ihrer Beschriftung (global)
+    try { Set-HUOutputTools $tab } catch { }  # Ausgaben: Umkehren/Loeschen, neuestes oben (global)
     $script:Controls[$tab.Name] = $tab
     [void]$script:Controls['tabMain'].Items.Add($tab)
 }
@@ -58,7 +60,8 @@ function Get-HUAddonStartList {
     # Kein zusaetzliches Risiko: wer in den Programmordner schreiben kann, kann auch Main.ps1 aendern.
     $dev = Join-Path $script:AppRoot 'AddonsDev'
     if (Test-Path -LiteralPath $dev) {
-        foreach ($d in @(Get-ChildItem -LiteralPath $dev -Directory -ErrorAction SilentlyContinue)) {
+        # Ordner mit _ oder . am Anfang = abgeschaltet (z. B. _Autopilot) - still uebergehen, keine Warnung
+        foreach ($d in @(Get-ChildItem -LiteralPath $dev -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '_*' -and $_.Name -notlike '.*' })) {
             $i = Read-HUAddonInfo $d.FullName
             if (-not $i.Error -and $i.Id -ne $d.Name) { $i.Error = "Ordnername '$($d.Name)' passt nicht zur Kennung '$($i.Id)'" }
             if (-not $i.Error -and [Version]$script:Version -lt $i.MinApp) { $i.Error = "braucht HU-MultiTenant $($i.MinApp)" }

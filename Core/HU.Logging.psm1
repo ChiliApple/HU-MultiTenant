@@ -290,15 +290,17 @@ function Write-LogToGUI {
                 $paragraph.FontFamily = [System.Windows.Media.FontFamily]::new('Consolas')
                 $paragraph.FontSize = 11
 
-                $rtb.Document.Blocks.Add($paragraph)
-
-                # Max Zeilen einhalten
-                while ($rtb.Document.Blocks.Count -gt $maxLines) {
-                    $rtb.Document.Blocks.Remove($rtb.Document.Blocks.FirstBlock)
+                # 2.5.6: neuestes oben (Standard); Document.Tag 'bottom' = klassisch unten (Knopf "Umkehren")
+                $doc = $rtb.Document
+                if ("$($doc.Tag)" -eq 'bottom') {
+                    $doc.Blocks.Add($paragraph)
+                    while ($doc.Blocks.Count -gt $maxLines) { [void]$doc.Blocks.Remove($doc.Blocks.FirstBlock) }
+                    $rtb.ScrollToEnd()
+                } else {
+                    if ($doc.Blocks.FirstBlock) { $doc.Blocks.InsertBefore($doc.Blocks.FirstBlock, $paragraph) } else { $doc.Blocks.Add($paragraph) }
+                    while ($doc.Blocks.Count -gt $maxLines) { [void]$doc.Blocks.Remove($doc.Blocks.LastBlock) }
+                    $rtb.ScrollToHome()
                 }
-
-                # Auto-Scroll
-                $rtb.ScrollToEnd()
             }
 
             if ($script:LogRichTextBox.Dispatcher.CheckAccess()) {

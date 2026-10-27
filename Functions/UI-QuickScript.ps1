@@ -43,9 +43,7 @@ function Write-QSOutput {
     $run = [System.Windows.Documents.Run]::new($Text)
     $run.Foreground = Get-HUBrush $Color
     $para.Inlines.Add($run)
-    $rtb.Document.Blocks.Add($para)
-    while ($rtb.Document.Blocks.Count -gt 5000) { $rtb.Document.Blocks.Remove($rtb.Document.Blocks.FirstBlock) }
-    $rtb.ScrollToEnd()
+    Add-HUOutputBlock $rtb $para 5000
 }
 
 # ============================================================================

@@ -167,6 +167,21 @@ function Start-HUSecretCheckAll([switch]$Force, [scriptblock]$Done = $null) {
     }
 }
 
+# Kopfzeile: passt die Zertifikat-Anzeige nicht neben die Knoepfe, nur das Schluessel-Symbol zeigen (volle Fassung im Tooltip)
+$script:HdrSecretFull = ''
+$script:HdrSecretTip = ''
+function Update-HUSecretFit {
+    # 2.5.6: Kopfzeile zeigt immer nur den farbigen Schluessel - der volle Text steht im Tooltip
+    $t = $script:Controls['txtSecretExpiry']
+    if (-not $t) { return }
+    $full = "$script:HdrSecretFull"
+    if (-not $full) { return }
+    try {
+        $t.Text = "$($script:KeyIcon)"; $t.Margin = [System.Windows.Thickness]::new(12, 0, 0, 0)
+        $t.ToolTip = "$($full -replace '^\S+\s', '')`n`n$($script:HdrSecretTip)"
+    } catch { }
+}
+
 function Update-HUSecretDisplay([switch]$LogWarnings) {
     $c = $script:Controls
     # 2.5.2: Ablauf in der Kopfzeile (neben Version/Kanal) - fuer den Tenant des offenen Reiters (Quick Script: dessen Tenant)
@@ -202,6 +217,10 @@ function Update-HUSecretDisplay([switch]$LogWarnings) {
         $c['txtSecretExpiry'].Foreground = Get-HUBrush $info.Color
         $c['txtSecretExpiry'].ToolTip = "$($info.Tooltip)`n`nKlick: Einstellungen > Tenants"
     }
+    # 2.5.6: volle Fassung merken; bei schmalem Fenster nur den (farbigen) Schluessel zeigen
+    $script:HdrSecretFull = "$($c['txtSecretExpiry'].Text)"
+    $script:HdrSecretTip = "$($c['txtSecretExpiry'].ToolTip)"
+    Update-HUSecretFit
     # Warnung in der Titelleiste
     $bad = @()
     foreach ($t in @($script:Settings.tenants)) {

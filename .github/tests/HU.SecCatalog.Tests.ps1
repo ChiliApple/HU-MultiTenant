@@ -664,6 +664,56 @@ Describe 'A37 bis A42 neue Regeln' {
         $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
         $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 1
         $r.Detail | Should -BeLike '*nicht mitgezaehlt*'
+        # Sollwert A42 allowedApps: erlaubte App wird angezeigt, aber nicht gezaehlt
+        @(Save-HUSecBaselineEdit -Values @{ 'A42.allowedApps' = 'Fremd' }).Count | Should -Be 0
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
+        $r.Status | Should -Be 'OK'; $r.Detail | Should -BeLike '*1 erlaubt laut Sollwert*'
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'A42' | Where-Object { $_.App -eq 'Fremd' })[0]
+        $it.Zaehlt | Should -BeLike 'Nein*'; $it.Bewertung | Should -Be ''
+        # Review 066 B2: gleichnamige fremde App -> Name mehrdeutig, keine wird abgezogen; Objekt-ID ist eindeutig
+        $global:HUSecFx['servicePrincipals'] = {
+            if ($global:HUSecEp -like '*appRoleAssignedTo*') {
+                @([pscustomobject]@{ principalId = 'sp1'; principalDisplayName = 'Fremd'; appRoleId = 'r1' }, [pscustomobject]@{ principalId = 'sp3'; principalDisplayName = 'Fremd'; appRoleId = 'r1' },
+                  [pscustomobject]@{ principalId = 'own'; principalDisplayName = 'Eigen'; appRoleId = 'r1' })
+            }
+            elseif ($global:HUSecEp -like '*00000003*') { [pscustomobject]@{ id = 'g'; appRoles = @([pscustomobject]@{ id = 'r1'; value = 'Directory.ReadWrite.All' }) } }
+            else { [pscustomobject]@{ id = 'own' } }
+        }
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
+        $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 2; $r.Detail | Should -BeLike '*Name mehrfach vorhanden*'
+        @(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'A42' | Where-Object { $_.App -eq 'Fremd' -and $_.Bewertung -eq 'abweichend' }).Count | Should -Be 2
+        @(Save-HUSecBaselineEdit -Values @{ 'A42.allowedApps' = 'sp1' }).Count | Should -Be 0
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A42') | Where-Object { $_.RuleId -eq 'A42' })[0]
+        $r.Count | Should -Be 1
+        (@(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'A42' | Where-Object { $_.ObjektId -eq 'sp1' })[0]).Zaehlt | Should -BeLike '*Objekt-ID*'
+        # Format-Zeichen (Bidi) im Sollwert abgelehnt
+        @(Save-HUSecBaselineEdit -Values @{ 'A42.allowedApps' = ("App" + [char]0x202E + "x") }).Count | Should -Be 1
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force
+    }
+}
+
+Describe 'V5 Sollwert policies (Grundschutz aus mehreren Richtlinien)' {
+    BeforeEach { Base; Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    It 'alle genannten Richtlinien aktiv = OK, eine aus = Abweichung mit Nummer; Nummer trifft nur den Namensanfang' {
+        function NP($name, $state) { $p = Pol $state @('All') @('g1'); $p.conditions.users.includeUsers = @(); $p | Add-Member -NotePropertyName displayName -NotePropertyValue $name -Force; $p }
+        $global:HUSecFx['conditionalAccess'] = @((NP '100 - Adminportale' 'enabled'), (NP '201 - MFA Lehrer' 'enabled'), (NP '2010 - Test' 'disabled'))
+        (Run 'V5').Status | Should -Be 'Abweichung'
+        @(Save-HUSecBaselineEdit -Values @{ 'V5.policies' = '100, 201' }).Count | Should -Be 0
+        $r = Run 'V5'; $r.Status | Should -Be 'OK'; $r.Detail | Should -BeLike '*alle 2 Richtlinien aktiv*'
+        @(Save-HUSecBaselineEdit -Values @{ 'V5.policies' = '100, 201, 203' }).Count | Should -Be 0
+        $r = Run 'V5'; $r.Status | Should -Be 'Abweichung'; $r.Detail | Should -BeLike '*fehlt: 203*'
+        $global:HUSecFx['conditionalAccess'] = @((NP '100 - Adminportale' 'enabled'), (NP '201 - MFA Lehrer' 'disabled'), (NP '203 - MFA Cloud' 'enabled'))
+        $r = Run 'V5'; $r.Detail | Should -BeLike '*nicht aktiv: 201*'
+        # Liste: genannte, aber nicht aktive Richtlinie ist "abweichend" (Zeile eingefaerbt), aktive nicht
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'V5')
+        ($it | Where-Object Richtlinie -like '201*').Bewertung | Should -BeLike 'abweichend*'
+        ($it | Where-Object Richtlinie -like '100*').Bewertung | Should -Be ''
+        ($it | Where-Object Richtlinie -like '100*').ZaehltFuerRegel | Should -Be 'Ja'
+    }
+    It 'Namen-Sollwert: Leerzeichen im Namen erlaubt, zu viele Eintraege abgelehnt' {
+        @(Save-HUSecBaselineEdit -Values @{ 'V5.policies' = 'MFA fuer alle Benutzer; 100' }).Count | Should -Be 0
+        @(Save-HUSecBaselineEdit -Values @{ 'V5.policies' = ((1..51) -join ',') }).Count | Should -Be 1
     }
 }
 
@@ -1445,5 +1495,23 @@ Describe 'Ausnahmen fuer mehrere Tenants, Regelliste vor dem Pruefen' {
         $sec | Should -Not -Match 'cmbTenant'
         $sec | Should -Match 'function Show-HUSecPreview'
         $ana | Should -Match "if \(\`$Mode -eq 'sec'\) \{ try \{ Show-HUSecPreview \}"
+    }
+}
+
+Describe 'Bewertung-Spalte (globale Zeilenfaerbung in Katalog-Listen)' {
+    BeforeEach { Base }
+    It 'K03: ueberbucht und ab maxPercent sind abweichend, normale Lizenz nicht' {
+        $global:HUSecFx['subscribedSkus'] = @(
+            [pscustomobject]@{ skuPartNumber = 'UEBER'; consumedUnits = 48; prepaidUnits = [pscustomobject]@{ enabled = 47 }; capabilityStatus = 'Enabled' },
+            [pscustomobject]@{ skuPartNumber = 'KNAPP'; consumedUnits = 74; prepaidUnits = [pscustomobject]@{ enabled = 77 }; capabilityStatus = 'Enabled' },
+            [pscustomobject]@{ skuPartNumber = 'FREI';  consumedUnits = 10; prepaidUnits = [pscustomobject]@{ enabled = 100 }; capabilityStatus = 'Enabled' })
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'K03')
+        ($it | Where-Object Lizenz -eq 'UEBER').Bewertung | Should -BeLike 'abweichend: ueberbucht (1 zu viel)'
+        ($it | Where-Object Lizenz -eq 'KNAPP').Bewertung | Should -BeLike 'abweichend: ab 95*'
+        ($it | Where-Object Lizenz -eq 'FREI').Bewertung | Should -Be ''
+    }
+    It 'Bewertung steht in den Faerbe-Spalten der Oberflaeche' {
+        $src = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\Functions\UI-Common.ps1')
+        $src | Should -Match "HUDiffTintCols = @\([^)]*'Bewertung'"
     }
 }

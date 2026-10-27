@@ -561,14 +561,8 @@ function Register-HUExtensionHandlers {
                             $paragraph.Margin = [System.Windows.Thickness]::new(0)
                             $paragraph.FontFamily = [System.Windows.Media.FontFamily]::new('Consolas')
                             $paragraph.FontSize = 11
-                            $rtb.Document.Blocks.Add($paragraph)
-
-                            # Limit GUI lines
-                            while ($rtb.Document.Blocks.Count -gt 500) {
-                                $rtb.Document.Blocks.Remove($rtb.Document.Blocks.FirstBlock)
-                            }
+                            Add-HUOutputBlock $rtb $paragraph 500
                         }
-                        $rtb.ScrollToEnd()
                         $script:BgLogLastLine = $allLines.Count
                     }
                 }
@@ -612,9 +606,8 @@ function Register-HUExtensionHandlers {
                             $paragraph.Margin = [System.Windows.Thickness]::new(0)
                             $paragraph.FontFamily = [System.Windows.Media.FontFamily]::new('Consolas')
                             $paragraph.FontSize = 11
-                            $rtb.Document.Blocks.Add($paragraph)
+                            Add-HUOutputBlock $rtb $paragraph 500
                         }
-                        $rtb.ScrollToEnd()
                     }
                     catch {}
                 }

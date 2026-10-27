@@ -220,7 +220,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
         <li>Mitgelieferte Pakete nach Microsoft-Empfehlung, Security Baseline V2.1 (1.5, 1.7, 1.8, 1.11, 1.13, 1.14) und Praxis-Set Schule; Gruppen beim Übertragen gleich zuweisen – <b>erledigt</b> (2.5.1).</li>
         <li>Muster anwenden: geführter Ablauf in einen oder mehrere Tenants – Rechte nur für die Dauer des Ablaufs, Verweise zuordnen, Vorschau fürs ganze Paket, Rückgängig fürs Paket – <b>erledigt</b> (2.5.2).</li>
         <li>Rest der Security Baseline, den Graph nicht liefert (lokales AD: Delegierung bei Admin-Konten, Betriebssysteme ohne Support, Konten ohne Kennwortpflicht, LAPS/Tier; Ablauf von Freigabelinks), als <b>Handprüfung</b> im Katalog (M01–M05, Bestätigung gilt 12 Monate); Vergleich mit Muster berücksichtigt die Notfallkonten je Tenant – <b>erledigt</b> (2.5.3).</li>
-        <li><b>Zusatzmodul Autopilot</b> (eigener Reiter): Übersicht mit Ampel, Group Tag ändern, verschlüsseltes Hash-Archiv, Aufnehmen mit Gruppen- und Profil-Erkennung, Ausscheiden und Zurückziehen mit Protokoll und Eltern-Paket – <b>erledigt</b> (2.5.4).</li>
+        <li><b>Modul Autopilot V1</b> – klassisches Windows Autopilot mit Hardware-Hash (eigener Reiter): Übersicht mit Ampel, Group Tag ändern, verschlüsseltes Hash-Archiv, Aufnehmen mit Gruppen- und Profil-Erkennung, Ausscheiden und Zurückziehen mit Protokoll und Eltern-Paket – <b>erledigt</b> (2.5.4).</li>
         <li><b>2.5.5 – Stable</b> – <b>erledigt</b>.</li>
       </ul>
     </article>
@@ -237,6 +237,12 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
       <ul>
         <li>Exchange- und Teams-Richtlinien: externe Weiterleitung, Mail-Limits (Baseline 1.2), Überwachungsprotokoll, Mailschutz, externe Teams-Zugriffe – nur mit Leserolle.</li>
         <li>Eigene Technik außerhalb von Graph (Exchange Online und Teams), mit eigenen Rechten – deshalb als eigene Stufe.</li>
+      </ul>
+    </article>
+    <article class="stage" style="--c: var(--mauve)">
+      <div class="stage-head"><span class="when">Danach · 2.6.x</span><h3>Autopilot V2</h3></div>
+      <ul>
+        <li><b>Modul Autopilot V2</b> – Windows Autopilot device preparation (ohne Hardware-Hash und ohne Group Tag) im selben Reiter, neben dem klassischen V1: vertrauenswürdige Geräte über Unternehmenskennungen oder Gerätezuordnung (CSV hineinziehen), Gerätegruppe mit dem nötigen Besitzer prüfen, Richtlinie lesen und prüfen, ob das Setup startet; Ausscheiden über Kennung bzw. Zuordnung, dann Wipe und Protokoll wie bei V1. Das Hash-Archiv bleibt für klassische Geräte und Rückläufer.</li>
       </ul>
     </article>
     <article class="stage" style="--c: var(--peach)">

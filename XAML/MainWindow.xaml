@@ -21,9 +21,9 @@
     <DockPanel x:Name="rootPanel" Margin="0">
 
         <!-- ========== TITELLEISTE ========== -->
-        <Border DockPanel.Dock="Top" Background="#2D2D2D" Padding="14,8">
+        <Border x:Name="hdrBar" DockPanel.Dock="Top" Background="#2D2D2D" Padding="14,8">
             <DockPanel>
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                <StackPanel x:Name="hdrLeft" Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                     <Image x:Name="imgLogo" Width="32" Height="32" Margin="0,0,10,0" RenderOptions.BitmapScalingMode="HighQuality"/>
                     <StackPanel VerticalAlignment="Center">
                         <!-- Zertifikat/Secret in Hoehe des Titels, ca. 2 cm (76 DIP) Abstand -->
@@ -34,7 +34,7 @@
                         <TextBlock x:Name="txtVersion" FontSize="10" Foreground="#4CAF50"/>
                     </StackPanel>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <StackPanel x:Name="hdrRight" Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <TextBlock x:Name="txtSecretWarning" Foreground="#FF9800" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
                                Margin="0,0,14,0" Cursor="Hand" Visibility="Collapsed"
                                ToolTip="Klick: Einstellungen &#x2192; Tenants"/>

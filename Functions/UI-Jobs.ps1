@@ -19,9 +19,7 @@ function Add-HURtbLine($Rtb, [string]$Text, [string]$Color = '#CCCCCC') {
     $r.Foreground = Get-HUBrush $Color
     [void]$p.Inlines.Add($r)
     $p.Margin = [System.Windows.Thickness]::new(0)
-    $Rtb.Document.Blocks.Add($p)
-    while ($Rtb.Document.Blocks.Count -gt 1500) { $Rtb.Document.Blocks.Remove($Rtb.Document.Blocks.FirstBlock) }
-    $Rtb.ScrollToEnd()
+    Add-HUOutputBlock $Rtb $p 1500
 }
 
 function Get-HULogLineColor([string]$Line) {

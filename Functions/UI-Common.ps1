@@ -25,6 +25,147 @@ function Get-HUXaml([string]$Name) {
     return $xaml
 }
 
+# Feste Knopfbreite -> Mindestbreite: in waagrechten StackPanels und WrapPanels (Knopfleisten) richtet sich der Knopf dann nach
+# seinem Text. In Grids und DockPanels bleibt die Breite fest (dort wuerde der Knopf sonst die ganze Zelle fuellen).
+function Set-HUButtonFit($Root) {
+    if (-not $Root) { return }
+    foreach ($ch in @([System.Windows.LogicalTreeHelper]::GetChildren($Root))) {
+        if ($ch -isnot [System.Windows.DependencyObject]) { continue }
+        if ($ch -is [System.Windows.Controls.Button] -and -not [double]::IsNaN($ch.Width)) {
+            $p = $ch.Parent
+            $row = (($p -is [System.Windows.Controls.StackPanel] -and $p.Orientation -eq 'Horizontal') -or $p -is [System.Windows.Controls.WrapPanel])
+            if ($row) {
+                $ch.MinWidth = [Math]::Max($ch.MinWidth, $ch.Width); $ch.Width = [double]::NaN
+                if ($ch.Padding.Left -lt 10) { $ch.Padding = [System.Windows.Thickness]::new(12, $ch.Padding.Top, 12, $ch.Padding.Bottom) }
+            }
+        }
+        Set-HUButtonFit $ch
+    }
+}
+
+# ----------------------------------------------------------------------------
+# 2.5.6 GLOBAL Ausgabefenster (RichTextBox, schreibgeschuetzt): Neuestes oben (Standard) oder unten.
+# Merker im FlowDocument.Tag ('bottom' = klassisch unten) - so koennen auch Module (HU.Logging) ohne UI-Funktionen danach schreiben.
+# ----------------------------------------------------------------------------
+$script:HUOutputDone = New-Object System.Collections.ArrayList
+$script:HUOutputClear = @{}
+function Add-HUOutputBlock($Rtb, $Block, [int]$Max = 1500, [switch]$NoScroll) {
+    if (-not $Rtb -or -not $Block) { return }
+    $doc = $Rtb.Document
+    if ("$($doc.Tag)" -eq 'bottom') {
+        $doc.Blocks.Add($Block)
+        while ($doc.Blocks.Count -gt $Max) { [void]$doc.Blocks.Remove($doc.Blocks.FirstBlock) }
+        if (-not $NoScroll) { $Rtb.ScrollToEnd() }
+    } else {
+        if ($doc.Blocks.FirstBlock) { $doc.Blocks.InsertBefore($doc.Blocks.FirstBlock, $Block) } else { $doc.Blocks.Add($Block) }
+        while ($doc.Blocks.Count -gt $Max) { [void]$doc.Blocks.Remove($doc.Blocks.LastBlock) }
+        if (-not $NoScroll) { $Rtb.ScrollToHome() }
+    }
+}
+function Get-HUOutputStateKey($Rtb) { $n = "$($Rtb.Name)"; if ($n) { "outBottom_$n" } else { '' } }
+function Switch-HUOutputOrder($Rtb) {
+    $doc = $Rtb.Document
+    $list = @($doc.Blocks)
+    $doc.Blocks.Clear()
+    for ($i = $list.Count - 1; $i -ge 0; $i--) { $doc.Blocks.Add($list[$i]) }
+    $bottom = ("$($doc.Tag)" -ne 'bottom')
+    $doc.Tag = $(if ($bottom) { 'bottom' } else { 'top' })
+    $k = Get-HUOutputStateKey $Rtb
+    if ($k) { try { Set-HUStateValue $k $(if ($bottom) { 'ja' } else { 'nein' }) } catch { } }
+    if ($bottom) { $Rtb.ScrollToEnd() } else { $Rtb.ScrollToHome() }
+}
+function Clear-HUOutput($Rtb) {
+    $n = "$($Rtb.Name)"
+    if ($n -and $script:HUOutputClear.ContainsKey($n)) { & $script:HUOutputClear[$n] } else { $Rtb.Document.Blocks.Clear() }
+}
+# kleine Knoepfe "Umkehren" und "Loeschen" rechts oben in der Ausgabe
+function Add-HUOutputTools($Rtb) {
+    if (-not $Rtb -or $Rtb -isnot [System.Windows.Controls.RichTextBox]) { return }
+    foreach ($d in $script:HUOutputDone) { if ([object]::ReferenceEquals($d, $Rtb)) { return } }
+    $p = $Rtb.Parent
+    if (-not ($p -is [System.Windows.Controls.Panel] -or $p -is [System.Windows.Controls.Decorator])) { return }
+    if ($p -is [System.Windows.Controls.Panel] -and $p.IsItemsHost) { return }
+    [void]$script:HUOutputDone.Add($Rtb)
+    # eigener "Leeren"-Knopf rechts oben ueber der Ausgabe (z. B. in Modulen) -> ausblenden, unser "Loeschen" loest ihn aus
+    $old = $null
+    if ($p -is [System.Windows.Controls.Panel]) {
+        # Review 066 B1: nie einen fremden Loesch-Knopf treffen - nur ausdruecklich markiert (Tag 'HUOutputClear') oder
+        # exakt "Leeren"/"Ausgabe leeren", rechts oben und in derselben Grid-Zelle wie die Ausgabe; hoechstens ein Knopf
+        $cell = { param($e) "$([System.Windows.Controls.Grid]::GetRow($e))/$([System.Windows.Controls.Grid]::GetColumn($e))" }
+        $cands = @(foreach ($sib in @($p.Children)) {
+                if ($sib -isnot [System.Windows.Controls.Button]) { continue }
+                if ("$($sib.Tag)" -eq 'HUOutputClear') { $sib; continue }
+                if ("$($sib.HorizontalAlignment)" -eq 'Right' -and "$($sib.VerticalAlignment)" -eq 'Top' -and "$($sib.Content)" -match '^\s*(Ausgabe\s+)?leeren\s*$' -and (& $cell $sib) -eq (& $cell $Rtb)) { $sib }
+            })
+        if ($cands.Count -eq 1) { $old = $cands[0]; $old.Visibility = 'Collapsed' }
+    }
+    $k = Get-HUOutputStateKey $Rtb
+    $bottom = $false
+    if ($k) { try { $bottom = ("$(Get-HUStateValue $k 'nein')" -eq 'ja') } catch { } }
+    $doc = $Rtb.Document
+    if ($bottom) { $doc.Tag = 'bottom' } else {
+        $doc.Tag = 'top'
+        # schon vorhandener Inhalt (vor dem Einhaengen geschrieben) ebenfalls neuestes oben
+        if ($doc.Blocks.Count -gt 1) { $list = @($doc.Blocks); $doc.Blocks.Clear(); for ($i = $list.Count - 1; $i -ge 0; $i--) { $doc.Blocks.Add($list[$i]) } }
+    }
+    # Huelle: Grid an der Stelle der Ausgabe, angehaengte Eigenschaften wandern mit
+    $g = New-Object System.Windows.Controls.Grid
+    $att = @([System.Windows.Controls.Grid]::RowProperty, [System.Windows.Controls.Grid]::ColumnProperty, [System.Windows.Controls.Grid]::RowSpanProperty,
+        [System.Windows.Controls.Grid]::ColumnSpanProperty, [System.Windows.Controls.DockPanel]::DockProperty, [System.Windows.Controls.Panel]::ZIndexProperty)
+    foreach ($dp in $att) {
+        $v = $Rtb.ReadLocalValue($dp)
+        if ($v -ne [System.Windows.DependencyProperty]::UnsetValue) { $g.SetValue($dp, $v); $Rtb.ClearValue($dp) }
+    }
+    if ($p -is [System.Windows.Controls.Panel]) {
+        $idx = $p.Children.IndexOf($Rtb); $p.Children.RemoveAt($idx); [void]$g.Children.Add($Rtb); $p.Children.Insert($idx, $g)
+    } else { $p.Child = $null; [void]$g.Children.Add($Rtb); $p.Child = $g }
+    $bar = New-Object System.Windows.Controls.StackPanel
+    $bar.Orientation = 'Horizontal'; $bar.HorizontalAlignment = 'Right'; $bar.VerticalAlignment = 'Top'
+    $bar.Margin = [System.Windows.Thickness]::new(0, 3, 22, 0); $bar.Opacity = 0.55
+    $bar.Add_MouseEnter({ $this.Opacity = 1 }); $bar.Add_MouseLeave({ $this.Opacity = 0.55 })
+    $sty = $Rtb.TryFindResource('DarkButton')
+    if (-not $sty -and $script:Window) { $sty = $script:Window.TryFindResource('DarkButton') }
+    $mk = {
+        param([string]$Text, [string]$Tip)
+        $b = New-Object System.Windows.Controls.Button
+        if ($sty) { $b.Style = $sty }
+        $b.Content = $Text; $b.ToolTip = $Tip; $b.FontSize = 10; $b.Padding = [System.Windows.Thickness]::new(7, 1, 7, 1)
+        $b.Margin = [System.Windows.Thickness]::new(4, 0, 0, 0); $b.Background = Get-HUBrush '#3E3E42'; $b.Cursor = 'Hand'
+        $b
+    }
+    $bRev = & $mk ([string][char]0x21C5 + ' Umkehren') 'Reihenfolge umkehren: neuestes oben oder unten (wird je Ausgabe gemerkt)'
+    $bDel = & $mk ([string][char]0x2715 + ' L' + [char]0x00F6 + 'schen') 'Ausgabe leeren'
+    $bRev.Tag = $Rtb; $bDel.Tag = [pscustomobject]@{ Rtb = $Rtb; Old = $old }
+    $bRev.Add_Click({ try { Switch-HUOutputOrder $this.Tag } catch { } })
+    $bDel.Add_Click({
+            try {
+                $t = $this.Tag
+                if ($t.Old) {
+                    # gebundenes Command ausfuehren (RaiseEvent loest es nicht aus), sonst Click
+                    if ($t.Old.Command) { if ($t.Old.Command.CanExecute($t.Old.CommandParameter)) { $t.Old.Command.Execute($t.Old.CommandParameter) } }
+                    else { $t.Old.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) }
+                } else { Clear-HUOutput $t.Rtb }
+            } catch { }
+        })
+    [void]$bar.Children.Add($bRev); [void]$bar.Children.Add($bDel)
+    [void]$g.Children.Add($bar)
+}
+# alle schreibgeschuetzten Ausgaben unter $Root ausstatten (Hauptfenster, Fenster, Modul-Reiter)
+function Set-HUOutputTools($Root) {
+    if (-not $Root) { return }
+    $todo = New-Object System.Collections.ArrayList
+    $walk = {
+        param($n)
+        foreach ($ch in @([System.Windows.LogicalTreeHelper]::GetChildren($n))) {
+            if ($ch -isnot [System.Windows.DependencyObject]) { continue }
+            if ($ch -is [System.Windows.Controls.RichTextBox]) { if ($ch.IsReadOnly) { [void]$todo.Add($ch) }; continue }
+            & $walk $ch
+        }
+    }
+    & $walk $Root
+    foreach ($r in $todo) { try { Add-HUOutputTools $r } catch { try { Write-HULog -Message "Ausgabe-Knoepfe: $($_.Exception.Message)" -Level 'WARN' } catch { } } }
+}
+
 # Fenster aus XAML erzeugen; liefert @{ Window = ...; C = @{ Name = Element } } mit allen x:Name-Elementen
 function New-HUWindow([string]$Name, [string]$XamlText = '') {
     $x = if ($XamlText) { $XamlText } else { Get-HUXaml $Name }
@@ -46,6 +187,10 @@ function New-HUWindow([string]$Name, [string]$XamlText = '') {
     # zusaetzlich direkt: alle Tabellen dieses Fensters (auch ohne Namen) - wirkt auch, falls der Klassen-Handler nicht greift
     try { foreach ($g in @(Get-HUDataGrids $w)) { Set-HUGridFit $g } }
     catch { try { Write-HULog -Message "Spaltenbreiten (Fenster): $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" -Level 'WARN' } catch { } }
+    # 2.5.6 GLOBAL: Knoepfe mit fester Breite in Knopfleisten wachsen mit ihrer Beschriftung (nie abgeschnitten, auch wenn der Text spaeter wechselt)
+    try { Set-HUButtonFit $w } catch { }
+    # 2.5.6 GLOBAL: Ausgaben mit Umkehren/Loeschen, neuestes oben
+    try { Set-HUOutputTools $w } catch { }
     # jedes groessenveraenderbare Fenster mit sichtbarem Anfasser rechts unten
     try { if ($w.ResizeMode -eq [System.Windows.ResizeMode]::CanResize) { $w.ResizeMode = [System.Windows.ResizeMode]::CanResizeWithGrip } } catch { }
     $script:LastDialog = $w
@@ -70,7 +215,7 @@ function Set-HUColumnsFit($Columns) {
     } catch { try { Write-HULog -Message "Spaltenbreiten: $($_.Exception.Message) (Zeile $($_.InvocationInfo.ScriptLineNumber))" -Level 'WARN' } catch { } }
 }
 # Zeile "abweichend"? Spalte Unterschied/Abweichung/Status/Ergebnis (Objekte oder DataTable mit echtem Namen in Caption)
-$script:HUDiffTintCols = @('Unterschied', 'Abweichung', 'Status', 'Ergebnis', 'Vergleich')
+$script:HUDiffTintCols = @('Unterschied', 'Abweichung', 'Status', 'Ergebnis', 'Vergleich', 'Bewertung')
 $script:HUDiffTintBrush = $null
 function Test-HUDiffItem($Item) {
     if ($null -eq $Item) { return $false }
@@ -80,19 +225,40 @@ function Test-HUDiffItem($Item) {
     } else {
         foreach ($n in $script:HUDiffTintCols) { $p = $Item.PSObject.Properties[$n]; if ($p) { $vals += "$($p.Value)" } }
     }
-    foreach ($v in $vals) { if ($v -match '(?i)\babweichend\b') { return $true } }
+    # "abweichend" (Vergleiche, Bewertung) und "Abweichung" (Status im Sicherheitskatalog); "keine Abweichung" zaehlt nicht
+    # Review 066 B6: jede Form von "abweich..." ausser verneint ("keine/ohne/nicht ...") oder mit Anzahl 0 ("Abweichung: 0", "0 Abweichungen")
+    foreach ($v in $vals) {
+        if ($v -match '(?i)abweich' -and $v -notmatch '(?i)\b(keine|kein|ohne|nicht)\s+abweich|abweich\w*\s*:\s*0\b|(^|\D)0\s+abweich') { return $true }
+    }
     return $false
 }
-function Set-HUDiffRowTint($Row) {
+$script:HUTintQueue = New-Object System.Collections.ArrayList
+$script:HUTintWarned = $false
+function Set-HUDiffRowTint($Row, [switch]$Retry) {
     try {
         if ($null -eq $Row) { return }
         if ($null -eq $script:HUDiffTintBrush) { $b = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#3A321F')); $b.Freeze(); $script:HUDiffTintBrush = $b }
         # nur in Fenstern, die aufgehen (Detail/Ergebnis) - nicht im Hauptfenster (Udo 25.10.)
         $win = [System.Windows.Window]::GetWindow($Row)
-        if ($null -eq $win -or ($script:Window -and [object]::ReferenceEquals($win, $script:Window))) { return }
+        if ($null -eq $win) {
+            # LoadingRow kommt, bevor die Zeile im Fenster haengt -> einmal nachholen, sobald sie geladen ist
+            if (-not $Retry) {
+                [void]$script:HUTintQueue.Add($Row)
+                if ($script:HUTintQueue.Count -eq 1) {
+                    [void]$Row.Dispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Loaded, [System.Action]{
+                            $q = @($script:HUTintQueue); $script:HUTintQueue.Clear()
+                            foreach ($x in $q) { Set-HUDiffRowTint $x -Retry }
+                        })
+                }
+            }
+            return
+        }
+        if ($script:Window -and [object]::ReferenceEquals($win, $script:Window)) { return }
         if (Test-HUDiffItem $Row.Item) { $Row.Background = $script:HUDiffTintBrush }
         elseif ([object]::ReferenceEquals($Row.Background, $script:HUDiffTintBrush)) { $Row.ClearValue([System.Windows.Controls.Control]::BackgroundProperty) }
-    } catch { }
+    } catch {
+        if (-not $script:HUTintWarned) { $script:HUTintWarned = $true; try { Write-HULog -Message "Zeilenfaerbung: $($_.Exception.Message)" -Level 'WARN' } catch { } }
+    }
 }
 
 function Set-HUGridFit($Grid) {
@@ -360,6 +526,7 @@ function Add-HUOutputMenu($RichTextBox, [scriptblock]$Clear) {
     [void]$menu.Items.Add($miClear)
     $menu.Add_Opened({ $this.Items[0].IsEnabled = ($this.PlacementTarget -and -not $this.PlacementTarget.Selection.IsEmpty) })
     $RichTextBox.ContextMenu = $menu
+    if ("$($RichTextBox.Name)" -and $Clear) { $script:HUOutputClear["$($RichTextBox.Name)"] = $Clear }
 }
 
 # ----------------------------------------------------------------------------

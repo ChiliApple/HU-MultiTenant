@@ -397,13 +397,13 @@ function Show-HUSecDetail {
     </Window.Resources>
     <DockPanel Margin="16">
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button x:Name="btnList" Content="Konten anzeigen" Width="140" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
+            <Button x:Name="btnList" Content="Konten anzeigen" MinWidth="140" Padding="14,6" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Die betroffenen Eintraege des markierten Tenants anzeigen (nur Anzeige, wird nicht gespeichert)"/>
-            <Button x:Name="btnFix" Content="So behebst du es" Width="140" Background="#388E3C" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
+            <Button x:Name="btnFix" Content="So behebst du es" MinWidth="140" Padding="14,6" Background="#388E3C" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Kurzanleitung: wo im Portal und welche Schritte, mit Link auf Microsoft Learn"/>
-            <Button x:Name="btnExc" Content="Ausnahme ..." Width="120" Background="#3E3E42" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
+            <Button x:Name="btnExc" Content="Ausnahme ..." MinWidth="120" Padding="14,6" Background="#3E3E42" Style="{StaticResource DarkButton}" Margin="0,0,8,0"
                     ToolTip="Fuer diese Regel eine befristete Ausnahme eintragen oder entfernen"/>
-            <Button x:Name="btnMan" Content="Von Hand geprueft ..." Width="160" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0" Visibility="Collapsed"
+            <Button x:Name="btnMan" Content="Von Hand geprueft ..." MinWidth="160" Padding="14,6" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0" Visibility="Collapsed"
                     ToolTip="Pruefung je Tenant mit Datum und Notiz bestaetigen (gilt 12 Monate) oder Bestaetigung entfernen"/>
             <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" IsDefault="True"/>
         </StackPanel>
@@ -454,6 +454,16 @@ function Show-HUSecDetail {
     # Handpruefung: keine Ausnahme und keine Liste, dafuer Bestaetigen
     if (Test-HUSecManualRule "$($m.RuleId)") { $ctl.btnExc.Visibility = 'Collapsed'; $ctl.btnList.Visibility = 'Collapsed'; $ctl.btnMan.Visibility = 'Visible' }
     $ctl.btnMan.Add_Click({ $state.Man = $true; $w.Close() })
+    # Doppelklick auf eine Zeile = wie der angebotene Knopf (Konten/Richtlinien/... anzeigen bzw. von Hand geprueft)
+    $ctl.gridD.ToolTip = $(if ($ctl.btnList.Visibility -eq 'Visible') { "Doppelklick: $($ctl.btnList.Content)" } elseif ($ctl.btnMan.Visibility -eq 'Visible') { 'Doppelklick: von Hand geprueft ...' } else { $null })
+    $ctl.gridD.Add_MouseDoubleClick({
+            param($s, $e)
+            $o = $e.OriginalSource
+            try { while ($o -and $o -isnot [System.Windows.Controls.DataGridRow]) { $o = $(if ($o -is [System.Windows.Media.Visual]) { [System.Windows.Media.VisualTreeHelper]::GetParent($o) } else { [System.Windows.LogicalTreeHelper]::GetParent($o) }) } } catch { $o = $null }
+            if (-not $o) { return }
+            $b = if ($ctl.btnList.Visibility -eq 'Visible' -and $ctl.btnList.IsEnabled) { $ctl.btnList } elseif ($ctl.btnMan.Visibility -eq 'Visible') { $ctl.btnMan } else { $null }
+            if ($b) { $e.Handled = $true; $b.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) }
+        })
     [void]$w.ShowDialog()
     if ($state.Exc) { Start-HUSecException -Row $m }
     if ($state.Man) { Start-HUSecManual -Row $m }

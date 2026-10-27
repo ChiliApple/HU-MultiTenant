@@ -1,5 +1,28 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.5.6 (Testversion)
+
+### 🛡️ Sicherheitskatalog
+- **V5 MFA-Grundschutz – neuer Sollwert `policies`:** Richtlinien, die zusammen den Grundschutz bilden (z. B. je Gruppe für Admins, Verwaltung, Lehrkräfte, Cloud-Konten, Gäste). Eintrag als Nummer am Namensanfang (`100` trifft „100 - …“, nicht „1000“) oder voller Name. Sind alle vorhanden und aktiv, ist V5 erfüllt; sonst nennt die Zelle, welche fehlt oder nicht aktiv ist. Die Liste „Richtlinien anzeigen“ zählt sie mit.
+- **A42 Apps mit kritischen Rechten – neuer Sollwert `allowedApps`:** gewollte Apps (Anzeigename oder Objekt-ID, z. B. die Sync-App der Schulverwaltung) stehen weiter in der Liste, zählen aber nicht. Die Liste hat dazu die Spalte *Zaehlt* (Ja / dieses Programm / erlaubt).
+- **Auffällige Zeilen dezent eingefärbt (global):** Listen im Katalog haben die Spalte *Bewertung* – z. B. K03 Lizenzen („überbucht“ / „ab 95 %“), K04 Fehlversuche, A42 zählende Apps, Richtlinien-Listen (V5, A24, A25 …) mit Richtlinien, die zählen würden, aber nicht aktiv sind. Bei V5 mit Sollwert zählen in der Liste nur die genannten Richtlinien. Diese Zeilen bekommen dieselbe dezente Färbung wie „abweichend“ in den Vergleichen. Auch im Detailfenster einer Regel sind Tenants mit *Abweichung* eingefärbt; die Färbung greift jetzt zuverlässig schon beim Öffnen des Fensters.
+
+### 🔍 Prüfung (Review 066)
+- **A42 erlaubte Apps sicher erkannt:** Am besten die Objekt-ID eintragen (steht jetzt als Spalte *ObjektId* in der Liste). Ein Anzeigename gilt nur, solange er unter den Apps mit kritischen Rechten eindeutig ist – gibt es eine gleichnamige zweite App, zählen beide und die Zelle nennt den Grund.
+- **„Löschen“ in Ausgaben trifft nie einen fremden Knopf:** Ein eigener Knopf des Moduls wird nur übernommen, wenn er ausdrücklich markiert ist oder genau „Leeren“/„Ausgabe leeren“ heißt und in derselben Zelle über der Ausgabe sitzt; sonst leert „Löschen“ nur die Ausgabe.
+- **Kleinere Härtungen:** Färbung erkennt „Abweichungen“ und übergeht „Abweichung: 0“ bzw. „nicht abweichend“; V5 nennt „nur Bericht“ eigens; Sollwert-Namen lehnen unsichtbare Steuer- und Formatzeichen ab.
+
+### 🖥️ Oberfläche
+- **Knöpfe nie abgeschnitten (global):** Knöpfe in Knopfleisten wachsen mit ihrer Beschriftung, auch wenn der Text erst später gesetzt wird (z. B. „Zustimmungen anzeigen“ im Sicherheitskatalog) – in allen Fenstern, Reitern und Modulen.
+- **Ausgaben: neuestes Ereignis oben (global):** Jede Ausgabe (Protokoll, Quick Script, Apps, Wartung, Analyse, Muster, Module) zeigt das Neueste oben. Rechts oben sitzen die kleinen Knöpfe **Umkehren** (neuestes oben/unten, wird je Ausgabe gemerkt) und **Löschen**. Ein eigener „Leeren“-Knopf über der Ausgabe (z. B. in Modulen) wird dabei ausgeblendet, Löschen übernimmt seine Aufgabe.
+- **Sicherheitskatalog – Doppelklick:** Im Detailfenster einer Regel öffnet ein Doppelklick auf eine Tenant-Zeile dieselbe Liste wie der Knopf (Konten, Richtlinien, Lizenzen … anzeigen) bzw. „Von Hand geprüft …“.
+- **Entwicklungs-Module:** Ordner in `AddonsDev` mit `_` oder `.` am Anfang gelten als abgeschaltet und werden ohne Warnung übergangen.
+- **Kopfzeile:** Die Zertifikat-Anzeige zeigt nur noch den farbigen Schlüssel (grün/orange/rot) – Ablaufdatum und Details je Tenant stehen im Tooltip.
+
+### 🗺️ Doku
+- **Neue Screenshots (v2.5.6):** Sicherheit, Muster, Autopilot, Quick Script, Apps und Wartung im README – Tenants anonymisiert (Schule A–E).
+- **Autopilot V1 und V2:** Roadmap, Funktionsübersicht, Anleitung und Modul-README nennen das jetzige Modul V1 (klassisch, mit Hardware-Hash); V2 (Windows Autopilot device preparation) folgt im selben Reiter.
+
 ## v2.5.5 (Stable, 26.10.2026)
 
 Stable-Release der Testversionen 2.5.1 bis 2.5.4 – „Muster-Bibliothek und Autopilot“. Alle Punkte im Detail stehen in den Abschnitten darunter.
