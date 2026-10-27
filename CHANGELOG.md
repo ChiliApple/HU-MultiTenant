@@ -27,7 +27,7 @@ Nacharbeiten zur Stable 2.6.0: weniger Rechte von Haus aus, mehr Schutz beim Imp
 - **Meldungsfenster für Screenreader:** Fenster, Symbol, Text und Knöpfe sind benannt; der vorgewählte Knopf wird als „(Enter)“ angesagt.
 
 ### 🗺️ Doku
-- **Einstieg mit 12 Situationen:** neu „Die neuen Schüler-Notebooks sind da“ (Hash-Archiv, auch für die bestehende Flotte), „Schulschluss: Abgänger-Geräte“, „Sind wir sicher eingestellt?“ und „MFA für alle Lehrkräfte“. „Neuer PC“ und „Ich bin nicht am PC“ stehen nur noch in der Anleitung.
+- **Einstieg mit 12 Situationen:** neu „Die neuen Schüler-Notebooks sind da“ (Hash-Archiv, auch für die bestehende Flotte), „Schulschluss: Abgänger-Geräte“, „Sind wir sicher eingestellt?“ und „MFA für alle Lehrkräfte“. „Neuer PC“ und „Ich bin nicht am PC“ stehen nur noch in der Anleitung. **„In 10 Minuten startklar“ steht jetzt ganz oben** (mit Hinweis „Neu hier?“), der erste Versuch ist Schritt 3.
 - Anleitung und Installation: Rechte-Umfang, Wiederherstellen, .NET Framework 4.7.2.
 
 ### ⚠️ Nach dem Update
