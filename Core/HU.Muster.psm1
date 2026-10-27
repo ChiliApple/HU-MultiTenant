@@ -312,7 +312,7 @@ function Read-HUMusterPackage([string]$Folder, [switch]$BuiltIn) {
         Learn = @($p.Learn | Where-Object { "$_" } | ForEach-Object { "$_" })
         # 2.5.7 importierte Pakete: Herausgeber, Import-Datum, Pruefsumme; ungeprueft = Anwenden erst nach Bestaetigung
         Publisher = "$($p.Publisher)"; Imported = $(& $iso $p.Imported); ImportSha256 = "$($p.ImportSha256)"
-        Checked = $(if ("$($p.Origin)" -eq 'importiert') { [bool]$p.Checked } else { $true })
+        Checked = $(if ("$($p.Origin)" -eq 'importiert' -or @($items | Where-Object { "$($_.Source)" -eq 'importiert' }).Count) { [bool]$p.Checked } else { $true })
         Raw = $p
     }
 }
@@ -487,6 +487,14 @@ function Save-HUMusterPackage {
         }
         # Importierte Pakete behalten beim Bearbeiten Herausgeber, Pruefsumme und Pruefstand
         if ($old -and $old.Origin -eq 'importiert') { foreach ($k in 'Publisher', 'Imported', 'ImportSha256', 'ImportKind', 'Checked', 'CheckedAt', 'CheckedBy') { if ($old.Raw -and $old.Raw.PSObject.Properties[$k]) { $pj | Add-Member -NotePropertyName $k -NotePropertyValue $old.Raw.$k -Force } } }
+        # 2.5.7 (068 P5): importierte Eintraege bleiben ungeprueft, auch in Kopien und eigenen Paketen - bestaetigt bleibt ein Paket nur,
+        # wenn es vorher bestaetigt war und keine neuen importierten Eintraege dazugekommen sind
+        $impNew = @($ixItems | Where-Object { "$($_.Source)" -eq 'importiert' } | ForEach-Object { "$($_.Typ)|$(ConvertTo-HUMuName $_.Name)" })
+        if ($impNew.Count -and -not $Extra.ContainsKey('Checked')) {
+            $impOld = @(if ($old) { @($old.Items) | Where-Object { "$($_.Source)" -eq 'importiert' } | ForEach-Object { "$($_.Typ)|$(ConvertTo-HUMuName $_.Name)" } })
+            $keep = [bool]($old -and $old.Checked -and -not @($impNew | Where-Object { $impOld -notcontains $_ }).Count)
+            $pj | Add-Member -NotePropertyName Checked -NotePropertyValue $keep -Force
+        }
         foreach ($k in @($Extra.Keys)) { $pj | Add-Member -NotePropertyName $k -NotePropertyValue $Extra[$k] -Force }
         Write-HUBackupJson (Join-Path $tmp 'paket.json') $pj
     } catch { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; throw }

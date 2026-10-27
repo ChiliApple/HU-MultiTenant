@@ -155,6 +155,12 @@ Describe 'Export und Import (Rundlauf und manipulierte Archive)' {
         $e = (Save-HUMusterPackage -Settings $script:S -Id $p.Id -Title $p.Title -Category 'Conditional Access' -Items @(Get-HUMusterPackageItems $c)).Package
         $e.Origin | Should -Be 'importiert'; $e.Publisher | Should -Be 'IT-Team'; $e.Checked | Should -BeTrue
         (Get-HUMusterExportPlan -Settings $script:S -Package $e).OrigPublisher | Should -Be 'IT-Team'
+        # 068 P5: Kopie eines importierten Pakets bleibt ungeprueft (auch wenn das Original bestaetigt war)
+        $k = (Save-HUMusterPackage -Settings $script:S -Title 'Kopie davon' -Category 'Conditional Access' -Items @(Get-HUMusterPackageItems $e)).Package
+        $k.Origin | Should -Be 'eigen'; $k.Checked | Should -BeFalse
+        # bestaetigt, dann ohne neue importierte Eintraege bearbeitet -> bleibt bestaetigt
+        $k2 = Set-HUMusterChecked -Settings $script:S -Id $k.Id
+        (Save-HUMusterPackage -Settings $script:S -Id $k2.Id -Title $k2.Title -Category 'Conditional Access' -Items @(Get-HUMusterPackageItems $k2)).Package.Checked | Should -BeTrue
     }
     It 'veraenderte Datei, unbekannte Datei, zu hohe Mindestversion, falsche Endung' {
         $mk = {
