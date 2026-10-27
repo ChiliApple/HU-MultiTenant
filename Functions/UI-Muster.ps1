@@ -74,6 +74,8 @@ function Get-HUMuItemHint([string]$Typ, [string]$Name, [string]$Source = '') {
     if ($Typ -eq 'Conditional Access' -and $Name -like 'Microsoft-managed:*') { return 'von Microsoft verwaltet, nicht uebertragbar' }
     if ((Test-HUMusterBuiltinSource $Source) -and $Typ -eq 'Conditional Access') { return 'Uebertragen: neu, Nur Bericht, ohne Zuweisung' }
     if ((Test-HUMusterBuiltinSource $Source) -and $Typ -eq 'Compliance') { return 'Uebertragen: neu, ohne Zuweisung' }
+    if ("$Source" -eq 'importiert' -and $Typ -eq 'Conditional Access') { return 'Importiert - Uebertragen: neu, Nur Bericht, ohne Zuweisung; Gruppen im Ziel zuordnen' }
+    if ("$Source" -eq 'importiert') { return 'Importiert - Uebertragen ohne Zuweisung' }
     return ''
 }
 
@@ -123,11 +125,12 @@ function Update-HUMuList([string]$SelectId = '') {
         }
         if (-not $ok) { continue }
         $herk = @($p.Sources | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', '
+        if ("$($p.Origin)" -eq 'importiert') { $herk = "importiert$(if ($p.Publisher) { " von $($p.Publisher)" })$(if (-not $p.Checked) { ', ungeprueft' })" }
         $sub = @(@($p.TagText) + @($herk) | Where-Object { $_ }) -join '  |  '
-        $lock = if ($p.BuiltIn) { "$([char]::ConvertFromUtf32(0x1F512)) " } else { '' }
+        $lock = if ($p.BuiltIn) { "$([char]::ConvertFromUtf32(0x1F512)) " } elseif ("$($p.Origin)" -eq 'importiert' -and -not $p.Checked) { "$([char]0x26A0) " } else { '' }
         [pscustomobject]@{
             Id = $p.Id; Title = "$lock$($p.Title)"; Category = $p.Category; Count = $p.Count; Sel = ($sel -contains $p.Id); Sub = $sub
-            Tip = "$($p.Title)$(if ($p.BuiltIn) { "`nMitgeliefert - schreibgeschuetzt, zum Anpassen duplizieren" })`n$($p.Category) - $($p.Count) Eintraege$(if ($p.Complete) { ' - Gesamtstand (im Vergleich zaehlt auch, was fehlt)' } else { ' - Teilpaket (prueft nur seine Eintraege)' })`nHerkunft: $herk`nGeaendert: $($p.ChangedText)$(if ($p.Note) { "`n$(Get-HUMuTipNote $p.Note)" })"
+            Tip = "$($p.Title)$(if ($p.BuiltIn) { "`nMitgeliefert - schreibgeschuetzt, zum Anpassen duplizieren" })$(if ("$($p.Origin)" -eq 'importiert' -and -not $p.Checked) { "`nImportiert, ungeprueft - anwenden erst nach Bestaetigung" })`n$($p.Category) - $($p.Count) Eintraege$(if ($p.Complete) { ' - Gesamtstand (im Vergleich zaehlt auch, was fehlt)' } else { ' - Teilpaket (prueft nur seine Eintraege)' })`nHerkunft: $herk`nGeaendert: $($p.ChangedText)$(if ($p.Note) { "`n$(Get-HUMuTipNote $p.Note)" })"
         }
     }
     $view = [System.Windows.Data.CollectionViewSource]::GetDefaultView(@($rows))
@@ -175,9 +178,12 @@ function Update-HUMuDetail {
     $herk = @($p.Sources | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', '
     if ($p.BuiltIn) {
         $c['lblMuMeta'].Text = "$([char]::ConvertFromUtf32(0x1F512)) Mitgeliefert, schreibgeschuetzt  |  $($p.CopyCategory) (Teilpaket)  |  $($p.Count) Eintraege  |  Vorlage vom $(([datetime]::Parse($p.Changed, [Globalization.CultureInfo]::InvariantCulture)).ToString('dd.MM.yyyy'))  |  zum Anpassen: Duplizieren"
+    } elseif ("$($p.Origin)" -eq 'importiert') {
+        $c['lblMuMeta'].Text = "$(if (-not $p.Checked) { "$([char]0x26A0) ungeprueft  |  " })$($p.Category)$(if (-not $p.Complete) { ' (Teilpaket)' })  |  $($p.Count) Eintraege  |  importiert$(if ($p.Imported) { ' am ' + $(try { ([datetime]::Parse($p.Imported, [Globalization.CultureInfo]::InvariantCulture)).ToString('dd.MM.yyyy') } catch { $p.Imported }) })$(if ($p.Publisher) { ", Herausgeber: $($p.Publisher)" })$(if ($p.ImportSha256) { "  |  SHA-256 $($p.ImportSha256.Substring(0, [Math]::Min(16, $p.ImportSha256.Length)))..." })"
     } else {
         $c['lblMuMeta'].Text = "$($p.Category)$(if (-not $p.Complete) { ' (Teilpaket)' })  |  $($p.Count) Eintraege  |  Herkunft: $herk  |  geaendert $($p.ChangedText)$(if ($p.By) { " von $($p.By)" })"
     }
+    $c['btnMuCheck'].Visibility = $(if ("$($p.Origin)" -eq 'importiert' -and -not $p.Checked) { 'Visible' } else { 'Collapsed' })
     foreach ($b in 'btnMuEdit', 'btnMuDel') {
         $c[$b].IsEnabled = -not $p.BuiltIn
         [System.Windows.Controls.ToolTipService]::SetShowOnDisabled($c[$b], $true)
@@ -652,7 +658,9 @@ function Register-HUMusterHandlers {
         @{ Header = 'Bearbeiten ...'; Action = { Start-HUMuEdit } }
         @{ Header = 'Duplizieren'; Action = { Start-HUMuDup } }
         @{ Header = 'Loeschen ...'; Action = { Start-HUMuDelete } }
+        @{ Header = 'Exportieren ...'; Action = { Start-HUMuExport } }
     )
+    try { Register-HUMusterExchangeHandlers } catch { Write-HULogWarn "Muster-Austausch: $($_.Exception.Message)" }
     Add-HUOutputMenu $c['rtbMu'] { $script:Controls['rtbMu'].Document.Blocks.Clear() }
     try { $h = [double](Get-HUStateValue 'muLogHeight' 110); if ($h -ge 50 -and $h -le 600) { $c['rtbMu'].Height = $h } } catch { }
     $c['thbMuLog'].Add_DragDelta({

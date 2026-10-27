@@ -1298,6 +1298,8 @@
                                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                                             <Button x:Name="btnMuNew" DockPanel.Dock="Right" Content="+ Neues Paket ..." Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,0"
                                                     ToolTip="Neues Paket aus den Backup-Staenden zusammenstellen (Eintraege aus einem oder mehreren Tenants)"/>
+                                            <Button x:Name="btnMuImport" DockPanel.Dock="Right" Content="&#x2B07; Importieren ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0"
+                                                    ToolTip="Muster-Paket (.humuster) oder JSON-Dateien aus dem Portal bzw. der Community uebernehmen - mit Pruefansicht, als neues Paket 'ungeprueft'. Dateien lassen sich auch auf die Liste ziehen."/>
                                             <TextBlock Text="Bibliothek" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0"/>
                                         </DockPanel>
                                         <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
@@ -1352,6 +1354,10 @@
                                                         ToolTip="Kopie des Pakets anlegen (z. B. als Ausgangspunkt fuer eine Variante)"/>
                                                 <Button x:Name="btnMuDel" Content="Loeschen ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,4"
                                                         ToolTip="Paket in den Papierkorb der Bibliothek verschieben (Backups\_Muster\papierkorb) - nicht endgueltig"/>
+                                                <Button x:Name="btnMuExport" Content="&#x2B06; Exportieren ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,6,4"
+                                                        ToolTip="Paket als Datei (.humuster) speichern, z. B. fuer Kolleginnen und Kollegen - bereinigt (ohne Personen, Zuweisungen, Geheimnisse, Tenant-Kennungen), mit Pruefansicht vor dem Speichern"/>
+                                                <Button x:Name="btnMuCheck" Content="&#x2713; Als geprueft bestaetigen ..." Background="#A65A28" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4" Visibility="Collapsed"
+                                                        ToolTip="Importiertes Paket ansehen und als geprueft bestaetigen - erst dann laesst es sich anwenden"/>
                                                 <Button x:Name="btnMuCompare" Content="&#x25B6; Im Tenant-Vergleich ansehen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"
                                                         ToolTip="Zur Analyse wechseln und die angehakten Pakete als Spalte 'Muster' gegen die angehakten Tenants vergleichen"/>
                                                 <Button x:Name="btnMuApply" Content="&#x2192; Muster anwenden ..." Background="#A65A28" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"

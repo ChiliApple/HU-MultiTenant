@@ -47,6 +47,7 @@ function Get-HUAnaTenantName([string]$Key) {
         $m = $null; try { $m = Get-HUMusterSelectionUi } catch { }; if ($m) { return $m.Label }; return 'Muster'
     }
     if (Test-HUMusterBuiltinSource $Key) { return 'Mitgeliefert' }
+    if ("$Key" -eq 'importiert') { return 'Importiert' }
     $t = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $Key }) | Select-Object -First 1
     if ($t -and "$($t.displayName)") { return "$($t.displayName)" }
     return $Key

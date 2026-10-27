@@ -225,7 +225,8 @@ function Test-HUMusterBuiltinSource([string]$Source) { return ("$Source" -eq $sc
 # Tenant, in dem Kennungen eines Eintrags zu Namen werden: eigener Quell-Tenant; bei mitgelieferten Eintraegen der erste
 # eingerichtete Tenant (dort stehen nur Rollen und Microsoft-Apps - deren Kennungen sind in jedem Tenant gleich)
 function Get-HUMusterResolveKey($Settings, [string]$Source) {
-    if (-not (Test-HUMusterBuiltinSource $Source)) { return $Source }
+    # 2.5.7: importierte Eintraege haben keinen Quell-Tenant (wie mitgelieferte: nur Rollen, Microsoft-Apps, Namen aus dem Paket)
+    if (-not (Test-HUMusterBuiltinSource $Source) -and "$Source" -ne 'importiert') { return $Source }
     $t = @(@($Settings.tenants) | Where-Object { $_ -and "$($_.key)" }) | Select-Object -First 1
     if ($t) { return "$($t.key)" }; return ''
 }
@@ -309,7 +310,26 @@ function Read-HUMusterPackage([string]$Folder, [switch]$BuiltIn) {
         # Kategorie fuer eine Kopie (mitgelieferte Pakete stehen unter 'Mitgeliefert', die Kopie unter ihrer echten Kategorie)
         CopyCategory = $(if ("$($p.CopyCategory)" -and $script:HUMuCategories -contains "$($p.CopyCategory)") { "$($p.CopyCategory)" } elseif ($script:HUMuCategories -contains "$($p.Category)") { "$($p.Category)" } else { 'Conditional Access' })
         Learn = @($p.Learn | Where-Object { "$_" } | ForEach-Object { "$_" })
+        # 2.5.7 importierte Pakete: Herausgeber, Import-Datum, Pruefsumme; ungeprueft = Anwenden erst nach Bestaetigung
+        Publisher = "$($p.Publisher)"; Imported = $(& $iso $p.Imported); ImportSha256 = "$($p.ImportSha256)"
+        Checked = $(if ("$($p.Origin)" -eq 'importiert') { [bool]$p.Checked } else { $true })
+        Raw = $p
     }
+}
+
+# 2.5.7 importiertes Paket als geprueft bestaetigen (nur Kennzeichen in paket.json)
+function Set-HUMusterChecked {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Id, [string]$By = "$env:USERNAME", [datetime]$Now = (Get-Date))
+    $p = Get-HUMusterPackage $Settings $Id
+    if (-not $p) { throw "Paket $Id nicht gefunden." }
+    if ($p.BuiltIn) { return $p }
+    $pf = Join-Path $p.Folder 'paket.json'
+    $j = Read-HUBackupJson $pf
+    foreach ($kv in @(@('Checked', $true), @('CheckedAt', $Now.ToString('s')), @('CheckedBy', $By))) { $j | Add-Member -NotePropertyName $kv[0] -NotePropertyValue $kv[1] -Force }
+    Write-HUBackupJson $pf $j
+    Write-HULog -Message "Muster-Paket '$($p.Title)' als geprueft bestaetigt" -Level 'OK'
+    return (Read-HUMusterPackage $p.Folder)
 }
 
 # Alle Pakete der Bibliothek (sortiert nach Kategorie-Reihenfolge, dann Titel). Uebernimmt beim ersten Aufruf das bisherige
@@ -410,7 +430,9 @@ function Save-HUMusterPackage {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Title, [string]$Category = 'Gesamtstand', [string[]]$Tags = @(), [string]$Note = '',
-        [Parameter(Mandatory)][object[]]$Items, [switch]$Complete, [string]$Id = '', [switch]$ResolveGroups, [switch]$SkipMissing, [datetime]$Now = (Get-Date)
+        [Parameter(Mandatory)][object[]]$Items, [switch]$Complete, [string]$Id = '', [switch]$ResolveGroups, [switch]$SkipMissing, [datetime]$Now = (Get-Date),
+        # 2.5.7 Import: Herkunft, Herausgeber und Zusatzfelder (Publisher, Imported, ImportSha256, Checked ...)
+        [string]$Origin = '', [string]$By = '', [hashtable]$Extra = @{}
     )
     $Title = "$Title".Trim()
     if (-not $Title) { throw 'Das Paket braucht einen Namen.' }
@@ -458,11 +480,15 @@ function Save-HUMusterPackage {
         Write-HUBackupJson (Join-Path $tmp 'index.json') ([pscustomobject]@{ Tenant = (Get-HUMusterKey); Errors = 0; Complete = $true; FailedTypes = @(); Items = $ixItems.ToArray() })
         $cat = @(Get-HUMusterNameCatalog -PackageFolder $tmp -Items $Items -Settings $Settings -ResolveGroups:$ResolveGroups)
         Write-HUBackupJson (Join-Path $tmp 'names.json') ([pscustomobject]@{ Format = 1; Items = $cat })
-        Write-HUBackupJson (Join-Path $tmp 'paket.json') ([pscustomobject]@{
-                Format = 1; Id = $Id; Title = $Title; Category = $Category; Tags = @(ConvertTo-HUMusterTags ($Tags -join ' ')); Note = "$Note"
-                Created = $(if ($old -and $old.Created) { $old.Created } else { $Now.ToString('s') }); Changed = $Now.ToString('s'); By = "$env:USERNAME"
-                Origin = $(if ($old) { $old.Origin } else { 'eigen' }); Complete = [bool]$Complete
-            })
+        $pj = [pscustomobject]@{
+            Format = 1; Id = $Id; Title = $Title; Category = $Category; Tags = @(ConvertTo-HUMusterTags ($Tags -join ' ')); Note = "$Note"
+            Created = $(if ($old -and $old.Created) { $old.Created } else { $Now.ToString('s') }); Changed = $Now.ToString('s'); By = $(if ($By) { $By } elseif ($old -and $old.Origin -eq 'importiert') { $old.By } else { "$env:USERNAME" })
+            Origin = $(if ($Origin) { $Origin } elseif ($old) { $old.Origin } else { 'eigen' }); Complete = [bool]$Complete
+        }
+        # Importierte Pakete behalten beim Bearbeiten Herausgeber, Pruefsumme und Pruefstand
+        if ($old -and $old.Origin -eq 'importiert') { foreach ($k in 'Publisher', 'Imported', 'ImportSha256', 'ImportKind', 'Checked', 'CheckedAt', 'CheckedBy') { if ($old.Raw -and $old.Raw.PSObject.Properties[$k]) { $pj | Add-Member -NotePropertyName $k -NotePropertyValue $old.Raw.$k -Force } } }
+        foreach ($k in @($Extra.Keys)) { $pj | Add-Member -NotePropertyName $k -NotePropertyValue $Extra[$k] -Force }
+        Write-HUBackupJson (Join-Path $tmp 'paket.json') $pj
     } catch { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; throw }
     $dst = Join-Path $root $Id
     if (Test-Path -LiteralPath $dst) {
@@ -748,7 +774,7 @@ function Get-HUMusterMatrix([object[]]$Rows, [string[]]$Keys, [switch]$Partial) 
     }
 }
 
-Export-ModuleMember -Function Get-HUMusterBuiltinRoot, Set-HUMusterBuiltinRoot, Get-HUMusterBuiltinSource, Test-HUMusterBuiltinSource, Get-HUMusterResolveKey, Get-HUMusterBuiltinPackages,
+Export-ModuleMember -Function Set-HUMusterChecked, Get-HUMusterBuiltinRoot, Set-HUMusterBuiltinRoot, Get-HUMusterBuiltinSource, Test-HUMusterBuiltinSource, Get-HUMusterResolveKey, Get-HUMusterBuiltinPackages,
     Get-HUMusterKey, Get-HUMusterRoot, Get-HUMuster, Save-HUMuster, Get-HUNameMap, ConvertTo-HUMuName,
     Get-HUMusterCategories, Get-HUMusterPkgRoot, ConvertTo-HUMusterTags, Get-HUMusterNameMap, Resolve-HUMusterName, Get-HUMusterTagNames, Get-HUMusterLocationNames,
     Get-HUMusterPackages, Get-HUMusterPackage, Get-HUMusterNameCatalog, Save-HUMusterPackage, Get-HUMusterPackageItems, Get-HUMusterStandItems,
