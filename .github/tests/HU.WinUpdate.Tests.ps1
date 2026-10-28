@@ -112,3 +112,67 @@ Describe 'Windows-Updates: Version und Patchstand' {
         ConvertTo-HUWuJoinText '' | Should -Be 'unbekannt'
     }
 }
+
+Describe 'Windows-Updates: aendern (Schritt 2)' {
+    BeforeAll {
+        $script:Calls = New-Object System.Collections.Generic.List[object]
+        $script:Bk = Join-Path ([IO.Path]::GetTempPath()) ("HU-WU-" + [guid]::NewGuid().ToString('N'))
+    }
+    AfterAll { Remove-Item -LiteralPath $script:Bk -Recurse -Force -ErrorAction SilentlyContinue }
+    It 'Zuweisung ergaenzen und entfernen: liest, ersetzt gleiches Ziel, schreibt die ganze Liste' {
+        Mock -ModuleName HU.WinUpdate Get-HUIntuneGraphAll { @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'G1' } }, [pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allDevicesAssignmentTarget' } }) }
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { $script:Calls.Add([pscustomobject]@{ Ep = $Endpoint; M = $Method; B = $Body }); $null }
+        $n = Set-HUWuAssignment -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1' -Add @([pscustomobject]@{ Kind = 'group'; GroupId = 'g2' }) -RemoveKeys @('allDevices|')
+        $n | Should -Be 2
+        $c = $script:Calls[-1]
+        $c.Ep | Should -Be '/deviceManagement/deviceConfigurations/r1/assign'
+        $c.M | Should -Be 'POST'
+        @($c.B.assignments).Count | Should -Be 2
+        @($c.B.assignments)[0].'@odata.type' | Should -Be '#microsoft.graph.deviceConfigurationAssignment'
+        @($c.B.assignments | ForEach-Object { $_.target.groupId }) | Should -Contain 'g2'
+    }
+    It 'Feature-Update: Alle Geraete wird abgelehnt (nur Gruppen)' {
+        { Set-HUWuAssignment -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Feature-Update' -Id 'f1' -Add @([pscustomobject]@{ Kind = 'allDevices' }) } | Should -Throw '*Geraetegruppen*'
+    }
+    It 'Einstellungen: vorher sichern, PATCH mit @odata.type' {
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { $script:Calls.Add([pscustomobject]@{ Ep = $Endpoint; M = $Method; B = $Body }); if ($Method -eq 'GET') { [pscustomobject]@{ id = 'r1'; deadlineForQualityUpdatesInDays = $null } } }
+        $f = Set-HUWuSettings -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1' -Changes @{ deadlineForQualityUpdatesInDays = 3 } -BackupRoot $script:Bk
+        Test-Path -LiteralPath $f | Should -BeTrue
+        $p = $script:Calls[-1]
+        $p.M | Should -Be 'PATCH'
+        $p.B.'@odata.type' | Should -Be '#microsoft.graph.windowsUpdateForBusinessConfiguration'
+        $p.B.deadlineForQualityUpdatesInDays | Should -Be 3
+    }
+    It 'Rollout: sofort = keine Einstellung, gestaffelt mit Ende und Abstand' {
+        ConvertTo-HUWuRollout @{ Mode = 'now' } | Should -BeNullOrEmpty
+        $r = ConvertTo-HUWuRollout @{ Mode = 'gradual'; Start = [datetime]'2026-11-02'; End = [datetime]'2026-11-16'; Interval = 7 }
+        $r.offerIntervalInDays | Should -Be 7
+        $r.offerEndDateTimeInUTC | Should -Match '^2026-11-1[56]T'
+    }
+    It 'Treiber freigeben: executeAction mit Datum' {
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { $script:Calls.Add([pscustomobject]@{ Ep = $Endpoint; M = $Method; B = $Body }); [pscustomobject]@{ value = [pscustomobject]@{ successfulDriverIds = @('d1') } } }
+        $r = Invoke-HUWuDriverAction -TenantKey 't' -Settings ([pscustomobject]@{}) -ProfileId 'p1' -Action approve -DriverIds @('d1') -Date ([datetime]'2026-10-28')
+        @($r.successfulDriverIds) | Should -Be @('d1')
+        $script:Calls[-1].Ep | Should -Be '/deviceManagement/windowsDriverUpdateProfiles/p1/executeAction'
+        $script:Calls[-1].B.actionName | Should -Be 'approve'
+        $script:Calls[-1].B.deploymentDate | Should -Match '^2026-10-2[78]T'
+    }
+    It 'Profile ueber Tenants zusammenfassen' {
+        $a = [pscustomobject]@{ Tenant = 'a'; Art = 'Update-Ring'; Name = 'Ring'; Einstellung = 'x'; Pause = ''; Zuweisung = 'Alle Geraete'; Hinweis = ''; Id = '1'; AsgList = @() }
+        $b = [pscustomobject]@{ Tenant = 'b'; Art = 'Update-Ring'; Name = 'ring'; Einstellung = 'y'; Pause = ''; Zuweisung = 'Alle Geraete'; Hinweis = ''; Id = '2'; AsgList = @() }
+        $g = @(Get-HUWuPolicyGroups @([pscustomobject]@{ Policies = @($a) }, [pscustomobject]@{ Policies = @($b) }) @{ a = 'A'; b = 'B' })
+        $g.Count | Should -Be 1
+        $g[0].Tenants | Should -Be 'A, B'
+        $g[0].Einstellung | Should -Match 'verschieden'
+        @($g[0].Items).Count | Should -Be 2
+    }
+
+    It 'Treiber-Richtlinie: 0 melden wird durch Treiberliste korrigiert' {
+        InModuleScope HU.WinUpdate {
+            $row = [pscustomobject]@{ Id = 'p1'; Einstellung = 'manuell; 0 Geraet(e) melden'; Hinweis = 'Keine Geraete melden - x' }
+            Update-HUWuDriverPolicyRow $row @([pscustomobject]@{ ProfilId = 'p1'; Geraete = 7 }, [pscustomobject]@{ ProfilId = 'p2'; Geraete = 99 })
+            $row.Hinweis | Should -Be ''
+            $row.Einstellung | Should -Be 'manuell; 1 Treiber, bis 7 betroffene Geraete'
+        }
+    }
+}
