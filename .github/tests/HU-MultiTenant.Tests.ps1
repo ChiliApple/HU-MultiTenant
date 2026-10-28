@@ -278,6 +278,23 @@ Describe 'Analyse: Zuweisungen' {
             ($r | Where-Object Typ -eq 'Einstellungskatalog').Ueber | Should -Be 'Alle Geraete'
         }
     }
+    It 'Treiber- und Qualitaets-Updates: Zuweisungen je Objekt nachgeladen' {
+        if (-not (Get-Command Write-HULog -ErrorAction SilentlyContinue)) { function global:Write-HULog { param($Message, $Level, $Tenant) } }
+        InModuleScope HU.Intune {
+            Mock Resolve-HUAssignmentTarget { @{ Label = 'Schueler'; Groups = @{ 'g1' = 'Schueler' }; AllDevices = $false; AllUsers = $false; Note = '' } }
+            Mock Get-HUIntuneGraphAll {
+                if ($Endpoint -eq '/deviceManagement/windowsDriverUpdateProfiles') { return @([pscustomobject]@{ id = 'd1'; displayName = 'Treiber Auto' }) }
+                if ($Endpoint -eq '/deviceManagement/windowsDriverUpdateProfiles/d1/assignments') { return @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'g1' } }) }
+                if ($Endpoint -eq '/deviceManagement/windowsQualityUpdatePolicies') { return @([pscustomobject]@{ id = 'q1'; displayName = 'Hotpatch' }) }
+                if ($Endpoint -eq '/deviceManagement/windowsQualityUpdatePolicies/q1/assignments') { throw '403' }
+                return @()
+            }
+            $r = @(Get-HUAssignmentReport -TenantKey 't' -Settings ([pscustomobject]@{}) -Kind group -Name 'Schueler')
+            $r.Count | Should -Be 1
+            $r[0].Typ | Should -Be 'Treiber-Update'
+            $r[0].Name | Should -Be 'Treiber Auto'
+        }
+    }
     It 'Benutzer ohne Domain: UPN-Anfang, mit Intune-Geraeten und deren Gruppen' {
         InModuleScope HU.Intune {
             Mock Invoke-HUIntuneGraph {
