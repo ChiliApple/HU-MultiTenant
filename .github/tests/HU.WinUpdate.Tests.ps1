@@ -83,4 +83,29 @@ Describe 'Windows-Updates: Version und Patchstand' {
         $s = Get-HUWuSummary $i1
         $s.Total | Should -Be 3; $s.Old | Should -Be 1; $s.Stale | Should -Be 1
     }
+    It 'Treiber: Zeile, Status, Kategorie und Zusammenfassung ueber Tenants' {
+        $d1 = [pscustomobject]@{ id = 'x1'; name = 'Intel Grafik'; version = '31.0.1'; manufacturer = 'Intel'; driverClass = 'Display'; category = 'recommended'; approvalStatus = 'needsReview'; applicableDeviceCount = 120; releaseDateTime = '2026-10-01T00:00:00Z' }
+        $d2 = [pscustomobject]@{ id = 'y1'; name = 'Intel Grafik'; version = '31.0.1'; manufacturer = 'Intel'; driverClass = 'Display'; category = 'recommended'; approvalStatus = 'approved'; applicableDeviceCount = 80; deployDateTime = '2026-10-20T00:00:00Z' }
+        $r1 = ConvertTo-HUWuDriverRow -Tenant 'a' -ProfileId 'p1' -ProfileName 'Treiber' -D $d1
+        $r1.Status | Should -Be 'pruefen'; $r1.Kategorie | Should -Be 'empfohlen'; $r1.Geraete | Should -Be 120; $r1.Datum | Should -Be '2026-10-01'
+        $r2 = ConvertTo-HUWuDriverRow -Tenant 'b' -ProfileId 'p2' -ProfileName 'Treiber' -D $d2
+        $r2.Ab | Should -Be '20.10.2026'
+        $m = @(Get-HUWuDriverMatrix @([pscustomobject]@{ Tenant = 'a'; Drivers = @($r1) }, [pscustomobject]@{ Tenant = 'b'; Drivers = @($r2) }) @{ a = 'A'; b = 'B' })
+        $m.Count | Should -Be 1
+        $m[0].A | Should -Be '120 (pruefen)'
+        $m[0].B | Should -Be '80 (freigegeben)'
+        $m[0].Geraete | Should -Be 200
+        @(Get-HUWuDriverMatrix @([pscustomobject]@{ Tenant = 'a'; Drivers = @($r1) }) @{} { param($d) $d.Status -eq 'freigegeben' }).Count | Should -Be 0
+    }
+    It 'Treiber-Richtlinie ohne meldende Geraete gibt einen Hinweis' {
+        $o = [pscustomobject]@{ id = 'p1'; displayName = 'Treiber Auto'; approvalType = 'automatic'; deploymentDeferralInDays = 3; deviceReporting = 0; newUpdates = 0 }
+        $r = ConvertTo-HUWuPolicyRow -Tenant 't' -Art 'Treiber-Update' -O $o -Asg @() -Names @{}
+        $r.Einstellung | Should -Match 'automatisch'
+        $r.Hinweis | Should -Match 'Keine Geraete melden'
+    }
+    It 'Beitritt als Text' {
+        ConvertTo-HUWuJoinText 'azureADJoined' | Should -Be 'Entra'
+        ConvertTo-HUWuJoinText 'azureADRegistered' | Should -Be 'nur registriert'
+        ConvertTo-HUWuJoinText '' | Should -Be 'unbekannt'
+    }
 }

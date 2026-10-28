@@ -842,6 +842,7 @@
                                     <ListBoxItem Content="&#x1F4CA; &#xDC;bersicht (Versionen)" Tag="matrix" IsSelected="True"/>
                                     <ListBoxItem Content="&#x2699; Ringe und Profile" Tag="policies"/>
                                     <ListBoxItem Content="&#x1F4BB; Ger&#xE4;te" Tag="devices"/>
+                                    <ListBoxItem Content="&#x1F527; Treiber" Tag="drivers"/>
                                 </ListBox>
                                 <TextBlock DockPanel.Dock="Top" Text="Je Tenant" Foreground="#AAAAAA" FontSize="11" Margin="0,0,0,2"/>
                                 <TextBlock DockPanel.Dock="Bottom" x:Name="lblWuState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
@@ -997,8 +998,8 @@
                                 <TextBlock DockPanel.Dock="Top" x:Name="lblWuHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,6"/>
                                 <WrapPanel DockPanel.Dock="Top" x:Name="pnlWuChecks" Margin="0,0,0,6">
                                     <TextBlock Text="Patchstand:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                    <CheckBox x:Name="chkWuOld" Content="veraltet" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
-                                    <CheckBox x:Name="chkWuBehind" Content="zur&#xFC;ck" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuOld" Content="veraltet (2+ fehlen)" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuBehind" Content="1 Update fehlt" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
                                     <CheckBox x:Name="chkWuCurrent" Content="aktuell" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
                                     <CheckBox x:Name="chkWuUnknown" Content="unbekannt" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,20,0"/>
                                     <TextBlock Text="Nur:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -1007,6 +1008,16 @@
                                               ToolTip="Geraete, die lange nicht synchronisieren, ausblenden (sie koennen ohnehin nicht aktualisieren)"/>
                                     <CheckBox x:Name="chkWuCompany" Content="Firmenger&#xE4;te" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
                                     <CheckBox x:Name="chkWuWin10" Content="Windows 10" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                </WrapPanel>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="pnlWuDrvChecks" Margin="0,0,0,6" Visibility="Collapsed">
+                                    <TextBlock Text="Status:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="chkDrvReview" Content="pr&#xFC;fen" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvApproved" Content="freigegeben" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvSuspended" Content="ausgesetzt" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvDeclined" Content="abgelehnt" Style="{StaticResource DarkCheckBox}" Margin="0,0,20,0"/>
+                                    <TextBlock Text="Nur:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="chkDrvRecommended" Content="empfohlene" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvApplicable" Content="mit betroffenen Ger&#xE4;ten" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
                                 </WrapPanel>
                                 <DataGrid x:Name="gridWu" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="True" IsReadOnly="True" HeadersVisibility="Column"
                                           SelectionMode="Extended" CanUserSortColumns="True"/>

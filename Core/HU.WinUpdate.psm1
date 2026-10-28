@@ -115,7 +115,7 @@ function Get-HUWuAssignText([object[]]$Assignments, [hashtable]$Names) {
 function Get-HUWuInventory {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [hashtable]$Catalog = $null, [datetime]$Now = (Get-Date))
-    $inv = [pscustomobject]@{ Tenant = $TenantKey; Devices = @(); Policies = @(); Catalog = $Catalog; Errors = (New-Object System.Collections.Generic.List[string]) }
+    $inv = [pscustomobject]@{ Tenant = $TenantKey; Devices = @(); Policies = @(); Drivers = @(); Catalog = $Catalog; Errors = (New-Object System.Collections.Generic.List[string]) }
     $err = { param($what, $e) $m = "$($e.Exception.Message)"; if ($m -match '403|Forbidden|Authorization') { $m = 'Berechtigung fehlt' } elseif ($m -match '(?i)licen') { $m += ' (Windows-Lizenzueberpruefung?)' }; $inv.Errors.Add("${what}: $m") }
     # Katalog (je Tenant gleich - wird nur einmal gelesen und weitergereicht)
     if (-not $inv.Catalog) {
@@ -124,16 +124,19 @@ function Get-HUWuInventory {
     }
     # Geraete
     try {
-        $sel = 'id,deviceName,osVersion,lastSyncDateTime,userPrincipalName,managedDeviceOwnerType,model,operatingSystem'
-        $devs = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/managedDevices?`$filter=operatingSystem eq 'Windows'&`$select=$sel")
+        $sel = 'id,deviceName,osVersion,lastSyncDateTime,userPrincipalName,managedDeviceOwnerType,model,operatingSystem,joinType'
+        $devs = $null
+        try { $devs = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/managedDevices?`$filter=operatingSystem eq 'Windows'&`$select=$sel") }
+        catch { $devs = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/managedDevices?`$filter=operatingSystem eq 'Windows'&`$select=$($sel -replace ',joinType', '')") }   # Rueckfall ohne joinType
         $inv.Devices = @(foreach ($d in $devs) {
                 $bi = Get-HUWuBuildInfo "$($d.osVersion)" $inv.Catalog
                 $sync = Get-HUWuDate $d.lastSyncDateTime
                 [pscustomobject]@{
                     Tenant = $TenantKey; Geraet = "$($d.deviceName)"; Benutzer = "$($d.userPrincipalName)"; Version = $bi.Label; Build = "$($d.osVersion)"
-                    Patchstand = (Get-HUWuPatchState $bi $inv.Catalog); Fehlend = (Get-HUWuMissingCount $bi $inv.Catalog); LetzterSync = $(if ($sync) { $sync.ToLocalTime().ToString('dd.MM.yyyy HH:mm') } else { '' })
+                    Patchstand = (Get-HUWuPatchState $bi $inv.Catalog); Fehlend = (Get-HUWuMissingCount $bi $inv.Catalog); LetzterSync = $(if ($sync) { $sync.ToLocalTime().ToString('yyyy-MM-dd HH:mm') } else { '' })
                     OhneSync = [bool](-not $sync -or ($Now - $sync).TotalDays -gt $script:HUWuStaleDays)
                     Besitz = "$($d.managedDeviceOwnerType)"; Modell = "$($d.model)"; BuildNr = $bi.Build; Id = "$($d.id)"
+                    Beitritt = (ConvertTo-HUWuJoinText "$($d.PSObject.Properties['joinType'] | ForEach-Object { $_.Value })")
                 }
             })
     } catch { & $err 'Geraete' $_ }
@@ -154,6 +157,14 @@ function Get-HUWuInventory {
             foreach ($o in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint $src.Ep)) {
                 $asg = @(); try { $asg = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$($src.Ep)/$($o.id)/assignments") } catch { }
                 $raw.Add(@{ Art = $src.Art; O = $o; Asg = $asg })
+                if ($src.Art -eq 'Treiber-Update') {
+                    # anstehende Treiber dieser Richtlinie (learn.microsoft.com/graph/api/resources/intune-softwareupdate-windowsdriverupdateinventory)
+                    try {
+                        $inv.Drivers = @($inv.Drivers) + @(foreach ($dr in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$($src.Ep)/$($o.id)/driverInventories")) {
+                                ConvertTo-HUWuDriverRow -Tenant $TenantKey -ProfileId "$($o.id)" -ProfileName "$($o.displayName)" -D $dr
+                            })
+                    } catch { & $err "Treiber '$($o.displayName)'" $_ }
+                }
             }
         } catch { & $err $src.Art $_ }
     }
@@ -201,10 +212,63 @@ function ConvertTo-HUWuPolicyRow([string]$Tenant, [string]$Art, $O, [object[]]$A
             $warn = 'Expedite nach dem Ausrollen wieder entfernen (Microsoft-Empfehlung)'
         }
         'Qualitaets-Update' { $set = "$(if (& $g 'hotpatchEnabled') { 'Hotpatch an' } else { 'Hotpatch aus' })" }
-        'Treiber-Update' { $set = "Freigabe: $(& $g 'approvalType')$(if ($null -ne (& $g 'deploymentDeferralInDays')) { ", Aufschub $(& $g 'deploymentDeferralInDays') T." })" }
+        'Treiber-Update' {
+            $at = "$(& $g 'approvalType')"
+            $set = "Freigabe: $(if ($at -eq 'automatic') { 'automatisch (empfohlene)' } elseif ($at -eq 'manual') { 'manuell' } else { $at })$(if ($at -eq 'automatic' -and $null -ne (& $g 'deploymentDeferralInDays')) { ", Aufschub $(& $g 'deploymentDeferralInDays') T." })"
+            $rep = & $g 'deviceReporting'; $nu = & $g 'newUpdates'
+            if ($null -ne $rep) { $set += "; $rep Geraet(e) melden" }
+            if ($nu) { $set += "; $nu zu pruefen" }
+            $sy = & $g 'inventorySyncStatus'
+            if ($sy) { $ls = Get-HUWuDate $sy.lastSuccessfulSyncDateTime; if ($ls) { $set += "; Abgleich $($ls.ToLocalTime().ToString('dd.MM.'))" }; if ("$($sy.driverInventorySyncState)" -and "$($sy.driverInventorySyncState)" -ne 'success') { $warn = "Treiber-Abgleich: $($sy.driverInventorySyncState)" } }
+            if ($null -ne $rep -and [int]$rep -eq 0) { $warn = 'Keine Geraete melden - Geraete muessen Entra- oder Hybrid-beigetreten sein, Diagnosedaten mindestens Erforderlich, Dienst wlidsvc an, Windows-Lizenz mit Autopatch-Berechtigung' }
+            elseif ($nu) { $warn = (@($warn, "$nu Treiber zu pruefen") | Where-Object { $_ }) -join '; ' }
+        }
     }
     $name = "$(& $g 'displayName')"
     return [pscustomobject]@{ Tenant = $Tenant; Art = $Art; Name = $name; Einstellung = $set; Pause = $pause; Zuweisung = (Get-HUWuAssignText $Asg $Names); Hinweis = $warn; Id = "$($O.id)" }
+}
+
+# joinType -> Text (Feature-, Qualitaets- und Treiber-Profile wirken nur bei Entra- oder Hybrid-Beitritt)
+function ConvertTo-HUWuJoinText([string]$J) {
+    switch ($J) {
+        'azureADJoined' { return 'Entra' }
+        'hybridAzureADJoined' { return 'Hybrid' }
+        'azureADRegistered' { return 'nur registriert' }
+        default { return $(if ($J) { $J } else { 'unbekannt' }) }
+    }
+}
+
+# Treiber aus driverInventories -> Zeile
+function ConvertTo-HUWuDriverRow([string]$Tenant, [string]$ProfileId, [string]$ProfileName, $D) {
+    $st = switch ("$($D.approvalStatus)") { 'needsReview' { 'pruefen' } 'approved' { 'freigegeben' } 'declined' { 'abgelehnt' } 'suspended' { 'ausgesetzt' } default { "$($D.approvalStatus)" } }
+    $cat = switch ("$($D.category)") { 'recommended' { 'empfohlen' } 'previouslyApproved' { 'frueher freigegeben' } 'other' { 'sonstige' } default { "$($D.category)" } }
+    $rel = Get-HUWuDate $D.releaseDateTime; $dep = Get-HUWuDate $D.deployDateTime
+    $n = 0; [void][int]::TryParse("$($D.applicableDeviceCount)", [ref]$n)
+    return [pscustomobject]@{
+        Tenant = $Tenant; ProfilId = $ProfileId; Profil = $ProfileName; Id = "$($D.id)"
+        Treiber = "$($D.name)"; Version = "$($D.version)"; Hersteller = "$($D.manufacturer)"; Klasse = "$($D.driverClass)"; Kategorie = $cat
+        Datum = $(if ($rel) { $rel.ToString('yyyy-MM-dd') } else { '' }); Geraete = $n; Status = $st   # ISO: sortiert richtig
+        Ab = $(if ($dep -and $st -eq 'freigegeben') { $dep.ToLocalTime().ToString('dd.MM.yyyy') } else { '' })
+    }
+}
+
+# Treiber ueber Tenants: gleicher Name + Version = eine Zeile, je Tenant "Geraete (Status)"
+function Get-HUWuDriverMatrix([object[]]$Inventories, [hashtable]$TenantNames = @{}, [scriptblock]$Filter = $null) {
+    $invs = @($Inventories | Where-Object { $_ })
+    $all = @($invs | ForEach-Object { @($_.Drivers) } | Where-Object { $_ -and (-not $Filter -or (& $Filter $_)) })
+    $rows = foreach ($g in @($all | Group-Object { "$($_.Treiber)|$($_.Version)" })) {
+        $f = @($g.Group)[0]
+        $o = [ordered]@{ Treiber = $f.Treiber; Version = $f.Version; Hersteller = $f.Hersteller; Klasse = $f.Klasse; Kategorie = $f.Kategorie; Datum = $f.Datum }
+        foreach ($i in $invs) {
+            $col = $(if ($TenantNames.ContainsKey($i.Tenant)) { $TenantNames[$i.Tenant] } else { $i.Tenant })
+            $x = @($g.Group | Where-Object { $_.Tenant -eq $i.Tenant })
+            $o[$col] = $(if ($x.Count) { "$(($x | Measure-Object Geraete -Sum).Sum) ($(@($x | ForEach-Object { $_.Status } | Select-Object -Unique) -join '/'))" } else { '' })
+        }
+        $o['Geraete'] = ($g.Group | Measure-Object Geraete -Sum).Sum
+        $o['Status'] = (@($g.Group | ForEach-Object { $_.Status } | Select-Object -Unique) -join '/')
+        [pscustomobject]$o
+    }
+    return @($rows | Sort-Object @{ e = { if ($_.Status -match 'pruefen') { 0 } else { 1 } } }, @{ e = { $_.Geraete }; Descending = $true }, Treiber)
 }
 
 # Uebersicht: je Version eine Zeile, je Tenant "Anzahl (davon aktuell)"; dazu Summen fuer Patchstand und ohne Sync
@@ -239,12 +303,12 @@ function Get-HUWuSummary($Inventory) {
     $ohne = @($d | Where-Object OhneSync).Count
     $top = @($d | Group-Object Version | Sort-Object Count -Descending | Select-Object -First 1)[0]
     return [pscustomobject]@{
-        Text = "$n Geraete: $akt aktuell, $zur 1 Monat zurueck, $alt aelter$(if ($ohne) { ", $ohne ohne Sync > $($script:HUWuStaleDays) T." })"
+        Text = "$n Geraete: $akt aktuell, $zur mit 1 fehlenden Update, $alt veraltet$(if ($ohne) { ", $ohne ohne Sync > $($script:HUWuStaleDays) T." })"
         Haupt = $(if ($top) { "meist $($top.Name)" } else { '' })
         Total = $n; Current = $akt; Behind = $zur; Old = $alt; Stale = $ohne
         Ampel = $(if (-not $n) { 'grau' } elseif ($alt -gt [Math]::Max(2, $n * 0.1)) { 'rot' } elseif ($alt -or $zur -gt $n * 0.2) { 'gelb' } else { 'gruen' })
     }
 }
 
-Export-ModuleMember -Function Get-HUWuBuildInfo, ConvertFrom-HUWuCatalog, Get-HUWuPatchState, Get-HUWuMissingCount, Get-HUWuLatestText, Get-HUWuInventory,
+Export-ModuleMember -Function ConvertTo-HUWuJoinText, ConvertTo-HUWuDriverRow, Get-HUWuDriverMatrix, Get-HUWuBuildInfo, ConvertFrom-HUWuCatalog, Get-HUWuPatchState, Get-HUWuMissingCount, Get-HUWuLatestText, Get-HUWuInventory,
     ConvertTo-HUWuPolicyRow, Get-HUWuMatrix, Get-HUWuSummary, Get-HUWuAssignText

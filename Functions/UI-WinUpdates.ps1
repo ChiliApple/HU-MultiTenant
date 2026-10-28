@@ -108,6 +108,46 @@ function Test-HUWuDeviceFilter($D) {
     return $true
 }
 
+# Anzeige des Patchstands (intern: aktuell | zurueck | veraltet | unbekannt)
+function Get-HUWuPatchText([string]$P) {
+    switch ($P) { 'zurueck' { return '1 Update fehlt' } 'veraltet' { return 'veraltet (2+ fehlen)' } default { return $P } }
+}
+
+# Zeilen -> DataTable; Spalten mit nur ganzen Zahlen werden Int32 (richtige Sortierung). -1 bei Fehlende Updates = unbekannt
+function ConvertTo-HUWuDataTable([object[]]$Rows) {
+    $dt = New-Object System.Data.DataTable
+    $rows = @($Rows | Where-Object { $_ })
+    if (-not $rows.Count) { return , $dt }   # Komma: sonst rollt PowerShell die Tabelle in Zeilen aus
+    $cols = @($rows[0].PSObject.Properties | ForEach-Object { $_.Name })
+    foreach ($n in $cols) {
+        $num = $true
+        foreach ($r in $rows) { $v = $r.$n; if ($null -ne $v -and "$v" -ne '' -and -not ($v -is [int] -or $v -is [long] -or $v -is [double])) { $num = $false; break } }
+        [void]$dt.Columns.Add($n, $(if ($num) { [int] } else { [string] }))
+    }
+    foreach ($r in $rows) {
+        $dr = $dt.NewRow()
+        foreach ($n in $cols) { $v = $r.$n; $dr[$n] = $(if ($dt.Columns[$n].DataType -eq [int]) { if ($null -eq $v -or "$v" -eq '') { [DBNull]::Value } else { [int]$v } } else { "$v" }) }
+        [void]$dt.Rows.Add($dr)
+    }
+    return , $dt
+}
+
+# Wert einer Zeile (DataRowView) lesen
+function Get-HUWuCell($Item, [string]$Name) {
+    if ($Item -is [System.Data.DataRowView]) { if ($Item.Row.Table.Columns.Contains($Name)) { return "$($Item[$Name])" }; return $null }
+    if ($Item -and $Item.PSObject.Properties[$Name]) { return "$($Item.$Name)" }
+    return $null
+}
+
+function Test-HUWuDriverFilter($D) {
+    $c = $script:Controls
+    $cb = switch ("$($D.Status)") { 'pruefen' { $c['chkDrvReview'] } 'freigegeben' { $c['chkDrvApproved'] } 'ausgesetzt' { $c['chkDrvSuspended'] } 'abgelehnt' { $c['chkDrvDeclined'] } default { $c['chkDrvReview'] } }
+    if (-not $cb.IsChecked) { return $false }
+    if ($c['chkDrvRecommended'].IsChecked -and "$($D.Kategorie)" -ne 'empfohlen') { return $false }
+    if ($c['chkDrvApplicable'].IsChecked -and [int]$D.Geraete -le 0) { return $false }
+    return $true
+}
+
 # Liste links (je Tenant Ampel und Kurzfassung) und Tabelle rechts neu aufbauen
 function Update-HUWuView {
     $c = $script:Controls
@@ -118,8 +158,9 @@ function Update-HUWuView {
             $s = Get-HUWuSummary $i
             $col = switch ($s.Ampel) { 'rot' { '#EF5350' } 'gelb' { '#FFB74D' } 'gruen' { '#81C784' } default { '#AAAAAA' } }
             $warn = @(@($i.Policies) | Where-Object { $_.Hinweis } | ForEach-Object { "$($_.Name): $($_.Hinweis)" })
+            $drv = @(@($i.PSObject.Properties['Drivers'] | ForEach-Object { $_.Value }) | Where-Object { $_ -and $_.Status -eq 'pruefen' -and [int]$_.Geraete -gt 0 }).Count
             [pscustomobject]@{ Tenant = $i.Tenant; Title = "$($names[$i.Tenant])"; Color = $col
-                Sub = "$($s.Text)$(if ($s.Haupt) { "; $($s.Haupt)" })$(if (@($i.Errors).Count) { " | nicht alles lesbar" })"
+                Sub = "$($s.Text)$(if ($s.Haupt) { "; $($s.Haupt)" })$(if ($drv) { "; $drv Treiber zu pruefen" })$(if (@($i.Errors).Count) { " | nicht alles lesbar" })"
                 Tip = (@("$($s.Text)") + @($i.Errors) + $warn) -join "`n" }
         })
     $loading = Test-HUJobRunning 'WuLoad'
@@ -128,7 +169,8 @@ function Update-HUWuView {
     $c['lblWuState'].Text = $(if (-not @(Get-HUWuTenants).Count) { 'Oben Tenants anhaken.' } elseif ($loading -or $missing) { "Lese ... ($missing Tenant(s) offen)" } else {
             $t = @($script:WuRaw.Values | ForEach-Object { $_.Time } | Sort-Object)[0]; "Stand $(if ($t) { $t.ToString('HH:mm') }) - neu laden mit $([char]0x21BB)" })
     $f = "$($c['txtWuFilter'].Text)".Trim()
-    $c['pnlWuChecks'].Visibility = $(if ($script:WuView -eq 'policies') { 'Collapsed' } else { 'Visible' })
+    $c['pnlWuChecks'].Visibility = $(if ($script:WuView -in 'matrix', 'devices') { 'Visible' } else { 'Collapsed' })
+    $c['pnlWuDrvChecks'].Visibility = $(if ($script:WuView -eq 'drivers') { 'Visible' } else { 'Collapsed' })
     $rows = @()
     switch ($script:WuView) {
         'matrix' {
@@ -145,15 +187,25 @@ function Update-HUWuView {
         }
         'devices' {
             $c['lblWuTitle'].Text = "Ger$([char]0xE4)te$(if ($script:WuDevFilter) { ": $($script:WuDevFilter)" })"
-            $c['lblWuHint'].Text = "Patchstand: aktuell = neuestes Sicherheitsupdate des Builds, zurueck = eines fehlt (etwa 1 Monat), veraltet = zwei oder mehr fehlen. $(if ($script:WuDevFilter) { 'Ansicht links neu waehlen hebt die Einschraenkung auf.' })"
+            $c['lblWuHint'].Text = "Patchstand: aktuell = neuestes Sicherheitsupdate des Builds, 1 Update fehlt = etwa einen Monat zurueck, veraltet = zwei oder mehr fehlen. Fehlende Updates -1 = unbekannt. Spaltenkopf anklicken zum Sortieren. $(if ($script:WuDevFilter) { 'Ansicht links neu waehlen hebt die Einschraenkung auf.' })"
             $rows = @($invs | ForEach-Object { @($_.Devices) } | Where-Object { (-not $script:WuDevFilter -or $_.Version -eq $script:WuDevFilter) -and (Test-HUWuDeviceFilter $_) } |
-                    ForEach-Object { [pscustomobject][ordered]@{ Tenant = $names[$_.Tenant]; Geraet = $_.Geraet; Benutzer = $_.Benutzer; Version = $_.Version; Build = $_.Build; Patchstand = $_.Patchstand; 'Fehlende Updates' = $(if ($null -ne $_.Fehlend) { $_.Fehlend } else { '?' }); 'Letzter Sync' = $_.LetzterSync; Besitz = $_.Besitz; Modell = $_.Modell } } |
-                    Sort-Object @{ e = { switch ($_.Patchstand) { 'veraltet' { 0 } 'zurueck' { 1 } 'unbekannt' { 2 } default { 3 } } } }, Tenant, Geraet)
+                    ForEach-Object { [pscustomobject][ordered]@{ Tenant = $names[$_.Tenant]; Geraet = $_.Geraet; Benutzer = $_.Benutzer; Version = $_.Version; Build = $_.Build; Patchstand = (Get-HUWuPatchText $_.Patchstand); 'Fehlende Updates' = $(if ($null -ne $_.Fehlend) { [int]$_.Fehlend } else { -1 }); 'Letzter Sync' = $_.LetzterSync; Beitritt = $(if ($_.PSObject.Properties['Beitritt']) { $_.Beitritt } else { '' }); Besitz = $_.Besitz; Modell = $_.Modell } } |
+                    Sort-Object @{ e = { $_.'Fehlende Updates' }; Descending = $true }, Tenant, Geraet)
+        }
+    }
+    if ($script:WuView -eq 'drivers') {
+        $c['lblWuTitle'].Text = 'Treiber-Updates'
+        $c['lblWuHint'].Text = 'Anstehende Treiber aller Treiber-Richtlinien; gleicher Treiber in mehreren Tenants = eine Zeile, je Tenant betroffene Geraete (Status). Doppelklick zeigt die Einzelheiten je Richtlinie.'
+        $rows = @(Get-HUWuDriverMatrix $invs $names { param($d) Test-HUWuDriverFilter $d })
+        if (-not $rows.Count) {
+            $np = @($invs | ForEach-Object { @($_.Policies) } | Where-Object { $_.Art -eq 'Treiber-Update' }).Count
+            $c['lblWuHint'].Text = $(if (-not $np) { 'In den angehakten Tenants gibt es keine Treiber-Richtlinie (Intune: Geraete > Windows-Updates > Treiber-Updates).' } else { "Keine Treiber mit diesem Filter. $np Treiber-Richtlinie(n) vorhanden - Hinweise dazu unter 'Ringe und Profile'." })
         }
     }
     if ($f) { $rows = @($rows | Where-Object { $o = $_; @($o.PSObject.Properties | Where-Object { "$($_.Value)" -like "*$f*" }).Count }) }
     $script:WuRows = $rows
-    $c['gridWu'].ItemsSource = $rows
+    # DataTable statt PowerShell-Objekte: WPF kann dann per Klick auf den Spaltenkopf sortieren (Zahlen als Zahlen)
+    $c['gridWu'].ItemsSource = (ConvertTo-HUWuDataTable $rows).DefaultView
 }
 
 # gruener pulsierender Punkt neben dem Titel, solange gelesen wird
@@ -171,6 +223,15 @@ function Set-HUWuRunDot([bool]$On) {
         $d.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
         $d.Opacity = 1.0; $d.Visibility = 'Collapsed'
     }
+}
+
+# Einzelheiten eines Treibers: je Tenant und Richtlinie Status, Geraete, Freigabe ab
+function Show-HUWuDriverDetail($Row) {
+    $names = Get-HUWuTenantNames
+    $list = @(Get-HUWuInventories | ForEach-Object { @($_.Drivers) } | Where-Object { $_.Treiber -eq $Row.Treiber -and $_.Version -eq $Row.Version })
+    $txt = "$($Row.Treiber)`nVersion $($Row.Version) - $($Row.Hersteller), $($Row.Klasse), $($Row.Kategorie)$(if ($Row.Datum) { ", vom $($Row.Datum)" })`n`n" +
+        (@($list | ForEach-Object { "  $($names[$_.Tenant]) / $($_.Profil): $($_.Status), $($_.Geraete) Geraet(e)$(if ($_.Ab) { ", ab $($_.Ab)" })" }) -join "`n")
+    Show-HUMessage $txt -Title 'Treiber' -Icon Info
 }
 
 function Export-HUWuTable {
@@ -201,22 +262,28 @@ function Register-HUWinUpdateHandlers {
             $script:Controls['lblWuFilterHint'].Visibility = $(if ($script:Controls['txtWuFilter'].Text) { 'Collapsed' } else { 'Visible' })
             Update-HUWuView
         })
-    foreach ($n in 'chkWuOld', 'chkWuBehind', 'chkWuCurrent', 'chkWuUnknown', 'chkWuStale', 'chkWuActive', 'chkWuCompany', 'chkWuWin10') {
+    foreach ($n in 'chkWuOld', 'chkWuBehind', 'chkWuCurrent', 'chkWuUnknown', 'chkWuStale', 'chkWuActive', 'chkWuCompany', 'chkWuWin10', 'chkDrvReview', 'chkDrvApproved', 'chkDrvSuspended', 'chkDrvDeclined', 'chkDrvRecommended', 'chkDrvApplicable') {
         $c[$n].Add_Click({ Update-HUWuView })
     }
     $c['gridWu'].Add_MouseDoubleClick({
             $it = $script:Controls['gridWu'].SelectedItem
-            if ($script:WuView -eq 'matrix' -and $it -and $it.PSObject.Properties['Version']) {
-                $script:WuView = 'devices'; $script:WuDevFilter = "$($it.Version)"
+            $ver = Get-HUWuCell $it 'Version'
+            if ($script:WuView -eq 'matrix' -and $ver) {
+                $script:WuView = 'devices'; $script:WuDevFilter = $ver
                 Update-HUWuView
+            }
+            elseif ($script:WuView -eq 'drivers' -and (Get-HUWuCell $it 'Treiber')) {
+                Show-HUWuDriverDetail ([pscustomobject]@{ Treiber = (Get-HUWuCell $it 'Treiber'); Version = $ver; Hersteller = (Get-HUWuCell $it 'Hersteller'); Klasse = (Get-HUWuCell $it 'Klasse'); Kategorie = (Get-HUWuCell $it 'Kategorie'); Datum = (Get-HUWuCell $it 'Datum') })
             }
         })
     $c['gridWu'].Add_LoadingRow({
             param($s, $e)
             $o = $e.Row.Item
             $col = '#E0E0E0'
-            if ($o.PSObject.Properties['Patchstand']) { $col = switch ("$($o.Patchstand)") { 'veraltet' { '#EF9A9A' } 'zurueck' { '#FFCC80' } 'unbekannt' { '#AAAAAA' } default { '#E0E0E0' } } }
-            elseif ($o.PSObject.Properties['Hinweis'] -and "$($o.Hinweis)") { $col = '#FFCC80' }
+            $ps = Get-HUWuCell $o 'Patchstand'; $hi = Get-HUWuCell $o 'Hinweis'; $tr = Get-HUWuCell $o 'Treiber'
+            if ($null -ne $ps) { $col = $(if ($ps -like 'veraltet*') { '#EF9A9A' } elseif ($ps -like '1 Update*') { '#FFCC80' } elseif ($ps -eq 'unbekannt') { '#AAAAAA' } else { '#E0E0E0' }) }
+            elseif ($hi) { $col = '#FFCC80' }
+            elseif ($tr -and "$(Get-HUWuCell $o 'Status')" -match 'pruefen') { $col = '#FFCC80' }
             $e.Row.Foreground = Get-HUBrush $col
         })
 }
