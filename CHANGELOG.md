@@ -1,5 +1,39 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.4 (Stable, 28.10.2026)
+
+Stable-Release der Testversionen 2.6.1 bis 2.6.3 – „Windows-Updates“. Alle Punkte im Detail stehen in den Abschnitten darunter.
+
+### 🪟 WIN-Updates (Wartung)
+- **Überblick über alle Tenants:**
+  - Windows-Versionen mit Patchstand und Support-Ende
+  - Geräte mit fehlenden Updates
+  - anstehende Treiber
+- **Ringe und Profile verwalten:**
+  - Update-Ringe, Feature-Updates, Treiber-Richtlinien und Expedites anlegen, zuweisen, ändern, pausieren und löschen.
+  - Update-Ringe lassen sich nur ohne Zuweisung löschen.
+  - Vor jeder Änderung wird der Stand gesichert.
+- **Vorlagen:** Ringe und Profile als Datei sichern und in anderen Tenants importieren, ohne Zuweisungen. Die Vorlagen kommen mit der App-Sicherung mit.
+- **So geht's:** kurze Anleitungen mit Knöpfen, die gleich die richtige Stelle öffnen.
+
+### 🔐 Rechte
+- **Neue Tenants bekommen zuerst nur das Nötige:** Umfang *Nur lesen* bzw. *Lesen + verteilen*.
+- **Spalte „App braucht“:** zeigt, welche Rechte die App wirklich nutzt und welche nicht gebraucht werden.
+- **Fehlt ein Schreibrecht**, bietet die App es nach dem Lauf an.
+
+### 🎨 Oberfläche
+- **Fenster nie abgeschnitten:**
+  - Alle Dialoge haben einen Anfasser und eine Mindestbreite.
+  - Lange Texte und Häkchen brechen um.
+  - Das Fenster für Client Secrets passt sich in der Höhe an.
+
+### ⚠️ Nach dem Update
+- **WIN-Updates ändern** braucht das Recht `DeviceManagementConfiguration.ReadWrite.All`. Die App bietet es an, wenn es fehlt.
+- **Feature-, Treiber- und Expedite-Profile** wirken nur auf Entra- oder Hybrid-beigetretene Geräte mit Diagnosedaten mindestens „Erforderlich“ und einer Windows-Lizenz mit Autopatch-Berechtigung.
+
+### ✅ Qualität
+- 953 automatische Tests.
+
 ## v2.6.3 (Testversion)
 
 Neu in der Wartung: **WIN-Updates** – Windows-Versionen, Patchstand und Treiber aller Tenants auf einen Blick, Ringe und Profile anlegen, zuweisen und übernehmen.
