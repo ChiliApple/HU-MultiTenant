@@ -616,8 +616,8 @@ function Show-HUTransferUndoDialog([object[]]$List) {
     $c = $script:Controls
     $list = @($List)
     $x = @'
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="1040" Height="480" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False">
+<Window ResizeMode="CanResizeWithGrip" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="1040" MinWidth="640" Height="480" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>

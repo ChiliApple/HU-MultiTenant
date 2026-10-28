@@ -123,7 +123,7 @@ function Show-HUAppCategoryPicker([string[]]$Keys = @(), [string]$Box = 'txtAppC
 function Show-HUAppCategoryDialog([object[]]$Rows) {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Kategorien" Width="420" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="Kategorien" Width="420" MinWidth="420" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -133,7 +133,7 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
         <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="spCats"/>
         </ScrollViewer>
-        <TextBlock Text="Kategorie anlegen (auch in fehlenden Tenants) oder loeschen" Style="{StaticResource FieldLabel}" Margin="0,12,0,3"/>
+        <TextBlock TextWrapping="Wrap" Text="Kategorie anlegen (auch in fehlenden Tenants) oder loeschen" Style="{StaticResource FieldLabel}" Margin="0,12,0,3"/>
         <DockPanel>
             <Button x:Name="btnDelete" DockPanel.Dock="Right" Content="Loeschen ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="6,0,0,0" Foreground="#E57373"
                     ToolTip="Kategorie mit diesem Namen in den Tenants loeschen (auch per Rechtsklick auf eine Kategorie)"/>
@@ -975,7 +975,7 @@ function Add-HUAppDependency {
     if (-not $cand.Count) { Show-HUMessage "Keine passende App in der Bibliothek.`n`nZuerst die Abhaengigkeit (z. B. Treiber-Setup) mit '+ Setup-Datei' hinzufuegen und testen, dann hier auswaehlen." 'Abhaengigkeiten' -Icon Info; return }
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Abhaengigkeit hinzufuegen" Width="460" Height="420" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
+        Title="Abhaengigkeit hinzufuegen" Width="460" MinWidth="460" Height="420" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -1065,12 +1065,12 @@ function Show-HUSandboxSetup {
     }
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Windows Sandbox einrichten" Width="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="Windows Sandbox einrichten" Width="560" MinWidth="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
     <StackPanel Margin="20">
-        <TextBlock Text="&#x1F9EA; Testinstallation braucht die Windows Sandbox" Foreground="#CE93D8" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10"/>
+        <TextBlock TextWrapping="Wrap" Text="&#x1F9EA; Testinstallation braucht die Windows Sandbox" Foreground="#CE93D8" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10"/>
         <TextBlock TextWrapping="Wrap" Foreground="#CCCCCC" FontSize="12" Margin="0,0,0,10"
                    Text="Die Sandbox ist ein Wegwerf-Windows: das Setup wird dort installiert, HU-MultiTenant liest Erkennung und Deinstallation aus, danach verschwindet alles. Dein PC bleibt sauber."/>
         <TextBlock Text="So geht's" Style="{StaticResource SectionTitle}"/>

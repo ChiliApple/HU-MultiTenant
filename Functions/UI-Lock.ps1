@@ -152,7 +152,7 @@ function Test-HULockPin([string]$Pin) {
 function Show-HULockPinDialog($Owner = $null) {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PIN festlegen" Width="380" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="PIN festlegen" Width="380" MinWidth="380" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -291,7 +291,7 @@ function Lock-HUApp([switch]$AtStart) {
 function Show-HULockDialog([switch]$AtStart) {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="HU-MultiTenant gesperrt" Width="400" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Title="HU-MultiTenant gesperrt" Width="400" MinWidth="400" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip"
         WindowStyle="None" AllowsTransparency="True" Opacity="0" Background="#1E1E1E" BorderBrush="#3E3E42" BorderThickness="1" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->

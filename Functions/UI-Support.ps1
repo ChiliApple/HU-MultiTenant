@@ -152,7 +152,7 @@ function Send-HUSupportMail([string]$To, [string]$Subject, [string]$Body, [strin
 function Show-HUSupport {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Support" Width="640" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="Support" Width="640" MinWidth="640" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -160,14 +160,14 @@ function Show-HUSupport {
         <TextBlock Text="&#x1F6DF; Support anfragen" Foreground="#4FC3F7" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,6"/>
         <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"
                    Text="Packt Protokolle und Einstellungen in ein ZIP auf dem Desktop. Namen von Tenants, Domaenen, Benutzern (E-Mail/UPN), IDs, IP-Adressen und dein Windows-Benutzer werden ersetzt. Nie enthalten: Client Secrets, Tokens, Snippets, Reports, Quick-Script-Ausgaben."/>
-        <TextBlock Text="Was ist passiert? (Schritte, Fehlermeldung, erwartetes Ergebnis)" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
+        <TextBlock TextWrapping="Wrap" Text="Was ist passiert? (Schritte, Fehlermeldung, erwartetes Ergebnis)" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
         <TextBox x:Name="txtDesc" Style="{StaticResource DarkTextBox}" AcceptsReturn="True" TextWrapping="Wrap" Height="90" VerticalScrollBarVisibility="Auto"/>
         <TextBlock Text="Mitsenden" Style="{StaticResource SectionTitle}" Margin="0,10,0,4"/>
         <WrapPanel>
             <CheckBox x:Name="chkLogs" Content="Protokolle (3 Tage) und Ausgaben" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
             <CheckBox x:Name="chkSandbox" Content="Testinstallationen (Sandbox)" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
             <CheckBox x:Name="chkSettings" Content="Einstellungen (ohne Secrets)" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
-            <CheckBox x:Name="chkLibrary" Content="App-Bibliothek (Befehle, Erkennung - koennen Lizenzschluessel enthalten)" IsChecked="False" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
+            <CheckBox x:Name="chkLibrary"  IsChecked="False" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"><TextBlock Text="App-Bibliothek (Befehle, Erkennung - koennen Lizenzschluessel enthalten)" TextWrapping="Wrap"/></CheckBox>
             <CheckBox x:Name="chkMaint" Content="Wartungsskripte" Style="{StaticResource DarkCheckBox}" Margin="0,2,16,2"/>
         </WrapPanel>
         <CheckBox x:Name="chkAnon" Content="Anonymisieren (empfohlen)" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,8,0,0"/>

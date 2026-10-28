@@ -50,7 +50,7 @@ function Get-HUAbBackupRoot {
 function Show-HUAbPasswordDialog($Owner = $null, [switch]$New, [string]$Text = '') {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Kennwort der App-Sicherung" Width="420" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="Kennwort der App-Sicherung" Width="420" MinWidth="420" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -61,7 +61,7 @@ function Show-HUAbPasswordDialog($Owner = $null, [switch]$New, [string]$Text = '
         <StackPanel x:Name="pnlNew">
             <TextBlock Text="Kennwort wiederholen" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
             <PasswordBox x:Name="pw2" Height="28" Background="#2D2D2D" Foreground="White" BorderBrush="#3E3E42" Padding="6,3"/>
-            <CheckBox x:Name="chkRemember" Content="F&#xFC;r die automatische Sicherung auf diesem PC merken" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,10,0,0"/>
+            <CheckBox x:Name="chkRemember"  IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,10,0,0"><TextBlock Text="F&#xFC;r die automatische Sicherung auf diesem PC merken" TextWrapping="Wrap"/></CheckBox>
         </StackPanel>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button x:Name="btnOk" Content="OK" Width="110" Background="#388E3C" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>

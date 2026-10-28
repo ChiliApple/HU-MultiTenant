@@ -293,7 +293,7 @@ function Show-HUSecBaseline {
         <TextBlock x:Name="lblReplace" DockPanel.Dock="Top" Foreground="#FFB74D" TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"
                    Text="Ein Tenant-Wert ersetzt den Wert fuer alle Tenants vollstaendig - auch bei Listen (Katalog disabled, statusOnly, silent, Notfallkonten). Was aus der Spalte 'Alle Tenants' weiter gelten soll, hier mit eintragen."/>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <TextBlock x:Name="lblState" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,12,0"/>
+            <TextBlock TextWrapping="Wrap" x:Name="lblState" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,12,0"/>
             <Button x:Name="btnSave" Content="Speichern" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>
             <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
         </StackPanel>
@@ -408,7 +408,7 @@ function Show-HUSecDetail {
             <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" IsDefault="True"/>
         </StackPanel>
         <TextBlock x:Name="lblTitle" DockPanel.Dock="Top" Foreground="White" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
-        <TextBlock x:Name="lblMeta" DockPanel.Dock="Top" Foreground="#90CAF9" FontSize="11" Margin="0,2,0,8"/>
+        <TextBlock TextWrapping="Wrap" x:Name="lblMeta" DockPanel.Dock="Top" Foreground="#90CAF9" FontSize="11" Margin="0,2,0,8"/>
         <TextBlock x:Name="lblWhy" DockPanel.Dock="Top" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
         <DataGrid x:Name="gridD" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single">
             <DataGrid.Columns>
@@ -489,7 +489,7 @@ function Show-HUSecFix {
             <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" IsDefault="True"/>
         </WrapPanel>
         <TextBlock x:Name="lblTitle" DockPanel.Dock="Top" Foreground="White" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
-        <TextBlock x:Name="lblMeta" DockPanel.Dock="Top" Foreground="#90CAF9" FontSize="11" Margin="0,2,0,10"/>
+        <TextBlock TextWrapping="Wrap" x:Name="lblMeta" DockPanel.Dock="Top" Foreground="#90CAF9" FontSize="11" Margin="0,2,0,10"/>
         <TextBlock x:Name="lblSrc" DockPanel.Dock="Bottom" Foreground="#888888" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"/>
         <TextBlock x:Name="lblOld" DockPanel.Dock="Bottom" Foreground="#FFB74D" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
         <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -630,7 +630,7 @@ function Show-HUSecExceptionDialog {
     param([Parameter(Mandatory)]$Row, [string[]]$Keys)
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Width="560" MinWidth="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -743,7 +743,7 @@ function Show-HUSecManualDialog {
     param([Parameter(Mandatory)]$Row, [string[]]$Keys)
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Width="560" MinWidth="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -754,7 +754,7 @@ function Show-HUSecManualDialog {
             <TextBlock Text="Tenants (je Tenant eine eigene Bestaetigung)" Style="{StaticResource FieldLabel}" VerticalAlignment="Center"/>
         </DockPanel>
         <WrapPanel x:Name="wpTenants" Margin="0,2,0,0"/>
-        <TextBlock Text="Notiz: was wurde wie geprueft? (mindestens 10 Zeichen, keine Namen)" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
+        <TextBlock TextWrapping="Wrap" Text="Notiz: was wurde wie geprueft? (mindestens 10 Zeichen, keine Namen)" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
         <TextBox x:Name="txtNote" Style="{StaticResource DarkTextBox}" FontSize="12" TextWrapping="Wrap" AcceptsReturn="False" MaxLength="300" Height="60"
                  ToolTip="Erscheint in den Details, z. B. 'AD-Abfrage am DC, 0 Treffer'"/>
         <TextBlock Text="Verantwortlich (Rolle)" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>

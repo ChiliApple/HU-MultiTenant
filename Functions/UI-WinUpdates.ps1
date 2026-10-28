@@ -801,7 +801,7 @@ function Show-HUWuFormDialog([string]$Title, [string]$Head, [string]$Info, [obje
         <!--HU:THEME-->
     </Window.Resources>
     <StackPanel Margin="16">
-        <TextBlock x:Name="txtHead" Style="{StaticResource SectionTitle}"/>
+        <TextBlock TextWrapping="Wrap" x:Name="txtHead" Style="{StaticResource SectionTitle}"/>
         <TextBlock x:Name="txtInfo" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
         <Grid x:Name="grdF">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="200"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -887,16 +887,16 @@ function Show-HUWuNewDialog([string]$Kind) {
         <!--HU:THEME-->
     </Window.Resources>
     <StackPanel Margin="16">
-        <TextBlock x:Name="txtHead" Style="{StaticResource SectionTitle}"/>
+        <TextBlock TextWrapping="Wrap" x:Name="txtHead" Style="{StaticResource SectionTitle}"/>
         <TextBlock x:Name="txtInfo" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
         <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <TextBlock Text="Name" Style="{StaticResource FieldLabel}" VerticalAlignment="Center"/>
             <TextBox Grid.Column="1" x:Name="txtName" Style="{StaticResource DarkTextBox}" Margin="0,3"/>
-            <TextBlock Grid.Row="1" x:Name="lblPick" Style="{StaticResource FieldLabel}" VerticalAlignment="Center"/>
+            <TextBlock TextWrapping="Wrap" Grid.Row="1" x:Name="lblPick" Style="{StaticResource FieldLabel}" VerticalAlignment="Center"/>
             <ComboBox Grid.Row="1" Grid.Column="1" x:Name="cmbPick" Style="{StaticResource DarkComboBox}" Margin="0,3"/>
-            <TextBlock Grid.Row="2" x:Name="lblMode" Style="{StaticResource FieldLabel}" VerticalAlignment="Center"/>
+            <TextBlock TextWrapping="Wrap" Grid.Row="2" x:Name="lblMode" Style="{StaticResource FieldLabel}" VerticalAlignment="Center"/>
             <ComboBox Grid.Row="2" Grid.Column="1" x:Name="cmbMode" Style="{StaticResource DarkComboBox}" Margin="0,3"/>
             <StackPanel Grid.Row="3" Grid.Column="1" x:Name="pnlDates" Orientation="Horizontal" Margin="0,3">
                 <TextBlock Text="ab" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -907,8 +907,7 @@ function Show-HUWuNewDialog([string]$Kind) {
                 <TextBox x:Name="txtInt" Style="{StaticResource DarkTextBox}" Width="40" Text="7"/>
                 <TextBlock Text="Tage" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="6,0,0,0"/>
             </StackPanel>
-            <CheckBox Grid.Row="4" Grid.Column="1" x:Name="chkWin10" Style="{StaticResource DarkCheckBox}" Margin="0,6,0,0"
-                      Content="Geraete, die kein Windows 11 koennen: neuestes Windows 10"/>
+            <CheckBox Grid.Row="4" Grid.Column="1" x:Name="chkWin10" Style="{StaticResource DarkCheckBox}" Margin="0,6,0,0"><TextBlock Text="Geraete, die kein Windows 11 koennen: neuestes Windows 10" TextWrapping="Wrap"/></CheckBox>
         </Grid>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
             <Button x:Name="btnOk" Content="Weiter" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
