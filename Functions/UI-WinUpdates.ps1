@@ -705,7 +705,13 @@ function Start-HUWuDelete {
     $asgd = @(foreach ($x in $groups) { if ($x.Art -ne 'Update-Ring') { foreach ($it in @($x.Items)) { if (@($it.AsgList).Count) { [pscustomobject]@{ G = $x; It = $it } } } } })
     if ($asgd.Count) {
         $lines = @($asgd | ForEach-Object { "  $($_.G.Art) '$($_.G.Name)' ($($tnm[$_.It.Tenant])): $(@($_.It.AsgList).Count) Zuweisung(en)" })
-        $why = "Feature-Update weg: Die Geraete folgen nur noch dem Update-Ring (bei Feature-Aufschub 0 sofort auf die neueste Version).`nTreiber-Richtlinie weg: keine Treiber-Freigaben mehr."
+        $arts = @($asgd | ForEach-Object { $_.G.Art } | Select-Object -Unique)
+        $why = (@(
+                if ($arts -contains 'Feature-Update') { 'Feature-Update weg: Die Geraete folgen nur noch dem Update-Ring (bei Feature-Aufschub 0 sofort auf die neueste Version).' }
+                if ($arts -contains 'Treiber-Update') { 'Treiber-Richtlinie weg: keine Treiber-Freigaben mehr.' }
+                if ($arts -contains 'Expedite') { 'Expedite weg: das Update wird nicht mehr beschleunigt (bereits Installiertes bleibt).' }
+                if ($arts -contains 'Qualitaets-Update') { 'Qualitaets-Richtlinie weg: ihre Einstellungen gelten nicht mehr.' }
+            ) -join "`n")
         if (-not (Confirm-HU -Warning "ACHTUNG - diese Profile sind zugewiesen:`n`n$($lines -join "`n")`n`n$why`n`nTrotzdem loeschen? Empfohlen: Nein und erst unten die Zuweisungen entfernen.")) { return }
         foreach ($w in $work) { if (@($asgd | Where-Object { $_.It.Tenant -eq $w.Tenant -and $_.It.Id -eq $w.Id }).Count) { $w.Force = $true } }
     }
