@@ -1,5 +1,18 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.2 (Testversion)
+
+Kleine Verbesserungen.
+
+### 🔐 Rechte
+- **Rechte-Fenster:** neue Spalte **App braucht** (*Standard*, *Verteilen*, *bei Bedarf*); erteilte Rechte, die weder die App noch eine Extension oder ein Snippet nutzt, stehen als **nicht gebraucht** da. „Genutzt von“ zeigt jetzt auch Snippets (Zeile `# Berechtigungen:`). Lesen, das im erteilten ReadWrite-Recht enthalten ist, steht als (✔).
+
+### 🔎 Analyse
+- **Was bekommt …?** wertet jetzt auch **Qualitäts- und Treiber-Update-Richtlinien** aus.
+
+### 🗺️ Doku
+- **Einstieg:** „In 10 Minuten startklar“ ganz oben mit Hinweis „Neu hier?“, der erste Versuch ist Schritt 3; Tipps in „Morgens wissen, ob alles läuft“ (Secret-Countdown, Lizenzen, Not-Aus).
+
 ## v2.6.1 (Testversion)
 
 Nacharbeiten zur Stable 2.6.0: weniger Rechte von Haus aus, mehr Schutz beim Import und Wiederherstellen.
