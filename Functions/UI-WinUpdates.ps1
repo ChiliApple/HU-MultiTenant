@@ -145,6 +145,7 @@ function Test-HUWuDriverFilter($D) {
     if (-not $cb.IsChecked) { return $false }
     if ($c['chkDrvRecommended'].IsChecked -and "$($D.Kategorie)" -ne 'empfohlen') { return $false }
     if ($c['chkDrvApplicable'].IsChecked -and [int]$D.Geraete -le 0) { return $false }
+    if ($c['chkDrvRecent'].IsChecked -and "$($D.Datum)" -and "$($D.Datum)" -lt (Get-Date).AddMonths(-12).ToString('yyyy-MM-dd')) { return $false }
     return $true
 }
 
@@ -262,7 +263,7 @@ function Register-HUWinUpdateHandlers {
             $script:Controls['lblWuFilterHint'].Visibility = $(if ($script:Controls['txtWuFilter'].Text) { 'Collapsed' } else { 'Visible' })
             Update-HUWuView
         })
-    foreach ($n in 'chkWuOld', 'chkWuBehind', 'chkWuCurrent', 'chkWuUnknown', 'chkWuStale', 'chkWuActive', 'chkWuCompany', 'chkWuWin10', 'chkDrvReview', 'chkDrvApproved', 'chkDrvSuspended', 'chkDrvDeclined', 'chkDrvRecommended', 'chkDrvApplicable') {
+    foreach ($n in 'chkWuOld', 'chkWuBehind', 'chkWuCurrent', 'chkWuUnknown', 'chkWuStale', 'chkWuActive', 'chkWuCompany', 'chkWuWin10', 'chkDrvReview', 'chkDrvApproved', 'chkDrvSuspended', 'chkDrvDeclined', 'chkDrvRecommended', 'chkDrvApplicable', 'chkDrvRecent') {
         $c[$n].Add_Click({ Update-HUWuView })
     }
     $c['gridWu'].Add_MouseDoubleClick({

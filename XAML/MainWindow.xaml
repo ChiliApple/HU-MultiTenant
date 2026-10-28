@@ -1018,6 +1018,8 @@
                                     <TextBlock Text="Nur:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <CheckBox x:Name="chkDrvRecommended" Content="empfohlene" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
                                     <CheckBox x:Name="chkDrvApplicable" Content="mit betroffenen Ger&#xE4;ten" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvRecent" Content="letzte 12 Monate" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"
+                                              ToolTip="Aeltere Treiber (oft Stand 2018 - sonstige, nie automatisch freigegeben) ausblenden"/>
                                 </WrapPanel>
                                 <DataGrid x:Name="gridWu" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="True" IsReadOnly="True" HeadersVisibility="Column"
                                           SelectionMode="Extended" CanUserSortColumns="True"/>

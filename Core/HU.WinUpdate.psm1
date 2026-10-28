@@ -181,7 +181,8 @@ function ConvertTo-HUWuPolicyRow([string]$Tenant, [string]$Art, $O, [object[]]$A
     $set = ''; $pause = ''; $warn = ''
     switch ($Art) {
         'Update-Ring' {
-            $set = "Qualitaet $(& $g 'qualityUpdatesDeferralPeriodInDays') T., Feature $(& $g 'featureUpdatesDeferralPeriodInDays') T.; Frist $(& $g 'deadlineForQualityUpdatesInDays')/$(& $g 'deadlineForFeatureUpdatesInDays') T."
+            $dq = & $g 'deadlineForQualityUpdatesInDays'; $df = & $g 'deadlineForFeatureUpdatesInDays'
+            $set = "Aufschub Qualitaet $(& $g 'qualityUpdatesDeferralPeriodInDays') T., Feature $(& $g 'featureUpdatesDeferralPeriodInDays') T.; Frist $(if ($null -ne $dq -or $null -ne $df) { "Qualitaet $(if ($null -ne $dq) { "$dq T." } else { '-' }), Feature $(if ($null -ne $df) { "$df T." } else { '-' })" } else { '-' })"
             $is = & $g 'installationSchedule'
             $ah = ''
             if ($is -and $is.PSObject.Properties['activeHoursStart']) { $ah = "$("$($is.activeHoursStart)".PadRight(5).Substring(0, 5))-$("$($is.activeHoursEnd)".PadRight(5).Substring(0, 5))".Trim() }

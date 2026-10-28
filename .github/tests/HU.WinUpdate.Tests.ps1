@@ -54,7 +54,7 @@ Describe 'Windows-Updates: Version und Patchstand' {
             installationSchedule = [pscustomobject]@{ activeHoursStart = '07:00:00.0000000'; activeHoursEnd = '15:00:00.0000000' }; skipChecksBeforeRestart = $true
             qualityUpdatesPaused = $true; qualityUpdatesPauseExpiryDateTime = '2026-10-30T10:00:00Z'; featureUpdatesPaused = $false }
         $r = ConvertTo-HUWuPolicyRow -Tenant 't' -Art 'Update-Ring' -O $o -Asg @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allDevicesAssignmentTarget' } }) -Names @{} -Now ([datetime]'2026-10-28')
-        $r.Einstellung | Should -Match 'Qualitaet 3 T\., Feature 14 T\.'
+        $r.Einstellung | Should -Match 'Aufschub Qualitaet 3 T\., Feature 14 T\.; Frist Qualitaet 2 T\., Feature 7 T\.'
         $r.Einstellung | Should -Match 'aktive Zeit 07:00-15:00'
         $r.Pause | Should -Match '^Qualitaet bis 30\.10\.'
         $r.Hinweis | Should -Match 'Neustart-Pruefung'
