@@ -29,6 +29,7 @@ $script:HUWuBuilds = @{   # Hashtable (nicht [ordered]: dort waere [int] ein Pos
 }
 # Neuere Versionen (z. B. 26H2) liefert der Update-Katalog von Microsoft selbst (versionName/productName) - die Liste oben ist nur der Rueckfall.
 $script:HUWuStaleDays = 30
+$script:HUWuSupportDays = 75   # kein Sicherheitspatch seit so vielen Tagen = Version ohne Support
 
 # '10.0.26200.6899' -> @{ Build; Ubr; Product; Version; Label }. Mit -Catalog: Name aus dem Microsoft-Katalog (auch neue Versionen)
 function Get-HUWuBuildInfo([string]$OsVersion, [hashtable]$Catalog = $null) {
@@ -272,7 +273,7 @@ function Get-HUWuDriverMatrix([object[]]$Inventories, [hashtable]$TenantNames = 
 }
 
 # Uebersicht: je Version eine Zeile, je Tenant "Anzahl (davon aktuell)"; dazu Summen fuer Patchstand und ohne Sync
-function Get-HUWuMatrix([object[]]$Inventories, [hashtable]$TenantNames = @{}) {
+function Get-HUWuMatrix([object[]]$Inventories, [hashtable]$TenantNames = @{}, [datetime]$Now = (Get-Date)) {
     $invs = @($Inventories | Where-Object { $_ })
     $labels = @($invs | ForEach-Object { @($_.Devices) } | Group-Object Version | Sort-Object @{ e = { @($_.Group)[0].BuildNr }; Descending = $true } | ForEach-Object { $_.Name })
     $rows = New-Object System.Collections.Generic.List[object]
@@ -288,6 +289,11 @@ function Get-HUWuMatrix([object[]]$Inventories, [hashtable]$TenantNames = @{}) {
             $o[$col] = $(if ($d.Count) { "$($d.Count) ($(@($d | Where-Object Patchstand -eq 'aktuell').Count) aktuell)" } else { '' })
         }
         $o['Gesamt'] = $all.Count
+        $o['Aktuell %'] = $(if ($all.Count) { [int][Math]::Round(100 * @($all | Where-Object Patchstand -eq 'aktuell').Count / $all.Count) } else { 0 })
+        # Support: letzter Sicherheitspatch der Version aelter als ~2,5 Monate = Microsoft liefert nichts mehr
+        $last = $null
+        if ($b -and $cat -and $cat.ContainsKey($b)) { $last = @(@($cat[$b]) | Where-Object { $_.Security -and $_.Date } | Sort-Object Date -Descending | Select-Object -First 1)[0] }
+        $o['Support'] = $(if (-not $last) { '?' } elseif (($Now - $last.Date).TotalDays -gt $script:HUWuSupportDays) { 'abgelaufen' } else { 'laeuft' })
         $rows.Add([pscustomobject]$o)
     }
     return $rows.ToArray()

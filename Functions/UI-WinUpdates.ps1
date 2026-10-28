@@ -175,7 +175,7 @@ function Update-HUWuView {
     switch ($script:WuView) {
         'matrix' {
             $c['lblWuTitle'].Text = "$([char]0xDC)bersicht: Windows-Versionen je Tenant"
-            $c['lblWuHint'].Text = "Je Zelle: Geraete (davon mit neuestem Sicherheitsupdate). Doppelklick auf eine Zeile zeigt die Geraete dieser Version."
+            $c['lblWuHint'].Text = "Je Zelle: Geraete (davon mit neuestem Sicherheitsupdate). Farbe: gruen ab 80 % aktuell, gelb ab 50 %, orange darunter, rot = Version ohne Support (kein Sicherheitspatch seit ueber 2,5 Monaten). Doppelklick zeigt die Geraete dieser Version."
             # Uebersicht mit denselben Vorfiltern wie die Geraeteliste
             $fi = @(foreach ($i in $invs) { [pscustomobject]@{ Tenant = $i.Tenant; Catalog = $i.Catalog; Devices = @(@($i.Devices) | Where-Object { Test-HUWuDeviceFilter $_ }); Policies = $i.Policies; Errors = $i.Errors } })
             $rows = @(Get-HUWuMatrix $fi $names)
@@ -281,7 +281,13 @@ function Register-HUWinUpdateHandlers {
             $o = $e.Row.Item
             $col = '#E0E0E0'
             $ps = Get-HUWuCell $o 'Patchstand'; $hi = Get-HUWuCell $o 'Hinweis'; $tr = Get-HUWuCell $o 'Treiber'
-            if ($null -ne $ps) { $col = $(if ($ps -like 'veraltet*') { '#EF9A9A' } elseif ($ps -like '1 Update*') { '#FFCC80' } elseif ($ps -eq 'unbekannt') { '#AAAAAA' } else { '#E0E0E0' }) }
+            $sup = Get-HUWuCell $o 'Support'; $pct = Get-HUWuCell $o 'Aktuell %'
+            if ($null -ne $sup) {
+                # Uebersicht: abgelaufene Version rot, sonst nach Anteil aktueller Geraete
+                $p = 0; [void][int]::TryParse("$pct", [ref]$p)
+                $col = $(if ($sup -eq 'abgelaufen') { '#EF9A9A' } elseif ($p -ge 80) { '#A5D6A7' } elseif ($p -ge 50) { '#FFE082' } else { '#FFCC80' })
+            }
+            elseif ($null -ne $ps) { $col = $(if ($ps -like 'veraltet*') { '#EF9A9A' } elseif ($ps -like '1 Update*') { '#FFCC80' } elseif ($ps -eq 'unbekannt') { '#AAAAAA' } else { '#E0E0E0' }) }
             elseif ($hi) { $col = '#FFCC80' }
             elseif ($tr -and "$(Get-HUWuCell $o 'Status')" -match 'pruefen') { $col = '#FFCC80' }
             $e.Row.Foreground = Get-HUBrush $col

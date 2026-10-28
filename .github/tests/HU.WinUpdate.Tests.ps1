@@ -80,6 +80,9 @@ Describe 'Windows-Updates: Version und Patchstand' {
         $m[0].'Schule B' | Should -Be '1 (1 aktuell)'
         $m[0].Gesamt | Should -Be 3
         $m[1].'Schule B' | Should -Be ''
+        $m[0].'Aktuell %' | Should -Be 67
+        @(Get-HUWuMatrix @($i1) @{} ([datetime]'2026-11-01'))[0].Support | Should -Be 'laeuft'
+        @(Get-HUWuMatrix @($i1) @{} ([datetime]'2027-06-01'))[0].Support | Should -Be 'abgelaufen'
         $s = Get-HUWuSummary $i1
         $s.Total | Should -Be 3; $s.Old | Should -Be 1; $s.Stale | Should -Be 1
     }
