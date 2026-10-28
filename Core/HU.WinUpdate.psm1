@@ -293,7 +293,9 @@ function Get-HUWuMatrix([object[]]$Inventories, [hashtable]$TenantNames = @{}, [
         $o['Aktuell %'] = $(if ($all.Count) { [int][Math]::Round(100 * @($all | Where-Object Patchstand -eq 'aktuell').Count / $all.Count) } else { 0 })
         # Support: letzter Sicherheitspatch der Version aelter als ~2,5 Monate = Microsoft liefert nichts mehr
         $last = $null
-        if ($b -and $cat -and $cat.ContainsKey($b)) { $last = @(@($cat[$b]) | Where-Object { $_.Security -and $_.Date } | Sort-Object Date -Descending | Select-Object -First 1)[0] }
+        # derselbe Eintrag wie "Neuester Patch" (hoechste Revision) - nicht das juengste Datum, das kann aus einem Sammel-Eintrag stammen
+        if ($b -and $cat -and $cat.ContainsKey($b)) { $last = @(@($cat[$b]) | Where-Object { $_.Security } | Select-Object -First 1)[0] }
+        if ($last -and -not $last.Date) { $last = $null }
         $o['Support'] = $(if (-not $last) { '?' } elseif (($Now - $last.Date).TotalDays -gt $script:HUWuSupportDays) { 'abgelaufen' } else { 'laeuft' })
         $rows.Add([pscustomobject]$o)
     }
