@@ -330,6 +330,18 @@ powershell -NoProfile -File skills\hu-extension\tools\Test-HUExtension.ps1 -Path
     <li><b>Rechtsklick › Duplizieren …</b> (links in der Liste): Kopie mit neuem Namen in denselben Tenants, <b>ohne Zuweisungen</b> – sie läuft also noch auf keinem Gerät. In der Bibliothek legt Rechtsklick › Duplizieren eine lokale Kopie an.</li>
     <li><span class="ui">📊 Ergebnisse</span>, <span class="ui">▶ Jetzt auf Gerät …</span>, <span class="ui r">Löschen …</span> wie oben bzw. wie bei den Apps.</li>
   </ul>
+  <h3 id="wu">WIN-Updates</h3>
+  <p>Dritter Knopf oben links neben <span class="ui">Bibliothek</span> und <span class="ui">In Intune</span>. Links Tenants anhaken und eine Ansicht wählen; die Daten werden gleich gelesen und nach 15 Minuten aufgefrischt (<span class="ui">↻</span> liest sofort neu).</p>
+  <ul>
+    <li><b>Übersicht</b>: Windows-Versionen je Tenant – Geräte gesamt und davon mit neuestem Sicherheitsupdate, neuester Patch und Support. Doppelklick zeigt die Geräte dieser Version.</li>
+    <li><b>Geräte</b>: Patchstand und fehlende Updates je Gerät, letzter Sync, Beitritt und Besitz. <i>nur registriert</i> (z. B. private Geräte) erreicht nur der Update-Ring.</li>
+    <li><b>Ringe und Profile</b>: Eintrag markieren → unten Zuweisungen, Einstellungen, Pause und <span class="ui r">Entfernen</span> wie bei <i>In Intune</i>. Update-Ringe lassen sich nur löschen, wenn sie nicht zugewiesen sind.</li>
+    <li><b>Treiber</b>: anstehende Treiber je Richtlinie und Tenant; markieren → <span class="ui">Freigeben ab</span>, <span class="ui">Aussetzen</span> oder <span class="ui">Ablehnen</span>. Freigegebene Treiber lassen sich nur aussetzen.</li>
+    <li><b>Neu anlegen</b>: <span class="ui">+ Neuer Update-Ring …</span>, <span class="ui">+ Neues Feature-Update …</span>, <span class="ui">+ Neue Treiber-Richtlinie …</span>, <span class="ui">+ Neues Expedite …</span> – in den angehakten Tenants, ohne Zuweisung.</li>
+    <li><b>Vorlagen</b>: <span class="ui">Sichern …</span> speichert markierte Einträge ohne Zuweisungen; <span class="ui">Importieren …</span> (oder Datei in die Tabelle ziehen) legt sie in den angehakten Tenants an. Die Vorlagen liegen in <code>%APPDATA%\HU-MultiTenant\WinUpdates-Vorlagen</code> und kommen mit der App-Sicherung mit.</li>
+    <li><span class="ui">? So geht's</span>: kurze Anleitungen mit Knöpfen, die gleich die richtige Stelle öffnen.</li>
+  </ul>
+  <div class="note warn"><b class="h">Feature-, Treiber- und Expedite-Profile</b>wirken nur auf Entra- oder Hybrid-beigetretene Geräte mit Diagnosedaten mindestens „Erforderlich“ und einer Windows-Lizenz mit Autopatch-Berechtigung (z. B. Education A3/A5); kein LTSC. Zuweisung nur an Gerätegruppen. Im Update-Ring den Feature-Aufschub auf 0 lassen – die Version steuert das Feature-Update-Profil. Berechtigungen: lesen <code>DeviceManagementConfiguration.Read.All</code>, <code>DeviceManagementManagedDevices.Read.All</code>; ändern <code>DeviceManagementConfiguration.ReadWrite.All</code> (Angebot nach dem Lauf, wenn es fehlt).</div>
   <div class="note warn"><b class="h">Lizenz und Berechtigungen</b>Remediations brauchen Windows Enterprise/Education E3/A3 (oder höher) und einmal je Tenant im Intune Admin Center: <i>Mandantenverwaltung › Connectors und Token › Windows-Datenverarbeitung › Windows-Lizenzüberprüfung</i>. Berechtigungen: lesen <code>DeviceManagementScripts.Read.All</code>, anlegen und zuweisen <code>DeviceManagementScripts.ReadWrite.All</code> (Angebot nach dem Lauf, wenn es fehlt), <code>Group.Read.All</code>; für <i>Jetzt auf Gerät</i> zusätzlich <code>DeviceManagementManagedDevices.PrivilegedOperations.All</code>.</div>
 </section>
 

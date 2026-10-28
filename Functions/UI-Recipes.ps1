@@ -60,7 +60,7 @@ function Show-HURecipeWindow([string]$Area, [string]$SelectId = '') {
                     <StackPanel x:Name="spSteps"/>
                     <Border x:Name="bdWarn" BorderBrush="#FFB74D" BorderThickness="3,0,0,0" Background="#2A2418" Padding="10,8" Margin="0,8,0,0">
                         <StackPanel>
-                            <TextBlock Text="Wirkt nicht, wenn &#x2026; / Achtung" Foreground="#FFB74D" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <TextBlock Text="Achtung" Foreground="#FFB74D" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <StackPanel x:Name="spWarn"/>
                         </StackPanel>
                     </Border>

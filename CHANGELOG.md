@@ -1,5 +1,26 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.3 (Testversion)
+
+Neu in der Wartung: **WIN-Updates** – Windows-Versionen, Patchstand und Treiber aller Tenants auf einen Blick, Ringe und Profile anlegen, zuweisen und übernehmen.
+
+### 🪟 WIN-Updates (Wartung)
+- **Übersicht:** Windows-Versionen je Tenant mit Patchstand (aktuell, 1 Update fehlt, veraltet), neuestem Sicherheitspatch und Support-Ende; Farben zeigen, wo es hakt. Doppelklick zeigt die Geräte dieser Version.
+- **Geräte:** fehlende Updates, letzter Sync, Beitritt (Entra, Hybrid, nur registriert) und Besitz; Vorfilter per Häkchen und Textfilter, sortierbar.
+- **Ringe und Profile:** Update-Ringe, Feature-Updates, Expedites, Qualitäts- und Treiber-Updates aller angehakten Tenants – gleicher Name in mehreren Tenants in einer Zeile, Hinweise bei auffälligen Einstellungen (z. B. alte Expedites, übersprungene Neustart-Prüfung).
+- **Zuweisen und Einstellungen** wie in *Wartung › In Intune*: Gruppe zuweisen oder ausschließen, Aufschub, Fristen, aktive Zeit, Pause und Fortsetzen; vor jeder Änderung wird der Stand gesichert.
+- **Neu anlegen:** Update-Ring, Feature-Update (Zielversion, sofort, ab Datum oder gestaffelt), Treiber-Richtlinie (automatisch mit Aufschub oder manuell) und Expedite – immer ohne Zuweisung.
+- **Treiber:** anstehende Treiber aller Richtlinien mit betroffenen Geräten; markierte freigeben (ab Datum), aussetzen oder ablehnen.
+- **Löschen:** Profile, auch mehrere markierte auf einmal; Update-Ringe nur, wenn sie nicht zugewiesen sind (vor dem Löschen frisch in Intune geprüft).
+- **Vorlagen:** markierte Ringe und Profile als Datei sichern und in anderen Tenants importieren (auch per Hineinziehen) – ohne Zuweisungen, gleicher Name wird ausgelassen.
+- **Export** der angezeigten Tabelle als Excel-Tabelle oder CSV.
+
+### ❓ So geht's
+- **Kurze Anleitungen mit Knöpfen** in einem kleinen Fenster, das offen bleibt: neue Windows-Version verteilen, Treiber automatisch verteilen, Sicherheitsupdate erzwingen, in andere Tenants übernehmen, Fehlersuche. Einheitlich aufgebaut, weitere Bereiche folgen.
+
+### 💾 App-Sicherung
+- **WIN-Updates-Vorlagen** und der Stand vor Änderungen werden immer mitgesichert.
+
 ## v2.6.2 (Testversion)
 
 Kleine Verbesserungen.
