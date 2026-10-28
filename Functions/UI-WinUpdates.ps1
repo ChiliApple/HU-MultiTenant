@@ -319,18 +319,18 @@ function Register-HUWinUpdateHandlers {
     $c['btnWuNewExp'].Add_Click({ Start-HUWuNew 'expedite' })
     $c['btnWuNewRing'].Add_Click({ Start-HUWuNew 'ring' })
     $c['btnWuNewDrv'].Add_Click({ Start-HUWuNew 'driver' })
-    $c['btnWuBackup'].Add_Click({ Save-HUWuBackupFile })
+    $c['btnWuBackup'].Add_Click({ try { Save-HUWuBackupFile } catch { Show-HUMessage "Sichern fehlgeschlagen: $($_.Exception.Message)" -Icon Error } })   # Fehler sonst unsichtbar
     $c['btnWuImport'].Add_Click({
             $dlg = New-Object Microsoft.Win32.OpenFileDialog
             $dlg.Filter = 'WIN-Updates-Sicherung (*.json)|*.json'
             try { $rp = Get-HUReportsPath; if (Test-Path -LiteralPath $rp) { $dlg.InitialDirectory = $rp } } catch { }
-            if ($dlg.ShowDialog($script:Window)) { Start-HUWuImport $dlg.FileName }
+            if ($dlg.ShowDialog($script:Window)) { try { Start-HUWuImport $dlg.FileName } catch { Show-HUMessage "Importieren fehlgeschlagen: $($_.Exception.Message)" -Icon Error } }
         })
     $c['gridWu'].Add_DragOver({ param($s, $e) $e.Effects = $(if ($e.Data.GetDataPresent([System.Windows.DataFormats]::FileDrop)) { 'Copy' } else { 'None' }); $e.Handled = $true })
     $c['gridWu'].Add_Drop({
             param($s, $e)
             $f = @(@($e.Data.GetData([System.Windows.DataFormats]::FileDrop)) | Where-Object { "$_" -like '*.json' })
-            if ($f.Count) { Start-HUWuImport "$($f[0])" } else { Show-HUMessage 'Bitte eine WIN-Updates-Sicherung (.json) hineinziehen.' -Icon Info }
+            if ($f.Count) { try { Start-HUWuImport "$($f[0])" } catch { Show-HUMessage "Importieren fehlgeschlagen: $($_.Exception.Message)" -Icon Error } } else { Show-HUMessage 'Bitte eine WIN-Updates-Sicherung (.json) hineinziehen.' -Icon Info }
         })
     $c['btnDrvApprove'].Add_Click({ Start-HUWuDriverAct 'approve' })
     $c['btnDrvSuspend'].Add_Click({ Start-HUWuDriverAct 'suspend' })
@@ -685,7 +685,7 @@ function Save-HUWuBackupFile {
         if ($k -and $script:WuGroups.ContainsKey($k)) { foreach ($it in @($script:WuGroups[$k].Items)) { $rows.Add($it) } }
     }
     if (-not $rows.Count) { Show-HUMessage 'Bitte oben die Ringe/Profile markieren, die gesichert werden sollen.' -Icon Info; return }
-    $doc = New-HUWuExportDoc @($rows) (Get-HUWuTenantNames)
+    $doc = New-HUWuExportDoc $rows.ToArray() (Get-HUWuTenantNames)
     $dlg = New-Object Microsoft.Win32.SaveFileDialog
     $dlg.Filter = 'WIN-Updates-Sicherung (*.json)|*.json'
     $dlg.FileName = "WIN-Updates-Sicherung_$(Get-Date -Format 'yyyy-MM-dd_HHmm').json"
@@ -721,7 +721,7 @@ function Start-HUWuImport([string]$Path) {
     if ($skip.Count) { $msg += "`n`nSchon vorhanden, wird ausgelassen:`n$($skip -join "`n")" }
     $msg += "`n`nAngelegt OHNE Zuweisung - danach markieren und unten zuweisen."
     if (-not (Confirm-HU -Warning $msg)) { return }
-    Start-HUWuJob 'import' @($work) @{} "Importieren ($($work.Count))"
+    Start-HUWuJob 'import' $work.ToArray() @{} "Importieren ($($work.Count))"
     $script:WuView = 'policies'
     foreach ($li in $script:Controls['lstWuView'].Items) { if ("$($li.Tag)" -eq 'policies') { $script:Controls['lstWuView'].SelectedItem = $li } }
 }

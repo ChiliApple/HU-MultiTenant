@@ -539,9 +539,12 @@ function New-HUWuExportDoc([object[]]$Rows, [hashtable]$Names = @{}, [datetime]$
             $k = "$($r.Art)|$($r.Name)"
             if ($seen.ContainsKey($k) -or -not $r.Raw) { continue }
             $seen[$k] = 1
-            [ordered]@{ Art = "$($r.Art)"; Name = "$($r.Name)"; Quelle = $(if ($Names.ContainsKey("$($r.Tenant)")) { $Names["$($r.Tenant)"] } else { "$($r.Tenant)" }); Body = (ConvertTo-HUWuExportBody $r.Art $r.Raw $Now) }
+            # Werte vorher berechnen: $(if ...) direkt im [ordered]-Literal wirft "Argument types do not match"
+            $q = "$($r.Tenant)"; if ($Names.ContainsKey($q)) { $q = "$($Names[$q])" }
+            $body = ConvertTo-HUWuExportBody $r.Art $r.Raw $Now
+            [pscustomobject]@{ Art = "$($r.Art)"; Name = "$($r.Name)"; Quelle = $q; Body = $body }
         })
-    return [ordered]@{ Format = 'HU-WinUpdates'; FormatVersion = 1; Erstellt = $Now.ToString('yyyy-MM-dd HH:mm'); Items = $items }
+    return [pscustomobject]@{ Format = 'HU-WinUpdates'; FormatVersion = 1; Erstellt = $Now.ToString('yyyy-MM-dd HH:mm'); Items = $items }
 }
 
 # Datei lesen und pruefen. Rueckgabe: Liste @{ Art; Name; Quelle; Body(hashtable) }
