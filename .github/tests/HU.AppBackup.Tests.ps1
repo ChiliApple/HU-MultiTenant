@@ -126,6 +126,23 @@ Describe 'App-Sicherung: Inhalt, Sichern, Wiederherstellen' {
         Resolve-HUAppBackupTarget 'muster/frueher/alt/index.json' $E.App $E.Dat $E.Bk | Should -Not -BeNullOrEmpty
         $n | Should -Contain 'backups/T1/2026/x.json'; @($n | Where-Object { $_ -like 'backups/_Muster*' }).Count | Should -Be 0
     }
+    It 'WIN-Updates: Vorlagen und Vorher-Staende werden mitgesichert, nur flache JSON' {
+        $d = Join-Path ([IO.Path]::GetTempPath()) ("HU-ABW-" + [guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $d 'WinUpdates-Vorlagen/sub') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $d 'WinUpdates-vorher') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $d 'WinUpdates-Vorlagen/Standard 2026.json') -Value '{}'
+            Set-Content -LiteralPath (Join-Path $d 'WinUpdates-Vorlagen/sub/x.json') -Value '{}'
+            Set-Content -LiteralPath (Join-Path $d 'WinUpdates-Vorlagen/x.ps1') -Value ''
+            Set-Content -LiteralPath (Join-Path $d 'WinUpdates-vorher/T1_Update-Ring_1.json') -Value '{}'
+            $n = @((Get-HUAppBackupSources -AppRoot $E.App -DataRoot $d).Name)
+            $n | Should -Contain 'appdata/WinUpdates-Vorlagen/Standard 2026.json'
+            $n | Should -Contain 'appdata/WinUpdates-vorher/T1_Update-Ring_1.json'
+            @($n | Where-Object { $_ -like '*sub*' -or $_ -like '*.ps1' }).Count | Should -Be 0
+            Resolve-HUAppBackupTarget 'appdata/WinUpdates-Vorlagen/Standard 2026.json' $E.App $d '' | Should -Not -BeNullOrEmpty
+            foreach ($bad in 'appdata/WinUpdates-Vorlagen/x.ps1', 'appdata/WinUpdates-Vorlagen/sub/x.json', 'appdata/WinUpdates-Andere/x.json') { Resolve-HUAppBackupTarget $bad $E.App $d '' | Should -BeNullOrEmpty -Because $bad }
+        } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     It 'Ziele: nur erlaubte Namen' {
         Resolve-HUAppBackupTarget 'config/settings.json' $E.App $E.Dat $E.Bk | Should -Not -BeNullOrEmpty
         foreach ($bad in 'config/../x.json', 'config/version.json', 'appdata/remote-marks.json', 'appdata/AddonData/../x', 'appdata/AddonData/1bad/x', 'backups/_Muster/x', 'C:/x', 'appdata/AddonData/K/a\b', 'config/app-icons/x.ps1') {

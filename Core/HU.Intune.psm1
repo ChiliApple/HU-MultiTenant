@@ -2181,6 +2181,10 @@ function Get-HUAssignmentSources {
         @{ Typ = 'Wartung'; Ep = '/deviceManagement/deviceHealthScripts?$expand=assignments'; Name = 'displayName' }
         @{ Typ = 'Plattform-Skript'; Ep = '/deviceManagement/deviceManagementScripts?$expand=assignments'; Name = 'displayName' }
         @{ Typ = 'Feature-Update'; Ep = '/deviceManagement/windowsFeatureUpdateProfiles?$expand=assignments'; Name = 'displayName' }
+        # Qualitaets- und Treiber-Updates: Zuweisungen je Objekt nachladen (Sub = Basis-Pfad; $expand ist dort nicht zugesichert)
+        @{ Typ = 'Qualitaets-Update'; Ep = '/deviceManagement/windowsQualityUpdateProfiles'; Sub = '/deviceManagement/windowsQualityUpdateProfiles'; Name = 'displayName' }
+        @{ Typ = 'Qualitaets-Update'; Ep = '/deviceManagement/windowsQualityUpdatePolicies'; Sub = '/deviceManagement/windowsQualityUpdatePolicies'; Name = 'displayName' }
+        @{ Typ = 'Treiber-Update'; Ep = '/deviceManagement/windowsDriverUpdateProfiles'; Sub = '/deviceManagement/windowsDriverUpdateProfiles'; Name = 'displayName' }
         @{ Typ = 'Autopilot-Profil'; Ep = '/deviceManagement/windowsAutopilotDeploymentProfiles?$expand=assignments'; Name = 'displayName' }
     )
 }
@@ -2296,7 +2300,11 @@ function Get-HUAssignmentReport {
         try { $items = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint $src.Ep) }
         catch { Write-HULog -Message "$($src.Typ): nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey; continue }
         foreach ($o in $items) {
-            $m = Test-HUAssignmentMatch $o.assignments $t
+            $asg = $(if ($src.Sub) {
+                    try { @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$($src.Sub)/$($o.id)/assignments") }
+                    catch { Write-HULog -Message "$($src.Typ) '$($o.($src.Name))': Zuweisungen nicht lesbar ($($_.Exception.Message))" -Level 'WARN' -Tenant $TenantKey; @() }
+                } else { $o.assignments })
+            $m = Test-HUAssignmentMatch $asg $t
             if (-not $m) { continue }
             [pscustomobject]@{
                 Tenant  = $TenantKey

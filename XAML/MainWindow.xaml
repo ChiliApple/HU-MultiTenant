@@ -797,8 +797,10 @@
                             <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="0,0,0,8">
                                 <Button x:Name="btnRemModeLib" Content="Bibliothek" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="0,0,2,0"
                                         ToolTip="Eigene Wartungspakete: mit KI erstellen, pruefen, verteilen"/>
-                                <Button x:Name="btnRemModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                <Button x:Name="btnRemModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,2,0"
                                         ToolTip="Alle Wartungsskripte, die schon in Intune liegen: Zuweisungen, Skripte, Ergebnisse, Loeschen"/>
+                                <Button x:Name="btnRemModeWu" Content="WIN-Updates" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                        ToolTip="Windows-Updates aller angehakten Tenants: Versionen, Patchstand, Update-Ringe und Profile"/>
                             </UniformGrid>
                             <Grid>
                             <DockPanel x:Name="pnlRemIntLeft" Visibility="Collapsed">
@@ -824,6 +826,32 @@
                                             <StackPanel Margin="0,2" ToolTip="{Binding Tip}">
                                                 <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlWuLeft" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Top" Text="Windows-Updates" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="spWuTenants" Margin="0,0,0,4"/>
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                    <Button x:Name="btnWuLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" Background="#1976D2" Foreground="White" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
+                                    <TextBlock Text="Ansicht" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <ListBox x:Name="lstWuView" DockPanel.Dock="Top" Style="{StaticResource DarkListBox}" Margin="0,0,0,8">
+                                    <ListBoxItem Content="&#x1F4CA; &#xDC;bersicht (Versionen)" Tag="matrix" IsSelected="True"/>
+                                    <ListBoxItem Content="&#x2699; Ringe und Profile" Tag="policies"/>
+                                    <ListBoxItem Content="&#x1F4BB; Ger&#xE4;te" Tag="devices"/>
+                                    <ListBoxItem Content="&#x1F527; Treiber" Tag="drivers"/>
+                                </ListBox>
+                                <TextBlock DockPanel.Dock="Top" Text="Je Tenant" Foreground="#AAAAAA" FontSize="11" Margin="0,0,0,2"/>
+                                <TextBlock DockPanel.Dock="Bottom" x:Name="lblWuState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                <ListBox x:Name="lstWuTenants" Style="{StaticResource DarkListBox}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2" ToolTip="{Binding Tip}">
+                                                <TextBlock Text="{Binding Title}" Foreground="{Binding Color}" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -956,6 +984,123 @@
                                     </StackPanel>
                                 </ScrollViewer>
                             </Border>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlWuRight" Visibility="Collapsed" Margin="6,10,0,0">
+                                <!-- Zeile 1: Titel bleibt immer sichtbar (Knoepfe in eigener Zeile darunter, umbrechend bei schmalem Fenster) -->
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                    <Button x:Name="btnWuExport" DockPanel.Dock="Right" Content="&#x1F4C4; Export" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0" ToolTip="Angezeigte Tabelle als Excel/CSV speichern"/>
+                                    <Button x:Name="btnWuHelp" DockPanel.Dock="Right" Content="? So geht's" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
+                                            ToolTip="Kurze Anleitungen: neue Windows-Version verteilen, Treiber, Expedite, in andere Tenants uebernehmen, Fehlersuche"/>
+                                    <Grid DockPanel.Dock="Right" Width="200">
+                                        <TextBox x:Name="txtWuFilter" Style="{StaticResource DarkTextBox}"/>
+                                        <TextBlock x:Name="lblWuFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                    </Grid>
+                                    <Ellipse x:Name="dotWuRun" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed" ToolTip="liest ..."/>
+                                    <TextBlock x:Name="lblWuTitle" Style="{StaticResource SectionTitle}" Text="&#xDC;bersicht" VerticalAlignment="Center" Margin="0,0,10,0" TextTrimming="CharacterEllipsis" MinWidth="120"/>
+                                </DockPanel>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="pnlWuNew" Margin="0,0,0,4">
+                                    <TextBlock Text="Neu anlegen:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,4"/>
+                                    <Button x:Name="btnWuNewRing" Content="+ Neuer Update-Ring ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
+                                            ToolTip="Neuer Update-Ring (Aufschub, Fristen, aktive Zeit) in den angehakten Tenants - ohne Zuweisung"/>
+                                    <Button x:Name="btnWuNewFeat" Content="+ Neues Feature-Update ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
+                                            ToolTip="Neues Feature-Update-Profil (Zielversion, z. B. 25H2) in den angehakten Tenants - ohne Zuweisung, danach unten zuweisen"/>
+                                    <Button x:Name="btnWuNewDrv" Content="+ Neue Treiber-Richtlinie ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
+                                            ToolTip="Neue Treiber-Richtlinie (automatisch mit Aufschub oder manuell) in den angehakten Tenants - ohne Zuweisung"/>
+                                    <Button x:Name="btnWuNewExp" Content="+ Neues Expedite ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
+                                            ToolTip="Sicherheitsupdate sofort installieren lassen (ohne Zuweisung - danach unten zuweisen; nach dem Ausrollen entfernen)"/>
+                                    <Border Width="1" Background="#555555" Margin="10,0,14,4"/>
+                                    <TextBlock Text="Vorlagen (ohne Zuweisung):" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,4"/>
+                                    <Button x:Name="btnWuBackup" Content="Sichern ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
+                                            ToolTip="Markierte Ringe/Profile als JSON-Datei speichern (ohne Zuweisungen) - zum Uebernehmen in andere Tenants"/>
+                                    <Button x:Name="btnWuImport" Content="Importieren ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
+                                            ToolTip="Gesicherte Ringe/Profile (JSON) in den angehakten Tenants anlegen - ohne Zuweisung. Datei auch in die Tabelle ziehen."/>
+                                </WrapPanel>
+                                <TextBlock DockPanel.Dock="Top" x:Name="lblWuHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="pnlWuChecks" Margin="0,0,0,6">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <TextBlock Text="Patchstand:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="chkWuOld" Content="veraltet (2+ fehlen)" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuBehind" Content="1 Update fehlt" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuCurrent" Content="aktuell" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuUnknown" Content="unbekannt" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,20,0"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <TextBlock Text="Nur:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="chkWuStale" Content="ohne Sync &gt; 30 Tage" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuActive" Content="Sync in 30 Tagen" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"
+                                              ToolTip="Geraete, die lange nicht synchronisieren, ausblenden (sie koennen ohnehin nicht aktualisieren)"/>
+                                    <CheckBox x:Name="chkWuCompany" Content="Firmenger&#xE4;te" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuWin10" Content="Windows 10" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    </StackPanel>
+                                </WrapPanel>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="pnlWuDrvChecks" Margin="0,0,0,6" Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <TextBlock Text="Status:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="chkDrvReview" Content="pr&#xFC;fen" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvApproved" Content="freigegeben" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvSuspended" Content="ausgesetzt" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvDeclined" Content="abgelehnt" Style="{StaticResource DarkCheckBox}" Margin="0,0,20,0"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <TextBlock Text="Nur:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="chkDrvRecommended" Content="empfohlene" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvApplicable" Content="mit betroffenen Ger&#xE4;ten" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkDrvRecent" Content="letzte 12 Monate" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"
+                                              ToolTip="Aeltere Treiber (oft Stand 2018 - sonstige, nie automatisch freigegeben) ausblenden"/>
+                                    </StackPanel>
+                                </WrapPanel>
+                                <!-- Treiber: Aktionen fuer markierte Zeilen -->
+                                <WrapPanel DockPanel.Dock="Bottom" x:Name="pnlWuDrvActions" Margin="0,6,0,0" Visibility="Collapsed">
+                                    <TextBlock Text="Markierte Treiber:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,4"/>
+                                    <Button x:Name="btnDrvApprove" Content="&#x2714; Freigeben ab" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"/>
+                                    <TextBox x:Name="txtDrvDate" Style="{StaticResource DarkTextBox}" Width="90" Margin="0,0,12,4" ToolTip="Datum TT.MM.JJJJ - ab dann installieren die Geraete den Treiber"/>
+                                    <Button x:Name="btnDrvSuspend" Content="&#x23F8; Aussetzen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4" ToolTip="Freigegebene Treiber anhalten (spaeter wieder freigeben moeglich)"/>
+                                    <Button x:Name="btnDrvDecline" Content="&#x2716; Ablehnen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4" ToolTip="Nur fuer Treiber im Status pruefen - freigegebene lassen sich laut Microsoft nur aussetzen"/>
+                                </WrapPanel>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*" MinHeight="120"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <DataGrid x:Name="gridWu" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="True" IsReadOnly="True" HeadersVisibility="Column"
+                                              SelectionMode="Extended" CanUserSortColumns="True" AllowDrop="True"/>
+                                    <!-- Ringe und Profile: wie Wartung > In Intune - Zuweisungen und Einstellungen des markierten Eintrags -->
+                                    <Border Grid.Row="1" x:Name="pnlWuDetail" Visibility="Collapsed" Background="#252526" CornerRadius="4" Padding="10" Margin="0,8,0,0">
+                                        <StackPanel>
+                                            <TextBlock x:Name="txtWuDetTitle" Foreground="#E0E0E0" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="txtWuDetInfo" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="Zuweisungen" Style="{StaticResource SectionTitle}" Margin="0,8,0,4"/>
+                                            <DataGrid x:Name="gridWuAssign" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                                      SelectionMode="Extended" MinHeight="40" MaxHeight="150">
+                                                <DataGrid.Columns>
+                                                    <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="2*"/>
+                                                    <DataGridTextColumn Header="Tenants" Binding="{Binding Tenants}" Width="*"/>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                            <WrapPanel Margin="0,6,0,0">
+                                                <ComboBox x:Name="cmbWuTarget" Style="{StaticResource DarkComboBox}" Width="160" Margin="0,0,4,4">
+                                                    <ComboBoxItem Content="Gruppe" Tag="group" IsSelected="True"/>
+                                                    <ComboBoxItem Content="Gruppe ausschliessen" Tag="exclude"/>
+                                                    <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
+                                                    <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
+                                                </ComboBox>
+                                                <TextBox x:Name="txtWuGroup" Style="{StaticResource DarkTextBox}" Width="200" Margin="0,0,2,4" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                                <Button x:Name="btnWuGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,6,4"/>
+                                                <Button x:Name="btnWuAssignAdd" Content="+ Zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"/>
+                                                <Button x:Name="btnWuAssignRemove" Content="Markierte entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4"/>
+                                            </WrapPanel>
+                                            <TextBlock Text="Einstellungen" Style="{StaticResource SectionTitle}" Margin="0,8,0,4"/>
+                                            <WrapPanel x:Name="pnlWuSet"/>
+                                            <WrapPanel Margin="0,6,0,0">
+                                                <Button x:Name="btnWuSave" Content="&#x1F4BE; Speichern" Background="#388E3C" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,6,4"/>
+                                                <Button x:Name="btnWuPauseQ" Content="&#x23F8; Qualitaet pausieren" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4" ToolTip="35 Tage ab jetzt; erneut klicken = verlaengern"/>
+                                                <Button x:Name="btnWuPauseF" Content="&#x23F8; Feature pausieren" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4" ToolTip="35 Tage ab jetzt; erneut klicken = verlaengern"/>
+                                                <Button x:Name="btnWuResume" Content="&#x25B6; Fortsetzen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,12,4" ToolTip="Alle Pausen dieses Rings aufheben"/>
+                                                <Button x:Name="btnWuDelete" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4" ToolTip="Profil in allen genannten Tenants loeschen"/>
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
                             </DockPanel>
                             <DockPanel x:Name="pnlRemLibRight">
                             <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">

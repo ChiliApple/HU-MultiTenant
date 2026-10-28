@@ -1,0 +1,109 @@
+{
+  "Format": "HU-SoGehts",
+  "FormatVersion": 1,
+  "Stand": "2026-10-28",
+  "Hinweis": "Kurze Rezepte je Bereich. Aktion: ID aus Register-HURecipeAction oder url:https://... Quellen: Microsoft Learn.",
+  "Bereiche": {
+    "winupdates": {
+      "Titel": "WIN-Updates – So geht's",
+      "Rezepte": [
+        {
+          "Id": "wu-version",
+          "Titel": "Alle Geräte auf eine neue Windows-Version bringen (z. B. 25H2)",
+          "Kurz": "Das Feature-Update-Profil legt die Zielversion fest und hält die Geräte dort (kein Downgrade). Der Update-Ring bestimmt Fristen und Neustarts.",
+          "Schritte": [
+            { "Text": "Update-Ring prüfen: Feature-Aufschub 0 Tage und eine Frist für Feature-Updates (z. B. 7 Tage). Passt kein vorhandener Ring, einen neuen anlegen.", "Aktion": "wu.newRing", "Knopf": "Neuer Update-Ring …" },
+            { "Text": "Feature-Update-Profil mit der Zielversion anlegen. „gestaffelt“ verteilt die Freigabe über mehrere Tage – schont Netz und Nerven.", "Aktion": "wu.newFeature", "Knopf": "Neues Feature-Update …" },
+            { "Text": "Das neue Profil markieren und unten eine Gerätegruppe zuweisen – zuerst eine kleine Testgruppe, nach ein paar Tagen alle.", "Aktion": "wu.viewPolicies", "Knopf": "Ringe und Profile zeigen" },
+            { "Text": "In der Übersicht verfolgen, wie die Geräte auf die neue Version wechseln. Das dauert Tage – Geräte ohne Sync bleiben stehen.", "Aktion": "wu.viewMatrix", "Knopf": "Übersicht zeigen" }
+          ],
+          "Achtung": [
+            "Wirkt nur auf Entra- oder Hybrid-beigetretene Geräte – „nur registrierte“ (private) Geräte erreicht es nicht.",
+            "Diagnosedaten am Gerät mindestens „Erforderlich“, Dienst „Microsoft-Konto-Anmelde-Assistent“ (wlidsvc) nicht deaktiviert.",
+            "Windows-Lizenz mit Autopatch-Berechtigung nötig (z. B. Windows/Microsoft 365 Education A3/A5); LTSC wird nicht unterstützt.",
+            "Zuweisung nur an Gerätegruppen, nicht an „Alle Geräte“. Gestaffelt: Beginn frühestens 2 Tage in der Zukunft."
+          ],
+          "Quellen": [
+            { "Titel": "Manage Windows feature updates", "Url": "https://learn.microsoft.com/intune/device-updates/windows/manage-feature-updates" },
+            { "Titel": "Windows update management overview", "Url": "https://learn.microsoft.com/intune/device-updates/windows/" }
+          ]
+        },
+        {
+          "Id": "wu-drivers",
+          "Titel": "Empfohlene Treiber automatisch verteilen",
+          "Kurz": "Eine Treiber-Richtlinie mit automatischer Freigabe gibt empfohlene Treiber nach einem Aufschub selbst frei. Problemtreiber lassen sich gezielt aussetzen.",
+          "Schritte": [
+            { "Text": "Neue Treiber-Richtlinie: Freigabe „automatisch“, Aufschub 7 Tage – fehlerhafte Treiber fallen in der Zeit meist schon auf.", "Aktion": "wu.newDriver", "Knopf": "Neue Treiber-Richtlinie …" },
+            { "Text": "Die Richtlinie markieren und unten eine Gerätegruppe zuweisen.", "Aktion": "wu.viewPolicies", "Knopf": "Ringe und Profile zeigen" },
+            { "Text": "Nach ein bis zwei Tagen unter „Treiber“ nachsehen: welche Treiber angeboten werden und wie viele Geräte betroffen sind.", "Aktion": "wu.viewDrivers", "Knopf": "Treiber zeigen" },
+            { "Text": "Macht ein Treiber Probleme: markieren und „Aussetzen“. Nicht empfohlene Treiber bei Bedarf gezielt „Freigeben ab“." }
+          ],
+          "Achtung": [
+            "Ein freigegebener Treiber lässt sich nur aussetzen, nicht mehr ablehnen.",
+            "Im Update-Ring dürfen Windows-Treiber nicht ausgeschlossen sein.",
+            "Die Treiberliste füllt sich erst, wenn die Geräte ihre Inventur gemeldet haben – das kann dauern.",
+            "Gleiche Voraussetzungen wie beim Feature-Update: Entra- oder Hybrid-Beitritt, Diagnosedaten, Lizenz."
+          ],
+          "Quellen": [
+            { "Titel": "Manage Windows driver updates", "Url": "https://learn.microsoft.com/intune/device-updates/windows/manage-driver-updates" }
+          ]
+        },
+        {
+          "Id": "wu-expedite",
+          "Titel": "Ein Sicherheitsupdate sofort erzwingen (Expedite)",
+          "Kurz": "Ein Expedite installiert ein bestimmtes Sicherheitsupdate sofort – am Aufschub im Ring vorbei. Gedacht für den Notfall, nicht als Dauerzustand.",
+          "Schritte": [
+            { "Text": "Neues Expedite anlegen: Update wählen, Neustart spätestens nach 1 Tag.", "Aktion": "wu.newExpedite", "Knopf": "Neues Expedite …" },
+            { "Text": "Das Expedite markieren und unten eine Gerätegruppe zuweisen.", "Aktion": "wu.viewPolicies", "Knopf": "Ringe und Profile zeigen" },
+            { "Text": "Unter „Geräte“ beobachten, wie der Patchstand auf „aktuell“ wechselt.", "Aktion": "wu.viewDevices", "Knopf": "Geräte zeigen" },
+            { "Text": "Sind die Geräte aktuell oder ist das nächste Monatsupdate da: Expedite wieder entfernen.", "Aktion": "wu.viewPolicies", "Knopf": "Ringe und Profile zeigen" }
+          ],
+          "Achtung": [
+            "Nur Sicherheitsupdates lassen sich beschleunigen.",
+            "Neustart nach 0 Tagen startet sofort neu, ohne dass jemand aufschieben kann – nicht während Unterricht oder Prüfungen.",
+            "Gleiche Voraussetzungen wie beim Feature-Update: Entra- oder Hybrid-Beitritt, Diagnosedaten, Lizenz."
+          ],
+          "Quellen": [
+            { "Titel": "Expedite policies for Windows quality updates", "Url": "https://learn.microsoft.com/intune/device-updates/windows/configure-expedite-policy" }
+          ]
+        },
+        {
+          "Id": "wu-copy",
+          "Titel": "Einstellungen in andere Tenants übernehmen",
+          "Kurz": "Einmal sauber bauen und testen, dann als Vorlage sichern und in den anderen Tenants importieren.",
+          "Schritte": [
+            { "Text": "In einem Tenant Ringe und Profile anlegen und testen." },
+            { "Text": "Die Einträge markieren (Strg für mehrere) und „Sichern …“. Die Datei landet im Vorlagen-Ordner und kommt mit der App-Sicherung mit.", "Aktion": "wu.backup", "Knopf": "Sichern …" },
+            { "Text": "Links die Ziel-Tenants anhaken und „Importieren …“ – oder die Datei einfach in die Tabelle ziehen.", "Aktion": "wu.import", "Knopf": "Importieren …" },
+            { "Text": "Die neuen Einträge markieren und unten zuweisen.", "Aktion": "wu.viewPolicies", "Knopf": "Ringe und Profile zeigen" }
+          ],
+          "Achtung": [
+            "Zuweisungen werden nicht übernommen – die Gruppen sind in jedem Tenant andere.",
+            "Gibt es im Ziel schon einen Eintrag mit gleichem Namen, wird er ausgelassen.",
+            "Ein abgelaufener Verteilzeitraum (Feature-Update) entfällt – das Profil gilt dann sofort."
+          ],
+          "Quellen": []
+        },
+        {
+          "Id": "wu-why",
+          "Titel": "Profil erreicht die Geräte nicht – woran liegt's?",
+          "Kurz": "Feature-, Treiber- und Expedite-Profile laufen über Windows Autopatch und haben strengere Voraussetzungen als der Update-Ring.",
+          "Schritte": [
+            { "Text": "Unter „Geräte“ die Spalte „Beitritt“ ansehen: „nur registriert“ (z. B. private Geräte) erreicht nur der Update-Ring.", "Aktion": "wu.viewDevices", "Knopf": "Geräte zeigen" },
+            { "Text": "„Letzter Sync“ prüfen – Geräte, die lange nicht synchronisieren, bekommen nichts Neues." },
+            { "Text": "Zuweisung prüfen: das Profil muss einer Gerätegruppe zugewiesen sein.", "Aktion": "wu.viewPolicies", "Knopf": "Ringe und Profile zeigen" },
+            { "Text": "Im Intune Admin Center unter Mandantenverwaltung › Connectors und Token › Windows-Daten die Diagnosedaten-Funktionen einschalten und die Windows-Lizenz bestätigen (Menünamen können abweichen).", "Aktion": "url:https://intune.microsoft.com/#view/Microsoft_Intune_DeviceSettings/TenantAdminMenu/~/connectorsAndTokens", "Knopf": "Intune öffnen" },
+            { "Text": "Am Gerät: Diagnosedaten mindestens „Erforderlich“, Dienst wlidsvc nicht deaktiviert, Edition Pro/Education/Enterprise (kein LTSC)." }
+          ],
+          "Achtung": [
+            "Nach einer Änderung braucht es meist ein bis zwei Tage, bis Geräte und Berichte nachziehen."
+          ],
+          "Quellen": [
+            { "Titel": "Windows update management overview – Prerequisites", "Url": "https://learn.microsoft.com/intune/device-updates/windows/#prerequisites" },
+            { "Titel": "Enable Windows diagnostic data and license verification", "Url": "https://learn.microsoft.com/intune/privacy/enable-windows-diagnostic-data" }
+          ]
+        }
+      ]
+    }
+  }
+}

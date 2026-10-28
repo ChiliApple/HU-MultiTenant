@@ -282,11 +282,16 @@ $script:HUAbAreaOf = [ordered]@{
     'appdata/remote.json'           = 'Fernbedienung (Einstellungen)'
     'appdata/notify-categories.json' = 'Teams-Kategorien'
     'appdata/AddonData/'            = 'Daten der Zusatzmodule'
+    'appdata/WinUpdates-Vorlagen/'  = 'WIN-Updates: Vorlagen'
+    'appdata/WinUpdates-vorher/'    = 'WIN-Updates: Stand vor Aenderungen'
     'muster/'                       = 'Muster-Bibliothek und Mustertenant'
     'backups/'                      = 'Tenant-Backups'
     'special/teams-ziele.json'      = 'Teams-Ziele (Webhook-Adressen)'
 }
 # Sonderinhalte: Name -> Datei in DataRoot, die vor dem Wiederherstellen in den Vorstand kommt
+# WIN-Updates: flache Ordner mit JSON-Dateien (Vorlagen und Stand vor Aenderungen)
+$script:HUAbWuDirs = @('WinUpdates-Vorlagen', 'WinUpdates-vorher')
+$script:HUAbWuFileRx = '^[A-Za-z0-9 ._()+-]{1,120}\.json$'
 $script:HUAbSpecial = @{ 'special/teams-ziele.json' = 'notify-targets.json' }
 $script:HUAbFileRx = '^HU-Sicherung_[A-Za-z0-9-]{1,40}_\d{4}-\d{2}-\d{2}_\d{6}\.husicherung$'
 # 071 B3: alles wird beim Lesen im Speicher gehalten -> Gesamtgrenze 2 GB
@@ -323,6 +328,7 @@ function Resolve-HUAppBackupTarget {
         }
         'appdata' {
             if ($seg.Count -eq 2 -and $script:HUAbAppDataFiles -ccontains $seg[1]) { return (Join-Path $DataRoot $seg[1]) }
+            if ($seg.Count -eq 3 -and $script:HUAbWuDirs -ccontains $seg[1] -and $seg[2] -match $script:HUAbWuFileRx) { return (Join-Path (Join-Path $DataRoot $seg[1]) $seg[2]) }
             if ($seg.Count -ge 4 -and $seg[1] -ceq 'AddonData' -and $seg[2] -cmatch '^[A-Za-z][A-Za-z0-9]{1,30}$') {
                 return (Join-Path (Join-Path $DataRoot 'AddonData') (($seg[2..($seg.Count - 1)]) -join [IO.Path]::DirectorySeparatorChar))
             }
@@ -360,6 +366,10 @@ function Get-HUAppBackupSources {
     foreach ($f in $script:HUAbConfigFiles) { $p = Join-Path $cfg $f; if (Test-Path -LiteralPath $p -PathType Leaf) { & $add "config/$f" $p } }
     foreach ($i in @(Get-HUAbFiles (Join-Path $cfg 'app-icons'))) { if ($i.Name -match '^[A-Za-z0-9._-]{1,80}\.png$' -and $i.DirectoryName -eq (Join-Path $cfg 'app-icons')) { & $add "config/app-icons/$($i.Name)" $i.FullName } }
     foreach ($f in $script:HUAbAppDataFiles) { $p = Join-Path $DataRoot $f; if (Test-Path -LiteralPath $p -PathType Leaf) { & $add "appdata/$f" $p } }
+    foreach ($wd in $script:HUAbWuDirs) {
+        $wp = Join-Path $DataRoot $wd
+        foreach ($i in @(Get-HUAbFiles $wp)) { if ($i.DirectoryName -eq (Get-Item -LiteralPath $wp).FullName -and $i.Name -match $script:HUAbWuFileRx) { & $add "appdata/$wd/$($i.Name)" $i.FullName } }
+    }
     $ad = Join-Path $DataRoot 'AddonData'
     if (Test-Path -LiteralPath $ad -PathType Container) {
         $base = (Get-Item -LiteralPath $ad).FullName.TrimEnd('\', '/')

@@ -172,7 +172,7 @@ $script:Version = '0.0.0'
 try { $script:Version = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
 
 Set-HUSplashStatus 'Module werden geladen ...'
-foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs', 'HU.Setup', 'HU.SecCatalog', 'HU.EntraRestore', 'HU.Muster', 'HU.Transfer', 'HU.MusterApply', 'HU.MusterExchange', 'HU.AppBackup')) {
+foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensions', 'HU.Intune', 'HU.Winget', 'HU.Notify', 'HU.TeamsJobs', 'HU.Setup', 'HU.SecCatalog', 'HU.EntraRestore', 'HU.Muster', 'HU.Transfer', 'HU.MusterApply', 'HU.MusterExchange', 'HU.AppBackup', 'HU.WinUpdate')) {
     $modPath = Join-Path $script:AppRoot "Core\$mod.psm1"
     if (-not (Test-Path -LiteralPath $modPath)) { Show-HUFatal "Core-Modul fehlt: $modPath`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
     Import-Module $modPath -Force -DisableNameChecking
@@ -183,7 +183,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 $uiFiles = @('Core-Async', 'Core-Update', 'Core-Addons', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-MusterApply', 'UI-MusterExchange', 'UI-AppBackup', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
+             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-Recipes', 'UI-WinUpdates', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-MusterApply', 'UI-MusterExchange', 'UI-AppBackup', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
 # ohne Oberflaeche nur das Noetige (Einstellungen lesen/ergaenzen)
 if ($Headless) { $uiFiles = @('UI-Common', 'UI-Settings') }
 foreach ($f in $uiFiles) {
@@ -308,6 +308,7 @@ Register-HUAppHandlers
 Register-HUIntAppHandlers
 Register-HURemHandlers
 Register-HURintHandlers
+Register-HUWinUpdateHandlers
 Register-HURemParamHandlers
 Register-HUAnaHandlers
 Register-HUMusterHandlers

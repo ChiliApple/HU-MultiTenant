@@ -51,6 +51,9 @@ h1 { font-size: clamp(32px, 6vw, 54px); font-weight: 800; line-height: 1.05; let
 h1 em { font-style: normal; color: var(--mauve); }
 .lead { font-size: 19px; max-width: 64ch; color: var(--fg); }
 .promise { display: flex; flex-wrap: wrap; gap: 10px; }
+.newhere { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; background: color-mix(in srgb, var(--green) var(--tint), var(--surface)); border: 1px solid color-mix(in srgb, var(--green) 45%, var(--line)); border-radius: 14px; padding: 14px 18px; }
+.newhere b { color: var(--fg-strong); }
+.newhere a.go { background: var(--green); color: var(--bg); font-weight: 700; text-decoration: none; border-radius: 999px; padding: 8px 18px; white-space: nowrap; }
 .promise span { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; }
 
 /* Abschnittskopf */
@@ -97,7 +100,8 @@ h1 em { font-style: normal; color: var(--mauve); }
 .shots2 { display: grid; gap: 4px; margin-top: 4px; align-items: start; }
 
 /* Start */
-.start { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.start { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+@media (max-width: 760px) { .start { grid-template-columns: 1fr; } }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; display: grid; gap: 8px; align-content: start; }
 .card .n { font: 800 30px/1 var(--f-display); color: var(--mauve); }
 .card h3 { font-size: 18px; }
@@ -141,10 +145,41 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   </div>
   <h1>Mehrere Tenants – <em>eine</em> Oberfläche.</h1>
   <p class="lead">Wer mehrere Schulen oder Standorte mit eigenem Microsoft 365 betreut, klickt sonst dieselben Dinge in fünf Portalen. HU-MultiTenant erledigt sie einmal – für alle angehakten Tenants. Diese Seite zeigt <b>typische Situationen aus dem Alltag</b>: was du tust und was am Ende herauskommt.</p>
+  <div class="newhere"><span><b>Neu hier?</b> Zuerst herunterladen und den ersten Tenant einrichten – in etwa 10 Minuten, danach ein erster Versuch ganz ohne Risiko.</span><a class="go" href="#start">In 10 Minuten startklar ↓</a></div>
   <div class="promise">
     <span>Microsoft 365 und Intune</span><span>Kein Server nötig</span><span>Keine Lizenz</span><span>Windows 10 / 11, PowerShell 5.1</span><span>Anmeldung per Zertifikat</span><span>Anleitung im Tool mit F1</span>
   </div>
 </header>
+
+<section class="sec" id="start">
+  <h2>In 10 Minuten startklar</h2>
+  <p class="sub">Du brauchst: Windows 10 / 11 (PowerShell 5.1 ist dabei) und je Tenant einmal ein Konto mit der Rolle Global Administrator. Administratorrechte am PC sind nicht nötig.</p>
+  <div class="start">
+    <div class="card" style="grid-column: 1 / -1">
+      <div class="n">1</div>
+      <h3>Herunterladen</h3>
+      <p><a href="https://github.com/ChiliApple/HU-MultiTenant/raw/main/Pull.ps1"><code>Pull.ps1</code></a> herunterladen (Rechtsklick › <i>Link speichern unter …</i>), in einen <b>leeren</b> Ordner legen und starten:</p>
+      <pre>powershell.exe -NoProfile -ExecutionPolicy Bypass -File Pull.ps1</pre>
+      <p style="font-size:14px;color:var(--muted)">Lädt die freigegebene Version, prüft jede Datei per SHA-256 und die Signatur des Releases. Updates kommen später über den Knopf <b>Update</b> im Programm – genauso geprüft.</p>
+    </div>
+    <div class="card">
+      <div class="n">2</div>
+      <h3>Starten und Tenant einrichten</h3>
+      <p>Erster Start mit <b>Start-HUMultiTenant.cmd</b>. HU-MultiTenant legt den Starter mit eigenem Symbol an, fragt nach einem <b>Desktop-Symbol</b> und bietet <b>Tenant einrichten</b> an: als Global Admin im Browser anmelden – App-Registrierung, Zertifikat und Rechte legt das Tool selbst an (Umfang <i>Nur lesen</i> oder <i>Lesen + verteilen</i>). Je Tenant wiederholen.</p>
+    </div>
+    <div class="card">
+      <div class="n">3</div>
+      <h3>Erster Versuch – ohne Risiko</h3>
+      <p>Reiter <span class="ui">Quick Script</span> › Snippet <b>Tenant-Übersicht</b>, unter <span class="ui">Mehrere ▾</span> alle Tenants anhaken, <kbd>Strg</kbd>+<kbd>Enter</kbd>. Das Skript <b>liest nur</b> – Name, Domänen, Lizenzen und Geräte je Tenant als Tabelle. Danach <span class="ui">Analyse</span> › <span class="ui">Was bekommt …?</span> mit dem eigenen Benutzernamen, ebenfalls nur lesend.</p>
+      <p style="font-size:14px;color:var(--muted)">Alles Weitere erklärt die Anleitung – im Tool jederzeit mit <b>F1</b>.</p>
+    </div>
+    <div class="card">
+      <div class="n" style="color:var(--muted)">oder</div>
+      <h3>Eigene App-Registrierung</h3>
+      <p>Wer die App-Registrierung lieber selbst anlegt (mit Client Secret): Schritte und Rechtetabelle in <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/INSTALL.md">INSTALL.md</a>, dann Einstellungen › Tenants › <b>+ Manuell</b>.</p>
+    </div>
+  </div>
+</section>
 
 <section class="sec">
   <h2>Warum nicht einfach die Portale?</h2>
@@ -490,10 +525,10 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
           <li>Meldungen nur bei Befund – kein Rauschen</li>
           <li>Eigene Prüfungen (Drucker, Backup …) als Meldung aus einem Snippet</li>
         </ul>
+        <p class="tip"><b>Gut zu wissen:</b> <i>Secret-Countdown</i> meldet ablaufende App-Secrets Wochen vorher, <i>Lizenzen knapp</i> nur, wenn es eng wird. Meldet Defender etwas auf dem PC, auf dem HU-MultiTenant läuft: <b>⛔ Not-Aus</b> oben rechts löscht alle gespeicherten Secrets und Zertifikate.</p>
       </div>
     </div>
   </article>
-
 
   <article class="scn" id="teilen" style="--c: var(--mauve)">
     <div class="scn-head">
@@ -524,40 +559,6 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     </div>
   </article>
 
-</section>
-
-<section class="first">
-  <h2>Der erste Versuch – ohne jedes Risiko</h2>
-  <p>Nach der Einrichtung im Reiter <span class="ui">Quick Script</span> das Snippet <b>Tenant-Übersicht</b> wählen, unter <span class="ui">Mehrere ▾</span> alle Tenants anhaken und <kbd>Strg</kbd>+<kbd>Enter</kbd> drücken. Das Skript <b>liest nur</b> – Name, Domänen, Lizenzen und Geräteanzahl je Tenant erscheinen als Tabelle. Danach <span class="ui">Analyse</span> › <span class="ui">Was bekommt …?</span> mit deinem eigenen Benutzernamen ausprobieren, ebenfalls nur lesend.</p>
-</section>
-
-<section class="sec">
-  <h2>In 10 Minuten startklar</h2>
-  <p class="sub">Du brauchst: Windows 10 / 11 (PowerShell 5.1 ist dabei) und je Tenant einmal ein Konto mit der Rolle Global Administrator. Administratorrechte am PC sind nicht nötig.</p>
-  <div class="start">
-    <div class="card" style="grid-column: 1 / -1">
-      <div class="n">1</div>
-      <h3>Herunterladen</h3>
-      <p><a href="https://github.com/ChiliApple/HU-MultiTenant/raw/main/Pull.ps1"><code>Pull.ps1</code></a> herunterladen (Rechtsklick › <i>Link speichern unter …</i>), in einen <b>leeren</b> Ordner legen und starten:</p>
-      <pre>powershell.exe -NoProfile -ExecutionPolicy Bypass -File Pull.ps1</pre>
-      <p style="font-size:14px;color:var(--muted)">Lädt die freigegebene Version, prüft jede Datei per SHA-256 und die Signatur des Releases. Updates kommen später über den Knopf <b>Update</b> im Programm – genauso geprüft.</p>
-    </div>
-    <div class="card">
-      <div class="n">2</div>
-      <h3>Tenant einrichten</h3>
-      <p>Erster Start mit <b>Start-HUMultiTenant.cmd</b>. HU-MultiTenant bietet <b>Tenant einrichten</b> an: als Global Admin im Browser anmelden – App-Registrierung, Zertifikat und Rechte legt das Tool selbst an. Je Tenant wiederholen.</p>
-    </div>
-    <div class="card">
-      <div class="n">3</div>
-      <h3>Verknüpfung</h3>
-      <p>Einstellungen › Allgemein › <b>Desktop-Verknüpfung</b>: ab dann mit eigenem Symbol und ohne Konsolenfenster starten. Alles Weitere erklärt die Anleitung – im Tool jederzeit mit <b>F1</b>.</p>
-    </div>
-    <div class="card">
-      <div class="n" style="color:var(--muted)">oder</div>
-      <h3>Eigene App-Registrierung</h3>
-      <p>Wer die App-Registrierung lieber selbst anlegt (mit Client Secret): Schritte und Rechtetabelle in <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/INSTALL.md">INSTALL.md</a>, dann Einstellungen › Tenants › <b>+ Manuell</b>.</p>
-    </div>
-  </div>
 </section>
 
 <section class="sec">
