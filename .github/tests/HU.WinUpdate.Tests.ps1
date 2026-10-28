@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Pester-Tests fuer Core\HU.WinUpdate.psm1 (2.6.3): Build -> Version, Patchstand aus dem Katalog, Ringe/Profile, Uebersicht.
@@ -23,8 +23,16 @@ Describe 'Windows-Updates: Version und Patchstand' {
         (Get-HUWuBuildInfo '10.0.26200.6899').Label | Should -Be 'Windows 11 25H2 (26200)'
         (Get-HUWuBuildInfo '10.0.26100.1').Version | Should -Be '24H2'
         (Get-HUWuBuildInfo '10.0.19045.5000').Product | Should -Be 'Windows 10'
-        (Get-HUWuBuildInfo '10.0.27000.1').Label | Should -Be 'Windows 11 Build 27000'
+        (Get-HUWuBuildInfo '10.0.27000.1').Label | Should -Be 'Windows 11 Build 27000 (Vorschau oder unbekannt)'
+        (Get-HUWuBuildInfo '10.0.20348.1').Label | Should -Be 'Windows Server 2022 (20348)'
         (Get-HUWuBuildInfo '').Label | Should -Be 'unbekannt'
+    }
+    It 'Name neuer Versionen kommt aus dem Katalog (z. B. 26H2)' {
+        $it = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windowsQualityUpdateCatalogItem'; classification = 'security'; releaseDateTime = '2026-10-14T00:00:00Z'
+            productRevisions = @([pscustomobject]@{ versionName = '26H2'; productName = 'Windows 11'; releaseDateTime = '2026-10-14T00:00:00Z'; osBuild = [pscustomobject]@{ buildNumber = 26300; updateBuildRevision = 9700 } }) }
+        $c = ConvertFrom-HUWuCatalog @($it)
+        (Get-HUWuBuildInfo '10.0.26300.9700' $c).Label | Should -Be 'Windows 11 26H2 (26300)'
+        (Get-HUWuBuildInfo '10.0.26300.9700').Label | Should -Match 'Vorschau'
     }
     It 'Katalog: nur Qualitaets-Updates, je Build neueste zuerst' {
         $c = ConvertFrom-HUWuCatalog $script:Items

@@ -24,13 +24,16 @@ $script:HUWuBuilds = @{   # Hashtable (nicht [ordered]: dort waere [int] ein Pos
     19044 = @('Windows 10', '21H2'); 19045 = @('Windows 10', '22H2')
     22000 = @('Windows 11', '21H2'); 22621 = @('Windows 11', '22H2'); 22631 = @('Windows 11', '23H2')
     26100 = @('Windows 11', '24H2'); 26200 = @('Windows 11', '25H2')
+    # Server und LTSC melden sich ebenfalls als "Windows"
+    14393 = @('Windows 10', '1607 / Server 2016'); 17763 = @('Windows 10', '1809 LTSC / Server 2019'); 20348 = @('Windows Server', '2022')
 }
+# Neuere Versionen (z. B. 26H2) liefert der Update-Katalog von Microsoft selbst (versionName/productName) - die Liste oben ist nur der Rueckfall.
 # Patchstand: "aktuell" = neuestes Sicherheitsupdate des Builds; "zurueck" = hoechstens so viele Tage aelter
 $script:HUWuLagDays = 40
 $script:HUWuStaleDays = 30
 
-# '10.0.26200.6899' -> @{ Build; Ubr; Product; Version; Label }
-function Get-HUWuBuildInfo([string]$OsVersion) {
+# '10.0.26200.6899' -> @{ Build; Ubr; Product; Version; Label }. Mit -Catalog: Name aus dem Microsoft-Katalog (auch neue Versionen)
+function Get-HUWuBuildInfo([string]$OsVersion, [hashtable]$Catalog = $null) {
     $r = [pscustomobject]@{ Build = 0; Ubr = 0; Product = ''; Version = ''; Label = 'unbekannt' }
     $p = @("$OsVersion".Trim() -split '\.')
     if ($p.Count -lt 3) { return $r }
@@ -38,8 +41,11 @@ function Get-HUWuBuildInfo([string]$OsVersion) {
     if (-not [int]::TryParse($p[2], [ref]$b)) { return $r }
     if ($p.Count -ge 4) { [void][int]::TryParse($p[3], [ref]$u) }
     $r.Build = $b; $r.Ubr = $u
-    if ($script:HUWuBuilds.ContainsKey($b)) { $r.Product = $script:HUWuBuilds[$b][0]; $r.Version = $script:HUWuBuilds[$b][1] }
-    else { $r.Product = $(if ($b -ge 22000) { 'Windows 11' } else { 'Windows 10' }); $r.Version = "Build $b" }
+    $named = $null
+    if ($Catalog -and $Catalog.ContainsKey($b)) { $named = @(@($Catalog[$b]) | Where-Object { $_.VersionName } | Select-Object -First 1)[0] }
+    if ($named) { $r.Product = $(if ($named.ProductName) { $named.ProductName } else { 'Windows' }); $r.Version = $named.VersionName }
+    elseif ($script:HUWuBuilds.ContainsKey($b)) { $r.Product = $script:HUWuBuilds[$b][0]; $r.Version = $script:HUWuBuilds[$b][1] }
+    else { $r.Product = $(if ($b -ge 22000) { 'Windows 11' } else { 'Windows 10' }); $r.Version = "Build $b (Vorschau oder unbekannt)" }
     $r.Label = $(if ($r.Version -like "Build *") { "$($r.Product) $($r.Version)" } else { "$($r.Product) $($r.Version) ($b)" })
     return $r
 }
@@ -58,7 +64,7 @@ function ConvertFrom-HUWuCatalog([object[]]$Items) {
             $d = $null
             foreach ($v in "$($rv.releaseDateTime)", "$($it.releaseDateTime)") { if ($v) { try { $d = [datetime]::Parse($v, [Globalization.CultureInfo]::InvariantCulture); break } catch { } } }
             if (-not $map.ContainsKey($b)) { $map[$b] = New-Object System.Collections.Generic.List[object] }
-            $map[$b].Add([pscustomobject]@{ Ubr = $u; Date = $d; Security = $sec; Name = "$($it.displayName)"; Kb = "$($it.kbArticleId)" })
+            $map[$b].Add([pscustomobject]@{ Ubr = $u; Date = $d; Security = $sec; Name = "$($it.displayName)"; Kb = "$($it.kbArticleId)"; VersionName = "$($rv.versionName)"; ProductName = "$($rv.productName)" })
         }
     }
     $out = @{}
@@ -118,7 +124,7 @@ function Get-HUWuInventory {
         $sel = 'id,deviceName,osVersion,lastSyncDateTime,userPrincipalName,managedDeviceOwnerType,model,operatingSystem'
         $devs = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/managedDevices?`$filter=operatingSystem eq 'Windows'&`$select=$sel")
         $inv.Devices = @(foreach ($d in $devs) {
-                $bi = Get-HUWuBuildInfo "$($d.osVersion)"
+                $bi = Get-HUWuBuildInfo "$($d.osVersion)" $inv.Catalog
                 $sync = Get-HUWuDate $d.lastSyncDateTime
                 [pscustomobject]@{
                     Tenant = $TenantKey; Geraet = "$($d.deviceName)"; Benutzer = "$($d.userPrincipalName)"; Version = $bi.Label; Build = "$($d.osVersion)"
