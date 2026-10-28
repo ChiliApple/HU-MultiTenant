@@ -74,7 +74,7 @@ function Start-HUMaRevoke([string]$TenantKey, $Login = $null, [scriptblock]$Done
         if ($Done) { & $Done $true "Zurueckgegeben: $(if ($rem.Count) { $rem -join ', ' } else { 'waren schon entzogen' }).`nEin schon geholtes App-Token kann sie noch bis zu einer Stunde enthalten." }
     }
     if (Test-HUMaLoginValid $Login) { & $do $Login; return }
-    if (-not (Confirm-HU "Rechte fuer $(Get-HUAnaTenantName $TenantKey) zurueckgeben?`n`n$($added -join "`n")`n`nEs oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $Owner)) { if ($Done) { & $Done $false 'abgebrochen' }; return }
+    if (-not (Confirm-HU -Warning "Rechte fuer $(Get-HUAnaTenantName $TenantKey) zurueckgeben?`n`n$($added -join "`n")`n`nEs oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $Owner)) { if ($Done) { & $Done $false 'abgebrochen' }; return }
     [void](Start-HUMaAdminLogin $TenantKey $do)
 }
 

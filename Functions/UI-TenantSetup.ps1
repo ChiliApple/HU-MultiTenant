@@ -30,7 +30,7 @@ function Request-HUMissingRight($Results, [string]$Wofuer = 'diese Aktion') {
         $m = @($script:HUMissRight); $script:HUMissRight = @()
         if (-not $m.Count) { return }
         $txt = "Fuer $($script:HUMissWofuer) fehlt der App ein Recht:`n`n" + (@($m | ForEach-Object { "  $(Get-HUTenantDisplayName $_.Tenant): $($_.Rechte -join ', ')" }) -join "`n") +
-            "`n`nJetzt erteilen? Es oeffnet sich 'Rechte erteilen' mit genau diesem Recht vorgewaehlt (Anmeldung als Global Admin)."
+            "`n`nJetzt erteilen? Es oeffnet sich 'Rechte erteilen' mit genau diesem Recht vorgewaehlt (Anmeldung als Global Admin).`n`nDanach die Aktion noch einmal ausfuehren - der fehlgeschlagene Teil wird nicht von selbst wiederholt."
         if (-not (Confirm-HU -Warning $txt)) { return }
         foreach ($x in $m) { try { [void](Show-HUTenantSetupDialog -TenantKey $x.Tenant -Preselect $x.Rechte) } catch { Show-HUMessage "$($_.Exception.Message)" -Icon Warning } }
     }
