@@ -185,4 +185,29 @@ Describe 'Windows-Updates: aendern (Schritt 2)' {
         $b.skipChecksBeforeRestart | Should -BeFalse
         { New-HUWuRingBody -Name 'R' -QualityDeferral 3 -QualityDeadline 3 -FeatureDeadline 7 -Grace 2 -ActiveStart '25:00' -ActiveEnd '15:00' -UserPause $false } | Should -Throw
     }
+
+    It 'Sichern/Importieren: Verwaltungsfelder weg, Pause aus, alter Zeitraum weg, Datei wieder lesbar' {
+        $now = [datetime]'2026-10-28'
+        $ring = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windowsUpdateForBusinessConfiguration'; id = 'x'; displayName = 'R'; version = 3; qualityUpdatesPaused = $true; qualityUpdatesDeferralPeriodInDays = 3; createdDateTime = '2024-01-01'; 'assignments@odata.context' = 'y' }
+        $feat = [pscustomobject]@{ id = 'f'; displayName = 'F'; featureUpdateVersion = 'Windows 11, version 25H2'; rolloutSettings = [pscustomobject]@{ offerStartDateTimeInUTC = '2025-01-01T00:00:00Z' }; endOfSupportDate = '2027-10-01' }
+        $rows = @([pscustomobject]@{ Tenant = 'a'; Art = 'Update-Ring'; Name = 'R'; Raw = $ring }, [pscustomobject]@{ Tenant = 'b'; Art = 'Update-Ring'; Name = 'R'; Raw = $ring }, [pscustomobject]@{ Tenant = 'a'; Art = 'Feature-Update'; Name = 'F'; Raw = $feat })
+        $doc = New-HUWuExportDoc $rows @{ a = 'A' } $now
+        @($doc.Items).Count | Should -Be 2
+        $b = $doc.Items[0].Body
+        $b.ContainsKey('id') | Should -BeFalse
+        $b.ContainsKey('version') | Should -BeFalse
+        $b.ContainsKey('assignments@odata.context') | Should -BeFalse
+        $b.qualityUpdatesPaused | Should -BeFalse
+        $doc.Items[1].Body.ContainsKey('rolloutSettings') | Should -BeFalse
+        $doc.Items[1].Body.ContainsKey('endOfSupportDate') | Should -BeFalse
+        $f = Join-Path ([IO.Path]::GetTempPath()) "wu-test-$([guid]::NewGuid()).json"
+        try {
+            [IO.File]::WriteAllText($f, ($doc | ConvertTo-Json -Depth 20))
+            $r = @(Read-HUWuExportFile $f)
+            $r.Count | Should -Be 2
+            $r[0].Body['@odata.type'] | Should -Be '#microsoft.graph.windowsUpdateForBusinessConfiguration'
+            $r[1].Body.featureUpdateVersion | Should -Be 'Windows 11, version 25H2'
+            $r[0].Quelle | Should -Be 'A'
+        } finally { Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue }
+    }
 }

@@ -507,6 +507,65 @@ function New-HUWuDriverProfile {
     return "$($r.id)"
 }
 
+# --- Sichern / Importieren (JSON-Datei, ohne Zuweisungen) ---
+$script:HUWuExportSkip = @('id', 'createdDateTime', 'lastModifiedDateTime', 'version', 'assignments', 'supportsScopeTags', 'roleScopeTagIds',
+    'deviceManagementApplicabilityRuleOsEdition', 'deviceManagementApplicabilityRuleOsVersion', 'deviceManagementApplicabilityRuleDeviceMode',
+    'deviceReporting', 'newUpdates', 'inventorySyncStatus', 'releaseDateDisplayName', 'deployableContentDisplayName', 'endOfSupportDate',
+    'qualityUpdatesPauseStartDate', 'featureUpdatesPauseStartDate', 'qualityUpdatesPauseExpiryDateTime', 'featureUpdatesPauseExpiryDateTime',
+    'qualityUpdatesRollbackStartDateTime', 'featureUpdatesRollbackStartDateTime', 'qualityUpdatesWillBeRolledBack', 'featureUpdatesWillBeRolledBack')
+
+# Graph-Objekt -> Body zum Neuanlegen (Verwaltungsfelder weg, Pause aus, alte Verteilzeitraeume weg)
+function ConvertTo-HUWuExportBody([string]$Art, $Raw, [datetime]$Now = (Get-Date)) {
+    $ep = Get-HUWuEpInfo $Art
+    $b = @{ '@odata.type' = $ep.Type }   # Hashtable: Invoke-HUIntuneGraph will [hashtable]
+    foreach ($pp in @($Raw.PSObject.Properties)) {
+        $n = "$($pp.Name)"
+        if ($n -like '*@odata*' -or $n -eq '@odata.type' -or $script:HUWuExportSkip -contains $n) { continue }
+        $b[$n] = $pp.Value
+    }
+    if ($Art -eq 'Update-Ring') { $b['qualityUpdatesPaused'] = $false; $b['featureUpdatesPaused'] = $false }
+    if ($b.ContainsKey('rolloutSettings')) {
+        $st = $(if ($b['rolloutSettings']) { Get-HUWuDate $b['rolloutSettings'].offerStartDateTimeInUTC } else { $null })
+        if (-not $st -or $st -lt $Now) { $b.Remove('rolloutSettings') }   # Zeitraum liegt in der Vergangenheit -> sofort verfuegbar
+    }
+    return $b
+}
+
+function New-HUWuExportDoc([object[]]$Rows, [hashtable]$Names = @{}, [datetime]$Now = (Get-Date)) {
+    $seen = @{}
+    $items = @(foreach ($r in @($Rows)) {
+            $k = "$($r.Art)|$($r.Name)"
+            if ($seen.ContainsKey($k) -or -not $r.Raw) { continue }
+            $seen[$k] = 1
+            [ordered]@{ Art = "$($r.Art)"; Name = "$($r.Name)"; Quelle = $(if ($Names.ContainsKey("$($r.Tenant)")) { $Names["$($r.Tenant)"] } else { "$($r.Tenant)" }); Body = (ConvertTo-HUWuExportBody $r.Art $r.Raw $Now) }
+        })
+    return [ordered]@{ Format = 'HU-WinUpdates'; FormatVersion = 1; Erstellt = $Now.ToString('yyyy-MM-dd HH:mm'); Items = $items }
+}
+
+# Datei lesen und pruefen. Rueckgabe: Liste @{ Art; Name; Quelle; Body(hashtable) }
+function Read-HUWuExportFile([string]$Path) {
+    $j = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($j.Format)" -ne 'HU-WinUpdates') { throw 'Keine WIN-Updates-Sicherung (Format fehlt)' }
+    return @(foreach ($it in @($j.Items)) {
+            if (-not $script:HUWuEp.ContainsKey("$($it.Art)") -or -not "$($it.Name)") { continue }
+            $h = @{}
+            foreach ($pp in @($it.Body.PSObject.Properties)) { $h["$($pp.Name)"] = $pp.Value }
+            $h['@odata.type'] = (Get-HUWuEpInfo "$($it.Art)").Type
+            $h['roleScopeTagIds'] = @('0')
+            [pscustomobject]@{ Art = "$($it.Art)"; Name = "$($it.Name)"; Quelle = "$($it.Quelle)"; Body = $h }
+        })
+}
+
+# Aus Sicherung anlegen (ohne Zuweisung). Name optional ueberschreiben.
+function New-HUWuFromBody {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)]$Body, [string]$Name = '')
+    $b = @{}; foreach ($k in @($Body.Keys)) { $b[$k] = $Body[$k] }
+    if ($Name) { $b['displayName'] = $Name }
+    $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint (Get-HUWuEpInfo $Art).Ep -Method POST -Body $b
+    return "$($r.id)"
+}
+
 # Treiber: approve | decline | suspend fuer mehrere Treiber einer Richtlinie. Rueckgabe: bulkDriverActionResult
 function Invoke-HUWuDriverAction {
     [CmdletBinding()]
@@ -551,7 +610,7 @@ function Get-HUWuPolicyGroups([object[]]$Inventories, [hashtable]$TenantNames = 
     }
 }
 
-Export-ModuleMember -Function New-HUWuRing, New-HUWuRingBody, New-HUWuDriverProfile, Get-HUWuEpInfo, Save-HUWuBefore, ConvertTo-HUWuTarget, Get-HUWuTargetKey, Set-HUWuAssignment, Set-HUWuSettings, Set-HUWuRingPause,
+Export-ModuleMember -Function ConvertTo-HUWuExportBody, New-HUWuExportDoc, Read-HUWuExportFile, New-HUWuFromBody, New-HUWuRing, New-HUWuRingBody, New-HUWuDriverProfile, Get-HUWuEpInfo, Save-HUWuBefore, ConvertTo-HUWuTarget, Get-HUWuTargetKey, Set-HUWuAssignment, Set-HUWuSettings, Set-HUWuRingPause,
     Get-HUWuCatalogChoices, New-HUWuFeatureProfile, Remove-HUWuProfile, ConvertTo-HUWuRollout, New-HUWuExpedite, Invoke-HUWuDriverAction, Get-HUWuPolicyGroups,
     ConvertTo-HUWuJoinText, ConvertTo-HUWuDriverRow, Get-HUWuDriverMatrix, Get-HUWuBuildInfo, ConvertFrom-HUWuCatalog, Get-HUWuPatchState, Get-HUWuMissingCount, Get-HUWuLatestText, Get-HUWuInventory,
     ConvertTo-HUWuPolicyRow, Get-HUWuMatrix, Get-HUWuSummary, Get-HUWuAssignText

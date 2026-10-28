@@ -988,6 +988,10 @@
                             <DockPanel x:Name="pnlWuRight" Visibility="Collapsed" Margin="6,10,0,0">
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                                     <Button x:Name="btnWuExport" DockPanel.Dock="Right" Content="&#x1F4C4; Export" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0" ToolTip="Angezeigte Tabelle als Excel/CSV speichern"/>
+                                    <Button x:Name="btnWuImport" DockPanel.Dock="Right" Content="Importieren ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
+                                            ToolTip="Gesicherte Ringe/Profile (JSON) in den angehakten Tenants anlegen - ohne Zuweisung. Datei auch in die Tabelle ziehen."/>
+                                    <Button x:Name="btnWuBackup" DockPanel.Dock="Right" Content="Sichern ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
+                                            ToolTip="Markierte Ringe/Profile als JSON-Datei speichern (ohne Zuweisungen) - zum Uebernehmen in andere Tenants"/>
                                     <Button x:Name="btnWuNewDrv" DockPanel.Dock="Right" Content="+ Treiber ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
                                             ToolTip="Neue Treiber-Richtlinie (automatisch mit Aufschub oder manuell) in den angehakten Tenants - ohne Zuweisung"/>
                                     <Button x:Name="btnWuNewExp" DockPanel.Dock="Right" Content="+ Expedite ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
@@ -1043,7 +1047,7 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
                                     <DataGrid x:Name="gridWu" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="True" IsReadOnly="True" HeadersVisibility="Column"
-                                              SelectionMode="Extended" CanUserSortColumns="True"/>
+                                              SelectionMode="Extended" CanUserSortColumns="True" AllowDrop="True"/>
                                     <!-- Ringe und Profile: wie Wartung > In Intune - Zuweisungen und Einstellungen des markierten Eintrags -->
                                     <Border Grid.Row="1" x:Name="pnlWuDetail" Visibility="Collapsed" Background="#252526" CornerRadius="4" Padding="10" Margin="0,8,0,0">
                                         <StackPanel>

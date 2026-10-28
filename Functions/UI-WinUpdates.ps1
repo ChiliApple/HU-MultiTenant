@@ -180,7 +180,8 @@ function Update-HUWuView {
     $c['pnlWuChecks'].Visibility = $(if ($script:WuView -in 'matrix', 'devices') { 'Visible' } else { 'Collapsed' })
     $c['pnlWuDrvChecks'].Visibility = $(if ($script:WuView -eq 'drivers') { 'Visible' } else { 'Collapsed' })
     $c['pnlWuDrvActions'].Visibility = $c['pnlWuDrvChecks'].Visibility
-    foreach ($b in 'btnWuNewRing', 'btnWuNewFeat', 'btnWuNewDrv', 'btnWuNewExp') { $c[$b].Visibility = $(if ($script:WuView -in 'policies', 'matrix') { 'Visible' } else { 'Collapsed' }) }
+    foreach ($b in 'btnWuNewRing', 'btnWuNewFeat', 'btnWuNewDrv', 'btnWuNewExp', 'btnWuImport') { $c[$b].Visibility = $(if ($script:WuView -in 'policies', 'matrix') { 'Visible' } else { 'Collapsed' }) }
+    $c['btnWuBackup'].Visibility = $(if ($script:WuView -eq 'policies') { 'Visible' } else { 'Collapsed' })
     if (-not "$($c['txtDrvDate'].Text)") { $c['txtDrvDate'].Text = (Get-Date).ToString('dd.MM.yyyy') }
     $rows = @()
     switch ($script:WuView) {
@@ -317,6 +318,19 @@ function Register-HUWinUpdateHandlers {
     $c['btnWuNewExp'].Add_Click({ Start-HUWuNew 'expedite' })
     $c['btnWuNewRing'].Add_Click({ Start-HUWuNew 'ring' })
     $c['btnWuNewDrv'].Add_Click({ Start-HUWuNew 'driver' })
+    $c['btnWuBackup'].Add_Click({ Save-HUWuBackupFile })
+    $c['btnWuImport'].Add_Click({
+            $dlg = New-Object Microsoft.Win32.OpenFileDialog
+            $dlg.Filter = 'WIN-Updates-Sicherung (*.json)|*.json'
+            try { $rp = Get-HUReportsPath; if (Test-Path -LiteralPath $rp) { $dlg.InitialDirectory = $rp } } catch { }
+            if ($dlg.ShowDialog($script:Window)) { Start-HUWuImport $dlg.FileName }
+        })
+    $c['gridWu'].Add_DragOver({ param($s, $e) $e.Effects = $(if ($e.Data.GetDataPresent([System.Windows.DataFormats]::FileDrop)) { 'Copy' } else { 'None' }); $e.Handled = $true })
+    $c['gridWu'].Add_Drop({
+            param($s, $e)
+            $f = @(@($e.Data.GetData([System.Windows.DataFormats]::FileDrop)) | Where-Object { "$_" -like '*.json' })
+            if ($f.Count) { Start-HUWuImport "$($f[0])" } else { Show-HUMessage 'Bitte eine WIN-Updates-Sicherung (.json) hineinziehen.' -Icon Info }
+        })
     $c['btnDrvApprove'].Add_Click({ Start-HUWuDriverAct 'approve' })
     $c['btnDrvSuspend'].Add_Click({ Start-HUWuDriverAct 'suspend' })
     $c['btnDrvDecline'].Add_Click({ Start-HUWuDriverAct 'decline' })
@@ -490,6 +504,7 @@ function Start-HUWuJob([string]$Op, [object[]]$Work, [hashtable]$P, [string]$Wha
                         'delete' { $f = Remove-HUWuProfile -TenantKey $tk -Settings $Settings -Art $x.Art -Id $x.Id; $msg = "$($x.Name): entfernt (vorher: $f)" }
                         'newFeature' { $id = New-HUWuFeatureProfile -TenantKey $tk -Settings $Settings -Name $P.Name -Version $P.Version -Rollout $P.Rollout -Win10Fallback ([bool]$P.Win10); $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
                         'newExpedite' { $id = New-HUWuExpedite -TenantKey $tk -Settings $Settings -Name $P.Name -Release $P.Release -RebootDays $P.Reboot; $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
+                        'import' { $id = New-HUWuFromBody -TenantKey $tk -Settings $Settings -Art $x.Art -Body $x.Body; $msg = "'$($x.Name)' angelegt aus Sicherung (ohne Zuweisung)" }
                         'newRing' { $id = New-HUWuRing -TenantKey $tk -Settings $Settings -Name $P.Name -QualityDeferral $P.qd -QualityDeadline $P.dq -FeatureDeadline $P.df -Grace $P.gp -ActiveStart $P.ahs -ActiveEnd $P.ahe -UserPause ([bool]$P.up); $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
                         'newDriver' { $id = New-HUWuDriverProfile -TenantKey $tk -Settings $Settings -Name $P.Name -Approval $P.appr -DeferDays $P.defer; $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
                         'driver' {
@@ -656,6 +671,56 @@ function Start-HUWuNew([string]$Kind) {
         if (-not (Confirm-HU -Warning "Expedite anlegen in: $tn`n`n  Name: $($r.Name)`n  Update: $($r.Text)`n  Neustart spaetestens nach $($r.Reboot) Tag(en)`n`nAngelegt OHNE Zuweisung - danach markieren und unten zuweisen. Nach dem Ausrollen wieder entfernen.")) { return }
         Start-HUWuJob 'newExpedite' $work @{ Name = $r.Name; Release = $r.Release; Reboot = $r.Reboot } "Neu: $($r.Name)"
     }
+    $script:WuView = 'policies'
+    foreach ($li in $script:Controls['lstWuView'].Items) { if ("$($li.Tag)" -eq 'policies') { $script:Controls['lstWuView'].SelectedItem = $li } }
+}
+
+# Sichern: markierte Ringe/Profile -> JSON (ohne Zuweisungen; gleicher Name in mehreren Tenants = einmal, aus dem ersten)
+function Save-HUWuBackupFile {
+    if ($script:WuView -ne 'policies') { Show-HUMessage 'Sichern geht unter "Ringe und Profile": Eintraege markieren (Strg/Umschalt fuer mehrere).' -Icon Info; return }
+    $rows = New-Object System.Collections.Generic.List[object]
+    foreach ($r in @($script:Controls['gridWu'].SelectedItems)) {
+        $k = "$(Get-HUWuCell $r 'Key')"
+        if ($k -and $script:WuGroups.ContainsKey($k)) { foreach ($it in @($script:WuGroups[$k].Items)) { $rows.Add($it) } }
+    }
+    if (-not $rows.Count) { Show-HUMessage 'Bitte oben die Ringe/Profile markieren, die gesichert werden sollen.' -Icon Info; return }
+    $doc = New-HUWuExportDoc @($rows) (Get-HUWuTenantNames)
+    $dlg = New-Object Microsoft.Win32.SaveFileDialog
+    $dlg.Filter = 'WIN-Updates-Sicherung (*.json)|*.json'
+    $dlg.FileName = "WIN-Updates-Sicherung_$(Get-Date -Format 'yyyy-MM-dd_HHmm').json"
+    try { $rp = Get-HUReportsPath; if (Test-Path -LiteralPath $rp) { $dlg.InitialDirectory = $rp } } catch { }
+    if (-not $dlg.ShowDialog($script:Window)) { return }
+    try {
+        [System.IO.File]::WriteAllText($dlg.FileName, ($doc | ConvertTo-Json -Depth 20), (New-Object System.Text.UTF8Encoding($false)))
+        Write-HULogOK "WIN-Updates gesichert ($(@($doc.Items).Count) Eintrag/Eintraege): $($dlg.FileName)"
+        Show-HUMessage "Gesichert: $(@($doc.Items).Count) Ring(e)/Profil(e), ohne Zuweisungen.`n`n$(@($doc.Items | ForEach-Object { "  $($_.Art): $($_.Name)  (aus $($_.Quelle))" }) -join "`n")`n`n$($dlg.FileName)" -Icon Info
+    } catch { Show-HUMessage "Speichern fehlgeschlagen: $($_.Exception.Message)" -Icon Error }
+}
+
+# Importieren: Sicherung in den angehakten Tenants anlegen (ohne Zuweisung). Gleicher Name schon da -> wird ausgelassen.
+function Start-HUWuImport([string]$Path) {
+    $keys = @(Get-HUWuTenants)
+    if (-not $keys.Count) { Show-HUMessage 'Bitte links die Ziel-Tenants anhaken.' -Icon Info; return }
+    try { $items = @(Read-HUWuExportFile $Path) } catch { Show-HUMessage "Datei nicht lesbar: $($_.Exception.Message)" -Icon Warning; return }
+    if (-not $items.Count) { Show-HUMessage 'In der Datei sind keine Ringe/Profile.' -Icon Info; return }
+    $names = Get-HUWuTenantNames
+    $have = @{}
+    foreach ($i in @(Get-HUWuInventories)) { foreach ($p in @($i.Policies)) { $have["$($i.Tenant)|$($p.Art)|$($p.Name)"] = 1 } }
+    $work = New-Object System.Collections.Generic.List[object]; $skip = New-Object System.Collections.Generic.List[string]
+    foreach ($k in $keys) {
+        foreach ($it in $items) {
+            if ($have.ContainsKey("$k|$($it.Art)|$($it.Name)")) { $skip.Add("  $($names[$k]): $($it.Art) '$($it.Name)'"); continue }
+            $work.Add(@{ Tenant = $k; Art = $it.Art; Name = $it.Name; Body = $it.Body })
+        }
+    }
+    if (-not $work.Count) { Show-HUMessage "Alles schon vorhanden (gleicher Name) - nichts anzulegen.`n`n$($skip -join "`n")" -Icon Info; return }
+    $list = (@($items | ForEach-Object { "  $($_.Art): $($_.Name)" }) -join "`n")
+    $tn = (@($keys | ForEach-Object { $names[$_] }) -join ', ')
+    $msg = "Aus Sicherung anlegen in: $tn ($($work.Count) neu)`n`n$list"
+    if ($skip.Count) { $msg += "`n`nSchon vorhanden, wird ausgelassen:`n$($skip -join "`n")" }
+    $msg += "`n`nAngelegt OHNE Zuweisung - danach markieren und unten zuweisen."
+    if (-not (Confirm-HU -Warning $msg)) { return }
+    Start-HUWuJob 'import' @($work) @{} "Importieren ($($work.Count))"
     $script:WuView = 'policies'
     foreach ($li in $script:Controls['lstWuView'].Items) { if ("$($li.Tag)" -eq 'policies') { $script:Controls['lstWuView'].SelectedItem = $li } }
 }
