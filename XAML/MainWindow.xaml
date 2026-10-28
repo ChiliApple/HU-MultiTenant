@@ -997,6 +997,7 @@
                                     <TextBlock x:Name="lblWuTitle" Style="{StaticResource SectionTitle}" Text="&#xDC;bersicht" VerticalAlignment="Center" Margin="0,0,10,0" TextTrimming="CharacterEllipsis" MinWidth="120"/>
                                 </DockPanel>
                                 <WrapPanel DockPanel.Dock="Top" x:Name="pnlWuNew" Margin="0,0,0,4">
+                                    <TextBlock Text="Neu anlegen:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,4"/>
                                     <Button x:Name="btnWuNewRing" Content="+ Neuer Update-Ring ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
                                             ToolTip="Neuer Update-Ring (Aufschub, Fristen, aktive Zeit) in den angehakten Tenants - ohne Zuweisung"/>
                                     <Button x:Name="btnWuNewFeat" Content="+ Neues Feature-Update ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
@@ -1005,7 +1006,8 @@
                                             ToolTip="Neue Treiber-Richtlinie (automatisch mit Aufschub oder manuell) in den angehakten Tenants - ohne Zuweisung"/>
                                     <Button x:Name="btnWuNewExp" Content="+ Neues Expedite ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
                                             ToolTip="Sicherheitsupdate sofort installieren lassen (ohne Zuweisung - danach unten zuweisen; nach dem Ausrollen entfernen)"/>
-                                    <Border Width="1" Background="#444444" Margin="6,2,12,6"/>
+                                    <Border Width="1" Background="#555555" Margin="10,0,14,4"/>
+                                    <TextBlock Text="Vorlagen (ohne Zuweisung):" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,4"/>
                                     <Button x:Name="btnWuBackup" Content="Sichern ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
                                             ToolTip="Markierte Ringe/Profile als JSON-Datei speichern (ohne Zuweisungen) - zum Uebernehmen in andere Tenants"/>
                                     <Button x:Name="btnWuImport" Content="Importieren ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="0,0,6,4"
