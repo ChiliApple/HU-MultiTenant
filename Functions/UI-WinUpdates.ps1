@@ -620,9 +620,18 @@ function Start-HUWuPause([string]$What) {
 
 function Start-HUWuDelete {
     $g = Get-HUWuSelGroup; if (-not $g) { return }
-    $work = @(foreach ($it in @($g.Items)) { @{ Tenant = $it.Tenant; Art = $it.Art; Id = $it.Id; Name = $it.Name } })
-    if (-not (Confirm-HU -Warning "$($g.Art) '$($g.Name)' loeschen in: $($g.Tenants)?`n`nDer Stand wird vorher gesichert. Geraete behalten die bereits installierte Version.")) { return }
-    Start-HUWuJob 'delete' $work @{} "Entfernen $($g.Name)"
+    # Mehrere Zeilen markiert (Strg/Umschalt): alle markierten entfernen - z. B. alte Expedites mehrerer Tenants
+    $groups = New-Object System.Collections.Generic.List[object]
+    foreach ($r in @($script:Controls['gridWu'].SelectedItems)) {
+        $k = $(try { "$($r['Key'])" } catch { '' })
+        if ($k -and $script:WuGroups.ContainsKey($k) -and -not @($groups | Where-Object { $_.Key -eq $k }).Count) { $groups.Add($script:WuGroups[$k]) }
+    }
+    if (-not $groups.Count) { $groups.Add($g) }
+    if (@($groups | Where-Object { $_.Art -eq 'Update-Ring' }).Count) { Show-HUMessage 'Update-Ringe werden hier nicht geloescht (nur Profile) - bitte nur Profile markieren.' -Icon Info; return }
+    $work = @(foreach ($x in $groups) { foreach ($it in @($x.Items)) { @{ Tenant = $it.Tenant; Art = $it.Art; Id = $it.Id; Name = $it.Name } } })
+    $list = (@($groups | ForEach-Object { "  $($_.Art) '$($_.Name)' in: $($_.Tenants)" }) -join "`n")
+    if (-not (Confirm-HU -Warning "Loeschen ($($work.Count)):`n`n$list`n`nDer Stand wird vorher gesichert. Geraete behalten die bereits installierte Version.")) { return }
+    Start-HUWuJob 'delete' $work @{} "Entfernen ($($work.Count))"
 }
 
 # + Feature-Update / + Expedite: kleines Fenster, angelegt in den angehakten Tenants ohne Zuweisung (wie Wartung)
