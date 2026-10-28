@@ -995,6 +995,19 @@
                                     <TextBlock x:Name="lblWuTitle" Style="{StaticResource SectionTitle}" Text="&#xDC;bersicht" VerticalAlignment="Center" Margin="0"/>
                                 </DockPanel>
                                 <TextBlock DockPanel.Dock="Top" x:Name="lblWuHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="pnlWuChecks" Margin="0,0,0,6">
+                                    <TextBlock Text="Patchstand:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="chkWuOld" Content="veraltet" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuBehind" Content="zur&#xFC;ck" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuCurrent" Content="aktuell" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuUnknown" Content="unbekannt" IsChecked="True" Style="{StaticResource DarkCheckBox}" Margin="0,0,20,0"/>
+                                    <TextBlock Text="Nur:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="chkWuStale" Content="ohne Sync &gt; 30 Tage" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuActive" Content="Sync in 30 Tagen" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"
+                                              ToolTip="Geraete, die lange nicht synchronisieren, ausblenden (sie koennen ohnehin nicht aktualisieren)"/>
+                                    <CheckBox x:Name="chkWuCompany" Content="Firmenger&#xE4;te" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                    <CheckBox x:Name="chkWuWin10" Content="Windows 10" Style="{StaticResource DarkCheckBox}" Margin="0,0,12,0"/>
+                                </WrapPanel>
                                 <DataGrid x:Name="gridWu" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="True" IsReadOnly="True" HeadersVisibility="Column"
                                           SelectionMode="Extended" CanUserSortColumns="True"/>
                             </DockPanel>

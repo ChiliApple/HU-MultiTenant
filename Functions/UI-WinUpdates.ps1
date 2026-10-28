@@ -96,6 +96,18 @@ function Get-HUWuTenantNames {
     return $n
 }
 
+# Vorfilter (Haken oben): Patchstand, Sync, Besitz, Windows 10
+function Test-HUWuDeviceFilter($D) {
+    $c = $script:Controls
+    $ps = switch ("$($D.Patchstand)") { 'veraltet' { $c['chkWuOld'] } 'zurueck' { $c['chkWuBehind'] } 'aktuell' { $c['chkWuCurrent'] } default { $c['chkWuUnknown'] } }
+    if (-not $ps.IsChecked) { return $false }
+    if ($c['chkWuStale'].IsChecked -and -not $D.OhneSync) { return $false }
+    if ($c['chkWuActive'].IsChecked -and $D.OhneSync) { return $false }
+    if ($c['chkWuCompany'].IsChecked -and "$($D.Besitz)" -ne 'company') { return $false }
+    if ($c['chkWuWin10'].IsChecked -and "$($D.Version)" -notlike 'Windows 10*') { return $false }
+    return $true
+}
+
 # Liste links (je Tenant Ampel und Kurzfassung) und Tabelle rechts neu aufbauen
 function Update-HUWuView {
     $c = $script:Controls
@@ -116,12 +128,15 @@ function Update-HUWuView {
     $c['lblWuState'].Text = $(if (-not @(Get-HUWuTenants).Count) { 'Oben Tenants anhaken.' } elseif ($loading -or $missing) { "Lese ... ($missing Tenant(s) offen)" } else {
             $t = @($script:WuRaw.Values | ForEach-Object { $_.Time } | Sort-Object)[0]; "Stand $(if ($t) { $t.ToString('HH:mm') }) - neu laden mit $([char]0x21BB)" })
     $f = "$($c['txtWuFilter'].Text)".Trim()
+    $c['pnlWuChecks'].Visibility = $(if ($script:WuView -eq 'policies') { 'Collapsed' } else { 'Visible' })
     $rows = @()
     switch ($script:WuView) {
         'matrix' {
             $c['lblWuTitle'].Text = "$([char]0xDC)bersicht: Windows-Versionen je Tenant"
             $c['lblWuHint'].Text = "Je Zelle: Geraete (davon mit neuestem Sicherheitsupdate). Doppelklick auf eine Zeile zeigt die Geraete dieser Version."
-            $rows = @(Get-HUWuMatrix $invs $names)
+            # Uebersicht mit denselben Vorfiltern wie die Geraeteliste
+            $fi = @(foreach ($i in $invs) { [pscustomobject]@{ Tenant = $i.Tenant; Catalog = $i.Catalog; Devices = @(@($i.Devices) | Where-Object { Test-HUWuDeviceFilter $_ }); Policies = $i.Policies; Errors = $i.Errors } })
+            $rows = @(Get-HUWuMatrix $fi $names)
         }
         'policies' {
             $c['lblWuTitle'].Text = 'Update-Ringe und Profile'
@@ -130,9 +145,9 @@ function Update-HUWuView {
         }
         'devices' {
             $c['lblWuTitle'].Text = "Ger$([char]0xE4)te$(if ($script:WuDevFilter) { ": $($script:WuDevFilter)" })"
-            $c['lblWuHint'].Text = "Patchstand: aktuell = neuestes Sicherheitsupdate des Builds, zurueck = hoechstens etwa 1 Monat dahinter, veraltet = aelter. $(if ($script:WuDevFilter) { 'Ansicht links neu waehlen hebt die Einschraenkung auf.' })"
-            $rows = @($invs | ForEach-Object { @($_.Devices) } | Where-Object { -not $script:WuDevFilter -or $_.Version -eq $script:WuDevFilter } |
-                    ForEach-Object { [pscustomobject][ordered]@{ Tenant = $names[$_.Tenant]; Geraet = $_.Geraet; Benutzer = $_.Benutzer; Version = $_.Version; Build = $_.Build; Patchstand = $_.Patchstand; 'Letzter Sync' = $_.LetzterSync; Besitz = $_.Besitz; Modell = $_.Modell } } |
+            $c['lblWuHint'].Text = "Patchstand: aktuell = neuestes Sicherheitsupdate des Builds, zurueck = eines fehlt (etwa 1 Monat), veraltet = zwei oder mehr fehlen. $(if ($script:WuDevFilter) { 'Ansicht links neu waehlen hebt die Einschraenkung auf.' })"
+            $rows = @($invs | ForEach-Object { @($_.Devices) } | Where-Object { (-not $script:WuDevFilter -or $_.Version -eq $script:WuDevFilter) -and (Test-HUWuDeviceFilter $_) } |
+                    ForEach-Object { [pscustomobject][ordered]@{ Tenant = $names[$_.Tenant]; Geraet = $_.Geraet; Benutzer = $_.Benutzer; Version = $_.Version; Build = $_.Build; Patchstand = $_.Patchstand; 'Fehlende Updates' = $(if ($null -ne $_.Fehlend) { $_.Fehlend } else { '?' }); 'Letzter Sync' = $_.LetzterSync; Besitz = $_.Besitz; Modell = $_.Modell } } |
                     Sort-Object @{ e = { switch ($_.Patchstand) { 'veraltet' { 0 } 'zurueck' { 1 } 'unbekannt' { 2 } default { 3 } } } }, Tenant, Geraet)
         }
     }
@@ -186,6 +201,9 @@ function Register-HUWinUpdateHandlers {
             $script:Controls['lblWuFilterHint'].Visibility = $(if ($script:Controls['txtWuFilter'].Text) { 'Collapsed' } else { 'Visible' })
             Update-HUWuView
         })
+    foreach ($n in 'chkWuOld', 'chkWuBehind', 'chkWuCurrent', 'chkWuUnknown', 'chkWuStale', 'chkWuActive', 'chkWuCompany', 'chkWuWin10') {
+        $c[$n].Add_Click({ Update-HUWuView })
+    }
     $c['gridWu'].Add_MouseDoubleClick({
             $it = $script:Controls['gridWu'].SelectedItem
             if ($script:WuView -eq 'matrix' -and $it -and $it.PSObject.Properties['Version']) {

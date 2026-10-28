@@ -28,8 +28,6 @@ $script:HUWuBuilds = @{   # Hashtable (nicht [ordered]: dort waere [int] ein Pos
     14393 = @('Windows 10', '1607 / Server 2016'); 17763 = @('Windows 10', '1809 LTSC / Server 2019'); 20348 = @('Windows Server', '2022')
 }
 # Neuere Versionen (z. B. 26H2) liefert der Update-Katalog von Microsoft selbst (versionName/productName) - die Liste oben ist nur der Rueckfall.
-# Patchstand: "aktuell" = neuestes Sicherheitsupdate des Builds; "zurueck" = hoechstens so viele Tage aelter
-$script:HUWuLagDays = 40
 $script:HUWuStaleDays = 30
 
 # '10.0.26200.6899' -> @{ Build; Ubr; Product; Version; Label }. Mit -Catalog: Name aus dem Microsoft-Katalog (auch neue Versionen)
@@ -72,18 +70,23 @@ function ConvertFrom-HUWuCatalog([object[]]$Items) {
     return $out
 }
 
-# Patchstand eines Geraets: aktuell | zurueck | veraltet | unbekannt (Katalog fehlt oder Build nicht darin)
+# Patchstand eines Geraets: Anzahl Sicherheitsupdates des Builds, die neuer sind als der installierte Stand.
+# 0 = aktuell, 1 = zurueck (ein Monat), 2+ = veraltet; ohne Katalog-Eintrag fuer den Build = unbekannt.
+# (Zaehlen statt Datum: der Katalog enthaelt nicht jeden aelteren Stand.)
 function Get-HUWuPatchState($Info, [hashtable]$Catalog) {
     if (-not $Info -or -not $Info.Build -or -not $Catalog -or -not $Catalog.ContainsKey($Info.Build)) { return 'unbekannt' }
-    $revs = @($Catalog[$Info.Build])
-    $latest = @($revs | Where-Object { $_.Security } | Select-Object -First 1)[0]
-    if (-not $latest) { $latest = $revs[0] }
-    if ($Info.Ubr -ge $latest.Ubr) { return 'aktuell' }
-    # Datum des installierten Stands: groesste bekannte Revision <= installierte
-    $own = @($revs | Where-Object { $_.Ubr -le $Info.Ubr } | Select-Object -First 1)[0]
-    if (-not $own -or -not $own.Date -or -not $latest.Date) { return 'veraltet' }
-    if (($latest.Date - $own.Date).TotalDays -le $script:HUWuLagDays) { return 'zurueck' }
+    $sec = @(@($Catalog[$Info.Build]) | Where-Object { $_.Security })
+    if (-not $sec.Count) { return 'unbekannt' }
+    $newer = @($sec | Where-Object { $_.Ubr -gt $Info.Ubr } | Select-Object -ExpandProperty Ubr -Unique).Count
+    if ($newer -eq 0) { return 'aktuell' }
+    if ($newer -eq 1) { return 'zurueck' }
     return 'veraltet'
+}
+
+# Wie viele Sicherheitsupdates fehlen (fuer die Geraeteliste)
+function Get-HUWuMissingCount($Info, [hashtable]$Catalog) {
+    if (-not $Info -or -not $Info.Build -or -not $Catalog -or -not $Catalog.ContainsKey($Info.Build)) { return $null }
+    return @(@($Catalog[$Info.Build]) | Where-Object { $_.Security -and $_.Ubr -gt $Info.Ubr } | Select-Object -ExpandProperty Ubr -Unique).Count
 }
 
 # Neuestes Sicherheitsupdate je Build (fuer die Anzeige)
@@ -128,7 +131,7 @@ function Get-HUWuInventory {
                 $sync = Get-HUWuDate $d.lastSyncDateTime
                 [pscustomobject]@{
                     Tenant = $TenantKey; Geraet = "$($d.deviceName)"; Benutzer = "$($d.userPrincipalName)"; Version = $bi.Label; Build = "$($d.osVersion)"
-                    Patchstand = (Get-HUWuPatchState $bi $inv.Catalog); LetzterSync = $(if ($sync) { $sync.ToLocalTime().ToString('dd.MM.yyyy HH:mm') } else { '' })
+                    Patchstand = (Get-HUWuPatchState $bi $inv.Catalog); Fehlend = (Get-HUWuMissingCount $bi $inv.Catalog); LetzterSync = $(if ($sync) { $sync.ToLocalTime().ToString('dd.MM.yyyy HH:mm') } else { '' })
                     OhneSync = [bool](-not $sync -or ($Now - $sync).TotalDays -gt $script:HUWuStaleDays)
                     Besitz = "$($d.managedDeviceOwnerType)"; Modell = "$($d.model)"; BuildNr = $bi.Build; Id = "$($d.id)"
                 }
@@ -243,5 +246,5 @@ function Get-HUWuSummary($Inventory) {
     }
 }
 
-Export-ModuleMember -Function Get-HUWuBuildInfo, ConvertFrom-HUWuCatalog, Get-HUWuPatchState, Get-HUWuLatestText, Get-HUWuInventory,
+Export-ModuleMember -Function Get-HUWuBuildInfo, ConvertFrom-HUWuCatalog, Get-HUWuPatchState, Get-HUWuMissingCount, Get-HUWuLatestText, Get-HUWuInventory,
     ConvertTo-HUWuPolicyRow, Get-HUWuMatrix, Get-HUWuSummary, Get-HUWuAssignText

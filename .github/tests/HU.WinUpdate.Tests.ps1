@@ -40,7 +40,7 @@ Describe 'Windows-Updates: Version und Patchstand' {
         @($c[26200])[0].Ubr | Should -Be 7100
         @($c[26100]).Count | Should -Be 1
     }
-    It 'Patchstand: aktuell = neuestes Sicherheitsupdate, zurueck <= 40 Tage, sonst veraltet' {
+    It 'Patchstand: Anzahl neuerer Sicherheitsupdates (0 aktuell, 1 zurueck, 2+ veraltet)' {
         $c = ConvertFrom-HUWuCatalog $script:Items
         Get-HUWuPatchState (Get-HUWuBuildInfo '10.0.26200.7000') $c | Should -Be 'aktuell'
         Get-HUWuPatchState (Get-HUWuBuildInfo '10.0.26200.7100') $c | Should -Be 'aktuell'
