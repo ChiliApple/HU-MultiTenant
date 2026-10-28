@@ -190,10 +190,14 @@ Describe 'Q: Sendeprotokoll robust (kaputte Datei, Sperre, parallel)' {
     }
     It '[029] Sperre belegt (WaitOne-Timeout): es wird NICHT ohne Sperre geschrieben' {
         # anderer Thread haelt die Sperre 8 s; Invoke-HUNotifyLocked wartet 5 s und laeuft dann trotzdem
+        # Erst weiter, wenn der andere Thread die Sperre wirklich haelt (feste Wartezeit war auf dem CI-Runner unter Last zu kurz)
+        $sync = [hashtable]::Synchronized(@{ Held = $false })
         $ps = [powershell]::Create()
-        [void]$ps.AddScript({ $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_Notify'); [void]$m.WaitOne(); Start-Sleep -Seconds 14; $m.ReleaseMutex(); $m.Dispose() })
+        [void]$ps.AddScript({ param($S) $m = New-Object System.Threading.Mutex($false, 'Local\HU-MultiTenant_Notify'); [void]$m.WaitOne(); $S.Held = $true; Start-Sleep -Seconds 14; $m.ReleaseMutex(); $m.Dispose() }).AddArgument($sync)
         $h = $ps.BeginInvoke()
-        Start-Sleep -Milliseconds 1500   # Runspace muss die Sperre sicher halten (unter Last kann der Start dauern)
+        $t0 = Get-Date
+        while (-not $sync.Held -and ((Get-Date) - $t0).TotalSeconds -lt 30) { Start-Sleep -Milliseconds 100 }
+        $sync.Held | Should -BeTrue -Because 'der Test braucht eine belegte Sperre'
         Add-HUNotifyHistory -TargetName 'ohneSperre' -Tag 'x' -Category 'Daily' -Title 'T' -Result 'ok'
         $written = @(Get-HUNotifyHistory | Where-Object Target -eq 'ohneSperre').Count
         $ps.EndInvoke($h); $ps.Dispose()
