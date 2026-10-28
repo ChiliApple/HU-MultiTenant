@@ -54,7 +54,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp, 
             <StackPanel x:Name="pnlInfo"/>
         </ScrollViewer>
         <StackPanel x:Name="pnlType" Grid.Row="4" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
-            <TextBlock x:Name="lblType" Foreground="#FF8A65" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBlock TextWrapping="Wrap" x:Name="lblType" Foreground="#FF8A65" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
             <TextBox x:Name="txtType" Width="220" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Zur Sicherheit den Namen des Ziel-Tenants eintippen"/>
         </StackPanel>
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">

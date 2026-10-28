@@ -489,7 +489,7 @@ function Save-HUIntProperties {
 function Show-HUTenantChoice([string]$Title, [string]$Text, [string[]]$Keys, [hashtable]$Notes = @{}, [string]$OkText = 'Weiter') {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="440" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Width="440" MinWidth="440" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>

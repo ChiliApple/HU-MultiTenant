@@ -440,7 +440,7 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
 
     It '2.5.1 Laenderwahl beim Ort: fest + angehakt wird geschrieben, vorhandener Ort sperrt' {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $src = Read-HUBackupJson (@(Get-ChildItem -LiteralPath (Join-Path $root 'Muster\mitgeliefert-ca-geoblock-admins') -Recurse -Filter '*Laender*.json')[0].FullName)
+        $src = Read-HUBackupJson (@(Get-ChildItem -LiteralPath (Join-Path $root 'Muster\mitgeliefert-ca-geoblock-admins') -Recurse -Filter '*Laender*.json' | Sort-Object FullName)[0].FullName)
         $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @()
         $p = Get-HUEntraTransferPlan -TargetKey 'Z' -Settings $script:Set -Typ 'Benannter Ort' -Id $src.id -Name $src.displayName -Backup $src -ResolveKey 'mitgeliefert' -SourceLabel 'Mitgeliefert'
         $p.Blocks | Should -BeNullOrEmpty

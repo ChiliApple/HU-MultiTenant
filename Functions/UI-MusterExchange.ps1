@@ -53,7 +53,7 @@ function Show-HUMuReview {
                     <DataGridTextColumn Header="Bitte ansehen" Binding="{Binding Hinweise}" Width="*" MinWidth="200" IsReadOnly="True"/>
                 </DataGrid.Columns>
             </DataGrid>
-            <TextBlock x:Name="lblNames" Grid.Row="1" Text="Namen von Orten und Authentifizierungsstaerken in der Datei (koennen Namen der Organisation enthalten):" Style="{StaticResource FieldLabel}" Margin="0,8,0,2"/>
+            <TextBlock TextWrapping="Wrap" x:Name="lblNames" Grid.Row="1" Text="Namen von Orten und Authentifizierungsstaerken in der Datei (koennen Namen der Organisation enthalten):" Style="{StaticResource FieldLabel}" Margin="0,8,0,2"/>
             <TextBox x:Name="txtNames" Grid.Row="2" Style="{StaticResource DarkTextBox}" IsReadOnly="True" Height="64" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
         </Grid>
     </DockPanel>

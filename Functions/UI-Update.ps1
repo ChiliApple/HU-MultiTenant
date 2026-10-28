@@ -415,13 +415,13 @@ function Start-HUReleasePublish([switch]$Addon) {
 function Show-HUAbout {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Info" Width="500" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="Info" Width="500" MinWidth="500" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
   <StackPanel Margin="20">
     <Image x:Name="img" Width="96" Height="96" RenderOptions.BitmapScalingMode="HighQuality"/>
     <TextBlock Text="HU-MultiTenant" FontSize="26" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" Margin="0,8,0,0"/>
     <TextBlock Text="Microsoft 365 / Intune fuer mehrere Tenants" FontSize="13" Foreground="#AAAAAA" HorizontalAlignment="Center"/>
     <TextBlock x:Name="ver" FontSize="12" Foreground="#4FC3F7" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,0"/>
-    <TextBlock x:Name="src" FontSize="11" Foreground="#4FC3F7" HorizontalAlignment="Center" Margin="0,6,0,0" Cursor="Hand" TextDecorations="Underline"/>
+    <TextBlock TextWrapping="Wrap" x:Name="src" FontSize="11" Foreground="#4FC3F7" HorizontalAlignment="Center" Margin="0,6,0,0" Cursor="Hand" TextDecorations="Underline"/>
     <TextBlock x:Name="lic" Text="Nutzungslizenz - siehe LICENSE" FontSize="11" Foreground="#4FC3F7" HorizontalAlignment="Center" Margin="0,2,0,0" Cursor="Hand" TextDecorations="Underline"/>
   </StackPanel>
 </Window>

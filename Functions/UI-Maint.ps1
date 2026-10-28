@@ -526,7 +526,7 @@ function Show-HURemRunNowDialog([string]$Name, $Deps, $Rtb, [string]$JobName) {
     if (-not $deps.Count) { return }
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Jetzt auf Geraet ausfuehren" Width="480" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="Jetzt auf Geraet ausfuehren" Width="480" MinWidth="480" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>

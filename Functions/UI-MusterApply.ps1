@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Assistent "Muster anwenden" (2.5.2): angehakte Muster-Pakete in genau einen Tenant uebertragen -
@@ -74,7 +74,7 @@ function Start-HUMaRevoke([string]$TenantKey, $Login = $null, [scriptblock]$Done
         if ($Done) { & $Done $true "Zurueckgegeben: $(if ($rem.Count) { $rem -join ', ' } else { 'waren schon entzogen' }).`nEin schon geholtes App-Token kann sie noch bis zu einer Stunde enthalten." }
     }
     if (Test-HUMaLoginValid $Login) { & $do $Login; return }
-    if (-not (Confirm-HU "Rechte fuer $(Get-HUAnaTenantName $TenantKey) zurueckgeben?`n`n$($added -join "`n")`n`nEs oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $Owner)) { if ($Done) { & $Done $false 'abgebrochen' }; return }
+    if (-not (Confirm-HU -Warning "Rechte fuer $(Get-HUAnaTenantName $TenantKey) zurueckgeben?`n`n$($added -join "`n")`n`nEs oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $Owner)) { if ($Done) { & $Done $false 'abgebrochen' }; return }
     [void](Start-HUMaAdminLogin $TenantKey $do)
 }
 
@@ -185,7 +185,7 @@ function Show-HUMusterApply {
                     <Button x:Name="btnAllOff" Content="Alle abwaehlen" Style="{StaticResource ToolButton}" Padding="10,2" ToolTip="Alle Haken entfernen"/>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
-                    <TextBlock x:Name="lblType" Foreground="#FF8A65" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock TextWrapping="Wrap" x:Name="lblType" Foreground="#FF8A65" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBox x:Name="txtType" Width="240" Style="{StaticResource DarkTextBox}" FontSize="12" ToolTip="Zur Sicherheit den Namen des Ziel-Tenants eintippen"/>
                 </StackPanel>
                 <DataGrid x:Name="gridPrev" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False" IsReadOnly="True"
@@ -234,7 +234,7 @@ function Show-HUMusterApply {
         <DockPanel Grid.Row="3" Margin="0,12,0,0" LastChildFill="False">
             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock x:Name="dotBusy" Text="&#x25CF;" Foreground="#4CAF50" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center" Visibility="Collapsed"/>
-                <TextBlock x:Name="lblBusy" Foreground="#81C784" FontSize="12" VerticalAlignment="Center"/>
+                <TextBlock TextWrapping="Wrap" x:Name="lblBusy" Foreground="#81C784" FontSize="12" VerticalAlignment="Center"/>
             </StackPanel>
             <Button x:Name="btnClose" DockPanel.Dock="Right" Content="Schliessen" Width="110" Background="#555555" Style="{StaticResource DarkButton}"/>
             <Button x:Name="btnNext" DockPanel.Dock="Right" Content="Weiter &#x2192;" MinWidth="130" Padding="12,0" Background="#1976D2" Style="{StaticResource DarkButton}" Margin="0,0,8,0"/>

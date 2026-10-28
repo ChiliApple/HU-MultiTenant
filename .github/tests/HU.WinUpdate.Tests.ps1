@@ -122,7 +122,7 @@ Describe 'Windows-Updates: aendern (Schritt 2)' {
     It 'Zuweisung ergaenzen und entfernen: liest, ersetzt gleiches Ziel, schreibt die ganze Liste' {
         Mock -ModuleName HU.WinUpdate Get-HUIntuneGraphAll { @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'G1' } }, [pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.allDevicesAssignmentTarget' } }) }
         Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { $script:Calls.Add([pscustomobject]@{ Ep = $Endpoint; M = $Method; B = $Body }); $null }
-        $n = Set-HUWuAssignment -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1' -Add @([pscustomobject]@{ Kind = 'group'; GroupId = 'g2' }) -RemoveKeys @('allDevices|')
+        $n = Set-HUWuAssignment -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1' -Add @([pscustomobject]@{ Kind = 'group'; GroupId = 'g2' }) -RemoveKeys @('allDevices|') -BackupRoot $script:Bk
         $n | Should -Be 2
         $c = $script:Calls[-1]
         $c.Ep | Should -Be '/deviceManagement/deviceConfigurations/r1/assign'
@@ -183,6 +183,8 @@ Describe 'Windows-Updates: aendern (Schritt 2)' {
         $b.installationSchedule.activeHoursEnd | Should -Be '15:00:00.0000000'
         $b.userPauseAccess | Should -Be 'disabled'
         $b.skipChecksBeforeRestart | Should -BeFalse
+        $b.allowWindows11Upgrade | Should -BeFalse   # 074 B10
+        (New-HUWuRingBody -Name 'R' -QualityDeferral 3 -QualityDeadline 3 -FeatureDeadline 7 -Grace 2 -ActiveStart '7:00' -ActiveEnd '15:00' -UserPause $false -AllowWin11 $true).allowWindows11Upgrade | Should -BeTrue
         { New-HUWuRingBody -Name 'R' -QualityDeferral 3 -QualityDeadline 3 -FeatureDeadline 7 -Grace 2 -ActiveStart '25:00' -ActiveEnd '15:00' -UserPause $false } | Should -Throw
     }
 
@@ -220,5 +222,84 @@ Describe 'Windows-Updates: aendern (Schritt 2)' {
             Update-HUWuDriverPolicyRow $row2 @()
             $row2.Hinweis | Should -BeLike 'Noch keine Treiber gemeldet*'
         }
+    }
+
+    # --- 074: Befunde aus der Stable-Pruefung ---
+    It '074 B2: vorhandenes Ziel bleibt samt Filter, nur gemeldet; Stand mit Zuweisungen gesichert' {
+        $script:Calls.Clear()
+        $tg = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'G1'; deviceAndAppManagementAssignmentFilterId = 'f1'; deviceAndAppManagementAssignmentFilterType = 'include' }
+        Mock -ModuleName HU.WinUpdate Get-HUIntuneGraphAll { @([pscustomobject]@{ target = $tg }) }.GetNewClosure()
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { $script:Calls.Add([pscustomobject]@{ Ep = $Endpoint; M = $Method; B = $Body }); if ($Method -eq 'GET') { [pscustomobject]@{ id = 'r1'; displayName = 'Ring' } } }
+        $inf = @{}
+        $n = Set-HUWuAssignment -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1' -Add @([pscustomobject]@{ Kind = 'group'; GroupId = 'g1' }) -BackupRoot $script:Bk -Info $inf
+        $n | Should -Be 1
+        @($inf.Skipped).Count | Should -Be 1
+        @($script:Calls | Where-Object { $_.M -eq 'POST' }).Count | Should -Be 0   # nichts geschrieben
+        $j = Get-Content -LiteralPath $inf.Backup -Raw | ConvertFrom-Json
+        @($j.assignments).Count | Should -Be 1
+        $j.assignments[0].target.deviceAndAppManagementAssignmentFilterId | Should -Be 'f1'
+    }
+    It '074 B2: beim Hinzufuegen bleibt der Filter des vorhandenen Ziels erhalten' {
+        $script:Calls.Clear()
+        $tg = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'G1'; deviceAndAppManagementAssignmentFilterId = 'f1'; deviceAndAppManagementAssignmentFilterType = 'include' }
+        Mock -ModuleName HU.WinUpdate Get-HUIntuneGraphAll { @([pscustomobject]@{ target = $tg }) }.GetNewClosure()
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { $script:Calls.Add([pscustomobject]@{ Ep = $Endpoint; M = $Method; B = $Body }); if ($Method -eq 'GET') { [pscustomobject]@{ id = 'r1' } } }
+        $inf = @{}
+        [void](Set-HUWuAssignment -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1' -Add @([pscustomobject]@{ Kind = 'group'; GroupId = 'g2' }) -BackupRoot $script:Bk -Info $inf)
+        $post = @($script:Calls | Where-Object { $_.M -eq 'POST' })[0]
+        $old = @($post.B.assignments | Where-Object { $_.target.groupId -eq 'G1' })[0]
+        $old.target.deviceAndAppManagementAssignmentFilterId | Should -Be 'f1'
+        $inf.Mismatch | Should -Match 'statt'   # Mock liefert danach weiter nur 1 - wird gemeldet
+    }
+    It '074 B1/B31: zugewiesenes Feature-Profil nur mit -Force, Ring nie; fehlendes value = nichts loeschen' {
+        $script:Calls.Clear()
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph {
+            $script:Calls.Add([pscustomobject]@{ Ep = $Endpoint; M = $Method })
+            if ($Endpoint -like '*/assignments') { return [pscustomobject]@{ value = @([pscustomobject]@{ target = [pscustomobject]@{ groupId = 'g' } }) } }
+            if ($Method -eq 'GET') { return [pscustomobject]@{ id = 'x' } }
+        }
+        { Remove-HUWuProfile -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Feature-Update' -Id 'f1' -BackupRoot $script:Bk } | Should -Throw '*zugewiesen*'
+        { Remove-HUWuProfile -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Treiber-Update' -Id 'd1' -BackupRoot $script:Bk } | Should -Throw '*zugewiesen*'
+        { Remove-HUWuProfile -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1' -BackupRoot $script:Bk -Force } | Should -Throw '*zugewiesen*'
+        @($script:Calls | Where-Object { $_.M -eq 'DELETE' }).Count | Should -Be 0
+        $f = Remove-HUWuProfile -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Feature-Update' -Id 'f1' -BackupRoot $script:Bk -Force
+        @($script:Calls | Where-Object { $_.M -eq 'DELETE' }).Count | Should -Be 1
+        @((Get-Content -LiteralPath $f -Raw | ConvertFrom-Json).assignments).Count | Should -Be 1
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { if ($Endpoint -like '*/assignments') { return [pscustomobject]@{ error = 'throttled' } } }
+        { Remove-HUWuProfile -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Expedite' -Id 'e1' -BackupRoot $script:Bk } | Should -Throw '*nicht lesbar*'
+    }
+    It '074 B6/B11: nur geaenderte Felder; Freigabeart der Treiber-Richtlinie nicht aenderbar' {
+        $script:Calls.Clear()
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { $script:Calls.Add([pscustomobject]@{ Ep = $Endpoint; M = $Method; B = $Body }); if (-not $Method -or $Method -eq 'GET') { [pscustomobject]@{ id = 'r1'; qualityUpdatesDeferralPeriodInDays = 3; deadlineForQualityUpdatesInDays = 2 } } }
+        [void](Set-HUWuSettings -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1' -Changes @{ qualityUpdatesDeferralPeriodInDays = 3; deadlineForQualityUpdatesInDays = 5 } -BackupRoot $script:Bk)
+        $p = @($script:Calls | Where-Object { $_.M -eq 'PATCH' })[0]
+        $p.B.ContainsKey('qualityUpdatesDeferralPeriodInDays') | Should -BeFalse
+        $p.B.deadlineForQualityUpdatesInDays | Should -Be 5
+        $script:Calls.Clear()
+        [void](Set-HUWuSettings -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1' -Changes @{ qualityUpdatesDeferralPeriodInDays = 3 } -BackupRoot $script:Bk)
+        @($script:Calls | Where-Object { $_.M -eq 'PATCH' }).Count | Should -Be 0   # nichts geaendert = nichts gesendet
+        { Set-HUWuSettings -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Treiber-Update' -Id 'd1' -Changes @{ approvalType = 'automatic' } -BackupRoot $script:Bk } | Should -Throw '*Freigabeart*'
+    }
+    It '074 B3: Import verwirft id, Zuweisungen und fremde @odata-Angaben; Name ohne Steuerzeichen' {
+        $f = Join-Path ([IO.Path]::GetTempPath()) "wu-b3-$([guid]::NewGuid()).json"
+        try {
+            $doc = @{ Format = 'HU-WinUpdates'; FormatVersion = 1; Items = @(@{ Art = 'Update-Ring'; Name = "Ring$([char]0x202E)`tA"; Body = @{ id = 'x'; assignments = @(@{ target = @{ groupId = 'g' } }); 'x@odata.bind' = 'y'; displayName = 'anders'; qualityUpdatesDeferralPeriodInDays = 3 } }) }
+            [IO.File]::WriteAllText($f, ($doc | ConvertTo-Json -Depth 10))
+            $r = @(Read-HUWuExportFile $f)
+            $r.Count | Should -Be 1
+            $r[0].Name | Should -Be 'Ring A'
+            $r[0].Body.displayName | Should -Be 'Ring A'
+            $r[0].Body.ContainsKey('id') | Should -BeFalse
+            $r[0].Body.ContainsKey('assignments') | Should -BeFalse
+            $r[0].Body.ContainsKey('x@odata.bind') | Should -BeFalse
+            $r[0].Body.qualityUpdatesDeferralPeriodInDays | Should -Be 3
+        } finally { Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue }
+    }
+    It '074 B26: gleicher Tenant-Anzeigename ueberschreibt keine Spalte' {
+        $c = ConvertFrom-HUWuCatalog $script:Items
+        $mk = { [pscustomobject]@{ Version = (Get-HUWuBuildInfo '10.0.26200.7000').Label; BuildNr = 26200; Patchstand = 'aktuell'; OhneSync = $false } }
+        $m = @(Get-HUWuMatrix @([pscustomobject]@{ Tenant = 'a'; Catalog = $c; Devices = @(& $mk) }, [pscustomobject]@{ Tenant = 'b'; Catalog = $c; Devices = @((& $mk), (& $mk)) }) @{ a = 'Schule'; b = 'Schule' })
+        $m[0].Schule | Should -Be '1 (1 aktuell)'
+        $m[0].'Schule (b)' | Should -Be '2 (2 aktuell)'
     }
 }

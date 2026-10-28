@@ -167,12 +167,12 @@ function Get-HUUpdSelected {
 function Show-HUWingetIdDialog($App) {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="winget-ID zuordnen" Width="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="winget-ID zuordnen" Width="560" MinWidth="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
     <StackPanel Margin="18">
-        <TextBlock x:Name="lblApp" Foreground="#E0E0E0" FontWeight="SemiBold" Margin="0,0,0,8"/>
+        <TextBlock TextWrapping="Wrap" x:Name="lblApp" Foreground="#E0E0E0" FontWeight="SemiBold" Margin="0,0,0,8"/>
         <DockPanel>
             <Button x:Name="btnSearch" DockPanel.Dock="Right" Content="Suchen" Style="{StaticResource ToolButton}" FontSize="11" Padding="10,2" Margin="6,0,0,0"/>
             <TextBox x:Name="txtQuery" Style="{StaticResource DarkTextBox}" FontSize="12"/>
@@ -187,7 +187,7 @@ function Show-HUWingetIdDialog($App) {
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
-        <TextBlock Text="winget-ID (z. B. 7zip.7zip) - leer = Zuordnung entfernen" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
+        <TextBlock TextWrapping="Wrap" Text="winget-ID (z. B. 7zip.7zip) - leer = Zuordnung entfernen" Style="{StaticResource FieldLabel}" Margin="0,10,0,3"/>
         <TextBox x:Name="txtId" Style="{StaticResource DarkTextBox}" FontSize="12"/>
         <TextBlock x:Name="lblInfo" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">

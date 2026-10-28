@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Windows-Updates ueber mehrere Tenants (2.6.3, Schritt 1: nur lesen): Versionen und Patchstand der Geraete,
+    Windows-Updates ueber mehrere Tenants (ab 2.6.3): Versionen und Patchstand der Geraete,
     Update-Ringe, Feature-, Qualitaets- und Treiber-Update-Profile mit Zuweisungen und Pausen.
 .DESCRIPTION
-    Graph (beta, nur lesend):
+    Graph (beta; lesen, ab Schritt 2 auch anlegen, aendern, zuweisen, loeschen):
       /deviceManagement/managedDevices                     Windows-Geraete (osVersion, letzter Sync)
       /deviceManagement/windowsUpdateCatalogItems          Qualitaets-Updates mit Build-Revisionen und Datum (Patchstand)
       /deviceManagement/deviceConfigurations               Update-Ringe (windowsUpdateForBusinessConfiguration)
@@ -119,7 +119,13 @@ function Get-HUWuInventory {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [hashtable]$Catalog = $null, [datetime]$Now = (Get-Date))
     $inv = [pscustomobject]@{ Tenant = $TenantKey; Devices = @(); Policies = @(); Drivers = @(); Catalog = $Catalog; Errors = (New-Object System.Collections.Generic.List[string]) }
-    $err = { param($what, $e) $m = "$($e.Exception.Message)"; if ($m -match '403|Forbidden|Authorization') { $m = 'Berechtigung fehlt' } elseif ($m -match '(?i)licen') { $m += ' (Windows-Lizenzueberpruefung?)' }; $inv.Errors.Add("${what}: $m") }
+    # 074 B13/B14: Lizenz vor Recht pruefen, beim Recht den Namen nennen
+    $err = { param($what, $e, $right = 'DeviceManagementConfiguration.Read.All')
+        $m = "$($e.Exception.Message)"
+        if ($m -match '(?i)licen|lizenz|autopatch') { $m = "Windows-Lizenz mit Autopatch-Berechtigung fehlt? ($m)" }
+        elseif ($m -match '403|Forbidden|Authorization') { $m = "Berechtigung fehlt: $right - unter Rechte erteilen" }
+        elseif ($m -match '429|Too ?Many') { $m = 'Intune drosselt gerade (429) - spaeter neu laden' }
+        $inv.Errors.Add("${what} nicht lesbar: $m") }
     # Katalog (je Tenant gleich - wird nur einmal gelesen und weitergereicht)
     if (-not $inv.Catalog) {
         try { $inv.Catalog = ConvertFrom-HUWuCatalog @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceManagement/windowsUpdateCatalogItems') }
@@ -142,7 +148,7 @@ function Get-HUWuInventory {
                     Beitritt = (ConvertTo-HUWuJoinText "$($d.PSObject.Properties['joinType'] | ForEach-Object { $_.Value })")
                 }
             })
-    } catch { & $err 'Geraete' $_ }
+    } catch { & $err 'Geraete' $_ 'DeviceManagementManagedDevices.Read.All'; $inv | Add-Member -NotePropertyName DevicesFailed -NotePropertyValue $true -Force }
     # Ringe und Profile
     $raw = New-Object System.Collections.Generic.List[object]
     try {
@@ -158,8 +164,9 @@ function Get-HUWuInventory {
             @{ Art = 'Treiber-Update'; Ep = '/deviceManagement/windowsDriverUpdateProfiles' })) {
         try {
             foreach ($o in @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint $src.Ep)) {
-                $asg = @(); try { $asg = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$($src.Ep)/$($o.id)/assignments") } catch { }
-                $raw.Add(@{ Art = $src.Art; O = $o; Asg = $asg })
+                $asg = @(); $asgErr = $false
+                try { $asg = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$($src.Ep)/$($o.id)/assignments") } catch { $asgErr = $true; & $err "Zuweisungen von '$($o.displayName)'" $_ }
+                $raw.Add(@{ Art = $src.Art; O = $o; Asg = $asg; AsgErr = $asgErr })
                 if ($src.Art -eq 'Treiber-Update') {
                     # anstehende Treiber dieser Richtlinie (learn.microsoft.com/graph/api/resources/intune-softwareupdate-windowsdriverupdateinventory)
                     try {
@@ -173,9 +180,15 @@ function Get-HUWuInventory {
     }
     $gids = @($raw | ForEach-Object { @($_.Asg) } | Where-Object { $_ -and $_.target } | ForEach-Object { "$($_.target.groupId)" } | Where-Object { $_ } | Select-Object -Unique)
     $names = @{}; if ($gids.Count) { try { $names = Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids $gids } catch { } }
-    $inv.Policies = @(foreach ($x in $raw) { ConvertTo-HUWuPolicyRow -Tenant $TenantKey -Art $x.Art -O $x.O -Asg $x.Asg -Names $names -Now $Now })
+    $inv.Policies = @(foreach ($x in $raw) {
+            $row = ConvertTo-HUWuPolicyRow -Tenant $TenantKey -Art $x.Art -O $x.O -Asg $x.Asg -Names $names -Now $Now
+            # 074 B14: nicht lesbare Zuweisungen nicht als "nicht zugewiesen" zeigen
+            if ($x.AsgErr) { $row.Zuweisung = 'nicht lesbar (siehe Protokoll)'; $row.Hinweis = (@('Zuweisungen nicht lesbar', $row.Hinweis) | Where-Object { $_ }) -join '; ' }
+            $row
+        })
     # deviceReporting der Treiber-Richtlinie ist oft 0, obwohl Geraete Treiber melden - betroffene Geraete aus der Treiberliste zaehlen
     foreach ($p in @($inv.Policies | Where-Object { $_.Art -eq 'Treiber-Update' })) {
+        if ("$($p.Zuweisung)" -like 'nicht lesbar*') { continue }
         Update-HUWuDriverPolicyRow $p @($inv.Drivers)
         # Tenant ohne Geraete: dass keine Treiber gemeldet werden, ist dann kein Problem
         if (-not @($inv.Devices).Count) { $p.Hinweis = (@("$($p.Hinweis)" -split '; ' | Where-Object { $_ -and $_ -notlike 'Noch keine Treiber gemeldet*' -and $_ -notlike 'Keine Geraete melden*' }) -join '; ') }
@@ -288,6 +301,7 @@ function Get-HUWuDriverMatrix([object[]]$Inventories, [hashtable]$TenantNames = 
         $o = [ordered]@{ Treiber = $f.Treiber; Version = $f.Version; Hersteller = $f.Hersteller; Klasse = $f.Klasse; Kategorie = $f.Kategorie; Datum = $f.Datum }
         foreach ($i in @($invs | Where-Object { @($_.Drivers).Count })) {
             $col = $(if ($TenantNames.ContainsKey($i.Tenant)) { $TenantNames[$i.Tenant] } else { $i.Tenant })
+            if ($o.Contains($col) -or $col -in 'Gesamt', 'Aktuell %', 'Support', 'Geraete', 'Status', 'Key') { $col = "$col ($($i.Tenant))" }   # 074 B26: gleicher Name nicht still ueberschreiben
             $x = @($g.Group | Where-Object { $_.Tenant -eq $i.Tenant })
             $o[$col] = $(if ($x.Count) { "$(($x | Measure-Object Geraete -Sum).Sum) ($(@($x | ForEach-Object { $_.Status } | Select-Object -Unique) -join '/'))" } else { '' })
         }
@@ -313,6 +327,7 @@ function Get-HUWuMatrix([object[]]$Inventories, [hashtable]$TenantNames = @{}, [
         foreach ($i in @($invs | Where-Object { @($_.Devices).Count })) {   # Tenant ohne Geraete (z. B. ohne Intune): keine leere Spalte
             $d = @($i.Devices | Where-Object { $_.Version -eq $l })
             $col = $(if ($TenantNames.ContainsKey($i.Tenant)) { $TenantNames[$i.Tenant] } else { $i.Tenant })
+            if ($o.Contains($col) -or $col -in 'Gesamt', 'Aktuell %', 'Support', 'Geraete', 'Status', 'Key') { $col = "$col ($($i.Tenant))" }   # 074 B26: gleicher Name nicht still ueberschreiben
             $o[$col] = $(if ($d.Count) { "$($d.Count) ($(@($d | Where-Object Patchstand -eq 'aktuell').Count) aktuell)" } else { '' })
         }
         $o['Gesamt'] = $all.Count
@@ -359,13 +374,26 @@ $script:HUWuEp = @{
 function Get-HUWuEpInfo([string]$Art) { if ($script:HUWuEp.ContainsKey($Art)) { return $script:HUWuEp[$Art] }; throw "Unbekannte Art '$Art'" }
 
 # Stand vor einer Aenderung sichern (JSON). Rueckgabe: Pfad.
-function Save-HUWuBefore([string]$TenantKey, [string]$Art, $Obj, [string]$Root = '') {
+# 074 B5: Zuweisungen werden mitgesichert (Eigenschaft "assignments"; beim Import werden sie verworfen).
+function Save-HUWuBefore([string]$TenantKey, [string]$Art, $Obj, [string]$Root = '', [object[]]$Assignments = $null) {
     if (-not $Root) { $Root = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'HU-MultiTenant\WinUpdates-vorher' }
     if (-not (Test-Path -LiteralPath $Root)) { New-Item -ItemType Directory -Path $Root -Force | Out-Null }
     $safe = ("$TenantKey`_$Art`_$($Obj.id)" -replace '[^A-Za-z0-9_.-]', '_')
-    $f = Join-Path $Root ("{0}_{1}.json" -f $safe, (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $f = Join-Path $Root ("{0}_{1}.json" -f $safe, (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+    if ($null -ne $Assignments) {
+        $Obj = $Obj | Select-Object -Property * -ExcludeProperty 'assignments'
+        $Obj | Add-Member -NotePropertyName 'assignments' -NotePropertyValue @($Assignments) -Force
+    }
     [IO.File]::WriteAllText($f, ($Obj | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
     return $f
+}
+
+# Zuweisungen frisch aus Intune lesen. Fehlt "value" (Teilfehler, Drosselung), wird nicht geraten (074 B31).
+function Get-HUWuAssignmentsFresh([string]$TenantKey, $Settings, [string]$Art, [string]$Id) {
+    $e = Get-HUWuEpInfo $Art
+    $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id/assignments"
+    if (-not $r -or -not $r.PSObject.Properties['value']) { throw "Zuweisungen von '$Id' nicht lesbar - zur Sicherheit nichts geloescht" }
+    return @($r.value | Where-Object { $_ })
 }
 
 # Ziel (Kind group|exclude|allDevices|allUsers, GroupId) -> Graph-Ziel
@@ -386,21 +414,40 @@ function Get-HUWuTargetKey($Target) {
     return "$k|$("$($Target.groupId)".ToLower())"
 }
 
-# Zuweisungen setzen: Add = neue Ziele (ersetzt gleiches Ziel), RemoveKeys = Schluessel (Get-HUWuTargetKey) zum Entfernen.
+# Zuweisungen setzen: Add = neue Ziele, RemoveKeys = Schluessel (Get-HUWuTargetKey) zum Entfernen.
 # assign ersetzt die komplette Liste - deshalb erst lesen, dann gesamt schreiben. Rueckgabe: Anzahl danach.
+# 074 B2: ein schon vorhandenes Ziel bleibt unveraendert (samt Zuweisungsfilter) und wird nur gemeldet.
+# 074 B5: Stand samt Zuweisungen wird vorher gesichert. Danach wird zurueckgelesen und verglichen.
+# -Info (Hashtable) bekommt: Skipped (schon vorhandene Ziele), Backup (Datei), Mismatch (Text, wenn Intune anders aussieht).
 function Set-HUWuAssignment {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id,
-        [object[]]$Add = @(), [string[]]$RemoveKeys = @())
+        [object[]]$Add = @(), [string[]]$RemoveKeys = @(), [string]$BackupRoot = '', [hashtable]$Info = $null)
     $e = Get-HUWuEpInfo $Art
     foreach ($a in @($Add)) { if (-not $e.AllOk -and "$($a.Kind)" -in 'allDevices', 'allUsers') { throw "$Art laesst sich nur Geraetegruppen zuweisen (Microsoft), nicht 'Alle Geraete' oder 'Alle Benutzer'" } }
     $cur = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id/assignments")
+    $before = $null; try { $before = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id" } catch { }
+    if (-not $before) { $before = [pscustomobject]@{ id = $Id } }
+    $file = Save-HUWuBefore $TenantKey $Art $before $BackupRoot $cur
     $map = [ordered]@{}
     foreach ($c in $cur) { if ($c.target) { $map[(Get-HUWuTargetKey $c.target)] = $c.target } }
     foreach ($k in @($RemoveKeys)) { if ($map.Contains("$k".ToLower())) { $map.Remove("$k".ToLower()) } elseif ($map.Contains("$k")) { $map.Remove("$k") } }
-    foreach ($a in @($Add)) { $t = ConvertTo-HUWuTarget $a; $map[(Get-HUWuTargetKey ([pscustomobject]$t))] = $t }
+    $skipped = New-Object System.Collections.Generic.List[string]
+    foreach ($a in @($Add)) {
+        $t = ConvertTo-HUWuTarget $a; $k = Get-HUWuTargetKey ([pscustomobject]$t)
+        if ($map.Contains($k)) { $skipped.Add($k); continue }   # vorhandenes Ziel nicht ersetzen - sonst ginge ein Filter verloren
+        $map[$k] = $t
+    }
+    if ($Info) { $Info['Skipped'] = $skipped.ToArray(); $Info['Backup'] = $file; $Info['Mismatch'] = '' }
+    if (-not @($RemoveKeys).Count -and $skipped.Count -eq @($Add).Count) { return $map.Count }   # nichts zu tun
     $body = @{ assignments = @(foreach ($t in $map.Values) { @{ '@odata.type' = $e.AsgType; target = $t } }) }
     [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id/assign" -Method POST -Body $body)
+    # zuruecklesen: stimmt die Liste? (Intune kann kurz verzoegert sein - dann nur Hinweis, kein Fehler)
+    try {
+        $after = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id/assignments" | Where-Object { $_ -and $_.target } | ForEach-Object { Get-HUWuTargetKey $_.target } | Sort-Object)
+        $want = @($map.Keys | Sort-Object)
+        if (($after -join ',') -ne ($want -join ',') -and $Info) { $Info['Mismatch'] = "Intune zeigt danach $($after.Count) statt $($want.Count) Zuweisung(en) - bitte neu laden und pruefen (Stand vorher: $file)" }
+    } catch { if ($Info) { $Info['Mismatch'] = "Zuweisungen danach nicht lesbar - bitte neu laden und pruefen (Stand vorher: $file)" } }
     return $map.Count
 }
 
@@ -409,10 +456,20 @@ function Set-HUWuSettings {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][hashtable]$Changes, [string]$BackupRoot = '')
     $e = Get-HUWuEpInfo $Art
+    # 074 B11: die Freigabeart einer Treiber-Richtlinie laesst sich nach dem Anlegen nicht aendern (Microsoft Learn)
+    if ($Art -eq 'Treiber-Update' -and $Changes.ContainsKey('approvalType')) { throw 'Die Freigabeart (automatisch/manuell) einer Treiber-Richtlinie laesst sich nicht aendern - dafuer eine neue Richtlinie anlegen' }
     $before = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id"
-    $file = Save-HUWuBefore $TenantKey $Art $before $BackupRoot
+    # 074 B6: nur Felder senden, die sich in DIESEM Tenant wirklich aendern (sonst gleicht Speichern alle Tenants an)
     $body = @{ '@odata.type' = $e.Type }
-    foreach ($k in $Changes.Keys) { $body[$k] = $Changes[$k] }
+    foreach ($k in $Changes.Keys) {
+        if ($before -and $before.PSObject.Properties[$k]) {
+            $old = ConvertTo-Json -InputObject $before.$k -Depth 10 -Compress; $new = ConvertTo-Json -InputObject $Changes[$k] -Depth 10 -Compress
+            if ($old -eq $new) { continue }
+        }
+        $body[$k] = $Changes[$k]
+    }
+    if ($body.Count -le 1) { return '' }   # nichts zu aendern - keine Sicherung, kein PATCH (075 Nachpruefung)
+    $file = Save-HUWuBefore $TenantKey $Art $before $BackupRoot
     [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id" -Method PATCH -Body $body)
     return $file
 }
@@ -484,20 +541,20 @@ function New-HUWuRing {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Name,
         [ValidateRange(0, 30)][int]$QualityDeferral = 3, [ValidateRange(0, 30)][int]$QualityDeadline = 3, [ValidateRange(0, 30)][int]$FeatureDeadline = 7,
-        [ValidateRange(0, 7)][int]$Grace = 2, [string]$ActiveStart = '07:00', [string]$ActiveEnd = '15:00', [bool]$UserPause = $false, [string]$Description = '')
-    $body = New-HUWuRingBody -Name $Name -QualityDeferral $QualityDeferral -QualityDeadline $QualityDeadline -FeatureDeadline $FeatureDeadline -Grace $Grace -ActiveStart $ActiveStart -ActiveEnd $ActiveEnd -UserPause $UserPause -Description $Description
+        [ValidateRange(0, 7)][int]$Grace = 2, [string]$ActiveStart = '07:00', [string]$ActiveEnd = '15:00', [bool]$UserPause = $false, [string]$Description = '', [bool]$AllowWin11 = $false)
+    $body = New-HUWuRingBody -Name $Name -QualityDeferral $QualityDeferral -QualityDeadline $QualityDeadline -FeatureDeadline $FeatureDeadline -Grace $Grace -ActiveStart $ActiveStart -ActiveEnd $ActiveEnd -UserPause $UserPause -Description $Description -AllowWin11 $AllowWin11
     $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceManagement/deviceConfigurations' -Method POST -Body $body
     return "$($r.id)"
 }
 
-function New-HUWuRingBody([string]$Name, [int]$QualityDeferral, [int]$QualityDeadline, [int]$FeatureDeadline, [int]$Grace, [string]$ActiveStart, [string]$ActiveEnd, [bool]$UserPause, [string]$Description = '') {
+function New-HUWuRingBody([string]$Name, [int]$QualityDeferral, [int]$QualityDeadline, [int]$FeatureDeadline, [int]$Grace, [string]$ActiveStart, [string]$ActiveEnd, [bool]$UserPause, [string]$Description = '', [bool]$AllowWin11 = $false) {
     $tm = { param($t) $d = [datetime]::MinValue; if (-not [datetime]::TryParseExact("$t".Trim(), [string[]]@('HH:mm', 'H:mm'), [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$d)) { throw "Uhrzeit '$t' ungueltig (HH:mm)" }; $d.ToString('HH:mm') + ':00.0000000' }
     return @{
         '@odata.type' = '#microsoft.graph.windowsUpdateForBusinessConfiguration'; displayName = $Name; description = $Description; roleScopeTagIds = @('0')
         automaticUpdateMode = 'autoInstallAtMaintenanceTime'; microsoftUpdateServiceAllowed = $true; driversExcluded = $false; businessReadyUpdatesOnly = 'all'
         qualityUpdatesDeferralPeriodInDays = $QualityDeferral; featureUpdatesDeferralPeriodInDays = 0; qualityUpdatesPaused = $false; featureUpdatesPaused = $false
         deadlineForQualityUpdatesInDays = $QualityDeadline; deadlineForFeatureUpdatesInDays = $FeatureDeadline; deadlineGracePeriodInDays = $Grace; postponeRebootUntilAfterDeadline = $false
-        skipChecksBeforeRestart = $false; featureUpdatesRollbackWindowInDays = 10; allowWindows11Upgrade = $true
+        skipChecksBeforeRestart = $false; featureUpdatesRollbackWindowInDays = 10; allowWindows11Upgrade = $AllowWin11   # 074 B10: Standard aus
         userPauseAccess = $(if ($UserPause) { 'enabled' } else { 'disabled' }); userWindowsUpdateScanAccess = 'enabled'; updateNotificationLevel = 'defaultNotifications'
         installationSchedule = @{ '@odata.type' = '#microsoft.graph.windowsUpdateActiveHoursInstall'; activeHoursStart = (& $tm $ActiveStart); activeHoursEnd = (& $tm $ActiveEnd) }
     }
@@ -553,16 +610,28 @@ function New-HUWuExportDoc([object[]]$Rows, [hashtable]$Names = @{}, [datetime]$
 }
 
 # Datei lesen und pruefen. Rueckgabe: Liste @{ Art; Name; Quelle; Body(hashtable) }
+# 074 B3: Datei hoechstens 1 MB und 50 Eintraege; Verwaltungsfelder, Zuweisungen und fremde @odata-Angaben werden verworfen,
+# Name ohne Steuerzeichen (max. 120). Angelegt wird immer unter dem angezeigten Namen.
 function Read-HUWuExportFile([string]$Path) {
+    if ((Get-Item -LiteralPath $Path).Length -gt 1MB) { throw 'Datei zu gross (max. 1 MB) - keine WIN-Updates-Vorlage' }
     $j = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
     if ("$($j.Format)" -ne 'HU-WinUpdates') { throw 'Keine WIN-Updates-Sicherung (Format fehlt)' }
+    if (@($j.Items).Count -gt 50) { throw 'Zu viele Eintraege (max. 50)' }
     return @(foreach ($it in @($j.Items)) {
             if (-not $script:HUWuEp.ContainsKey("$($it.Art)") -or -not "$($it.Name)") { continue }
+            $name = ([regex]::Replace("$($it.Name)", '[\p{Cc}\p{Cf}]', ' ') -replace '\s+', ' ').Trim()
+            if ($name.Length -gt 120) { $name = $name.Substring(0, 120) }
+            if (-not $name) { continue }
             $h = @{}
-            foreach ($pp in @($it.Body.PSObject.Properties)) { $h["$($pp.Name)"] = $pp.Value }
+            foreach ($pp in @($it.Body.PSObject.Properties)) {
+                $n = "$($pp.Name)"
+                if ($n -like '*@odata*' -or $script:HUWuExportSkip -contains $n) { continue }
+                $h[$n] = $pp.Value
+            }
             $h['@odata.type'] = (Get-HUWuEpInfo "$($it.Art)").Type
             $h['roleScopeTagIds'] = @('0')
-            [pscustomobject]@{ Art = "$($it.Art)"; Name = "$($it.Name)"; Quelle = "$($it.Quelle)"; Body = $h }
+            $h['displayName'] = $name
+            [pscustomobject]@{ Art = "$($it.Art)"; Name = $name; Quelle = "$($it.Quelle)"; Body = $h }
         })
 }
 
@@ -588,18 +657,20 @@ function Invoke-HUWuDriverAction {
     return $r
 }
 
-# Profil loeschen (vorher sichern). Update-Ringe nur, wenn sie nicht zugewiesen sind.
+# Profil loeschen (vorher sichern, samt Zuweisungen). 074 B1: zugewiesene Update-Ringe nie;
+# zugewiesene Feature- und Treiber-Profile nur mit -Force (App: zweite Rueckfrage; MCP: nie).
 function Remove-HUWuProfile {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id, [string]$BackupRoot = '')
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id, [string]$BackupRoot = '', [switch]$Force)
     $e = Get-HUWuEpInfo $Art
-    if ($Art -eq 'Update-Ring') {
-        # Ringe nur ohne Zuweisung - frisch nachgesehen, nicht aus der Anzeige
-        $asg = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id/assignments"
-        if (@($asg.value | Where-Object { $_ }).Count) { throw 'Update-Ring ist zugewiesen - erst die Zuweisungen entfernen, dann loeschen' }
+    # frisch nachgesehen, nicht aus der Anzeige
+    $asg = @(Get-HUWuAssignmentsFresh $TenantKey $Settings $Art $Id)
+    if ($asg.Count) {
+        if ($Art -eq 'Update-Ring') { throw 'Update-Ring ist zugewiesen - erst die Zuweisungen entfernen, dann loeschen' }
+        if ($Art -in 'Feature-Update', 'Treiber-Update' -and -not $Force) { throw "$Art ist zugewiesen ($($asg.Count) Zuweisung(en)) - erst die Zuweisungen entfernen, dann loeschen" }
     }
     $before = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id"
-    $f = Save-HUWuBefore $TenantKey $Art $before $BackupRoot
+    $f = Save-HUWuBefore $TenantKey $Art $before $BackupRoot $asg
     [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id" -Method DELETE)
     return $f
 }
@@ -625,6 +696,6 @@ function Get-HUWuPolicyGroups([object[]]$Inventories, [hashtable]$TenantNames = 
 }
 
 Export-ModuleMember -Function ConvertTo-HUWuExportBody, New-HUWuExportDoc, Read-HUWuExportFile, New-HUWuFromBody, New-HUWuRing, New-HUWuRingBody, New-HUWuDriverProfile, Get-HUWuEpInfo, Save-HUWuBefore, ConvertTo-HUWuTarget, Get-HUWuTargetKey, Set-HUWuAssignment, Set-HUWuSettings, Set-HUWuRingPause,
-    Get-HUWuCatalogChoices, New-HUWuFeatureProfile, Remove-HUWuProfile, ConvertTo-HUWuRollout, New-HUWuExpedite, Invoke-HUWuDriverAction, Get-HUWuPolicyGroups,
+    Get-HUWuCatalogChoices, New-HUWuFeatureProfile, Remove-HUWuProfile, Get-HUWuAssignmentsFresh, ConvertTo-HUWuRollout, New-HUWuExpedite, Invoke-HUWuDriverAction, Get-HUWuPolicyGroups,
     ConvertTo-HUWuJoinText, ConvertTo-HUWuDriverRow, Get-HUWuDriverMatrix, Get-HUWuBuildInfo, ConvertFrom-HUWuCatalog, Get-HUWuPatchState, Get-HUWuMissingCount, Get-HUWuLatestText, Get-HUWuInventory,
     ConvertTo-HUWuPolicyRow, Get-HUWuMatrix, Get-HUWuSummary, Get-HUWuAssignText

@@ -133,7 +133,7 @@ function Restart-HUApp {
 function Show-HUAddonDialog {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Zusatzmodule" Width="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="Zusatzmodule" Width="560" MinWidth="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>

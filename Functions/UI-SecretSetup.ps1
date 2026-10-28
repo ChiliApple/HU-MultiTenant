@@ -88,10 +88,10 @@ function Show-SecretSetupDialog {
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="HU-MultiTenant - Client Secrets"
-    Width="550" Height="480"
+    Width="550" MinWidth="550" SizeToContent="Height" MaxHeight="760"
     WindowStartupLocation="CenterScreen"
     Background="#1E1E1E"
-    ResizeMode="NoResize">
+    ResizeMode="CanResizeWithGrip">
 
     <DockPanel Margin="20">
 
@@ -200,18 +200,18 @@ function Show-HUSecretInput {
     $setObj = if ($Tenant) { [pscustomobject]@{ tenants = @($Tenant); credentials = $script:Settings.credentials } } else { $script:Settings }
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Client Secret" Width="540" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Title="Client Secret" Width="540" MinWidth="540" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip"
         Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
     <StackPanel Margin="18">
-        <TextBlock x:Name="lblTitle" Style="{StaticResource SectionTitle}"/>
+        <TextBlock TextWrapping="Wrap" x:Name="lblTitle" Style="{StaticResource SectionTitle}"/>
         <TextBlock Style="{StaticResource HintText}" FontSize="11" Margin="0,0,0,12"
                    Text="Neues Secret: Entra Admin Center &gt; App-Registrierungen &gt; App &gt; Zertifikate &amp; Geheimnisse &gt; Neuer geheimer Clientschluessel. Den WERT (nicht die ID) hier einfuegen."/>
         <TextBlock Text="Client Secret (Wert)" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
         <PasswordBox x:Name="pwd" Style="{StaticResource DarkPasswordBox}" FontSize="12"/>
-        <TextBlock Text="Gueltig bis (optional, TT.MM.JJJJ - nur noetig, wenn die App kein Application.Read.All hat)" Style="{StaticResource FieldLabel}" Margin="0,12,0,3"/>
+        <TextBlock TextWrapping="Wrap" Text="Gueltig bis (optional, TT.MM.JJJJ - nur noetig, wenn die App kein Application.Read.All hat)" Style="{StaticResource FieldLabel}" Margin="0,12,0,3"/>
         <TextBox x:Name="txtExpires" Style="{StaticResource DarkTextBox}" FontSize="12" Width="140" HorizontalAlignment="Left"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button x:Name="btnEntra" Content="Entra Admin Center" Style="{StaticResource ToolButton}" Margin="0,0,8,0"/>

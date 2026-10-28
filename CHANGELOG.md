@@ -1,5 +1,64 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.4 (Stable, 28.10.2026)
+
+Stable-Release der Testversionen 2.6.1 bis 2.6.3 – „Windows-Updates“. Alle Punkte im Detail stehen in den Abschnitten darunter.
+
+### 🪟 WIN-Updates (Wartung)
+- **Überblick über alle Tenants:**
+  - Windows-Versionen mit Patchstand und Support-Hinweis (geschätzt: kein Sicherheitspatch im Katalog seit 75 Tagen – keine offizielle Lifecycle-Angabe)
+  - Geräte mit fehlenden Updates
+  - anstehende Treiber
+- **Ringe und Profile verwalten:**
+  - Anlegen: Update-Ringe, Feature-Updates, Treiber-Richtlinien und Expedites – immer ohne Zuweisung. Gibt es den Namen im Tenant schon, fragt die App nach.
+  - Zuweisen: alle vier Arten. Ist ein Ziel schon zugewiesen, bleibt es unverändert, samt Filter.
+  - Ändern: Update-Ringe, Feature-Updates und den Aufschub von Treiber-Richtlinien. Gesendet wird je Tenant nur, was sich dort ändert. Die Freigabeart einer Treiber-Richtlinie ist nach dem Anlegen fest.
+  - Pausieren: Update-Ringe.
+  - Löschen: Update-Ringe nur ohne Zuweisung. Zugewiesene Feature-Updates und Treiber-Richtlinien nur nach einer zweiten Rückfrage.
+  - Vor Einstellungen, Zuweisen, Pause an/aus und Löschen wird der Stand gesichert, mit den Zuweisungen (`%APPDATA%\HU-MultiTenant\WinUpdates-vorher`).
+- **Neue Update-Ringe** heben Windows-10-Geräte nicht mehr selbst auf Windows 11 – dafür gibt es im Dialog ein Häkchen (Standard: aus).
+- **Vorlagen:** Ringe und Profile als Datei sichern und in anderen Tenants importieren, ohne Zuweisungen. Beim Import werden Verwaltungsfelder und Zuweisungen verworfen (höchstens 1 MB, 50 Einträge). Nur eigene Dateien importieren. Die Vorlagen kommen mit der App-Sicherung mit.
+- **So geht's:** kurze Anleitungen mit Knöpfen, die gleich die richtige Stelle öffnen.
+
+### 🔐 Rechte
+- **Neue Tenants bekommen zuerst nur das Nötige:** Umfang *Nur lesen* bzw. *Lesen + verteilen*.
+- **Bestehende Tenants behalten ihre Rechte** – nichts wird entzogen.
+- **Spalte „App braucht“:** zeigt, welche Rechte die App wirklich nutzt und welche nicht gebraucht werden.
+- **Fehlt ein Schreibrecht**, bietet die App es nach dem Lauf an. Danach die Aktion erneut ausführen.
+
+### 🛡️ Sicherung und Muster
+- **Wiederherstellen:** Skripte und Teams-Webhooks sind nicht vorgewählt.
+- **Muster-Pakete** werden einzeln bestätigt; der Import bereinigt Freitext (Herausgeber, Titel, Tags).
+- **App-Sicherung** braucht .NET Framework 4.7.2 oder neuer (Windows 10 ab 1803).
+
+### 🎨 Oberfläche
+- **Fenster nie abgeschnitten:**
+  - Alle Dialoge haben einen Anfasser und eine Mindestbreite.
+  - Lange Texte und Häkchen brechen um.
+  - Das Fenster für Client Secrets passt sich in der Höhe an.
+  - Der Detailbereich in WIN-Updates scrollt, die Knöpfe bleiben erreichbar.
+- **Tenant-Namen mit Punkt oder Klammer** zeigen ihre Zahlen in allen Tabellen.
+- **Meldungsfenster** sind für Screenreader beschriftet.
+- **Starter** `HU-MultiTenant.exe` mit eigenem Logo; neue Benutzer werden einmal nach einem Desktop-Symbol gefragt.
+
+### 📊 Analyse und Teams
+- **„Was bekommt …?“** wertet auch Qualitäts- und Treiber-Richtlinien aus.
+- **Abbruch am Handy** stoppt auch die Teams-Meldung sofort.
+
+### ⚠️ Nach dem Update
+- **WIN-Updates ändern** braucht das Recht `DeviceManagementConfiguration.ReadWrite.All` (gilt für alle Geräteprofile). Die App bietet es an, wenn es fehlt.
+- **Feature-, Treiber- und Expedite-Profile** wirken nur auf Entra- oder Hybrid-beigetretene Geräte mit Diagnosedaten mindestens „Erforderlich“ und einer Windows-Lizenz mit Autopatch-Berechtigung (z. B. A3/A5). Expedite braucht auf Windows vor 24H2 zusätzlich die Update-Health-Tools.
+
+### 🚧 Grenzen
+- Qualitäts-Richtlinien (Hotpatch) werden nur angezeigt.
+- Expedites lassen sich anlegen, zuweisen und löschen, aber nicht ändern.
+- Feature-, Treiber- und Expedite-Profile lassen sich nur Gerätegruppen zuweisen.
+- Ein Zurückspielen aus `WinUpdates-vorher` gibt es noch nicht – die Dateien sind zum Nachsehen da.
+- Die Oberfläche schreibt Umlaute noch als ae/oe/ue; das kommt in einer eigenen Version.
+
+### ✅ Qualität
+- 1000 automatische Tests (992 bestanden, 8 übersprungen), davon 41 neue aus der Stable-Prüfung.
+
 ## v2.6.3 (Testversion)
 
 Neu in der Wartung: **WIN-Updates** – Windows-Versionen, Patchstand und Treiber aller Tenants auf einen Blick, Ringe und Profile anlegen, zuweisen und übernehmen.

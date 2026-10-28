@@ -24,7 +24,7 @@
     { "name": "SharePointTenantSettings.Read.All", "default": true, "why": "Sicherheitskatalog: externe Freigabe (A33), nur lesend" },
     { "name": "Application.Read.All", "default": true, "why": "Enterprise-App-Inventur, Sicherheitskatalog (Secret-Ablauf, App-Rechte)" },
     { "name": "RoleManagement.Read.Directory", "default": true, "why": "Rollennamen im Tenant-Vergleich, Sicherheitskatalog (Admin-Rollen)" },
-    { "name": "DeviceManagementConfiguration.ReadWrite.All", "default": false, "why": "Analyse: Profile/Richtlinien kopieren und aus Backup wiederherstellen" },
+    { "name": "DeviceManagementConfiguration.ReadWrite.All", "default": false, "why": "Analyse: Profile/Richtlinien kopieren und aus Backup wiederherstellen; WIN-Updates: Ringe und Profile anlegen, aendern, zuweisen, loeschen - gilt fuer alle Geraeteprofile" },
     { "name": "Policy.ReadWrite.ConditionalAccess", "default": false, "why": "Conditional Access und benannte Orte aus dem Backup zurueckschreiben" },
     { "name": "Policy.ReadWrite.Authorization", "default": false, "why": "Backup: Autorisierungsrichtlinie zurueckschreiben (Gaeste, Benutzerrechte, Zustimmung)" },
     { "name": "Policy.ReadWrite.ConsentRequest", "default": false, "why": "Backup: Administratorzustimmung (Anfragen) zurueckschreiben" },

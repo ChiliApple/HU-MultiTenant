@@ -1057,7 +1057,7 @@
                                     <Button x:Name="btnDrvSuspend" Content="&#x23F8; Aussetzen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4" ToolTip="Freigegebene Treiber anhalten (spaeter wieder freigeben moeglich)"/>
                                     <Button x:Name="btnDrvDecline" Content="&#x2716; Ablehnen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4" ToolTip="Nur fuer Treiber im Status pruefen - freigegebene lassen sich laut Microsoft nur aussetzen"/>
                                 </WrapPanel>
-                                <Grid>
+                                <Grid x:Name="grdWuMain">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="*" MinHeight="120"/>
                                         <RowDefinition Height="Auto"/>
@@ -1066,6 +1066,8 @@
                                               SelectionMode="Extended" CanUserSortColumns="True" AllowDrop="True"/>
                                     <!-- Ringe und Profile: wie Wartung > In Intune - Zuweisungen und Einstellungen des markierten Eintrags -->
                                     <Border Grid.Row="1" x:Name="pnlWuDetail" Visibility="Collapsed" Background="#252526" CornerRadius="4" Padding="10" Margin="0,8,0,0">
+                                        <!-- 074 B7: scrollt, damit Speichern/Pausieren/Entfernen auch bei kleinem Fenster erreichbar bleiben (Hoehe setzt UI-WinUpdates) -->
+                                        <ScrollViewer x:Name="svWuDetail" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel>
                                             <TextBlock x:Name="txtWuDetTitle" Foreground="#E0E0E0" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                             <TextBlock x:Name="txtWuDetInfo" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
@@ -1099,6 +1101,7 @@
                                                 <Button x:Name="btnWuDelete" Content="Entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4" ToolTip="Profil in allen genannten Tenants loeschen"/>
                                             </WrapPanel>
                                         </StackPanel>
+                                        </ScrollViewer>
                                     </Border>
                                 </Grid>
                             </DockPanel>

@@ -577,7 +577,7 @@ function Copy-HURintToTenants {
     if (-not $cand.Count) { Show-HUMessage 'Das Skript gibt es schon in allen Tenants (soweit angehakt und geladen).' -Icon Info; return }
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="In andere Tenants kopieren" Width="460" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#1E1E1E" ShowInTaskbar="False">
+        Title="In andere Tenants kopieren" Width="460" MinWidth="460" SizeToContent="Height" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -585,7 +585,7 @@ function Copy-HURintToTenants {
         <TextBlock x:Name="lblHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
         <TextBlock Text="Ziel-Tenants" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
         <WrapPanel x:Name="spTenants" Margin="0,0,0,8"/>
-        <CheckBox x:Name="chkAssign" Content="Zuweisungen mitnehmen (Gruppen werden je Tenant per Name gesucht)" Style="{StaticResource DarkCheckBox}" IsChecked="True"/>
+        <CheckBox x:Name="chkAssign"  Style="{StaticResource DarkCheckBox}" IsChecked="True"><TextBlock Text="Zuweisungen mitnehmen (Gruppen werden je Tenant per Name gesucht)" TextWrapping="Wrap"/></CheckBox>
         <TextBlock x:Name="lblAssign" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="20,4,0,0"/>
         <StackPanel x:Name="pnlMissing" Orientation="Horizontal" Margin="20,8,0,0">
             <TextBlock Text="Fehlt die Gruppe im Ziel:" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,8,0"/>

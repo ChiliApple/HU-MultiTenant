@@ -127,7 +127,7 @@ function Show-HUTenantPicker {
                 <Button x:Name="btnOk" Content="Uebernehmen" Width="120" Background="#4CAF50" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
                 <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
             </StackPanel>
-            <TextBlock x:Name="lblState" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <TextBlock TextWrapping="Wrap" x:Name="lblState" Foreground="#858585" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
         </DockPanel>
         <DataGrid x:Name="grid" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" HeadersVisibility="Column">
             <DataGrid.Columns>

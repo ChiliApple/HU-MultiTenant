@@ -91,7 +91,7 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
     </Window.Resources>
     <DockPanel Margin="12">
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-            <TextBlock x:Name="txtCount" DockPanel.Dock="Right" Foreground="#858585" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
+            <TextBlock TextWrapping="Wrap" x:Name="txtCount" DockPanel.Dock="Right" Foreground="#858585" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
             <Grid>
                 <TextBox x:Name="txtFilter" Style="{StaticResource DarkTextBox}" FontSize="12"/>
                 <TextBlock x:Name="txtFilterHint" Text="Filtern (alle Spalten) ..." Foreground="#666666" FontSize="12" Margin="9,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
