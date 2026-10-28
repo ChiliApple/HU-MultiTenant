@@ -210,4 +210,15 @@ Describe 'Windows-Updates: aendern (Schritt 2)' {
             $r[0].Quelle | Should -Be 'A'
         } finally { Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue }
     }
+
+    It 'Treiber-Richtlinie ohne Zuweisung: kein Hinweis "keine Treiber gemeldet"' {
+        InModuleScope HU.WinUpdate {
+            $row = [pscustomobject]@{ Id = 'p1'; Einstellung = 'x'; Hinweis = ''; AsgList = @() }
+            Update-HUWuDriverPolicyRow $row @()
+            $row.Hinweis | Should -Be ''
+            $row2 = [pscustomobject]@{ Id = 'p2'; Einstellung = 'x'; Hinweis = ''; AsgList = @([pscustomobject]@{ Key = 'g'; Ziel = 'G' }) }
+            Update-HUWuDriverPolicyRow $row2 @()
+            $row2.Hinweis | Should -BeLike 'Noch keine Treiber gemeldet*'
+        }
+    }
 }

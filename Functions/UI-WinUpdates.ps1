@@ -431,7 +431,8 @@ function Show-HUWuDetail {
     }
     $c['btnWuSave'].Visibility = $(if ($g.Art -in 'Update-Ring', 'Feature-Update', 'Treiber-Update') { 'Visible' } else { 'Collapsed' })
     foreach ($b in 'btnWuPauseQ', 'btnWuPauseF', 'btnWuResume') { $c[$b].Visibility = $(if ($ring) { 'Visible' } else { 'Collapsed' }) }
-    $c['btnWuDelete'].Visibility = $(if ($g.Art -in 'Feature-Update', 'Expedite', 'Treiber-Update') { 'Visible' } else { 'Collapsed' })
+    $c['btnWuDelete'].Visibility = $(if ($g.Art -in 'Feature-Update', 'Expedite', 'Treiber-Update', 'Update-Ring') { 'Visible' } else { 'Collapsed' })
+    $c['btnWuDelete'].ToolTip = $(if ($g.Art -eq 'Update-Ring') { 'Update-Ring loeschen - nur wenn er nicht zugewiesen ist' } else { 'Profil loeschen (Stand wird vorher gesichert)' })
     # Alle Geraete / Alle Benutzer nur bei Ringen (Profile: nur Geraetegruppen)
     foreach ($ci in $c['cmbWuTarget'].Items) { if ("$($ci.Tag)" -in 'allDevices', 'allUsers') { $ci.IsEnabled = $ring } }
     if (-not $ring -and "$($c['cmbWuTarget'].SelectedItem.Tag)" -in 'allDevices', 'allUsers') { $c['cmbWuTarget'].SelectedIndex = 0 }
@@ -647,7 +648,9 @@ function Start-HUWuDelete {
         if ($k -and $script:WuGroups.ContainsKey($k) -and -not @($groups | Where-Object { $_.Key -eq $k }).Count) { $groups.Add($script:WuGroups[$k]) }
     }
     if (-not $groups.Count) { $groups.Add($g) }
-    if (@($groups | Where-Object { $_.Art -eq 'Update-Ring' }).Count) { Show-HUMessage 'Update-Ringe werden hier nicht geloescht (nur Profile) - bitte nur Profile markieren.' -Icon Info; return }
+    # Update-Ringe nur ohne Zuweisung (die App prueft das beim Loeschen noch einmal frisch in Intune)
+    $busy = @(foreach ($x in $groups) { if ($x.Art -eq 'Update-Ring') { foreach ($it in @($x.Items)) { if (@($it.AsgList).Count) { "  $($x.Name) ($((Get-HUWuTenantNames)[$it.Tenant]))" } } } })
+    if ($busy.Count) { Show-HUMessage "Diese Update-Ringe sind zugewiesen und werden nicht geloescht:`n`n$($busy -join "`n")`n`nErst unten die Zuweisungen entfernen." -Icon Info; return }
     $work = @(foreach ($x in $groups) { foreach ($it in @($x.Items)) { @{ Tenant = $it.Tenant; Art = $it.Art; Id = $it.Id; Name = $it.Name } } })
     $list = (@($groups | ForEach-Object { "  $($_.Art) '$($_.Name)' in: $($_.Tenants)" }) -join "`n")
     if (-not (Confirm-HU -Warning "Loeschen ($($work.Count)):`n`n$list`n`nDer Stand wird vorher gesichert. Geraete behalten die bereits installierte Version.")) { return }

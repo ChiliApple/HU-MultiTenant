@@ -251,6 +251,7 @@ function Update-HUWuDriverPolicyRow($Row, [object[]]$Drivers) {
     $dev = 0; foreach ($d in $mine) { if ([int]$d.Geraete -gt $dev) { $dev = [int]$d.Geraete } }
     $Row.Einstellung = ($Row.Einstellung -replace '; \d+ Geraet\(e\) melden', '') + "; $($mine.Count) Treiber, bis $dev betroffene Geraete"
     if ($dev -gt 0 -and $Row.Hinweis -like 'Keine Geraete melden*') { $Row.Hinweis = '' }
+    elseif (-not $mine.Count -and -not @($Row.AsgList).Count) { $Row.Hinweis = (@("$($Row.Hinweis)" -split '; ' | Where-Object { $_ -and $_ -notlike 'Keine Geraete melden*' }) -join '; ') }   # nicht zugewiesen: kein Geraet kann melden
     elseif (-not $mine.Count -and $Row.Hinweis -notlike 'Keine Geraete melden*') { $Row.Hinweis = (@($Row.Hinweis, 'Noch keine Treiber gemeldet - Geraete muessen Entra- oder Hybrid-beigetreten sein, Diagnosedaten mindestens Erforderlich') | Where-Object { $_ }) -join '; ' }
 }
 
@@ -587,12 +588,16 @@ function Invoke-HUWuDriverAction {
     return $r
 }
 
-# Profil loeschen (vorher sichern). Update-Ringe werden hier nicht geloescht.
+# Profil loeschen (vorher sichern). Update-Ringe nur, wenn sie nicht zugewiesen sind.
 function Remove-HUWuProfile {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id, [string]$BackupRoot = '')
-    if ($Art -eq 'Update-Ring') { throw 'Update-Ringe werden hier nicht geloescht (im Intune Admin Center)' }
     $e = Get-HUWuEpInfo $Art
+    if ($Art -eq 'Update-Ring') {
+        # Ringe nur ohne Zuweisung - frisch nachgesehen, nicht aus der Anzeige
+        $asg = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id/assignments"
+        if (@($asg.value | Where-Object { $_ }).Count) { throw 'Update-Ring ist zugewiesen - erst die Zuweisungen entfernen, dann loeschen' }
+    }
     $before = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id"
     $f = Save-HUWuBefore $TenantKey $Art $before $BackupRoot
     [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id" -Method DELETE)
