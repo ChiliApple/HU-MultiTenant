@@ -732,7 +732,7 @@ function Start-HUWuNewSimple([string]$Kind, [string[]]$Keys) {
     $tn = (@($Keys | ForEach-Object { $names[$_] }) -join ', ')
     if ($Kind -eq 'ring') {
         $f = @(
-            @{ Key = 'Name'; Label = 'Name'; Value = 'WU-Ring Standard'; Width = 300 }
+            @{ Key = 'Name'; Label = 'Name'; Value = 'WU-Ring Standard'; Width = 320 }
             @{ Key = 'qd'; Label = 'Aufschub Qualitaet (Tage, 0-30)'; Value = '3'; Int = @(0, 30) }
             @{ Key = 'dq'; Label = 'Frist Qualitaet (Tage, 0-30)'; Value = '3'; Int = @(0, 30); Tip = 'Danach wird das Update erzwungen' }
             @{ Key = 'df'; Label = 'Frist Feature (Tage, 0-30)'; Value = '7'; Int = @(0, 30) }
@@ -748,7 +748,7 @@ function Start-HUWuNewSimple([string]$Kind, [string[]]$Keys) {
         $op = 'newRing'
     } else {
         $f = @(
-            @{ Key = 'Name'; Label = 'Name'; Value = 'Treiber automatisch'; Width = 300 }
+            @{ Key = 'Name'; Label = 'Name'; Value = 'Treiber automatisch'; Width = 320 }
             @{ Key = 'appr'; Label = 'Freigabe'; Items = @('automatisch', 'manuell'); Value = 'automatisch' }
             @{ Key = 'defer'; Label = 'Aufschub (Tage, nur automatisch)'; Value = '7'; Int = @(0, 30); Tip = 'Empfohlene Treiber erst nach so vielen Tagen - fehlerhafte fallen vorher auf' }
         )
@@ -769,7 +769,7 @@ function Start-HUWuNewSimple([string]$Kind, [string[]]$Keys) {
 function Show-HUWuFormDialog([string]$Title, [string]$Head, [string]$Info, [object[]]$Fields) {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="NoResize">
+        Width="600" SizeToContent="Height" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="NoResize">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -777,7 +777,7 @@ function Show-HUWuFormDialog([string]$Title, [string]$Head, [string]$Info, [obje
         <TextBlock x:Name="txtHead" Style="{StaticResource SectionTitle}"/>
         <TextBlock x:Name="txtInfo" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
         <Grid x:Name="grdF">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="230"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="200"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
         </Grid>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
             <Button x:Name="btnOk" Content="Weiter" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
@@ -797,11 +797,11 @@ function Show-HUWuFormDialog([string]$Title, [string]$Head, [string]$Info, [obje
         [void]$c.grdF.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = [System.Windows.GridLength]::Auto }))
         if ($f.Check) {
             $e = New-Object System.Windows.Controls.CheckBox
-            $e.Style = $w.FindResource('DarkCheckBox'); $e.Content = $f.Label; $e.IsChecked = [bool]$f.Value; $e.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
-            [System.Windows.Controls.Grid]::SetColumn($e, 1)
+            $e.Style = $w.FindResource('DarkCheckBox'); $e.Content = $f.Label; $e.IsChecked = [bool]$f.Value; $e.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
+            [System.Windows.Controls.Grid]::SetColumnSpan($e, 2)   # ganze Breite - Text sonst abgeschnitten
         } else {
             $l = New-Object System.Windows.Controls.TextBlock
-            $l.Text = $f.Label; $l.Style = $w.FindResource('FieldLabel'); $l.VerticalAlignment = 'Center'
+            $l.Text = $f.Label; $l.Style = $w.FindResource('FieldLabel'); $l.VerticalAlignment = 'Center'; $l.Margin = [System.Windows.Thickness]::new(0, 0, 12, 0)
             if ($f.Tip) { $l.ToolTip = $f.Tip }
             [System.Windows.Controls.Grid]::SetRow($l, $row); [void]$c.grdF.Children.Add($l)
             if ($f.Items) {
@@ -812,7 +812,7 @@ function Show-HUWuFormDialog([string]$Title, [string]$Head, [string]$Info, [obje
             } else {
                 $e = New-Object System.Windows.Controls.TextBox
                 $e.Style = $w.FindResource('DarkTextBox'); $e.Text = "$($f.Value)"; $e.HorizontalAlignment = 'Left'
-                $e.Width = $(if ($f.Width) { $f.Width } else { 70 })
+                $e.Width = $(if ($f.Width) { $f.Width } else { 70 }); $e.MaxWidth = 320
                 if ($f.Tip) { $e.ToolTip = $f.Tip }
             }
             $e.Margin = [System.Windows.Thickness]::new(0, 3, 0, 3)
