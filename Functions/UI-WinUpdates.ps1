@@ -182,6 +182,7 @@ function Update-HUWuView {
     $c['pnlWuDrvActions'].Visibility = $c['pnlWuDrvChecks'].Visibility
     foreach ($b in 'btnWuNewRing', 'btnWuNewFeat', 'btnWuNewDrv', 'btnWuNewExp', 'btnWuImport') { $c[$b].Visibility = $(if ($script:WuView -in 'policies', 'matrix') { 'Visible' } else { 'Collapsed' }) }
     $c['btnWuBackup'].Visibility = $(if ($script:WuView -eq 'policies') { 'Visible' } else { 'Collapsed' })
+    $c['pnlWuNew'].Visibility = $(if ($script:WuView -in 'policies', 'matrix') { 'Visible' } else { 'Collapsed' })
     if (-not "$($c['txtDrvDate'].Text)") { $c['txtDrvDate'].Text = (Get-Date).ToString('dd.MM.yyyy') }
     $rows = @()
     switch ($script:WuView) {
@@ -194,7 +195,7 @@ function Update-HUWuView {
         }
         'policies' {
             $c['lblWuTitle'].Text = 'Update-Ringe und Profile'
-            $c['lblWuHint'].Text = 'Gleiche Ringe/Profile aller angehakten Tenants in einer Zeile (wie Wartung > In Intune). Eintrag markieren: unten Zuweisungen und Einstellungen. Neu: oben rechts.'
+            $c['lblWuHint'].Text = 'Gleiche Ringe/Profile aller angehakten Tenants in einer Zeile (wie Wartung > In Intune). Eintrag markieren: unten Zuweisungen und Einstellungen. Neu anlegen, Sichern und Importieren: Knoepfe oben.'
             $script:WuGroups = @{}
             $rows = @(foreach ($g in @(Get-HUWuPolicyGroups $invs $names)) {
                     $script:WuGroups[$g.Key] = $g
