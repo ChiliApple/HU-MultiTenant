@@ -109,7 +109,9 @@ function Get-HUWuAssignText([object[]]$Assignments, [hashtable]$Names) {
             try { "$((ConvertFrom-HUAssignment ([pscustomobject]@{ target = $a.target; intent = ''; settings = $null }) $Names).Ziel)" } catch { '?' }
         })
     if (-not $t.Count) { return 'nicht zugewiesen' }
-    return ($t -join ', ')
+    # Einschliessen zuerst, Ausschluesse dahinter - sonst liest sich 'Ausschluss: X, Alle Geraete' wie zwei Ausschluesse
+    $inc = @($t | Where-Object { $_ -notlike 'Ausschluss*' }); $exc = @($t | Where-Object { $_ -like 'Ausschluss*' })
+    return ((@(($inc -join ', '), ($exc -join ', ')) | Where-Object { $_ }) -join '; ')
 }
 
 # Alles eines Tenants lesen. Fehler einzelner Teile landen in Errors (der Rest bleibt nutzbar).
