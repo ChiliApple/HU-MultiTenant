@@ -180,7 +180,7 @@ function Update-HUWuView {
     $c['pnlWuChecks'].Visibility = $(if ($script:WuView -in 'matrix', 'devices') { 'Visible' } else { 'Collapsed' })
     $c['pnlWuDrvChecks'].Visibility = $(if ($script:WuView -eq 'drivers') { 'Visible' } else { 'Collapsed' })
     $c['pnlWuDrvActions'].Visibility = $c['pnlWuDrvChecks'].Visibility
-    foreach ($b in 'btnWuNewFeat', 'btnWuNewExp') { $c[$b].Visibility = $(if ($script:WuView -in 'policies', 'matrix') { 'Visible' } else { 'Collapsed' }) }
+    foreach ($b in 'btnWuNewRing', 'btnWuNewFeat', 'btnWuNewDrv', 'btnWuNewExp') { $c[$b].Visibility = $(if ($script:WuView -in 'policies', 'matrix') { 'Visible' } else { 'Collapsed' }) }
     if (-not "$($c['txtDrvDate'].Text)") { $c['txtDrvDate'].Text = (Get-Date).ToString('dd.MM.yyyy') }
     $rows = @()
     switch ($script:WuView) {
@@ -315,6 +315,8 @@ function Register-HUWinUpdateHandlers {
     $c['btnWuDelete'].Add_Click({ Start-HUWuDelete })
     $c['btnWuNewFeat'].Add_Click({ Start-HUWuNew 'feature' })
     $c['btnWuNewExp'].Add_Click({ Start-HUWuNew 'expedite' })
+    $c['btnWuNewRing'].Add_Click({ Start-HUWuNew 'ring' })
+    $c['btnWuNewDrv'].Add_Click({ Start-HUWuNew 'driver' })
     $c['btnDrvApprove'].Add_Click({ Start-HUWuDriverAct 'approve' })
     $c['btnDrvSuspend'].Add_Click({ Start-HUWuDriverAct 'suspend' })
     $c['btnDrvDecline'].Add_Click({ Start-HUWuDriverAct 'decline' })
@@ -488,6 +490,8 @@ function Start-HUWuJob([string]$Op, [object[]]$Work, [hashtable]$P, [string]$Wha
                         'delete' { $f = Remove-HUWuProfile -TenantKey $tk -Settings $Settings -Art $x.Art -Id $x.Id; $msg = "$($x.Name): entfernt (vorher: $f)" }
                         'newFeature' { $id = New-HUWuFeatureProfile -TenantKey $tk -Settings $Settings -Name $P.Name -Version $P.Version -Rollout $P.Rollout -Win10Fallback ([bool]$P.Win10); $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
                         'newExpedite' { $id = New-HUWuExpedite -TenantKey $tk -Settings $Settings -Name $P.Name -Release $P.Release -RebootDays $P.Reboot; $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
+                        'newRing' { $id = New-HUWuRing -TenantKey $tk -Settings $Settings -Name $P.Name -QualityDeferral $P.qd -QualityDeadline $P.dq -FeatureDeadline $P.df -Grace $P.gp -ActiveStart $P.ahs -ActiveEnd $P.ahe -UserPause ([bool]$P.up); $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
+                        'newDriver' { $id = New-HUWuDriverProfile -TenantKey $tk -Settings $Settings -Name $P.Name -Approval $P.appr -DeferDays $P.defer; $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
                         'driver' {
                             $r = Invoke-HUWuDriverAction -TenantKey $tk -Settings $Settings -ProfileId $x.Id -Action $P.Action -DriverIds @($x.DriverIds) -Date $P.Date
                             $ok = @($r.successfulDriverIds).Count; $bad = @($r.failedDriverIds).Count + @($r.notFoundDriverIds).Count
@@ -623,7 +627,7 @@ function Start-HUWuDelete {
     # Mehrere Zeilen markiert (Strg/Umschalt): alle markierten entfernen - z. B. alte Expedites mehrerer Tenants
     $groups = New-Object System.Collections.Generic.List[object]
     foreach ($r in @($script:Controls['gridWu'].SelectedItems)) {
-        $k = $(try { "$($r['Key'])" } catch { '' })
+        $k = "$(Get-HUWuCell $r 'Key')"
         if ($k -and $script:WuGroups.ContainsKey($k) -and -not @($groups | Where-Object { $_.Key -eq $k }).Count) { $groups.Add($script:WuGroups[$k]) }
     }
     if (-not $groups.Count) { $groups.Add($g) }
@@ -638,6 +642,7 @@ function Start-HUWuDelete {
 function Start-HUWuNew([string]$Kind) {
     $keys = @(Get-HUWuTenants)
     if (-not $keys.Count) { Show-HUMessage 'Bitte links Tenants anhaken.' -Icon Info; return }
+    if ($Kind -in 'ring', 'driver') { Start-HUWuNewSimple $Kind $keys; return }
     if (-not $script:WuChoices) { Show-HUMessage 'Die Auswahl (Versionen/Updates) wird noch gelesen - gleich noch einmal versuchen.' -Icon Info; Start-HUWuLoad -Force; return }
     $names = Get-HUWuTenantNames
     $r = Show-HUWuNewDialog $Kind
@@ -653,6 +658,130 @@ function Start-HUWuNew([string]$Kind) {
     }
     $script:WuView = 'policies'
     foreach ($li in $script:Controls['lstWuView'].Items) { if ("$($li.Tag)" -eq 'policies') { $script:Controls['lstWuView'].SelectedItem = $li } }
+}
+
+# + Ring / + Treiber: Felder mit den empfohlenen Werten vorbelegt, alles aenderbar
+function Start-HUWuNewSimple([string]$Kind, [string[]]$Keys) {
+    $names = Get-HUWuTenantNames
+    $tn = (@($Keys | ForEach-Object { $names[$_] }) -join ', ')
+    if ($Kind -eq 'ring') {
+        $f = @(
+            @{ Key = 'Name'; Label = 'Name'; Value = 'WU-Ring Standard'; Width = 300 }
+            @{ Key = 'qd'; Label = 'Aufschub Qualitaet (Tage, 0-30)'; Value = '3'; Int = @(0, 30) }
+            @{ Key = 'dq'; Label = 'Frist Qualitaet (Tage, 0-30)'; Value = '3'; Int = @(0, 30); Tip = 'Danach wird das Update erzwungen' }
+            @{ Key = 'df'; Label = 'Frist Feature (Tage, 0-30)'; Value = '7'; Int = @(0, 30) }
+            @{ Key = 'gp'; Label = 'Nachfrist Neustart (Tage, 0-7)'; Value = '2'; Int = @(0, 7); Tip = 'Nach der Frist so viele Tage bis zum erzwungenen Neustart' }
+            @{ Key = 'ahs'; Label = 'Aktive Zeit von (HH:mm)'; Value = '07:00'; Time = $true; Tip = 'In dieser Zeit kein automatischer Neustart' }
+            @{ Key = 'ahe'; Label = 'Aktive Zeit bis (HH:mm)'; Value = '15:00'; Time = $true }
+            @{ Key = 'up'; Label = 'Benutzer duerfen Updates pausieren'; Check = $true; Value = $false }
+        )
+        $r = Show-HUWuFormDialog 'Neuer Update-Ring' 'Update-Ring (Aufschub, Fristen, aktive Zeit)' 'Feature-Aufschub ist fest 0 - die Windows-Version steuert das Feature-Update-Profil. Neustart-Pruefung wird nicht uebersprungen. Angelegt ohne Zuweisung.' $f
+        if (-not $r) { return }
+        $txt = "  Name: $($r.Name)`n  Aufschub Qualitaet $($r.qd) T., Feature 0 T.`n  Frist Qualitaet $($r.dq) T., Feature $($r.df) T., Nachfrist $($r.gp) T.`n  Aktive Zeit $($r.ahs)-$($r.ahe)`n  Benutzer duerfen pausieren: $(if ($r.up) { 'ja' } else { 'nein' })"
+        if (-not (Confirm-HU -Warning "Update-Ring anlegen in: $tn`n`n$txt`n`nAngelegt OHNE Zuweisung - danach markieren und unten zuweisen.")) { return }
+        $op = 'newRing'
+    } else {
+        $f = @(
+            @{ Key = 'Name'; Label = 'Name'; Value = 'Treiber automatisch'; Width = 300 }
+            @{ Key = 'appr'; Label = 'Freigabe'; Items = @('automatisch', 'manuell'); Value = 'automatisch' }
+            @{ Key = 'defer'; Label = 'Aufschub (Tage, nur automatisch)'; Value = '7'; Int = @(0, 30); Tip = 'Empfohlene Treiber erst nach so vielen Tagen - fehlerhafte fallen vorher auf' }
+        )
+        $r = Show-HUWuFormDialog 'Neue Treiber-Richtlinie' 'Treiber-Updates' 'Automatisch: empfohlene Treiber werden nach dem Aufschub freigegeben. Manuell: jeder Treiber muss unter Treiber freigegeben werden. Wirkt nur auf Entra- bzw. Hybrid-beigetretene Geraete. Angelegt ohne Zuweisung.' $f
+        if (-not $r) { return }
+        $r.appr = $(if ($r.appr -eq 'manuell') { 'manual' } else { 'automatic' })
+        $txt = "  Name: $($r.Name)`n  Freigabe: $(if ($r.appr -eq 'manual') { 'manuell' } else { "automatisch, Aufschub $($r.defer) T." })"
+        if (-not (Confirm-HU -Warning "Treiber-Richtlinie anlegen in: $tn`n`n$txt`n`nAngelegt OHNE Zuweisung - danach markieren und unten zuweisen.")) { return }
+        $op = 'newDriver'
+    }
+    $work = @(foreach ($k in $Keys) { @{ Tenant = $k; Name = $r.Name } })
+    Start-HUWuJob $op $work $r "Neu: $($r.Name)"
+    $script:WuView = 'policies'
+    foreach ($li in $script:Controls['lstWuView'].Items) { if ("$($li.Tag)" -eq 'policies') { $script:Controls['lstWuView'].SelectedItem = $li } }
+}
+
+# Einfaches Formular: Fields = @{ Key; Label; Value; Width; Tip; Int=@(min,max) | Time | Check | Items }. Rueckgabe: Hashtable oder $null
+function Show-HUWuFormDialog([string]$Title, [string]$Head, [string]$Info, [object[]]$Fields) {
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="NoResize">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <StackPanel Margin="16">
+        <TextBlock x:Name="txtHead" Style="{StaticResource SectionTitle}"/>
+        <TextBlock x:Name="txtInfo" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <Grid x:Name="grdF">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="230"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        </Grid>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button x:Name="btnOk" Content="Weiter" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>
+            <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
+'@
+    $theme = Get-HUXaml 'Theme'
+    $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+    $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
+    $w = $d.Window; $c = $d.C
+    try { $w.Owner = $script:Window } catch { }
+    $w.Title = $Title; $c.txtHead.Text = $Head; $c.txtInfo.Text = $Info
+    $ctl = @{}; $row = 0
+    foreach ($f in $Fields) {
+        [void]$c.grdF.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = [System.Windows.GridLength]::Auto }))
+        if ($f.Check) {
+            $e = New-Object System.Windows.Controls.CheckBox
+            $e.Style = $w.FindResource('DarkCheckBox'); $e.Content = $f.Label; $e.IsChecked = [bool]$f.Value; $e.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
+            [System.Windows.Controls.Grid]::SetColumn($e, 1)
+        } else {
+            $l = New-Object System.Windows.Controls.TextBlock
+            $l.Text = $f.Label; $l.Style = $w.FindResource('FieldLabel'); $l.VerticalAlignment = 'Center'
+            if ($f.Tip) { $l.ToolTip = $f.Tip }
+            [System.Windows.Controls.Grid]::SetRow($l, $row); [void]$c.grdF.Children.Add($l)
+            if ($f.Items) {
+                $e = New-Object System.Windows.Controls.ComboBox
+                $e.Style = $w.FindResource('DarkComboBox'); $e.Width = 160; $e.HorizontalAlignment = 'Left'
+                foreach ($i in @($f.Items)) { [void]$e.Items.Add("$i") }
+                $e.SelectedItem = "$($f.Value)"
+            } else {
+                $e = New-Object System.Windows.Controls.TextBox
+                $e.Style = $w.FindResource('DarkTextBox'); $e.Text = "$($f.Value)"; $e.HorizontalAlignment = 'Left'
+                $e.Width = $(if ($f.Width) { $f.Width } else { 70 })
+                if ($f.Tip) { $e.ToolTip = $f.Tip }
+            }
+            $e.Margin = [System.Windows.Thickness]::new(0, 3, 0, 3)
+            [System.Windows.Controls.Grid]::SetColumn($e, 1)
+        }
+        [System.Windows.Controls.Grid]::SetRow($e, $row); [void]$c.grdF.Children.Add($e)
+        $ctl[$f.Key] = $e; $row++
+    }
+    $st = @{ R = $null }
+    $c.btnOk.Add_Click({
+            $res = @{}
+            foreach ($f in $Fields) {
+                $e = $ctl[$f.Key]
+                if ($f.Check) { $res[$f.Key] = [bool]$e.IsChecked; continue }
+                if ($f.Items) { $res[$f.Key] = "$($e.SelectedItem)"; continue }
+                $v = "$($e.Text)".Trim()
+                if (-not $v) { Show-HUMessage "Bitte '$($f.Label)' ausfuellen." -Icon Info -Owner $w; return }
+                if ($f.Int) {
+                    $n = 0
+                    if (-not [int]::TryParse($v, [ref]$n) -or $n -lt $f.Int[0] -or $n -gt $f.Int[1]) { Show-HUMessage "'$($f.Label)': Zahl von $($f.Int[0]) bis $($f.Int[1])." -Icon Warning -Owner $w; return }
+                    $res[$f.Key] = $n; continue
+                }
+                if ($f.Time) {
+                    $t = [datetime]::MinValue
+                    if (-not [datetime]::TryParseExact($v, [string[]]@('HH:mm', 'H:mm'), [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$t)) { Show-HUMessage "'$($f.Label)': Uhrzeit als HH:mm, z. B. 07:00." -Icon Warning -Owner $w; return }
+                    $res[$f.Key] = $t.ToString('HH:mm'); continue
+                }
+                $res[$f.Key] = $v
+            }
+            if ($res.ContainsKey('ahs') -and $res.ContainsKey('ahe') -and $res.ahs -eq $res.ahe) { Show-HUMessage 'Aktive Zeit: von und bis duerfen nicht gleich sein.' -Icon Warning -Owner $w; return }
+            $st.R = $res
+            $w.Close()
+        })
+    [void]$w.ShowDialog()
+    return $st.R
 }
 
 function Show-HUWuNewDialog([string]$Kind) {

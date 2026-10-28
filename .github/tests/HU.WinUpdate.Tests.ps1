@@ -175,4 +175,14 @@ Describe 'Windows-Updates: aendern (Schritt 2)' {
             $row.Einstellung | Should -Be 'manuell; 1 Treiber, bis 7 betroffene Geraete'
         }
     }
+
+    It 'Neuer Ring: Feature-Aufschub 0, aktive Zeit im Graph-Format' {
+        $b = New-HUWuRingBody -Name 'R' -QualityDeferral 3 -QualityDeadline 3 -FeatureDeadline 7 -Grace 2 -ActiveStart '7:00' -ActiveEnd '15:00' -UserPause $false
+        $b.featureUpdatesDeferralPeriodInDays | Should -Be 0
+        $b.installationSchedule.activeHoursStart | Should -Be '07:00:00.0000000'
+        $b.installationSchedule.activeHoursEnd | Should -Be '15:00:00.0000000'
+        $b.userPauseAccess | Should -Be 'disabled'
+        $b.skipChecksBeforeRestart | Should -BeFalse
+        { New-HUWuRingBody -Name 'R' -QualityDeferral 3 -QualityDeadline 3 -FeatureDeadline 7 -Grace 2 -ActiveStart '25:00' -ActiveEnd '15:00' -UserPause $false } | Should -Throw
+    }
 }

@@ -471,6 +471,42 @@ function New-HUWuExpedite {
     return "$($r.id)"
 }
 
+# Neuer Update-Ring (ohne Zuweisung). Feature-Aufschub 0 - die Zielversion kommt ueber das Feature-Update-Profil.
+# Felder laut Graph beta windowsUpdateForBusinessConfiguration; Zeiten als 'HH:mm'.
+function New-HUWuRing {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Name,
+        [ValidateRange(0, 30)][int]$QualityDeferral = 3, [ValidateRange(0, 30)][int]$QualityDeadline = 3, [ValidateRange(0, 30)][int]$FeatureDeadline = 7,
+        [ValidateRange(0, 7)][int]$Grace = 2, [string]$ActiveStart = '07:00', [string]$ActiveEnd = '15:00', [bool]$UserPause = $false, [string]$Description = '')
+    $body = New-HUWuRingBody -Name $Name -QualityDeferral $QualityDeferral -QualityDeadline $QualityDeadline -FeatureDeadline $FeatureDeadline -Grace $Grace -ActiveStart $ActiveStart -ActiveEnd $ActiveEnd -UserPause $UserPause -Description $Description
+    $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceManagement/deviceConfigurations' -Method POST -Body $body
+    return "$($r.id)"
+}
+
+function New-HUWuRingBody([string]$Name, [int]$QualityDeferral, [int]$QualityDeadline, [int]$FeatureDeadline, [int]$Grace, [string]$ActiveStart, [string]$ActiveEnd, [bool]$UserPause, [string]$Description = '') {
+    $tm = { param($t) $d = [datetime]::MinValue; if (-not [datetime]::TryParseExact("$t".Trim(), [string[]]@('HH:mm', 'H:mm'), [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$d)) { throw "Uhrzeit '$t' ungueltig (HH:mm)" }; $d.ToString('HH:mm') + ':00.0000000' }
+    return @{
+        '@odata.type' = '#microsoft.graph.windowsUpdateForBusinessConfiguration'; displayName = $Name; description = $Description; roleScopeTagIds = @('0')
+        automaticUpdateMode = 'autoInstallAtMaintenanceTime'; microsoftUpdateServiceAllowed = $true; driversExcluded = $false; businessReadyUpdatesOnly = 'all'
+        qualityUpdatesDeferralPeriodInDays = $QualityDeferral; featureUpdatesDeferralPeriodInDays = 0; qualityUpdatesPaused = $false; featureUpdatesPaused = $false
+        deadlineForQualityUpdatesInDays = $QualityDeadline; deadlineForFeatureUpdatesInDays = $FeatureDeadline; deadlineGracePeriodInDays = $Grace; postponeRebootUntilAfterDeadline = $false
+        skipChecksBeforeRestart = $false; featureUpdatesRollbackWindowInDays = 10; allowWindows11Upgrade = $true
+        userPauseAccess = $(if ($UserPause) { 'enabled' } else { 'disabled' }); userWindowsUpdateScanAccess = 'enabled'; updateNotificationLevel = 'defaultNotifications'
+        installationSchedule = @{ '@odata.type' = '#microsoft.graph.windowsUpdateActiveHoursInstall'; activeHoursStart = (& $tm $ActiveStart); activeHoursEnd = (& $tm $ActiveEnd) }
+    }
+}
+
+# Neue Treiber-Richtlinie (ohne Zuweisung). Aufschub gilt nur bei automatischer Freigabe.
+function New-HUWuDriverProfile {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Name,
+        [ValidateSet('automatic', 'manual')][string]$Approval = 'automatic', [ValidateRange(0, 30)][int]$DeferDays = 7, [string]$Description = '')
+    $body = @{ '@odata.type' = '#microsoft.graph.windowsDriverUpdateProfile'; displayName = $Name; description = $Description; approvalType = $Approval; roleScopeTagIds = @('0') }
+    if ($Approval -eq 'automatic') { $body.deploymentDeferralInDays = $DeferDays }
+    $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint '/deviceManagement/windowsDriverUpdateProfiles' -Method POST -Body $body
+    return "$($r.id)"
+}
+
 # Treiber: approve | decline | suspend fuer mehrere Treiber einer Richtlinie. Rueckgabe: bulkDriverActionResult
 function Invoke-HUWuDriverAction {
     [CmdletBinding()]
@@ -515,7 +551,7 @@ function Get-HUWuPolicyGroups([object[]]$Inventories, [hashtable]$TenantNames = 
     }
 }
 
-Export-ModuleMember -Function Get-HUWuEpInfo, Save-HUWuBefore, ConvertTo-HUWuTarget, Get-HUWuTargetKey, Set-HUWuAssignment, Set-HUWuSettings, Set-HUWuRingPause,
+Export-ModuleMember -Function New-HUWuRing, New-HUWuRingBody, New-HUWuDriverProfile, Get-HUWuEpInfo, Save-HUWuBefore, ConvertTo-HUWuTarget, Get-HUWuTargetKey, Set-HUWuAssignment, Set-HUWuSettings, Set-HUWuRingPause,
     Get-HUWuCatalogChoices, New-HUWuFeatureProfile, Remove-HUWuProfile, ConvertTo-HUWuRollout, New-HUWuExpedite, Invoke-HUWuDriverAction, Get-HUWuPolicyGroups,
     ConvertTo-HUWuJoinText, ConvertTo-HUWuDriverRow, Get-HUWuDriverMatrix, Get-HUWuBuildInfo, ConvertFrom-HUWuCatalog, Get-HUWuPatchState, Get-HUWuMissingCount, Get-HUWuLatestText, Get-HUWuInventory,
     ConvertTo-HUWuPolicyRow, Get-HUWuMatrix, Get-HUWuSummary, Get-HUWuAssignText

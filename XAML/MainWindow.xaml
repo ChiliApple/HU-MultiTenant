@@ -988,10 +988,14 @@
                             <DockPanel x:Name="pnlWuRight" Visibility="Collapsed" Margin="6,10,0,0">
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                                     <Button x:Name="btnWuExport" DockPanel.Dock="Right" Content="&#x1F4C4; Export" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0" ToolTip="Angezeigte Tabelle als Excel/CSV speichern"/>
+                                    <Button x:Name="btnWuNewDrv" DockPanel.Dock="Right" Content="+ Treiber ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
+                                            ToolTip="Neue Treiber-Richtlinie (automatisch mit Aufschub oder manuell) in den angehakten Tenants - ohne Zuweisung"/>
                                     <Button x:Name="btnWuNewExp" DockPanel.Dock="Right" Content="+ Expedite ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
                                             ToolTip="Neues Sicherheitsupdate sofort installieren lassen (ohne Zuweisung - danach unten zuweisen)"/>
                                     <Button x:Name="btnWuNewFeat" DockPanel.Dock="Right" Content="+ Feature-Update ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
                                             ToolTip="Neues Feature-Update-Profil (Zielversion, z. B. 25H2) in den angehakten Tenants - ohne Zuweisung, danach unten zuweisen"/>
+                                    <Button x:Name="btnWuNewRing" DockPanel.Dock="Right" Content="+ Ring ..." Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
+                                            ToolTip="Neuer Update-Ring (Aufschub, Fristen, aktive Zeit) in den angehakten Tenants - ohne Zuweisung"/>
                                     <Grid DockPanel.Dock="Right" Width="220">
                                         <TextBox x:Name="txtWuFilter" Style="{StaticResource DarkTextBox}"/>
                                         <TextBlock x:Name="lblWuFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
