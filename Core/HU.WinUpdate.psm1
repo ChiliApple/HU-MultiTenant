@@ -175,7 +175,11 @@ function Get-HUWuInventory {
     $names = @{}; if ($gids.Count) { try { $names = Get-HUGroupNames -TenantKey $TenantKey -Settings $Settings -Ids $gids } catch { } }
     $inv.Policies = @(foreach ($x in $raw) { ConvertTo-HUWuPolicyRow -Tenant $TenantKey -Art $x.Art -O $x.O -Asg $x.Asg -Names $names -Now $Now })
     # deviceReporting der Treiber-Richtlinie ist oft 0, obwohl Geraete Treiber melden - betroffene Geraete aus der Treiberliste zaehlen
-    foreach ($p in @($inv.Policies | Where-Object { $_.Art -eq 'Treiber-Update' })) { Update-HUWuDriverPolicyRow $p @($inv.Drivers) }
+    foreach ($p in @($inv.Policies | Where-Object { $_.Art -eq 'Treiber-Update' })) {
+        Update-HUWuDriverPolicyRow $p @($inv.Drivers)
+        # Tenant ohne Geraete: dass keine Treiber gemeldet werden, ist dann kein Problem
+        if (-not @($inv.Devices).Count) { $p.Hinweis = (@("$($p.Hinweis)" -split '; ' | Where-Object { $_ -and $_ -notlike 'Noch keine Treiber gemeldet*' -and $_ -notlike 'Keine Geraete melden*' }) -join '; ') }
+    }
     return $inv
 }
 

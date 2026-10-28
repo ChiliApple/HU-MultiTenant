@@ -323,7 +323,7 @@ function Register-HUWinUpdateHandlers {
     $c['btnWuImport'].Add_Click({
             $dlg = New-Object Microsoft.Win32.OpenFileDialog
             $dlg.Filter = 'WIN-Updates-Sicherung (*.json)|*.json'
-            try { $rp = Get-HUReportsPath; if (Test-Path -LiteralPath $rp) { $dlg.InitialDirectory = $rp } } catch { }
+            try { $dlg.InitialDirectory = (Get-HUWuTemplateDir) } catch { }
             if ($dlg.ShowDialog($script:Window)) { try { Start-HUWuImport $dlg.FileName } catch { Show-HUMessage "Importieren fehlgeschlagen: $($_.Exception.Message)" -Icon Error } }
         })
     $c['gridWu'].Add_DragOver({ param($s, $e) $e.Effects = $(if ($e.Data.GetDataPresent([System.Windows.DataFormats]::FileDrop)) { 'Copy' } else { 'None' }); $e.Handled = $true })
@@ -676,6 +676,13 @@ function Start-HUWuNew([string]$Kind) {
     foreach ($li in $script:Controls['lstWuView'].Items) { if ("$($li.Tag)" -eq 'policies') { $script:Controls['lstWuView'].SelectedItem = $li } }
 }
 
+# Fester Ordner fuer Vorlagen - die App-Sicherung nimmt ihn mit
+function Get-HUWuTemplateDir {
+    $d = Join-Path (Get-HUAbDataRoot) 'WinUpdates-Vorlagen'
+    if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+    return $d
+}
+
 # Sichern: markierte Ringe/Profile -> JSON (ohne Zuweisungen; gleicher Name in mehreren Tenants = einmal, aus dem ersten)
 function Save-HUWuBackupFile {
     if ($script:WuView -ne 'policies') { Show-HUMessage 'Sichern geht unter "Ringe und Profile": Eintraege markieren (Strg/Umschalt fuer mehrere).' -Icon Info; return }
@@ -689,7 +696,7 @@ function Save-HUWuBackupFile {
     $dlg = New-Object Microsoft.Win32.SaveFileDialog
     $dlg.Filter = 'WIN-Updates-Sicherung (*.json)|*.json'
     $dlg.FileName = "WIN-Updates-Sicherung_$(Get-Date -Format 'yyyy-MM-dd_HHmm').json"
-    try { $rp = Get-HUReportsPath; if (Test-Path -LiteralPath $rp) { $dlg.InitialDirectory = $rp } } catch { }
+    try { $dlg.InitialDirectory = (Get-HUWuTemplateDir) } catch { }
     if (-not $dlg.ShowDialog($script:Window)) { return }
     try {
         [System.IO.File]::WriteAllText($dlg.FileName, ($doc | ConvertTo-Json -Depth 20), (New-Object System.Text.UTF8Encoding($false)))
