@@ -159,9 +159,9 @@ function Update-HUWuView {
             $s = Get-HUWuSummary $i
             $col = switch ($s.Ampel) { 'rot' { '#EF5350' } 'gelb' { '#FFB74D' } 'gruen' { '#81C784' } default { '#AAAAAA' } }
             $warn = @(@($i.Policies) | Where-Object { $_.Hinweis } | ForEach-Object { "$($_.Name): $($_.Hinweis)" })
-            $drv = @(@($i.PSObject.Properties['Drivers'] | ForEach-Object { $_.Value }) | Where-Object { $_ -and $_.Status -eq 'pruefen' -and [int]$_.Geraete -gt 0 }).Count
+            $drv = @(@($i.PSObject.Properties['Drivers'] | ForEach-Object { $_.Value }) | Where-Object { $_ -and $_.Status -eq 'pruefen' -and [int]$_.Geraete -gt 0 -and "$($_.Datum)" -ge (Get-Date).AddMonths(-12).ToString('yyyy-MM-dd') }).Count
             [pscustomobject]@{ Tenant = $i.Tenant; Title = "$($names[$i.Tenant])"; Color = $col
-                Sub = "$($s.Text)$(if ($s.Haupt) { "; $($s.Haupt)" })$(if ($drv) { "; $drv Treiber zu pruefen" })$(if (@($i.Errors).Count) { " | nicht alles lesbar" })"
+                Sub = "$($s.Text)$(if ($s.Haupt) { "; $($s.Haupt)" })$(if ($drv) { "; $drv Treiber (12 Monate) zu pruefen" })$(if (@($i.Errors).Count) { " | nicht alles lesbar" })"
                 Tip = (@("$($s.Text)") + @($i.Errors) + $warn) -join "`n" }
         })
     $loading = Test-HUJobRunning 'WuLoad'
