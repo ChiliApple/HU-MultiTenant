@@ -29,12 +29,14 @@ function Set-HURemMode([string]$Mode) {
     $c = $script:Controls
     $script:RemMode = $Mode
     $int = ($Mode -eq 'int')
-    $c['pnlRemLibLeft'].Visibility = $(if ($int) { 'Collapsed' } else { 'Visible' })
+    $wu = ($Mode -eq 'wu')
+    $c['pnlRemLibLeft'].Visibility = $(if ($int -or $wu) { 'Collapsed' } else { 'Visible' })
     $c['pnlRemLibRight'].Visibility = $c['pnlRemLibLeft'].Visibility
     $c['pnlRemIntLeft'].Visibility = $(if ($int) { 'Visible' } else { 'Collapsed' })
     $c['pnlRemIntRight'].Visibility = $c['pnlRemIntLeft'].Visibility
-    $c['btnRemModeLib'].Background = Get-HUBrush $(if ($int) { '#3E3E42' } else { '#1976D2' })
+    $c['btnRemModeLib'].Background = Get-HUBrush $(if ($int -or $wu) { '#3E3E42' } else { '#1976D2' })
     $c['btnRemModeInt'].Background = Get-HUBrush $(if ($int) { '#1976D2' } else { '#3E3E42' })
+    Show-HUWuMode $wu
     if ($int) {
         if (-not $c['spRintTenants'].Children.Count) { Update-HURintTenantChecks }
         Start-HURintLoad

@@ -797,8 +797,10 @@
                             <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="0,0,0,8">
                                 <Button x:Name="btnRemModeLib" Content="Bibliothek" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="0,0,2,0"
                                         ToolTip="Eigene Wartungspakete: mit KI erstellen, pruefen, verteilen"/>
-                                <Button x:Name="btnRemModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                <Button x:Name="btnRemModeInt" Content="In Intune" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,2,0"
                                         ToolTip="Alle Wartungsskripte, die schon in Intune liegen: Zuweisungen, Skripte, Ergebnisse, Loeschen"/>
+                                <Button x:Name="btnRemModeWu" Content="WIN-Updates" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,3" Margin="2,0,0,0"
+                                        ToolTip="Windows-Updates aller angehakten Tenants: Versionen, Patchstand, Update-Ringe und Profile"/>
                             </UniformGrid>
                             <Grid>
                             <DockPanel x:Name="pnlRemIntLeft" Visibility="Collapsed">
@@ -824,6 +826,31 @@
                                             <StackPanel Margin="0,2" ToolTip="{Binding Tip}">
                                                 <TextBlock Text="{Binding Title}" Foreground="#E0E0E0" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlWuLeft" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Top" Text="Windows-Updates" Style="{StaticResource SectionTitle}"/>
+                                <WrapPanel DockPanel.Dock="Top" x:Name="spWuTenants" Margin="0,0,0,4"/>
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                    <Button x:Name="btnWuLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" Background="#1976D2" Foreground="White" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
+                                    <TextBlock Text="Ansicht" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <ListBox x:Name="lstWuView" DockPanel.Dock="Top" Style="{StaticResource DarkListBox}" Margin="0,0,0,8">
+                                    <ListBoxItem Content="&#x1F4CA; &#xDC;bersicht (Versionen)" Tag="matrix" IsSelected="True"/>
+                                    <ListBoxItem Content="&#x2699; Ringe und Profile" Tag="policies"/>
+                                    <ListBoxItem Content="&#x1F4BB; Ger&#xE4;te" Tag="devices"/>
+                                </ListBox>
+                                <TextBlock DockPanel.Dock="Top" Text="Je Tenant" Foreground="#AAAAAA" FontSize="11" Margin="0,0,0,2"/>
+                                <TextBlock DockPanel.Dock="Bottom" x:Name="lblWuState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                <ListBox x:Name="lstWuTenants" Style="{StaticResource DarkListBox}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2" ToolTip="{Binding Tip}">
+                                                <TextBlock Text="{Binding Title}" Foreground="{Binding Color}" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Sub}" Foreground="#858585" FontSize="10" TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -956,6 +983,19 @@
                                     </StackPanel>
                                 </ScrollViewer>
                             </Border>
+                            </DockPanel>
+                            <DockPanel x:Name="pnlWuRight" Visibility="Collapsed">
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                    <Button x:Name="btnWuExport" DockPanel.Dock="Right" Content="&#x1F4C4; Export" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0" ToolTip="Angezeigte Tabelle als Excel/CSV speichern"/>
+                                    <Grid DockPanel.Dock="Right" Width="220">
+                                        <TextBox x:Name="txtWuFilter" Style="{StaticResource DarkTextBox}"/>
+                                        <TextBlock x:Name="lblWuFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                    </Grid>
+                                    <TextBlock x:Name="lblWuTitle" Style="{StaticResource SectionTitle}" Text="&#xDC;bersicht" VerticalAlignment="Center" Margin="0"/>
+                                </DockPanel>
+                                <TextBlock DockPanel.Dock="Top" x:Name="lblWuHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                <DataGrid x:Name="gridWu" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="True" IsReadOnly="True" HeadersVisibility="Column"
+                                          SelectionMode="Extended" CanUserSortColumns="True"/>
                             </DockPanel>
                             <DockPanel x:Name="pnlRemLibRight">
                             <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
