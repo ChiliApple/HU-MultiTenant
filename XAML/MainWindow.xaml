@@ -989,6 +989,8 @@
                                 <!-- Zeile 1: Titel bleibt immer sichtbar (Knoepfe in eigener Zeile darunter, umbrechend bei schmalem Fenster) -->
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                                     <Button x:Name="btnWuExport" DockPanel.Dock="Right" Content="&#x1F4C4; Export" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0" ToolTip="Angezeigte Tabelle als Excel/CSV speichern"/>
+                                    <Button x:Name="btnWuHelp" DockPanel.Dock="Right" Content="? So geht's" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
+                                            ToolTip="Kurze Anleitungen: neue Windows-Version verteilen, Treiber, Expedite, in andere Tenants uebernehmen, Fehlersuche"/>
                                     <Grid DockPanel.Dock="Right" Width="200">
                                         <TextBox x:Name="txtWuFilter" Style="{StaticResource DarkTextBox}"/>
                                         <TextBlock x:Name="lblWuFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>

@@ -319,6 +319,18 @@ function Register-HUWinUpdateHandlers {
     $c['btnWuNewExp'].Add_Click({ Start-HUWuNew 'expedite' })
     $c['btnWuNewRing'].Add_Click({ Start-HUWuNew 'ring' })
     $c['btnWuNewDrv'].Add_Click({ Start-HUWuNew 'driver' })
+    $c['btnWuHelp'].Add_Click({ Show-HURecipeWindow 'winupdates' })
+    # Aktionen fuer "So geht's" (Docs\SoGehts.json)
+    Register-HURecipeAction 'wu.newRing' { Start-HUWuNew 'ring' }
+    Register-HURecipeAction 'wu.newFeature' { Start-HUWuNew 'feature' }
+    Register-HURecipeAction 'wu.newDriver' { Start-HUWuNew 'driver' }
+    Register-HURecipeAction 'wu.newExpedite' { Start-HUWuNew 'expedite' }
+    Register-HURecipeAction 'wu.backup' { Select-HUWuView 'policies'; Save-HUWuBackupFile }
+    Register-HURecipeAction 'wu.import' { $script:Controls['btnWuImport'].RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) }
+    Register-HURecipeAction 'wu.viewMatrix' { Select-HUWuView 'matrix' }
+    Register-HURecipeAction 'wu.viewPolicies' { Select-HUWuView 'policies' }
+    Register-HURecipeAction 'wu.viewDevices' { Select-HUWuView 'devices' }
+    Register-HURecipeAction 'wu.viewDrivers' { Select-HUWuView 'drivers' }
     $c['btnWuBackup'].Add_Click({ try { Save-HUWuBackupFile } catch { Show-HUMessage "Sichern fehlgeschlagen: $($_.Exception.Message)" -Icon Error } })   # Fehler sonst unsichtbar
     $c['btnWuImport'].Add_Click({
             $dlg = New-Object Microsoft.Win32.OpenFileDialog
@@ -677,6 +689,11 @@ function Start-HUWuNew([string]$Kind) {
     }
     $script:WuView = 'policies'
     foreach ($li in $script:Controls['lstWuView'].Items) { if ("$($li.Tag)" -eq 'policies') { $script:Controls['lstWuView'].SelectedItem = $li } }
+}
+
+# Ansicht links waehlen (wie ein Klick in der Liste)
+function Select-HUWuView([string]$Tag) {
+    foreach ($li in $script:Controls['lstWuView'].Items) { if ("$($li.Tag)" -eq $Tag) { $script:Controls['lstWuView'].SelectedItem = $li } }
 }
 
 # Fester Ordner fuer Vorlagen - die App-Sicherung nimmt ihn mit
