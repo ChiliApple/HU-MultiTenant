@@ -769,7 +769,7 @@ function Start-HUWuNewSimple([string]$Kind, [string[]]$Keys) {
 function Show-HUWuFormDialog([string]$Title, [string]$Head, [string]$Info, [object[]]$Fields) {
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="600" SizeToContent="Height" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="NoResize">
+        Width="600" MinWidth="520" SizeToContent="Height" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
@@ -812,7 +812,8 @@ function Show-HUWuFormDialog([string]$Title, [string]$Head, [string]$Info, [obje
             } else {
                 $e = New-Object System.Windows.Controls.TextBox
                 $e.Style = $w.FindResource('DarkTextBox'); $e.Text = "$($f.Value)"; $e.HorizontalAlignment = 'Left'
-                $e.Width = $(if ($f.Width) { $f.Width } else { 70 }); $e.MaxWidth = 320
+                # Breite Felder (Name) fuellen die Spalte statt fester Breite - nie ueber den Rand hinaus
+                if ($f.Width) { $e.HorizontalAlignment = 'Stretch' } else { $e.Width = 70 }
                 if ($f.Tip) { $e.ToolTip = $f.Tip }
             }
             $e.Margin = [System.Windows.Thickness]::new(0, 3, 0, 3)
@@ -854,7 +855,7 @@ function Show-HUWuNewDialog([string]$Kind) {
     $feat = ($Kind -eq 'feature')
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="620" SizeToContent="Height" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="NoResize">
+        Width="620" MinWidth="560" SizeToContent="Height" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
     <Window.Resources>
         <!--HU:THEME-->
     </Window.Resources>
