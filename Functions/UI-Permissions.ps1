@@ -6,7 +6,8 @@
 .DESCRIPTION
     Die erteilten Berechtigungen stehen im Token (Claim "roles") - das Token wird im Hintergrund mit dem
     gespeicherten Secret geholt, ein vorheriges "Verbinden" ist nicht noetig.
-    Beschreibung und Risiko kommen aus Config\extensions-registry.json, "Genutzt von" aus den geladenen Extensions.
+    Beschreibung und Risiko kommen aus Config\extensions-registry.json, "Genutzt von" aus den geladenen Extensions und
+    der Zeile '# Berechtigungen:' der Snippets, "App braucht" aus Config\graph-permissions.json.
 .NOTES
     Dot-Source aus Main.ps1. Zielmaschine: der PC, auf dem HU-MultiTenant laeuft.
 #>
@@ -64,8 +65,21 @@ function Get-HUPermInfo([string]$Perm) {
 }
 
 # Berechtigung -> Extensions, die sie brauchen
-function Get-HUPermUsage {
+# -WithSnippets: zusaetzlich die Zeile '# Berechtigungen: ...' der eigenen Quick-Script-Snippets (nur Anzeige im Rechte-Fenster,
+# nicht fuer die Vorauswahl beim Erteilen)
+function Get-HUPermUsage([switch]$WithSnippets) {
     $map = @{}
+    if ($WithSnippets) {
+        foreach ($sn in @(try { Get-HUSnippets } catch { @() })) {
+            foreach ($l in @("$($sn.code)" -split "`n" | Select-Object -First 40)) {
+                if ($l -notmatch '^\s*#\s*Berechtigung(en)?\s*:\s*(.+)$') { continue }
+                foreach ($p in @([regex]::Matches($Matches[2], '[A-Za-z][A-Za-z-]*(\.[A-Za-z]+)+') | ForEach-Object { $_.Value })) {
+                    if (-not $map.ContainsKey("$p")) { $map["$p"] = New-Object System.Collections.Generic.List[string] }
+                    if (-not $map["$p"].Contains("Snippet: $($sn.name)")) { $map["$p"].Add("Snippet: $($sn.name)") }
+                }
+            }
+        }
+    }
     foreach ($item in @($script:ExtensionItems)) {
         foreach ($p in @($item.ExtensionObj.RequiredPermissions)) {
             if (-not "$p") { continue }
@@ -74,6 +88,17 @@ function Get-HUPermUsage {
         }
     }
     return $map
+}
+
+# Was die App selbst braucht (Config\graph-permissions.json): Standard | Verteilen | bei Bedarf; fehlt = kein App-Recht
+function Get-HUAppPermNeed {
+    $m = @{}
+    try {
+        $cat = Get-HUPermissionCatalog $script:AppRoot
+        $vt = @($cat.verteilen)
+        foreach ($e in @($cat.permissions)) { $m["$($e.name)"] = $(if ($vt -contains "$($e.name)") { 'Verteilen' } elseif ($e.default -eq $true) { 'Standard' } else { 'bei Bedarf' }) }
+    } catch { }
+    return $m
 }
 
 function Get-HUTenantDisplayName([string]$Key) {
@@ -132,7 +157,8 @@ function Update-HUPermView {
     $ui = $script:PermUi
     if (-not $ui -or -not $ui.Window.IsLoaded) { return }
     $c = $ui.C
-    $usage = Get-HUPermUsage
+    $usage = Get-HUPermUsage -WithSnippets
+    $appNeed = Get-HUAppPermNeed
     $key = $ui.Key
     $entry = $script:PermCache[$key]
     $roles = if ($entry) { @($entry.Roles) } else { @() }
@@ -161,13 +187,17 @@ function Update-HUPermView {
             $o = [ordered]@{ Berechtigung = $p; Risiko = $i.Risk }
             foreach ($k in $keys) {
                 $e = $script:PermCache[$k]
-                $o[$k] = if (-not $e) { '...' } elseif ($e.Error) { '?' } elseif (@($e.Roles) -contains $p) { [string][char]0x2714 } else { '-' }
+                $o[$k] = if (-not $e) { '...' } elseif ($e.Error) { '?' } elseif (@($e.Roles) -contains $p) { [string][char]0x2714 }
+                         elseif ($p -match '^(.+)\.Read\.All$' -and @($e.Roles) -contains "$($Matches[1]).ReadWrite.All") { "($([char]0x2714))" } else { '-' }
             }
+            $need = "$($appNeed[$p])"
+            if (-not $need -and -not $usage[$p] -and @($keys | Where-Object { $script:PermCache[$_] -and @($script:PermCache[$_].Roles) -contains $p }).Count) { $need = 'nicht gebraucht' }
+            $o['App braucht'] = $need
             $o['Genutzt von'] = $(if ($usage[$p]) { @($usage[$p]) -join ', ' } else { '' })
             [pscustomobject]$o
         }
         $c.btnWriteOff.IsEnabled = $false; $c.btnWriteOn.IsEnabled = $false   # im Vergleich kein einzelner Tenant gewaehlt
-        $c.lblGranted.Text = "Vergleich aller Tenants  ($([char]0x2714) erteilt, - nicht erteilt, ? kein Token)"
+        $c.lblGranted.Text = "Vergleich aller Tenants  ($([char]0x2714) erteilt, ($([char]0x2714)) im ReadWrite-Recht enthalten, - nicht erteilt, ? kein Token)"
         $c.gridGranted.ItemsSource = @($rows)
         $errs = @($keys | Where-Object { $script:PermCache[$_] -and $script:PermCache[$_].Error } | ForEach-Object { "$(Get-HUTenantDisplayName $_): $($script:PermCache[$_].Error)" })
         $c.txtStatus.Text = $(if ($errs.Count) { $errs -join ' | ' } elseif (@($keys | Where-Object { -not $script:PermCache[$_] }).Count) { 'Lese ...' } else { "$($keys.Count) Tenants gelesen" })
@@ -175,7 +205,7 @@ function Update-HUPermView {
         $c.lblGranted.Text = "Erteilt f$([char]0xFC)r $(Get-HUTenantDisplayName $key)"
         $c.gridGranted.ItemsSource = @(foreach ($p in $roles) {
                 $i = Get-HUPermInfo $p
-                [pscustomobject][ordered]@{ Berechtigung = $p; Risiko = $i.Risk; Beschreibung = $i.Desc; 'Genutzt von' = $(if ($usage[$p]) { @($usage[$p]) -join ', ' } else { '' }) }
+                [pscustomobject][ordered]@{ Berechtigung = $p; Risiko = $i.Risk; 'App braucht' = $(if ($appNeed[$p]) { "$($appNeed[$p])" } elseif (-not $usage[$p]) { 'nicht gebraucht' } else { '' }); Beschreibung = $i.Desc; 'Genutzt von' = $(if ($usage[$p]) { @($usage[$p]) -join ', ' } else { '' }) }
             })
         $wp = @($script:HUWritePackage | Where-Object { $roles -contains $_ })
         $since = Get-HUWritePkgSince $key
@@ -249,7 +279,7 @@ function Show-HUPermissions([string]$TenantKey = '') {
     $c.gridGranted.Add_AutoGeneratingColumn({
             param($s, $e)
             $h = "$($e.PropertyName)"
-            if ($h -notin 'Berechtigung', 'Risiko', 'Beschreibung', 'Genutzt von') { $e.Column.Header = Get-HUTenantDisplayName $h }
+            if ($h -notin 'Berechtigung', 'Risiko', 'App braucht', 'Beschreibung', 'Genutzt von') { $e.Column.Header = Get-HUTenantDisplayName $h }
         })
     $c.cmbTenant.Add_SelectionChanged({
             $script:PermUi.Key = "$($script:PermUi.C.cmbTenant.SelectedItem.Tag)"
