@@ -459,7 +459,6 @@ function Set-HUWuSettings {
     # 074 B11: die Freigabeart einer Treiber-Richtlinie laesst sich nach dem Anlegen nicht aendern (Microsoft Learn)
     if ($Art -eq 'Treiber-Update' -and $Changes.ContainsKey('approvalType')) { throw 'Die Freigabeart (automatisch/manuell) einer Treiber-Richtlinie laesst sich nicht aendern - dafuer eine neue Richtlinie anlegen' }
     $before = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id"
-    $file = Save-HUWuBefore $TenantKey $Art $before $BackupRoot
     # 074 B6: nur Felder senden, die sich in DIESEM Tenant wirklich aendern (sonst gleicht Speichern alle Tenants an)
     $body = @{ '@odata.type' = $e.Type }
     foreach ($k in $Changes.Keys) {
@@ -469,7 +468,9 @@ function Set-HUWuSettings {
         }
         $body[$k] = $Changes[$k]
     }
-    if ($body.Count -gt 1) { [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id" -Method PATCH -Body $body) }
+    if ($body.Count -le 1) { return '' }   # nichts zu aendern - keine Sicherung, kein PATCH (075 Nachpruefung)
+    $file = Save-HUWuBefore $TenantKey $Art $before $BackupRoot
+    [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id" -Method PATCH -Body $body)
     return $file
 }
 

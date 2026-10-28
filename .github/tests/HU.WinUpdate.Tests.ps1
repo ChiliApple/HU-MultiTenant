@@ -283,7 +283,7 @@ Describe 'Windows-Updates: aendern (Schritt 2)' {
     It '074 B3: Import verwirft id, Zuweisungen und fremde @odata-Angaben; Name ohne Steuerzeichen' {
         $f = Join-Path ([IO.Path]::GetTempPath()) "wu-b3-$([guid]::NewGuid()).json"
         try {
-            $doc = @{ Format = 'HU-WinUpdates'; FormatVersion = 1; Items = @(@{ Art = 'Update-Ring'; Name = "Ring`u{202E}`tA"; Body = @{ id = 'x'; assignments = @(@{ target = @{ groupId = 'g' } }); 'x@odata.bind' = 'y'; displayName = 'anders'; qualityUpdatesDeferralPeriodInDays = 3 } }) }
+            $doc = @{ Format = 'HU-WinUpdates'; FormatVersion = 1; Items = @(@{ Art = 'Update-Ring'; Name = "Ring$([char]0x202E)`tA"; Body = @{ id = 'x'; assignments = @(@{ target = @{ groupId = 'g' } }); 'x@odata.bind' = 'y'; displayName = 'anders'; qualityUpdatesDeferralPeriodInDays = 3 } }) }
             [IO.File]::WriteAllText($f, ($doc | ConvertTo-Json -Depth 10))
             $r = @(Read-HUWuExportFile $f)
             $r.Count | Should -Be 1

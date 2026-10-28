@@ -266,7 +266,7 @@ function Export-HUWuTable {
     if (-not $rows.Count) { Show-HUMessage 'Keine Zeilen zum Speichern.' -Icon Info; return }
     $rows = @($rows | Select-Object -Property * -ExcludeProperty Key, AsgList, Raw, Items)   # interne Spalten nicht mitspeichern
     # 074 B33: Werte, die mit = + - @ beginnen, wuerde Excel als Formel ausfuehren - mit ' entschaerfen
-    foreach ($r in $rows) { foreach ($pp in @($r.PSObject.Properties)) { if ($pp.Value -is [string] -and $pp.Value -match '^[=+\-@\t\r]') { $pp.Value = "'" + $pp.Value } } }
+    foreach ($r in $rows) { foreach ($pp in @($r.PSObject.Properties)) { if ($pp.Value -is [string] -and $pp.Value -match '^\s*[=+\-@]') { $pp.Value = "'" + $pp.Value } } }
     if (-not (Get-Command Export-Excel -ErrorAction SilentlyContinue) -and (Get-Module -ListAvailable -Name ImportExcel)) { Import-Module ImportExcel -DisableNameChecking }
     $xl = [bool](Get-Command Export-Excel -ErrorAction SilentlyContinue)
     $sheet = @{ matrix = 'Uebersicht'; policies = 'Ringe und Profile'; devices = 'Geraete'; drivers = 'Treiber' }[$script:WuView]
@@ -543,7 +543,7 @@ function Start-HUWuJob([string]$Op, [object[]]$Work, [hashtable]$P, [string]$Wha
                             $msg = "$($x.Name) [$($x.Art), $($x.Id)]: Zuweisung entfernt ($n bleiben, vorher: $($inf.Backup))"
                             if ($inf.Mismatch) { $msg += " - $($inf.Mismatch)"; $lvl = 'WARN' }
                         }
-                        'settings' { $f = Set-HUWuSettings -TenantKey $tk -Settings $Settings -Art $x.Art -Id $x.Id -Changes $P.Changes; $msg = "$($x.Name): gespeichert (vorher: $f)" }
+                        'settings' { $f = Set-HUWuSettings -TenantKey $tk -Settings $Settings -Art $x.Art -Id $x.Id -Changes $P.Changes; $msg = $(if ($f) { "$($x.Name): gespeichert (vorher: $f)" } else { "$($x.Name): schon so eingestellt - unveraendert" }) }
                         'pause' { [void](Set-HUWuRingPause -TenantKey $tk -Settings $Settings -Id $x.Id -What $x.What -Action $x.Action); $msg = "$($x.Name): $($x.What) $($x.Action)" }
                         'delete' { $f = Remove-HUWuProfile -TenantKey $tk -Settings $Settings -Art $x.Art -Id $x.Id -Force:([bool]$x.Force); $msg = "$($x.Name): entfernt (vorher: $f)" }
                         'newFeature' { $id = New-HUWuFeatureProfile -TenantKey $tk -Settings $Settings -Name $P.Name -Version $P.Version -Rollout $P.Rollout -Win10Fallback ([bool]$P.Win10); $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
@@ -645,6 +645,18 @@ function Start-HUWuSave {
             if ($auto) { $r = Get-HUWuIntField 'defer' 0 30 'Aufschub'; if (-not $r.Ok) { return }; if ($null -ne $r.Value) { $ch['deploymentDeferralInDays'] = $r.Value; $txt += "  Aufschub: $($r.Value) Tage" } }
         }
         default { return }
+    }
+    # 075: nur Felder senden, die gegenueber der Anzeige (Werte des ersten Tenants) geaendert wurden -
+    # sonst wuerden nicht angefasste Felder in den anderen Tenants auf die Werte des ersten gezogen
+    $shown = @($g.Items)[0].Raw
+    if ($shown) {
+        foreach ($k in @($ch.Keys)) {
+            if (-not $shown.PSObject.Properties[$k]) { continue }
+            $o = ConvertTo-Json -InputObject $shown.$k -Depth 10 -Compress; $n = ConvertTo-Json -InputObject $ch[$k] -Depth 10 -Compress
+            if ($o -eq $n -or ($null -eq $shown.$k -and $null -eq $ch[$k])) { $ch.Remove($k) }
+        }
+        if (-not $ch.Count) { Show-HUMessage 'Nichts geaendert - es gibt nichts zu speichern.' -Icon Info; return }
+        $txt = @($txt) + @('', "  Gesendet werden nur die geaenderten Felder: $(@($ch.Keys) -join ', ')")
     }
     $work = @(foreach ($it in @($g.Items)) { @{ Tenant = $it.Tenant; Art = $it.Art; Id = $it.Id; Name = $it.Name } })
     if (-not (Confirm-HU -Warning "$($g.Art) '$($g.Name)' aendern in: $($g.Tenants)`n`n$($txt -join "`n")`n`nJe Tenant wird nur geaendert, was dort anders ist. Der bisherige Stand wird vorher gesichert (%APPDATA%\HU-MultiTenant\WinUpdates-vorher).")) { return }
