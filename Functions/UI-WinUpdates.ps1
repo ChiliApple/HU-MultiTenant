@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Reiter "Wartung", Ansicht "WIN-Updates" (2.6.3, Schritt 1: nur lesen): Windows-Versionen und Patchstand der Geraete,
@@ -23,7 +23,9 @@ function Show-HUWuMode([bool]$On) {
     $c['btnRemModeWu'].Background = Get-HUBrush $(if ($On) { '#1976D2' } else { '#3E3E42' })
     if ($On) {
         if (-not $c['spWuTenants'].Children.Count) { Update-HUWuTenantChecks }
-        Start-HUWuLoad
+        # sofort lesen; Stand aelter als 15 Minuten wird beim Oeffnen erneuert
+        $old = @($script:WuRaw.Values | Where-Object { $_.Time -lt (Get-Date).AddMinutes(-15) }).Count
+        Start-HUWuLoad -Force:($old -gt 0)
         Update-HUWuView
     }
 }
@@ -64,6 +66,7 @@ function Start-HUWuLoad([switch]$Force) {
     $cat = $null
     foreach ($v in $script:WuRaw.Values) { if ($v.Inv.Catalog -and $v.Inv.Catalog.Count) { $cat = $v.Inv.Catalog; break } }
     $script:Controls['lblWuState'].Text = "Lese Windows-Updates aus $($need.Count) Tenant(s) ..."
+    Set-HUWuRunDot $true
     [void](Start-HUJob -Name 'WuLoad' -Quiet -Output $script:Controls['rtbRem'] -Vars @{ Need = $need; Cat = $cat } -Code {
             $c = $Cat
             foreach ($k in $Need) {
@@ -108,6 +111,7 @@ function Update-HUWuView {
                 Tip = (@("$($s.Text)") + @($i.Errors) + $warn) -join "`n" }
         })
     $loading = Test-HUJobRunning 'WuLoad'
+    Set-HUWuRunDot $loading
     $missing = @(Get-HUWuTenants | Where-Object { -not $script:WuRaw[$_] }).Count
     $c['lblWuState'].Text = $(if (-not @(Get-HUWuTenants).Count) { 'Oben Tenants anhaken.' } elseif ($loading -or $missing) { "Lese ... ($missing Tenant(s) offen)" } else {
             $t = @($script:WuRaw.Values | ForEach-Object { $_.Time } | Sort-Object)[0]; "Stand $(if ($t) { $t.ToString('HH:mm') }) - neu laden mit $([char]0x21BB)" })
@@ -135,6 +139,23 @@ function Update-HUWuView {
     if ($f) { $rows = @($rows | Where-Object { $o = $_; @($o.PSObject.Properties | Where-Object { "$($_.Value)" -like "*$f*" }).Count }) }
     $script:WuRows = $rows
     $c['gridWu'].ItemsSource = $rows
+}
+
+# gruener pulsierender Punkt neben dem Titel, solange gelesen wird
+function Set-HUWuRunDot([bool]$On) {
+    $d = $script:Controls['dotWuRun']
+    if (-not $d) { return }
+    if ($On) {
+        if ($d.Visibility -eq 'Visible') { return }
+        $an = New-Object System.Windows.Media.Animation.DoubleAnimation
+        $an.From = 1.0; $an.To = 0.2; $an.Duration = [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(700))
+        $an.AutoReverse = $true; $an.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+        $d.Visibility = 'Visible'
+        $d.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $an)
+    } else {
+        $d.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+        $d.Opacity = 1.0; $d.Visibility = 'Collapsed'
+    }
 }
 
 function Export-HUWuTable {

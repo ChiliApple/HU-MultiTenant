@@ -984,13 +984,14 @@
                                 </ScrollViewer>
                             </Border>
                             </DockPanel>
-                            <DockPanel x:Name="pnlWuRight" Visibility="Collapsed">
+                            <DockPanel x:Name="pnlWuRight" Visibility="Collapsed" Margin="6,10,0,0">
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                                     <Button x:Name="btnWuExport" DockPanel.Dock="Right" Content="&#x1F4C4; Export" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0" ToolTip="Angezeigte Tabelle als Excel/CSV speichern"/>
                                     <Grid DockPanel.Dock="Right" Width="220">
                                         <TextBox x:Name="txtWuFilter" Style="{StaticResource DarkTextBox}"/>
                                         <TextBlock x:Name="lblWuFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
                                     </Grid>
+                                    <Ellipse x:Name="dotWuRun" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed" ToolTip="liest ..."/>
                                     <TextBlock x:Name="lblWuTitle" Style="{StaticResource SectionTitle}" Text="&#xDC;bersicht" VerticalAlignment="Center" Margin="0"/>
                                 </DockPanel>
                                 <TextBlock DockPanel.Dock="Top" x:Name="lblWuHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,6"/>
