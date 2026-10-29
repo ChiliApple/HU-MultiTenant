@@ -4,7 +4,7 @@
     Abschied vom Startbildschirm: Das Logo verwandelt sich in einen kleinen Saugroboter, der den Startbildschirm
     in drei Bahnen im Zickzack aufsaugt (dahinter wird der Startbildschirm durchsichtig).
 .DESCRIPTION
-    Laeuft nach dem Aufbau des Hauptfensters (Close-HUSplash -Animate in Main.ps1), rund 4,5 Sekunden, blockiert nichts.
+    Laeuft nach dem Aufbau des Hauptfensters (Close-HUSplash -Animate in Main.ps1), Verwandlung nach 0,6 s, Fahrt rund 4 s, blockiert nichts.
     Klick auf den Startbildschirm = sofort fertig. Aus: Einstellungen > Allgemein > Startanimation (ui.splashAnimation),
     ausserdem wenn Windows-Animationen ausgeschaltet sind. Alles mit WPF-Formen gezeichnet, keine Bilddateien.
 .NOTES
@@ -145,17 +145,27 @@ function Start-HUSplashSweep([switch]$Idle) {
         }
     }
     $bot = New-HUSplashBot $r
-    $bot.Scale.ScaleX = 0; $bot.Scale.ScaleY = 0
+    # Verwandlung: Roboter erscheint in Groesse und Lage des Logos und wird aus der Unschaerfe scharf
+    $script:SplashLogoSize = $(if ($img -and $img.ActualWidth -gt 0) { [double]$img.ActualWidth } else { 112.0 })
+    $bot.Scale.ScaleX = $script:SplashLogoSize / (2 * $r); $bot.Scale.ScaleY = $bot.Scale.ScaleX
+    $bot.Root.Opacity = 0
+    $bb = New-Object System.Windows.Media.Effects.BlurEffect; $bb.Radius = 14; $bot.Root.Effect = $bb; $bot.Blur = $bb
     $bot.Tr.X = $p0.X; $bot.Tr.Y = $p0.Y
     $script:SplashP0 = $p0
     [void]$ov.Children.Add($bot.Root)
 
     # Logo schrumpft um seine Mitte
     $ist = $null
-    if ($img) { $ist = New-Object System.Windows.Media.ScaleTransform; $img.RenderTransformOrigin = New-Object System.Windows.Point 0.5, 0.5; $img.RenderTransform = $ist }
+    $irt = $null; $ibl = $null
+    if ($img) {
+        $ist = New-Object System.Windows.Media.ScaleTransform; $irt = New-Object System.Windows.Media.RotateTransform
+        $itg = New-Object System.Windows.Media.TransformGroup; [void]$itg.Children.Add($ist); [void]$itg.Children.Add($irt)
+        $img.RenderTransformOrigin = New-Object System.Windows.Point 0.5, 0.5; $img.RenderTransform = $itg
+        $ibl = New-Object System.Windows.Media.Effects.BlurEffect; $ibl.Radius = 0; $img.Effect = $ibl
+    }
 
-    $script:SplashAnim = @{ W = $W; H = $H; Lane = $lane; R = $r; Bd = $bd; Lanes = $lanes; Bot = $bot; Dust = $dust; Img = $img; ImgScale = $ist
-        Seg = @(@{ K = 'morph'; D = 700; T = 0 }, @{ K = 'idle'; D = 1e9; T = 700 }); Total = 1e9; SW = [System.Diagnostics.Stopwatch]::StartNew(); Handler = $null; Last = 0
+    $script:SplashAnim = @{ W = $W; H = $H; Lane = $lane; R = $r; Bd = $bd; Lanes = $lanes; Bot = $bot; Dust = $dust; Img = $img; ImgScale = $ist; ImgRot = $irt; ImgBlur = $ibl
+        Seg = @(@{ K = 'wait'; D = 600; T = 0 }, @{ K = 'morph'; D = 1000; T = 600 }, @{ K = 'idle'; D = 1e9; T = 1600 }); Total = 1e9; MorphEnd = 1600; SW = [System.Diagnostics.Stopwatch]::StartNew(); Handler = $null; Last = 0
         AutoGo = -not $Idle; Going = $false; P0 = $p0 }
     $h = [System.EventHandler] { try { Update-HUSplashSweep } catch { Stop-HUSplashSweep } }
     $script:SplashAnim.Handler = $h
@@ -174,9 +184,10 @@ function Start-HUSplashGo {
     $y = @(0..2 | ForEach-Object { $lane * ($_ + 0.5) })
     $now = [double]$A.SW.ElapsedMilliseconds
     # noch in der Verwandlung: diese erst fertig spielen
-    $t = [Math]::Max($now, 700)
+    $me = [double]$A.MorphEnd
+    $t = [Math]::Max($now, $me)
     $b = $A.Bot
-    $seg = @(@{ K = 'morph'; D = 700; T = 0 }, @{ K = 'idle'; D = [Math]::Max(0, $t - 700); T = 700 })
+    $seg = @(@($A.Seg | Where-Object { $_.K -in 'wait', 'morph' }) + @(@{ K = 'idle'; D = [Math]::Max(0, $t - $me); T = $me }))
     $sx = $b.Tr.X; $sy = $b.Tr.Y
     if ($A.P0) { $sx = $A.P0.X; $sy = $A.P0.Y }
     $plan = @(
@@ -208,13 +219,25 @@ function Update-HUSplashSweep {
     $b = $A.Bot; $r = $A.R
     $x = $b.Tr.X; $y = $b.Tr.Y; $ang = $b.Rot.Angle; $dir = 0; $curLane = -1
     switch ($s.K) {
+        'wait' { return }   # erst das Logo zeigen
         'morph' {
-            $k = Get-HUEaseOutBack $u
-            $b.Scale.ScaleX = $k * 1.35; $b.Scale.ScaleY = $k * 1.35
-            $ang = -360 * (1 - (Get-HUEaseInOut $u))
-            if ($A.ImgScale) { $q = [Math]::Max(0, 1 - $u * 1.4); $A.ImgScale.ScaleX = $q; $A.ImgScale.ScaleY = $q; $A.Img.Opacity = $q }
+            # Ueberblenden: Logo dreht sich weg und verschwimmt, der Roboter dreht sich in seiner Groesse herein und wird scharf
+            $k = Get-HUEaseInOut $u
+            $z0 = $script:SplashLogoSize / (2 * $r)
+            $z = $z0 + (1.35 - $z0) * $k
+            $b.Scale.ScaleX = $z; $b.Scale.ScaleY = $z
+            $ang = -120 * (1 - $k)
+            $b.Root.Opacity = [Math]::Min(1, $k * 1.6)
+            if ($b.Blur) { $b.Blur.Radius = 14 * (1 - $k) }
+            if ($A.Img) {
+                $A.Img.Opacity = [Math]::Max(0, 1 - $k * 1.5)
+                $q = 1 - 0.25 * $k; $A.ImgScale.ScaleX = $q; $A.ImgScale.ScaleY = $q
+                if ($A.ImgRot) { $A.ImgRot.Angle = 120 * $k }
+                if ($A.ImgBlur) { $A.ImgBlur.Radius = 12 * $k }
+            }
         }
         'idle' {
+            if ($b.Blur) { $b.Root.Effect = $null; $b.Blur = $null; $b.Root.Opacity = 1 }
             # wartet am Logo: atmet leicht, schaut sich um
             if ($A.AutoGo) { [void](Start-HUSplashGo); return }
             $q = 1.35 + 0.04 * [Math]::Sin($t / 260)
