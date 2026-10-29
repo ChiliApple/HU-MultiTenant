@@ -1,6 +1,6 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.6.5 (in Arbeit)
+## v2.6.5 (Stable, 29.10.2026)
 
 ### Geändert
 - **Release signieren:** Kurz nach dem Merge laufen erst die automatischen Tests, das Release entsteht einige Minuten später. Bisher hieß es in dieser Zeit „Nichts zu signieren“. Jetzt erkennt die App, dass die neue Version noch gebaut wird, und bietet an zu warten: Sie fragt alle 20 Sekunden nach (höchstens 15 Minuten) und signiert danach nach der üblichen Rückfrage. Gilt auch für Zusatzmodule. „Release freigeben“ weist in dieser Zeit darauf hin.
