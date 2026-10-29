@@ -7,7 +7,7 @@
 - **Scrollbalken:** in allen Fenstern dunkel und schmaler, passend zum Design.
 - **Reiter-Hinweis** („Reiter mit der Maus ziehen …“) erscheint nur noch über dem Reiterkopf, nicht mehr über Spaltenköpfen und anderen Stellen im Reiter.
 
-- **Startanimation:** Zum Abschied verwandelt sich das Logo in einen kleinen Saugroboter, der den Startbildschirm in drei Bahnen aufsaugt (rund 2 Sekunden, Klick darauf überspringt). Abschaltbar unter *Einstellungen › Allgemein › Startanimation*; entfällt, wenn Windows-Animationen aus sind.
+- **Startanimation:** Zum Abschied verwandelt sich das Logo in einen kleinen Saugroboter, der den Startbildschirm in drei Bahnen aufsaugt (rund 4,5 Sekunden, Klick darauf überspringt). Abschaltbar unter *Einstellungen › Allgemein › Startanimation*; entfällt, wenn Windows-Animationen aus sind.
 
 ### PowerShell 7
 - **HU-MultiTenant läuft jetzt auch unter PowerShell 7** (Windows). Alle automatischen Tests und der Starttest laufen zusätzlich unter PowerShell 7.

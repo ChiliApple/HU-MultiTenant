@@ -4,7 +4,7 @@
     Abschied vom Startbildschirm: Das Logo verwandelt sich in einen kleinen Saugroboter, der den Startbildschirm
     in drei Bahnen im Zickzack aufsaugt (dahinter wird der Startbildschirm durchsichtig).
 .DESCRIPTION
-    Laeuft nach dem Aufbau des Hauptfensters (Close-HUSplash -Animate in Main.ps1), rund 2 Sekunden, blockiert nichts.
+    Laeuft nach dem Aufbau des Hauptfensters (Close-HUSplash -Animate in Main.ps1), rund 4,5 Sekunden, blockiert nichts.
     Klick auf den Startbildschirm = sofort fertig. Aus: Einstellungen > Allgemein > Startanimation (ui.splashAnimation),
     ausserdem wenn Windows-Animationen ausgeschaltet sind. Alles mit WPF-Formen gezeichnet, keine Bilddateien.
 .NOTES
@@ -154,13 +154,13 @@ function Start-HUSplashSweep {
     # Fahrplan (ms): Verwandlung, Fahrt zur ersten Bahn, drei Bahnen mit Wenden
     $y = @(0..2 | ForEach-Object { $lane * ($_ + 0.5) })
     $seg = @(
-        @{ K = 'morph'; D = 430 }
-        @{ K = 'move'; D = 280; X0 = $p0.X; Y0 = $p0.Y; X1 = $r * 0.9; Y1 = $y[0]; A0 = 0; A1 = 0 }
-        @{ K = 'lane'; D = 470; L = 0; X0 = $r * 0.9; X1 = $W + 0.6 * $r; Dir = 1 }
-        @{ K = 'turn'; D = 200; X0 = $W + 0.6 * $r; Y0 = $y[0]; X1 = $W - 0.9 * $r; Y1 = $y[1]; A0 = 0; A1 = 180; Done = 0 }
-        @{ K = 'lane'; D = 470; L = 1; X0 = $W - 0.9 * $r; X1 = -0.6 * $r; Dir = -1 }
-        @{ K = 'turn'; D = 200; X0 = -0.6 * $r; Y0 = $y[1]; X1 = 0.9 * $r; Y1 = $y[2]; A0 = 180; A1 = 360; Done = 1 }
-        @{ K = 'lane'; D = 520; L = 2; X0 = 0.9 * $r; X1 = $W + 1.6 * $r; Dir = 1 }
+        @{ K = 'morph'; D = 700 }
+        @{ K = 'move'; D = 450; X0 = $p0.X; Y0 = $p0.Y; X1 = $r * 0.9; Y1 = $y[0]; A0 = 0; A1 = 0 }
+        @{ K = 'lane'; D = 900; L = 0; X0 = $r * 0.9; X1 = $W + 0.6 * $r; Dir = 1 }
+        @{ K = 'turn'; D = 340; X0 = $W + 0.6 * $r; Y0 = $y[0]; X1 = $W - 0.9 * $r; Y1 = $y[1]; A0 = 0; A1 = 180; Done = 0 }
+        @{ K = 'lane'; D = 900; L = 1; X0 = $W - 0.9 * $r; X1 = -0.6 * $r; Dir = -1 }
+        @{ K = 'turn'; D = 340; X0 = -0.6 * $r; Y0 = $y[1]; X1 = 0.9 * $r; Y1 = $y[2]; A0 = 180; A1 = 360; Done = 1 }
+        @{ K = 'lane'; D = 1000; L = 2; X0 = 0.9 * $r; X1 = $W + 1.6 * $r; Dir = 1 }
     )
     $t = 0; foreach ($s in $seg) { $s.T = $t; $t += $s.D }
     $script:SplashAnim = @{ W = $W; H = $H; Lane = $lane; R = $r; Bd = $bd; Lanes = $lanes; Bot = $bot; Dust = $dust; Img = $img; ImgScale = $ist
