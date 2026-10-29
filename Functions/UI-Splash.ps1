@@ -191,12 +191,12 @@ function Start-HUSplashGo {
     $sx = $b.Tr.X; $sy = $b.Tr.Y
     if ($A.P0) { $sx = $A.P0.X; $sy = $A.P0.Y }
     $plan = @(
-        @{ K = 'move'; D = 450; X0 = $sx; Y0 = $sy; X1 = $r * 0.9; Y1 = $y[0]; A0 = [double]$b.Rot.Angle }
-        @{ K = 'lane'; D = 900; L = 0; X0 = $r * 0.9; X1 = $W + 0.6 * $r; Dir = 1 }
-        @{ K = 'turn'; D = 340; X0 = $W + 0.6 * $r; Y0 = $y[0]; X1 = $W - 0.9 * $r; Y1 = $y[1]; A0 = 0; A1 = 180; Done = 0 }
-        @{ K = 'lane'; D = 900; L = 1; X0 = $W - 0.9 * $r; X1 = -0.6 * $r; Dir = -1 }
-        @{ K = 'turn'; D = 340; X0 = -0.6 * $r; Y0 = $y[1]; X1 = 0.9 * $r; Y1 = $y[2]; A0 = 180; A1 = 360; Done = 1 }
-        @{ K = 'lane'; D = 1000; L = 2; X0 = 0.9 * $r; X1 = $W + 1.6 * $r; Dir = 1 }
+        @{ K = 'move'; D = 650; X0 = $sx; Y0 = $sy; X1 = $r * 0.9; Y1 = $y[0]; A0 = [double]$b.Rot.Angle }
+        @{ K = 'lane'; D = 1300; L = 0; X0 = $r * 0.9; X1 = $W + 0.6 * $r; Dir = 1 }
+        @{ K = 'turn'; D = 450; X0 = $W + 0.6 * $r; Y0 = $y[0]; X1 = $W - 0.9 * $r; Y1 = $y[1]; A0 = 0; A1 = 180; Done = 0 }
+        @{ K = 'lane'; D = 1300; L = 1; X0 = $W - 0.9 * $r; X1 = -0.6 * $r; Dir = -1 }
+        @{ K = 'turn'; D = 450; X0 = -0.6 * $r; Y0 = $y[1]; X1 = 0.9 * $r; Y1 = $y[2]; A0 = 180; A1 = 360; Done = 1 }
+        @{ K = 'lane'; D = 1400; L = 2; X0 = 0.9 * $r; X1 = $W + 1.6 * $r; Dir = 1 }
     )
     foreach ($p in $plan) { $p.T = $t; $t += $p.D; $seg += $p }
     $A.Seg = $seg; $A.Total = $t
@@ -210,7 +210,13 @@ function Get-HUEaseOutBack([double]$x) { $c1 = 1.70158; $c3 = $c1 + 1; return 1 
 function Update-HUSplashSweep {
     $A = $script:SplashAnim
     if (-not $A) { return }
-    $t = [double]$A.SW.ElapsedMilliseconds
+    $raw = [double]$A.SW.ElapsedMilliseconds
+    if (-not $A.ContainsKey('Hold')) { $A.Hold = 0.0; $A.LastRaw = $raw }
+    # letzte Bahn: kurz vor dem Ende warten, bis das Hauptfenster steht (sonst waere eine Zeit lang gar nichts zu sehen)
+    $sy = $(if (Get-Variable -Name SplashSync -Scope Script -ErrorAction SilentlyContinue) { $script:SplashSync } else { $null })
+    if ($sy -and -not $sy.MainReady -and $A.Going -and ($raw - $A.Hold) -ge ($A.Total - 450) -and $A.SW.Elapsed.TotalSeconds -lt 60) { $A.Hold += $raw - $A.LastRaw }
+    $A.LastRaw = $raw
+    $t = $raw - $A.Hold
     if ($t -ge $A.Total) { Stop-HUSplashSweep; return }
     $dt = ($t - $A.Last) / 1000.0; $A.Last = $t
     $s = @($A.Seg | Where-Object { $t -ge $_.T -and $t -lt ($_.T + $_.D) })[0]
@@ -237,12 +243,13 @@ function Update-HUSplashSweep {
             }
         }
         'idle' {
-            if ($b.Blur) { $b.Root.Effect = $null; $b.Blur = $null; $b.Root.Opacity = 1 }
-            # wartet am Logo: atmet leicht, schaut sich um
+            if ($b.Blur) { $b.Blur.Radius = 0; $b.Root.Opacity = 1 }
+            # wartet am Logo: atmet leicht, schaut sich um - weich aus der Verwandlung heraus (Ausschlag waechst in 0,8 s an)
             if ($A.AutoGo) { [void](Start-HUSplashGo); return }
-            $q = 1.35 + 0.04 * [Math]::Sin($t / 260)
+            $ti = $t - $s.T; $amp = [Math]::Min(1, $ti / 800); $amp = $amp * $amp
+            $q = 1.35 + 0.035 * $amp * [Math]::Sin($ti / 300)
             $b.Scale.ScaleX = $q; $b.Scale.ScaleY = $q
-            $ang = 14 * [Math]::Sin($t / 520)
+            $ang = 12 * $amp * [Math]::Sin($ti / 560)
             if ($A.Img) { $A.Img.Opacity = 0 }
         }
         'move' {
@@ -343,7 +350,7 @@ function Get-HUSplashIcon([string]$AppRoot) {
 
 # Startet den Startbildschirm im eigenen STA-Thread. Rueckgabe: $sync (Status/Go/Close) oder $null (dann alter Weg).
 function Start-HUSplashThread([string]$AppRoot, [string]$Version) {
-    $sync = [hashtable]::Synchronized(@{ Status = 'wird geladen ...'; Go = $false; Close = $false; Ready = $false; Error = ''; Anim = $true })
+    $sync = [hashtable]::Synchronized(@{ Status = 'wird geladen ...'; Go = $false; MainReady = $false; Close = $false; Ready = $false; Error = ''; Anim = $true })
     # Einstellung direkt aus der Datei (die Einstellungen sind noch nicht geladen)
     try {
         $sf = Join-Path $AppRoot 'Config\settings.json'

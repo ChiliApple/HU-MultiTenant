@@ -125,7 +125,7 @@ function Set-HUSplashStatus([string]$Text) {
 # -Animate: zum Abschied die Startanimation (Functions\UI-Splash.ps1), sonst sofort schliessen
 function Close-HUSplash([int]$MinMs = 0, [switch]$Animate) {
     # Startbildschirm im eigenen Thread: nur Bescheid geben (Losfahren bzw. sofort schliessen)
-    if ($script:SplashSync) { if ($Animate) { $script:SplashSync.Go = $true } else { $script:SplashSync.Close = $true }; $script:SplashSync = $null; return }
+    if ($script:SplashSync) { if ($Animate) { $script:SplashSync.Go = $true; $script:SplashSync.MainReady = $true } else { $script:SplashSync.Close = $true }; $script:SplashSync = $null; return }
     if (-not $script:Splash) { return }
     # laeuft die Animation schon: ohne -Animate (z. B. Fehler) sofort beenden
     if ((Get-Variable -Name SplashAnim -Scope Script -ErrorAction SilentlyContinue) -and $script:SplashAnim) { if (-not $Animate) { Stop-HUSplashSweep }; return }
