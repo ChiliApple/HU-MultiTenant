@@ -79,6 +79,22 @@ function Clear-HUOutput($Rtb) {
     if ($n -and $script:HUOutputClear.ContainsKey($n)) { & $script:HUOutputClear[$n] } else { $Rtb.Document.Blocks.Clear() }
 }
 # kleine Knoepfe "Umkehren" und "Loeschen" rechts oben in der Ausgabe
+# Sucht in der Kopfzeile ueber der Ausgabe (Nachbar-Panel, hoechstens zwei Ebenen hoch) einen Knopf "Leeren"/"Ausgabe leeren"
+# oder einen mit Tag 'HUOutputClear'. Rueckgabe @{ Button; Panel } oder $null.
+function Find-HUOutputHeaderClear($Rtb) {
+    $isClear = { param($b) $b -is [System.Windows.Controls.Button] -and ("$($b.Tag)" -eq 'HUOutputClear' -or "$($b.Content)" -match '^\s*(Ausgabe\s+)?leeren\s*$') }
+    $child = $Rtb; $p = $Rtb.Parent
+    for ($lvl = 0; $lvl -lt 2 -and $p -is [System.Windows.Controls.Panel]; $lvl++) {
+        foreach ($sib in @($p.Children)) {
+            if ([object]::ReferenceEquals($sib, $child) -or $sib -isnot [System.Windows.Controls.Panel]) { continue }
+            $hits = @($sib.Children | Where-Object { & $isClear $_ })
+            if ($hits.Count -eq 1) { return @{ Button = $hits[0]; Panel = $sib } }
+        }
+        $child = $p; $p = $p.Parent
+        while ($p -and $p -isnot [System.Windows.Controls.Panel] -and $p -is [System.Windows.FrameworkElement]) { $child = $p; $p = $p.Parent }
+    }
+    return $null
+}
 function Add-HUOutputTools($Rtb) {
     if (-not $Rtb -or $Rtb -isnot [System.Windows.Controls.RichTextBox]) { return }
     foreach ($d in $script:HUOutputDone) { if ([object]::ReferenceEquals($d, $Rtb)) { return } }
@@ -99,6 +115,9 @@ function Add-HUOutputTools($Rtb) {
             })
         if ($cands.Count -eq 1) { $old = $cands[0]; $old.Visibility = 'Collapsed' }
     }
+    # Kopfzeile mit eigenem "Leeren" (z. B. Protokoll: Reports / Log-Ordner / Leeren) -> "Umkehren" dort daneben, nichts ueber der Ausgabe
+    $head = $null
+    if (-not $old) { $head = Find-HUOutputHeaderClear $Rtb }
     $k = Get-HUOutputStateKey $Rtb
     $bottom = $false
     if ($k) { try { $bottom = ("$(Get-HUStateValue $k 'nein')" -eq 'ja') } catch { } }
@@ -107,6 +126,22 @@ function Add-HUOutputTools($Rtb) {
         $doc.Tag = 'top'
         # schon vorhandener Inhalt (vor dem Einhaengen geschrieben) ebenfalls neuestes oben
         if ($doc.Blocks.Count -gt 1) { $list = @($doc.Blocks); $doc.Blocks.Clear(); for ($i = $list.Count - 1; $i -ge 0; $i--) { $doc.Blocks.Add($list[$i]) } }
+    }
+    if ($head) {
+        $hb = $head.Button; $hp = $head.Panel
+        $b = New-Object System.Windows.Controls.Button
+        $b.Style = $hb.Style; $b.Background = $hb.Background; $b.FontSize = $hb.FontSize; $b.Padding = $hb.Padding; $b.Cursor = 'Hand'
+        $b.Content = [string][char]0x21C5 + ' Umkehren'; $b.ToolTip = 'Reihenfolge umkehren: neuestes oben oder unten (wird je Ausgabe gemerkt)'
+        $b.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0); $b.VerticalAlignment = $hb.VerticalAlignment
+        foreach ($dp in @([System.Windows.Controls.DockPanel]::DockProperty, [System.Windows.Controls.Grid]::RowProperty, [System.Windows.Controls.Grid]::ColumnProperty)) {
+            $v = $hb.ReadLocalValue($dp); if ($v -ne [System.Windows.DependencyProperty]::UnsetValue) { $b.SetValue($dp, $v) }
+        }
+        $b.Tag = $Rtb
+        $b.Add_Click({ try { Switch-HUOutputOrder $this.Tag } catch { } })
+        # direkt neben "Leeren" (links davon; bei DockPanel Right = danach einfuegen)
+        $i = $hp.Children.IndexOf($hb)
+        if ($hp -is [System.Windows.Controls.DockPanel] -and "$([System.Windows.Controls.DockPanel]::GetDock($hb))" -eq 'Right') { $hp.Children.Insert($i + 1, $b) } else { $hp.Children.Insert($i, $b) }
+        return
     }
     # Huelle: Grid an der Stelle der Ausgabe, angehaengte Eigenschaften wandern mit
     $g = New-Object System.Windows.Controls.Grid
@@ -149,8 +184,6 @@ function Add-HUOutputTools($Rtb) {
         })
     [void]$bar.Children.Add($bRev); [void]$bar.Children.Add($bDel)
     [void]$g.Children.Add($bar)
-    # Platz fuer die Knoepfe: erste Zeile beginnt darunter (sonst liegen Umkehren/Loeschen ueber der neuesten Zeile)
-    try { $pd = $Rtb.Padding; $Rtb.Padding = [System.Windows.Thickness]::new($pd.Left, [Math]::Max([double]$pd.Top, 24.0), $pd.Right, $pd.Bottom) } catch { }
 }
 # alle schreibgeschuetzten Ausgaben unter $Root ausstatten (Hauptfenster, Fenster, Modul-Reiter)
 function Set-HUOutputTools($Root) {
