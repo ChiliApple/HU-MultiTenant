@@ -213,9 +213,11 @@ $script:HelloCode = {
 
 function Start-HUHelloVerify([scriptblock]$OnDone, [IntPtr]$Hwnd = [IntPtr]::Zero) {
     # Bevorzugt: Dialog ans eigene Fenster gebunden (Windows 11). Faellt bei Fehler auf den alten Weg zurueck.
+    $why = $(if ($Hwnd -eq [IntPtr]::Zero) { 'kein Fensterhandle' } else { '' })
     if ($Hwnd -ne [IntPtr]::Zero) {
         $op = [IntPtr]::Zero
-        try { Initialize-HUHelloInterop; $op = [HUTools.HelloInterop]::Start($Hwnd, 'HU-MultiTenant entsperren') } catch { $op = [IntPtr]::Zero }
+        try { Initialize-HUHelloInterop; $op = [HUTools.HelloInterop]::Start($Hwnd, 'HU-MultiTenant entsperren') }
+        catch { $op = [IntPtr]::Zero; $why = "$($_.Exception.Message)"; try { Write-HULogWarn "Windows Hello (Fenster-Weg): $why" } catch { } }
         if ($op -ne [IntPtr]::Zero) {
             $t = [System.Windows.Threading.DispatcherTimer]::new()
             $t.Interval = [TimeSpan]::FromMilliseconds(250)
@@ -244,6 +246,8 @@ function Start-HUHelloVerify([scriptblock]$OnDone, [IntPtr]$Hwnd = [IntPtr]::Zer
             return
         }
     }
+    # PowerShell 7 hat keine WinRT-Projektion mehr (ContentType=WindowsRuntime) - der alte Weg geht dort nicht
+    if ($PSVersionTable.PSEdition -eq 'Core') { & $OnDone "Fehler: Windows Hello unter PowerShell 7 nur ueber den Fenster-Weg moeglich ($why)"; return }
     $rs = [runspacefactory]::CreateRunspace(); $rs.Open()
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript($script:HelloCode)
