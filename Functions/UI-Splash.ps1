@@ -230,19 +230,21 @@ function Update-HUSplashSweep {
     switch ($s.K) {
         'wait' { return }   # erst das Logo zeigen
         'morph' {
-            # Ueberblenden: Logo dreht sich weg und verschwimmt, der Roboter dreht sich in seiner Groesse herein und wird scharf
+            # Ueberblenden: Logo dreht sich eineinhalb Mal, waehrend es sich dreht, wird es unscharf und blendet aus;
+            # der Roboter dreht sich gleich mit (eine durchgehende Drehung) und wird scharf
             $k = Get-HUEaseInOut $u
+            $spin = 540 * $k
             $z0 = $script:SplashLogoSize / (2 * $r)
             $z = $z0 + (1.35 - $z0) * $k
             $b.Scale.ScaleX = $z; $b.Scale.ScaleY = $z
-            $ang = -120 * (1 - $k)
-            $b.Root.Opacity = [Math]::Min(1, $k * 1.6)
+            $ang = $spin - 540
+            $b.Root.Opacity = [Math]::Max(0, [Math]::Min(1, ($u - 0.35) / 0.4))
             if ($b.Blur) { $b.Blur.Radius = 14 * (1 - $k) }
             if ($A.Img) {
-                $A.Img.Opacity = [Math]::Max(0, 1 - $k * 1.5)
-                $q = 1 - 0.25 * $k; $A.ImgScale.ScaleX = $q; $A.ImgScale.ScaleY = $q
-                if ($A.ImgRot) { $A.ImgRot.Angle = 120 * $k }
-                if ($A.ImgBlur) { $A.ImgBlur.Radius = 12 * $k }
+                $A.Img.Opacity = [Math]::Max(0, [Math]::Min(1, 1 - ($u - 0.45) / 0.4))
+                $q = 1 - 0.2 * $k; $A.ImgScale.ScaleX = $q; $A.ImgScale.ScaleY = $q
+                if ($A.ImgRot) { $A.ImgRot.Angle = $spin }
+                if ($A.ImgBlur) { $A.ImgBlur.Radius = 10 * [Math]::Max(0, ($u - 0.3) / 0.7) }
             }
         }
         'idle' {
