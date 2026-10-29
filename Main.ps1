@@ -110,7 +110,7 @@ if (Test-Path -LiteralPath (Join-Path $script:AppRoot 'Config\pull-journal.json'
 # ============================================================================
 # STARTBILDSCHIRM - erscheint sofort, waehrend Module und Oberflaeche laden
 # ============================================================================
-$script:Splash = $null; $script:SplashShown = Get-Date; $script:SplashStatus = $null
+$script:Splash = $null; $script:SplashShown = Get-Date; $script:SplashStatus = $null; $script:SplashSync = $null
 function Update-HUSplash {
     # Oberflaeche kurz zeichnen lassen (der UI-Thread ist waehrend des Ladens sonst blockiert)
     $frame = New-Object System.Windows.Threading.DispatcherFrame
@@ -118,11 +118,14 @@ function Update-HUSplash {
     [System.Windows.Threading.Dispatcher]::PushFrame($frame)
 }
 function Set-HUSplashStatus([string]$Text) {
+    if ($script:SplashSync) { $script:SplashSync.Status = $Text; return }   # Startbildschirm im eigenen Thread
     if (-not $script:Splash -or -not $script:SplashStatus) { return }
     try { $script:SplashStatus.Text = $Text; Update-HUSplash } catch { }
 }
 # -Animate: zum Abschied die Startanimation (Functions\UI-Splash.ps1), sonst sofort schliessen
 function Close-HUSplash([int]$MinMs = 0, [switch]$Animate) {
+    # Startbildschirm im eigenen Thread: nur Bescheid geben (Losfahren bzw. sofort schliessen)
+    if ($script:SplashSync) { if ($Animate) { $script:SplashSync.Go = $true } else { $script:SplashSync.Close = $true }; $script:SplashSync = $null; return }
     if (-not $script:Splash) { return }
     # laeuft die Animation schon: ohne -Animate (z. B. Fehler) sofort beenden
     if ((Get-Variable -Name SplashAnim -Scope Script -ErrorAction SilentlyContinue) -and $script:SplashAnim) { if (-not $Animate) { Stop-HUSplashSweep }; return }
@@ -139,6 +142,10 @@ if (-not $SmokeTest -and -not $Headless) {   # nie bei der geplanten Aufgabe (He
     try {
         $ver = '?'
         try { $ver = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
+        # bevorzugt im eigenen Thread: die Startanimation laeuft dann schon, waehrend die App laedt
+        $spf = Join-Path $script:AppRoot 'Functions\UI-Splash.ps1'
+        if (Test-Path -LiteralPath $spf) { try { . $spf; $script:SplashSync = Start-HUSplashThread $script:AppRoot $ver } catch { $script:SplashSync = $null } }
+        if ($script:SplashSync) { throw 'SPLASH-THREAD' }   # alter Weg entfaellt (catch unten faengt das ab)
         $sx = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" Width="440" Height="310"
@@ -171,7 +178,7 @@ if (-not $SmokeTest -and -not $Headless) {   # nie bei der geplanten Aufgabe (He
         }
         $script:Splash.Show()
         Update-HUSplash
-    } catch { $script:Splash = $null; $script:SplashStatus = $null }
+    } catch { if ("$_" -ne 'SPLASH-THREAD') { $script:Splash = $null; $script:SplashStatus = $null } }
     $script:SplashShown = Get-Date
 }
 

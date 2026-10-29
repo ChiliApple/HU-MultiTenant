@@ -105,7 +105,9 @@ function New-HUSplashBot([double]$R) {
 }
 
 # Animation starten. $false = nicht moeglich (dann schliesst der Aufrufer sofort).
-function Start-HUSplashSweep {
+# -Idle: nach der Verwandlung wartet der Roboter am Logo (Startbildschirm im eigenen Thread, waehrend die App laedt),
+# bis Start-HUSplashGo kommt. Ohne -Idle faehrt er gleich nach der Verwandlung los.
+function Start-HUSplashSweep([switch]$Idle) {
     $w = $script:Splash
     if (-not $w -or $script:SplashAnim) { return $false }
     $bd = $w.FindName('bd'); $ov = $w.FindName('ov'); $img = $w.FindName('img')
@@ -145,31 +147,48 @@ function Start-HUSplashSweep {
     $bot = New-HUSplashBot $r
     $bot.Scale.ScaleX = 0; $bot.Scale.ScaleY = 0
     $bot.Tr.X = $p0.X; $bot.Tr.Y = $p0.Y
+    $script:SplashP0 = $p0
     [void]$ov.Children.Add($bot.Root)
 
     # Logo schrumpft um seine Mitte
     $ist = $null
     if ($img) { $ist = New-Object System.Windows.Media.ScaleTransform; $img.RenderTransformOrigin = New-Object System.Windows.Point 0.5, 0.5; $img.RenderTransform = $ist }
 
-    # Fahrplan (ms): Verwandlung, Fahrt zur ersten Bahn, drei Bahnen mit Wenden
+    $script:SplashAnim = @{ W = $W; H = $H; Lane = $lane; R = $r; Bd = $bd; Lanes = $lanes; Bot = $bot; Dust = $dust; Img = $img; ImgScale = $ist
+        Seg = @(@{ K = 'morph'; D = 700; T = 0 }, @{ K = 'idle'; D = 1e9; T = 700 }); Total = 1e9; SW = [System.Diagnostics.Stopwatch]::StartNew(); Handler = $null; Last = 0
+        AutoGo = -not $Idle; Going = $false; P0 = $p0 }
+    $h = [System.EventHandler] { try { Update-HUSplashSweep } catch { Stop-HUSplashSweep } }
+    $script:SplashAnim.Handler = $h
+    [System.Windows.Media.CompositionTarget]::add_Rendering($h)
+    # Klick = sofort fertig
+    try { $w.Add_MouseLeftButtonDown({ Stop-HUSplashSweep }) } catch { }
+    return $true
+}
+
+# Losfahren: Fahrplan ab jetzt und ab der aktuellen Stelle (Fahrt zur ersten Bahn, drei Bahnen mit Wenden)
+function Start-HUSplashGo {
+    $A = $script:SplashAnim
+    if (-not $A -or $A.Going) { return [bool]$A }
+    $A.Going = $true
+    $r = $A.R; $W = $A.W; $lane = $A.Lane
     $y = @(0..2 | ForEach-Object { $lane * ($_ + 0.5) })
-    $seg = @(
-        @{ K = 'morph'; D = 700 }
-        @{ K = 'move'; D = 450; X0 = $p0.X; Y0 = $p0.Y; X1 = $r * 0.9; Y1 = $y[0]; A0 = 0; A1 = 0 }
+    $now = [double]$A.SW.ElapsedMilliseconds
+    # noch in der Verwandlung: diese erst fertig spielen
+    $t = [Math]::Max($now, 700)
+    $b = $A.Bot
+    $seg = @(@{ K = 'morph'; D = 700; T = 0 }, @{ K = 'idle'; D = [Math]::Max(0, $t - 700); T = 700 })
+    $sx = $b.Tr.X; $sy = $b.Tr.Y
+    if ($A.P0) { $sx = $A.P0.X; $sy = $A.P0.Y }
+    $plan = @(
+        @{ K = 'move'; D = 450; X0 = $sx; Y0 = $sy; X1 = $r * 0.9; Y1 = $y[0]; A0 = [double]$b.Rot.Angle }
         @{ K = 'lane'; D = 900; L = 0; X0 = $r * 0.9; X1 = $W + 0.6 * $r; Dir = 1 }
         @{ K = 'turn'; D = 340; X0 = $W + 0.6 * $r; Y0 = $y[0]; X1 = $W - 0.9 * $r; Y1 = $y[1]; A0 = 0; A1 = 180; Done = 0 }
         @{ K = 'lane'; D = 900; L = 1; X0 = $W - 0.9 * $r; X1 = -0.6 * $r; Dir = -1 }
         @{ K = 'turn'; D = 340; X0 = -0.6 * $r; Y0 = $y[1]; X1 = 0.9 * $r; Y1 = $y[2]; A0 = 180; A1 = 360; Done = 1 }
         @{ K = 'lane'; D = 1000; L = 2; X0 = 0.9 * $r; X1 = $W + 1.6 * $r; Dir = 1 }
     )
-    $t = 0; foreach ($s in $seg) { $s.T = $t; $t += $s.D }
-    $script:SplashAnim = @{ W = $W; H = $H; Lane = $lane; R = $r; Bd = $bd; Lanes = $lanes; Bot = $bot; Dust = $dust; Img = $img; ImgScale = $ist
-        Seg = $seg; Total = $t; SW = [System.Diagnostics.Stopwatch]::StartNew(); Handler = $null; Last = 0 }
-    $h = [System.EventHandler] { try { Update-HUSplashSweep } catch { Stop-HUSplashSweep } }
-    $script:SplashAnim.Handler = $h
-    [System.Windows.Media.CompositionTarget]::add_Rendering($h)
-    # Klick = sofort fertig
-    try { $w.Add_MouseLeftButtonDown({ Stop-HUSplashSweep }) } catch { }
+    foreach ($p in $plan) { $p.T = $t; $t += $p.D; $seg += $p }
+    $A.Seg = $seg; $A.Total = $t
     return $true
 }
 
@@ -184,6 +203,7 @@ function Update-HUSplashSweep {
     if ($t -ge $A.Total) { Stop-HUSplashSweep; return }
     $dt = ($t - $A.Last) / 1000.0; $A.Last = $t
     $s = @($A.Seg | Where-Object { $t -ge $_.T -and $t -lt ($_.T + $_.D) })[0]
+    if (-not $s) { return }
     $u = ($t - $s.T) / $s.D
     $b = $A.Bot; $r = $A.R
     $x = $b.Tr.X; $y = $b.Tr.Y; $ang = $b.Rot.Angle; $dir = 0; $curLane = -1
@@ -194,10 +214,20 @@ function Update-HUSplashSweep {
             $ang = -360 * (1 - (Get-HUEaseInOut $u))
             if ($A.ImgScale) { $q = [Math]::Max(0, 1 - $u * 1.4); $A.ImgScale.ScaleX = $q; $A.ImgScale.ScaleY = $q; $A.Img.Opacity = $q }
         }
+        'idle' {
+            # wartet am Logo: atmet leicht, schaut sich um
+            if ($A.AutoGo) { [void](Start-HUSplashGo); return }
+            $q = 1.35 + 0.04 * [Math]::Sin($t / 260)
+            $b.Scale.ScaleX = $q; $b.Scale.ScaleY = $q
+            $ang = 14 * [Math]::Sin($t / 520)
+            if ($A.Img) { $A.Img.Opacity = 0 }
+        }
         'move' {
             $k = Get-HUEaseInOut $u
             $x = $s.X0 + ($s.X1 - $s.X0) * $k; $y = $s.Y0 + ($s.Y1 - $s.Y0) * $k
-            $z = 1.35 - 0.35 * $k; $b.Scale.ScaleX = $z; $b.Scale.ScaleY = $z; $ang = 0
+            $z = 1.35 - 0.35 * $k; $b.Scale.ScaleX = $z; $b.Scale.ScaleY = $z
+            # aus der Warte-Drehung in Fahrtrichtung
+            $ang = $s.A0 * (1 - $k)
             if ($A.Img) { $A.Img.Opacity = 0 }
         }
         'lane' {
@@ -249,4 +279,99 @@ function Stop-HUSplashSweep {
     if ($A -and $A.Handler) { try { [System.Windows.Media.CompositionTarget]::remove_Rendering($A.Handler) } catch { } }
     if ($script:Splash) { try { $script:Splash.Close() } catch { } }
     $script:Splash = $null; $script:SplashStatus = $null
+}
+
+# ----------------------------------------------------------------------------
+# Startbildschirm im eigenen Thread: Die Animation laeuft fluessig, waehrend die App Module und Oberflaeche laedt.
+# Main.ps1 ruft Start-HUSplashThread ganz am Anfang; Status, Losfahren und Schliessen gehen ueber $sync.
+# ----------------------------------------------------------------------------
+function Get-HUSplashXaml([string]$Version) {
+    $v = [System.Security.SecurityElement]::Escape("$Version")
+    return @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" Width="440" Height="310"
+        WindowStartupLocation="CenterScreen" Topmost="True" ShowInTaskbar="False" Title="HU-MultiTenant">
+  <Grid>
+  <Border x:Name="bd" Background="#FF1E1E1E" CornerRadius="12" BorderBrush="#FFB9A88A" BorderThickness="2">
+    <Grid>
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+        <Image x:Name="img" Width="112" Height="112" RenderOptions.BitmapScalingMode="HighQuality"/>
+        <TextBlock Text="HU-MultiTenant" FontSize="32" FontWeight="Bold" Foreground="#FFEDEDED" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+        <TextBlock Text="Intune und Microsoft 365 f&#xFC;r mehrere Tenants" FontSize="14" Foreground="#FFB9A88A" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+        <TextBlock x:Name="status" Text="wird geladen ..." FontSize="11" Foreground="#FF8A8A8A" HorizontalAlignment="Center" Margin="0,14,0,0"/>
+      </StackPanel>
+      <TextBlock Text="v$v" FontSize="11" Foreground="#FF6A6A6A" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,12,8"/>
+    </Grid>
+  </Border>
+  <Canvas x:Name="ov" ClipToBounds="True" IsHitTestVisible="False"/>
+  </Grid>
+</Window>
+"@
+}
+
+# Groesstes Bild aus Assets\icon.ico (ueber Bytes - die Datei bleibt fuer Updates frei)
+function Get-HUSplashIcon([string]$AppRoot) {
+    $ip = Join-Path $AppRoot 'Assets\icon.ico'
+    if (-not (Test-Path -LiteralPath $ip)) { return $null }
+    $ms = New-Object System.IO.MemoryStream (, [System.IO.File]::ReadAllBytes($ip))
+    $dec = [System.Windows.Media.Imaging.BitmapDecoder]::Create($ms, [System.Windows.Media.Imaging.BitmapCreateOptions]::None, [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
+    return @($dec.Frames | Sort-Object PixelWidth -Descending)[0]
+}
+
+# Startet den Startbildschirm im eigenen STA-Thread. Rueckgabe: $sync (Status/Go/Close) oder $null (dann alter Weg).
+function Start-HUSplashThread([string]$AppRoot, [string]$Version) {
+    $sync = [hashtable]::Synchronized(@{ Status = 'wird geladen ...'; Go = $false; Close = $false; Ready = $false; Error = ''; Anim = $true })
+    # Einstellung direkt aus der Datei (die Einstellungen sind noch nicht geladen)
+    try {
+        $sf = Join-Path $AppRoot 'Config\settings.json'
+        if (Test-Path -LiteralPath $sf) { $j = Get-Content -LiteralPath $sf -Raw -Encoding UTF8 | ConvertFrom-Json; if ($j.ui -and $j.ui.PSObject.Properties['splashAnimation'] -and -not [bool]$j.ui.splashAnimation) { $sync.Anim = $false } }
+    } catch { }
+    try {
+        $rs = [runspacefactory]::CreateRunspace()
+        $rs.ApartmentState = 'STA'; $rs.ThreadOptions = 'ReuseThread'
+        $rs.Open()
+        $ps = [powershell]::Create(); $ps.Runspace = $rs
+        [void]$ps.AddScript({
+                param($sync, $file, $appRoot, $ver)
+                try {
+                    Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+                    . $file
+                    Invoke-HUSplashThread $sync $appRoot $ver
+                } catch { $sync.Error = "$($_.Exception.Message)"; $sync.Ready = $true }
+            }.ToString()).AddArgument($sync).AddArgument((Join-Path $AppRoot 'Functions\UI-Splash.ps1')).AddArgument($AppRoot).AddArgument($Version)
+        $sync.PS = $ps; $sync.RS = $rs
+        $sync.Handle = $ps.BeginInvoke()
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while (-not $sync.Ready -and $sw.ElapsedMilliseconds -lt 4000) { Start-Sleep -Milliseconds 15 }
+        if ($sync.Error -or -not $sync.Ready) { $sync.Close = $true; return $null }
+        return $sync
+    } catch { return $null }
+}
+
+# laeuft im Splash-Thread: Fenster zeigen, Animation, auf Status/Go/Close hoeren, dann Thread beenden
+function Invoke-HUSplashThread($Sync, [string]$AppRoot, [string]$Version) {
+    $w = [System.Windows.Markup.XamlReader]::Parse((Get-HUSplashXaml $Version))
+    try { $big = Get-HUSplashIcon $AppRoot; if ($big) { $w.FindName('img').Source = $big; $w.Icon = $big } } catch { }
+    $script:Splash = $w; $script:SplashStatus = $w.FindName('status'); $script:SplashSync = $Sync
+    $script:SplashAnimOn = [bool]$Sync.Anim
+    try { if (-not [System.Windows.SystemParameters]::ClientAreaAnimation) { $script:SplashAnimOn = $false } } catch { }
+    $script:SplashBorn = [System.Diagnostics.Stopwatch]::StartNew()
+    $w.Add_Closed({ try { [System.Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvokeShutdown('Background') } catch { } })
+    $w.Add_ContentRendered({ if ($script:SplashAnimOn) { try { [void](Start-HUSplashSweep -Idle) } catch { } } })
+    $tm = New-Object System.Windows.Threading.DispatcherTimer
+    $tm.Interval = [TimeSpan]::FromMilliseconds(80)
+    $tm.Add_Tick({
+            $sy = $script:SplashSync
+            try { if ($script:SplashStatus -and $script:SplashStatus.Text -ne "$($sy.Status)") { $script:SplashStatus.Text = "$($sy.Status)" } } catch { }
+            # Sicherheitsnetz: nach 3 Minuten ohne Signal schliessen
+            if ($sy.Close -or $script:SplashBorn.Elapsed.TotalMinutes -gt 3) { $this.Stop(); Stop-HUSplashSweep; return }
+            if ($sy.Go) {
+                $this.Stop()
+                if (-not ($script:SplashAnimOn -and $script:SplashAnim -and (Start-HUSplashGo))) { Stop-HUSplashSweep }
+            }
+        })
+    $tm.Start()
+    $w.Show()
+    $Sync.Ready = $true
+    [System.Windows.Threading.Dispatcher]::Run()
 }
