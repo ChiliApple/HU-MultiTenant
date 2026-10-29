@@ -165,7 +165,7 @@ function Start-HUSplashSweep([switch]$Idle) {
     }
 
     $script:SplashAnim = @{ W = $W; H = $H; Lane = $lane; R = $r; Bd = $bd; Lanes = $lanes; Bot = $bot; Dust = $dust; Img = $img; ImgScale = $ist; ImgRot = $irt; ImgBlur = $ibl
-        Seg = @(@{ K = 'wait'; D = 600; T = 0 }, @{ K = 'morph'; D = 1000; T = 600 }, @{ K = 'idle'; D = 1e9; T = 1600 }); Total = 1e9; MorphEnd = 1600; SW = [System.Diagnostics.Stopwatch]::StartNew(); Handler = $null; Last = 0
+        Seg = @(@{ K = 'wait'; D = 600; T = 0 }, @{ K = 'morph'; D = 1800; T = 600 }, @{ K = 'idle'; D = 1e9; T = 2400 }); Total = 1e9; MorphEnd = 2400; SW = [System.Diagnostics.Stopwatch]::StartNew(); Handler = $null; Last = 0
         AutoGo = -not $Idle; Going = $false; P0 = $p0 }
     $h = [System.EventHandler] { try { Update-HUSplashSweep } catch { Stop-HUSplashSweep } }
     $script:SplashAnim.Handler = $h

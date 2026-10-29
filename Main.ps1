@@ -261,6 +261,8 @@ if (-not $script:FirstRun -and -not $SmokeTest) { [void](Show-SecretSetupDialog)
 # 3. HAUPTFENSTER
 # ============================================================================
 Set-HUSplashStatus "Oberfl$([char]0xE4)che wird aufgebaut ..."
+# Startanimation: jetzt losfahren - der Roboter saugt, waehrend das Hauptfenster entsteht
+if ($script:SplashSync) { $script:SplashSync.Go = $true }
 try {
     $d = New-HUWindow 'MainWindow'
 } catch { Show-HUFatal "Oberflaeche konnte nicht geladen werden (XAML\MainWindow.xaml):`n$($_.Exception.Message)" }
