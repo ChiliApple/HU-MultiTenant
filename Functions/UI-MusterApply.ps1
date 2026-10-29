@@ -52,7 +52,7 @@ function Clear-HUMaPlannedRights([string]$TenantKey) {
 }
 
 # Rechte zurueckgeben (genau die selbst erteilten laut Markierung). Mit gueltigem Admin-Token sofort, sonst neue Anmeldung.
-function Start-HUMaRevoke([string]$TenantKey, $Login = $null, [scriptblock]$Done = $null, $Owner = $null) {
+function Start-HUMaRevoke([string]$TenantKey, $Login = $null, [scriptblock]$Done = $null, $Owner = $null, [switch]$NoConfirm) {
     $m = Get-HUMaMarker $TenantKey
     # offen = erteilte plus geplante, die vorher nicht da waren (060 B1: auch nach Absturz zwischen Erteilen und Nachtragen)
     $added = @(Get-HUMaOpenRights $m)
@@ -74,16 +74,22 @@ function Start-HUMaRevoke([string]$TenantKey, $Login = $null, [scriptblock]$Done
         if ($Done) { & $Done $true "Zurueckgegeben: $(if ($rem.Count) { $rem -join ', ' } else { 'waren schon entzogen' }).`nEin schon geholtes App-Token kann sie noch bis zu einer Stunde enthalten." }
     }
     if (Test-HUMaLoginValid $Login) { & $do $Login; return }
-    if (-not (Confirm-HU -Warning "Rechte fuer $(Get-HUAnaTenantName $TenantKey) zurueckgeben?`n`n$($added -join "`n")`n`nEs oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $Owner)) { if ($Done) { & $Done $false 'abgebrochen' }; return }
+    if (-not $NoConfirm -and -not (Confirm-HU -Warning "Rechte fuer $(Get-HUAnaTenantName $TenantKey) zurueckgeben?`n`n$($added -join "`n")`n`nEs oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $Owner)) { if ($Done) { & $Done $false 'abgebrochen' }; return }
     [void](Start-HUMaAdminLogin $TenantKey $do)
 }
 
 # Rechte mehrerer Tenants nacheinander zurueckgeben - mit den gemerkten Admin-Anmeldungen (gueltig ~60 Min), ohne neue Anmeldung.
 # Abgelaufene Anmeldung -> fuer diesen Tenant Browser-Anmeldung. $Then bekommt ($alleOk, $berichtText).
-function Start-HUMaRevokeAll([string[]]$Tenants, [hashtable]$Logins, [scriptblock]$Then = $null, $Owner = $null) {
-    $list = @($Tenants | Where-Object { "$_" } | Select-Object -Unique | Where-Object { @(Get-HUMaOpenRights (Get-HUMaMarker $_)).Count })
-    if (-not $list.Count) { if ($Then) { & $Then $true 'Es sind keine erteilten Rechte offen.' }; return }
-    $script:MaRevAll = @{ List = $list; I = 0; Logins = $(if ($Logins) { $Logins } else { @{} }); Lines = New-Object System.Collections.Generic.List[string]; AllOk = $true; Then = $Then; Owner = $Owner }
+# -NoConfirm: schon bestaetigt (Rueckfrage beim Start) - keine zweite Rueckfrage je Tenant
+function Start-HUMaRevokeAll([string[]]$Tenants, [hashtable]$Logins, [scriptblock]$Then = $null, $Owner = $null, [switch]$NoConfirm) {
+    $in = @($Tenants | Where-Object { "$_" } | Select-Object -Unique)
+    $list = @($in | Where-Object { @(Get-HUMaOpenRights (Get-HUMaMarker $_)).Count })
+    if (-not $list.Count) {
+        # Fehlersuche: welche Tenants wurden geprueft und was steht in ihren Markierungen
+        try { Write-HULogInfo "Muster anwenden: Rechte zurueckgeben - geprueft: $(if ($in.Count) { ($in | ForEach-Object { $m = Get-HUMaMarker $_; "$_ ($(if ($m) { "Added=$(@($m.Added) -join '+'); Planned=$(@($m.Planned) -join '+'); Before=$(@($m.Before) -join '+')" } else { 'keine Markierung' }))" }) -join ', ' } else { '(keine Tenants)' }) - nichts offen" } catch { }
+        if ($Then) { & $Then $true 'Es sind keine erteilten Rechte offen.' }; return
+    }
+    $script:MaRevAll = @{ List = $list; I = 0; Logins = $(if ($Logins) { $Logins } else { @{} }); Lines = New-Object System.Collections.Generic.List[string]; AllOk = $true; Then = $Then; Owner = $Owner; NoConfirm = [bool]$NoConfirm }
     Invoke-HUMaRevokeAllNext
 }
 function Invoke-HUMaRevokeAllNext {
@@ -102,22 +108,26 @@ function Invoke-HUMaRevokeAllNext {
         $A2.Lines.Add("$(if ($ok) { 'OK  ' } else { 'NICHT' })  $(Get-HUAnaTenantName $tk2): $(("$txt" -split "`n")[0])")
         $A2.I++
         Invoke-HUMaRevokeAllNext
-    } $A.Owner
+    } $A.Owner -NoConfirm:([bool]$A.NoConfirm)
 }
 
-# Beim Programmstart: noch erteilte Rechte aus einem abgebrochenen Ablauf melden (Absturz-Sicherung)
+# Beim Programmstart: noch erteilte Rechte aus einem abgebrochenen Ablauf melden (Absturz-Sicherung).
+# Eine Rueckfrage fuer alle Tenants; bei Ja nacheinander je Tenant die Admin-Anmeldung (ohne zweite Rueckfrage).
 function Test-HUMaMarkerReminder {
+    $open = @()
     foreach ($m in @(Get-HUMaMarkers)) {
         $added = @(Get-HUMaOpenRights $m)
         $tk = "$($m.Tenant)"
         if (-not $added.Count) { Remove-HUMaMarker $tk; continue }
         $since = $null; try { $since = [datetime]::Parse("$($m.Since)", [Globalization.CultureInfo]::InvariantCulture) } catch { }
-        $old = $since -and ((Get-Date) - $since).TotalHours -ge 24
         Write-HULogWarn "Muster anwenden: Rechte fuer $(Get-HUAnaTenantName $tk) seit $("$($m.Since)") noch erteilt: $($added -join ', ')"
-        if (Confirm-HU "$(if ($old) { 'ACHTUNG - seit mehr als 24 Stunden: ' })'Muster anwenden' hat fuer $(Get-HUAnaTenantName $tk) Rechte erteilt, die noch nicht zurueckgegeben sind (seit $("$($m.Since)")):`n`n$($added -join "`n")`n`nJetzt zurueckgeben? (Browser-Anmeldung als Admin)`nNein = beim naechsten Start wieder fragen." -Warning) {
-            Start-HUMaRevoke $tk $null { param($ok, $txt) Show-HUMessage $txt -Icon $(if ($ok) { 'Info' } else { 'Warning' }) }
-            return   # eine Anmeldung nach der anderen
-        }
+        $open += [pscustomobject]@{ Tk = $tk; Added = $added; Since = "$($m.Since)"; Old = [bool]($since -and ((Get-Date) - $since).TotalHours -ge 24) }
+    }
+    if (-not $open.Count) { return }
+    $lst = ($open | ForEach-Object { "$(Get-HUAnaTenantName $_.Tk): $($_.Added -join ', ') (seit $($_.Since -replace 'T', ' '))" }) -join "`n"
+    $n = $open.Count
+    if (Confirm-HU "$(if (@($open | Where-Object { $_.Old }).Count) { 'ACHTUNG - zum Teil seit mehr als 24 Stunden: ' })'Muster anwenden' hat Rechte erteilt, die noch nicht zurueckgegeben sind:`n`n$lst`n`nJetzt zurueckgeben?$(if ($n -gt 1) { " Fuer jeden der $n Tenants oeffnet sich nacheinander der Browser zur Admin-Anmeldung." } else { ' Es oeffnet sich der Browser zur Admin-Anmeldung.' })`nNein = beim naechsten Start wieder fragen." -Warning) {
+        Start-HUMaRevokeAll @($open | ForEach-Object { $_.Tk }) @{} { param($ok, $txt) Show-HUMessage "Rechte zurueckgegeben:`n`n$txt$(if ($ok) { "`n`nEin schon geholtes App-Token kann sie noch bis zu einer Stunde enthalten." })" -Icon $(if ($ok) { 'Info' } else { 'Warning' }) } -NoConfirm
     }
 }
 

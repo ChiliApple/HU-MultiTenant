@@ -120,9 +120,9 @@ function Show-HUAddonRestartPrompt([string[]]$Names) {
 # und Angriffsflaechen-Regeln gern blockiert).
 function Restart-HUApp {
     try {
-        $exe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        $main = Join-Path $script:AppRoot 'Main.ps1'
-        Start-Process -FilePath $exe -WorkingDirectory $script:AppRoot -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$main`" -WaitForPid $PID" | Out-Null
+        # gleiche PowerShell wie beim Start ueber den Starter (Einstellung: PowerShell 7, wenn installiert)
+        $si = Get-HUAppStartInfo "-WaitForPid $PID"
+        Start-Process -FilePath $si.Exe -WorkingDirectory $script:AppRoot -WindowStyle Hidden -ArgumentList $si.Args | Out-Null
         Write-HULogOK 'HU-MultiTenant wird neu gestartet ...'
         $script:SkipCloseChecks = $true
         $script:Window.Close()

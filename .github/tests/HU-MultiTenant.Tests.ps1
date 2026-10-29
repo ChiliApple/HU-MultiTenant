@@ -189,6 +189,35 @@ Describe 'Update-Bibliothek' {
         $cfg.Repo | Should -Be 'HU-MultiTenant'
         $cfg.RequireSignature | Should -BeTrue
     }
+    Context 'Signieren: Warten auf das neue Release' {
+        BeforeAll {
+            $script:BsNow = [datetime]::Parse('2026-10-28T16:38:00Z', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]'AdjustToUniversal, AssumeUniversal')
+            $script:BsCommit = [pscustomobject]@{ sha = 'abc123'; commit = [pscustomobject]@{ committer = [pscustomobject]@{ date = '2026-10-28T16:34:21Z' } } }
+        }
+        It 'Merge vor wenigen Minuten, noch kein Release -> Building' {
+            $st = ConvertTo-HMMainBuildState $script:BsCommit @() $script:BsNow
+            $st.AgeMin | Should -Be 3
+            $st.Tag | Should -BeNullOrEmpty
+            Get-HMBuildWaitState $st | Should -Be 'Building'
+        }
+        It 'Release da, Pruefsumme fehlt noch -> Building' {
+            $rel = @([pscustomobject]@{ target_commitish = 'abc123'; tag_name = 'v9.9.9'; assets = @() })
+            Get-HMBuildWaitState (ConvertTo-HMMainBuildState $script:BsCommit $rel $script:BsNow) | Should -Be 'Building'
+        }
+        It 'Release mit Pruefsumme -> Ready' {
+            $rel = @([pscustomobject]@{ target_commitish = 'abc123'; tag_name = 'v9.9.9'; assets = @([pscustomobject]@{ name = $script:HMManifestName }) })
+            $st = ConvertTo-HMMainBuildState $script:BsCommit $rel $script:BsNow
+            $st.Tag | Should -Be 'v9.9.9'
+            Get-HMBuildWaitState $st | Should -Be 'Ready'
+        }
+        It 'alter Commit ohne Release (Version nicht erhoeht) -> None' {
+            Get-HMBuildWaitState (ConvertTo-HMMainBuildState $script:BsCommit @() $script:BsNow.AddMinutes(40)) | Should -Be 'None'
+        }
+        It 'Datum als DateTime (PowerShell 7) wird genauso gelesen' {
+            $c = [pscustomobject]@{ sha = 'abc123'; commit = [pscustomobject]@{ committer = [pscustomobject]@{ date = $script:BsNow.AddMinutes(-5) } } }
+            (ConvertTo-HMMainBuildState $c @() $script:BsNow).AgeMin | Should -Be 5
+        }
+    }
 }
 
 Describe 'Snippet-Parameter' {
@@ -324,6 +353,28 @@ Describe 'Quelltext-Fallen' {
         foreach ($f in @(Get-ChildItem (Join-Path $script:AppRoot 'Functions'), (Join-Path $script:AppRoot 'Core') -Include *.ps1, *.psm1 -Recurse -File)) {
             $n = 0
             foreach ($ln in Get-Content -LiteralPath $f.FullName -Encoding UTF8) { $n++; if ($ln -match '\[char\]0x[0-9A-Fa-f]{5,}') { $bad += "$($f.Name):$n" } }
+        }
+        $bad | Should -BeNullOrEmpty
+    }
+    # PowerShell 7: gleiche Ergebnisse wie 5.1 - JSON nie mit der Standardtiefe 2 (schneidet still ab), kein System.Web
+    It 'Extensions mit Excel-Export laden ImportExcel selbst (Initialize-HUExcel) - unter PS 7 ist es sonst nicht geladen' {
+        $bad = foreach ($f in @(Get-ChildItem (Join-Path $script:AppRoot 'Extensions') -Filter *.ps1 -Recurse -File)) {
+            $t = [IO.File]::ReadAllText($f.FullName)
+            if ($t -match 'Export-Excel' -and $t -notmatch 'Initialize-HUExcel') { $f.Name }
+        }
+        @($bad) | Should -BeNullOrEmpty
+    }
+    It 'PS 7: ConvertTo-Json immer mit -Depth, kein System.Web' {
+        $bad = @()
+        $files = @(Get-ChildItem (Join-Path $script:AppRoot 'Functions'), (Join-Path $script:AppRoot 'Core') -Include *.ps1, *.psm1 -Recurse -File) + @(Get-Item (Join-Path $script:AppRoot 'Main.ps1'), (Join-Path $script:AppRoot 'Pull.ps1'))
+        foreach ($f in $files) {
+            $n = 0
+            foreach ($ln in Get-Content -LiteralPath $f.FullName -Encoding UTF8) {
+                $n++
+                if ($ln -match '^\s*#') { continue }
+                if ($ln -match 'ConvertTo-Json(?!\w)' -and $ln -notmatch '-Depth' -and $ln -notmatch 'erzeugt den Body') { $bad += "$($f.Name):$n (ConvertTo-Json ohne -Depth)" }
+                if ($ln -match 'System\.Web\b') { $bad += "$($f.Name):$n (System.Web)" }
+            }
         }
         $bad | Should -BeNullOrEmpty
     }
@@ -898,6 +949,15 @@ Describe 'Analyse: Vergleich-Details' {
         $d = @(Get-HUCompareDiff @{ a = $m1; b = $m2 } @('a', 'b'))
         ($d | Where-Object Einstellung -eq 'extra').T1 | Should -Be '(nicht gesetzt)'
         $d.Count | Should -Be 2
+    }
+    It 'CA-Authentifizierungsstaerke: Muster nur mit Kennung = Tenant ausgeklappt; andere Staerke weicht ab' {
+        $m = '{"grantControls":{"operator":"OR","authenticationStrength":{"id":"00000000-0000-0000-0000-000000000004"}}}' | ConvertFrom-Json
+        $t = '{"grantControls":{"operator":"OR","authenticationStrength":{"id":"00000000-0000-0000-0000-000000000004","displayName":"Phishing-resistant MFA","policyType":"builtIn","requirementsSatisfied":"mfa","allowedCombinations":["fido2","windowsHelloForBusiness"]}}}' | ConvertFrom-Json
+        $o = '{"grantControls":{"operator":"OR","authenticationStrength":{"id":"aaaaaaaa-1111-2222-3333-444444444444","displayName":"Schule MFA"}}}' | ConvertFrom-Json
+        @(Get-HUCompareDiff @{ m = (ConvertTo-HUFlatMap $m); t = (ConvertTo-HUFlatMap $t) } @('m', 't')).Count | Should -Be 0
+        (ConvertTo-HUFlatMap $t)['grantControls.authenticationStrength'] | Should -Be 'eingebaut: Phishing-resistente MFA'
+        $d = @(Get-HUCompareDiff @{ m = (ConvertTo-HUFlatMap $m); o = (ConvertTo-HUFlatMap $o) } @('m', 'o'))
+        $d.Count | Should -Be 1; $d[0].T1 | Should -Be 'Schule MFA'
     }
 }
 

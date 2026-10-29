@@ -53,6 +53,9 @@ public static class HelloInterop {
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] delegate int ReqFn(IntPtr self, IntPtr hwnd, IntPtr msg, ref Guid riid, out IntPtr op);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] delegate int GetIntFn(IntPtr self, out int v);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] delegate int VoidFn(IntPtr self);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] delegate int QiFn(IntPtr self, ref Guid riid, out IntPtr ppv);
+    // IUnknown::QueryInterface ueber die vtable (Marshal.QueryInterface hat in .NET Framework 'ref', in .NET 8 'in' - so laeuft es in PS 5.1 und PS 7)
+    static int QI(IntPtr obj, ref Guid iid, out IntPtr ppv) { return ((QiFn)Slot(obj, 0, typeof(QiFn)))(obj, ref iid, out ppv); }
     static Guid IidInterop = new Guid("39E050C3-4E74-441A-8DC0-B81104DF949C");
     static Guid IidOp = new Guid("fd596ffd-2318-558f-9dbe-d21df43764a5");   // IAsyncOperation<UserConsentVerificationResult>
     static Guid IidInfo = new Guid("00000036-0000-0000-C000-000000000046"); // IAsyncInfo
@@ -78,7 +81,7 @@ public static class HelloInterop {
     }
     static int InfoInt(IntPtr op, int slot) {
         IntPtr info;
-        Marshal.ThrowExceptionForHR(Marshal.QueryInterface(op, ref IidInfo, out info));
+        Marshal.ThrowExceptionForHR(QI(op, ref IidInfo, out info));
         try { int v; Marshal.ThrowExceptionForHR(((GetIntFn)Slot(info, slot, typeof(GetIntFn)))(info, out v)); return v; }
         finally { Marshal.Release(info); }
     }
@@ -93,7 +96,7 @@ public static class HelloInterop {
         if (op == IntPtr.Zero) return;
         try {
             IntPtr info;
-            if (Marshal.QueryInterface(op, ref IidInfo, out info) == 0) {
+            if (QI(op, ref IidInfo, out info) == 0) {
                 try { ((VoidFn)Slot(info, 10, typeof(VoidFn)))(info); } finally { Marshal.Release(info); }
             }
         } catch { }
@@ -132,7 +135,7 @@ function Set-HULockPin([string]$Pin) {
     $p = Get-HULockPinPath
     $dir = Split-Path $p -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-    [IO.File]::WriteAllText($p, ($o | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText($p, ($o | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding $false))
 }
 
 function Test-HULockPinSet { return (Test-Path -LiteralPath (Get-HULockPinPath)) }
@@ -213,9 +216,11 @@ $script:HelloCode = {
 
 function Start-HUHelloVerify([scriptblock]$OnDone, [IntPtr]$Hwnd = [IntPtr]::Zero) {
     # Bevorzugt: Dialog ans eigene Fenster gebunden (Windows 11). Faellt bei Fehler auf den alten Weg zurueck.
+    $why = $(if ($Hwnd -eq [IntPtr]::Zero) { 'kein Fensterhandle' } else { '' })
     if ($Hwnd -ne [IntPtr]::Zero) {
         $op = [IntPtr]::Zero
-        try { Initialize-HUHelloInterop; $op = [HUTools.HelloInterop]::Start($Hwnd, 'HU-MultiTenant entsperren') } catch { $op = [IntPtr]::Zero }
+        try { Initialize-HUHelloInterop; $op = [HUTools.HelloInterop]::Start($Hwnd, 'HU-MultiTenant entsperren') }
+        catch { $op = [IntPtr]::Zero; $why = "$($_.Exception.Message)"; try { Write-HULogWarn "Windows Hello (Fenster-Weg): $why" } catch { } }
         if ($op -ne [IntPtr]::Zero) {
             $t = [System.Windows.Threading.DispatcherTimer]::new()
             $t.Interval = [TimeSpan]::FromMilliseconds(250)
@@ -244,6 +249,8 @@ function Start-HUHelloVerify([scriptblock]$OnDone, [IntPtr]$Hwnd = [IntPtr]::Zer
             return
         }
     }
+    # PowerShell 7 hat keine WinRT-Projektion mehr (ContentType=WindowsRuntime) - der alte Weg geht dort nicht
+    if ($PSVersionTable.PSEdition -eq 'Core') { & $OnDone "Fehler: Windows Hello unter PowerShell 7 nur ueber den Fenster-Weg moeglich ($why)"; return }
     $rs = [runspacefactory]::CreateRunspace(); $rs.Open()
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript($script:HelloCode)

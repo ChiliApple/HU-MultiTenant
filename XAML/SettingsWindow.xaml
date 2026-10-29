@@ -42,7 +42,17 @@
                                     ToolTip="Oeffentlicher Desktop - braucht Administratorrechte"/>
                             <Button x:Name="btnLauncher" Content="Starter neu erstellen" Style="{StaticResource ToolButton}" Margin="0,0,8,6"/>
                         </WrapPanel>
-                        <TextBlock x:Name="txtShortcutInfo" Style="{StaticResource HintText}" FontSize="11" Margin="0,0,0,16"/>
+                        <TextBlock x:Name="txtShortcutInfo" Style="{StaticResource HintText}" FontSize="11" Margin="0,0,0,8"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                            <TextBlock Text="PowerShell beim Start" Style="{StaticResource FieldLabel}" Width="230"/>
+                            <ComboBox x:Name="cmbPsHost" Width="320" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
+                                      ToolTip="Gilt fuer den Starter HU-MultiTenant.exe, Start-HUMultiTenant.cmd, Neustart und Update. Wirkt beim naechsten Start.">
+                                <ComboBoxItem Content="Automatisch (PowerShell 7, wenn installiert)" Tag="auto"/>
+                                <ComboBoxItem Content="Windows PowerShell 5.1" Tag="5"/>
+                                <ComboBoxItem Content="PowerShell 7" Tag="7"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBlock x:Name="txtPsHostInfo" Style="{StaticResource HintText}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,16"/>
 
                         <TextBlock Text="Start und Darstellung" Style="{StaticResource SectionTitle}"/>
                         <Grid Margin="0,0,0,16">
@@ -51,6 +61,7 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
@@ -112,6 +123,8 @@
                                 <TextBox x:Name="txtSetupPath" Style="{StaticResource DarkTextBox}" FontSize="12"
                                          ToolTip="Hierhin werden Setup-Dateien beim Hinzufuegen kopiert (&lt;App&gt;\&lt;Version&gt;, die letzten zwei Versionen bleiben). Danach kann der Download geloescht werden. Vorschlag: OneDrive\HU-MultiTenant-Setups."/>
                             </DockPanel>
+                            <TextBlock Grid.Row="9" Text="Startanimation" Style="{StaticResource FieldLabel}"/>
+                            <CheckBox Grid.Row="9" Grid.Column="1" x:Name="chkSplashAnim" Content="Saugroboter r&#xE4;umt den Startbildschirm weg (Klick darauf &#xFC;berspringt)" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="0,5"/>
                             <ComboBox Grid.Row="5" Grid.Column="1" x:Name="cmbWingetSource" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
                                       ToolTip="winget-Quelle fuer Apps &gt; Updates. Standard: winget (Community-Repository). Die Liste zeigt die auf diesem PC eingerichteten Quellen (winget source list)."/>
                         </Grid>

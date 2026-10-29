@@ -5,21 +5,56 @@
     (Desktop, Startmenue - eigener Benutzer oder alle Benutzer).
 .DESCRIPTION
     HU-MultiTenant.exe wird lokal aus dem C#-Quelltext unten erzeugt (nicht im Repo, kein fremdes Programm).
-    Sie startet Windows PowerShell 5.1 unsichtbar mit Main.ps1 - ohne Administratorrechte (Graph braucht keine).
+    Sie startet Main.ps1 unsichtbar - ohne Administratorrechte (Graph braucht keine) - mit PowerShell 7, wenn installiert,
+    sonst mit Windows PowerShell 5.1. Einstellung: Config\powershell-host.txt (auto | 5 | 7), in den Einstellungen waehlbar.
+    Aeltere Starter (nur 5.1) werden beim Programmstart automatisch ersetzt (Dateiversion $script:LauncherVersion).
     Die Verknuepfungen zeigen auf die EXE (eigenes Symbol, an die Taskleiste anheftbar); ohne EXE auf Start-HUMultiTenant.cmd.
 .NOTES
     Dot-Source aus Main.ps1. Zielmaschine: der PC, auf dem HU-MultiTenant laeuft.
 #>
 
 $script:LauncherName = 'HU-MultiTenant.exe'
+$script:LauncherVersion = '2.0.0'
 $script:LauncherSource = @'
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Windows.Forms;
+
+[assembly: AssemblyTitle("HU-MultiTenant")]
+[assembly: AssemblyFileVersion("2.0.0")]
 
 public static class HUMultiTenantLauncher
 {
+    // PowerShell 7: Standard-Installation (winget/MSI) oder Microsoft Store
+    static string FindPwsh()
+    {
+        string pf64 = Environment.GetEnvironmentVariable("ProgramW6432");
+        string[] c = {
+            string.IsNullOrEmpty(pf64) ? null : Path.Combine(pf64, @"PowerShell\7\pwsh.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"PowerShell\7\pwsh.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\WindowsApps\pwsh.exe")
+        };
+        foreach (string p in c) { if (!string.IsNullOrEmpty(p) && File.Exists(p)) return p; }
+        return null;
+    }
+    // Config\powershell-host.txt: auto (Standard) | 5 | 7
+    static string HostSetting(string dir)
+    {
+        try
+        {
+            string f = Path.Combine(dir, @"Config\powershell-host.txt");
+            if (File.Exists(f))
+            {
+                string v = File.ReadAllText(f).Trim().ToLowerInvariant();
+                if (v == "5" || v == "7" || v == "auto") return v;
+            }
+        }
+        catch { }
+        return "auto";
+    }
+
     [STAThread]
     public static int Main(string[] args)
     {
@@ -30,27 +65,107 @@ public static class HUMultiTenantLauncher
             MessageBox.Show("Main.ps1 nicht gefunden in:\n" + dir + "\n\nPull.ps1 ausfuehren, um die Dateien zu laden.", "HU-MultiTenant", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
-        string ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe");
-        ProcessStartInfo psi = new ProcessStartInfo(ps, "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + ps1 + "\"");
+        string mode = HostSetting(dir);
+        string pwsh = (mode == "5") ? null : FindPwsh();
+        if (mode == "7" && pwsh == null)
+        {
+            MessageBox.Show("In den Einstellungen ist PowerShell 7 gewaehlt, es ist aber nicht installiert.\n\nHU-MultiTenant startet mit Windows PowerShell 5.1.\nInstallieren: winget install Microsoft.PowerShell", "HU-MultiTenant", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        string exe = pwsh ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe");
+        // WPF braucht STA (Windows PowerShell startet immer so, pwsh nur mit -STA)
+        string arg = "-NoProfile " + (pwsh != null ? "-STA " : "") + "-ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + ps1 + "\"";
+        ProcessStartInfo psi = new ProcessStartInfo(exe, arg);
         psi.UseShellExecute = false;
         psi.CreateNoWindow = true;
         psi.WindowStyle = ProcessWindowStyle.Hidden;
         psi.WorkingDirectory = dir;
         try { Process.Start(psi); }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "HU-MultiTenant", MessageBoxButtons.OK, MessageBoxIcon.Error); return 2; }
+        catch (Exception ex)
+        {
+            if (pwsh == null) { MessageBox.Show(ex.Message, "HU-MultiTenant", MessageBoxButtons.OK, MessageBoxIcon.Error); return 2; }
+            // pwsh liess sich nicht starten: Rueckfall auf Windows PowerShell 5.1
+            try
+            {
+                ProcessStartInfo p5 = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"), "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + ps1 + "\"");
+                p5.UseShellExecute = false; p5.CreateNoWindow = true; p5.WindowStyle = ProcessWindowStyle.Hidden; p5.WorkingDirectory = dir;
+                Process.Start(p5);
+            }
+            catch (Exception ex2) { MessageBox.Show(ex2.Message, "HU-MultiTenant", MessageBoxButtons.OK, MessageBoxIcon.Error); return 2; }
+        }
         return 0;
     }
 }
 '@
 
+# ----------------------------------------------------------------------------
+# Welche PowerShell startet die App? (gleiche Regel wie im Starter HU-MultiTenant.exe und in Start-HUMultiTenant.cmd)
+# ----------------------------------------------------------------------------
+function Get-HUPwshPath {
+    $c = @()
+    if ($env:ProgramW6432) { $c += (Join-Path $env:ProgramW6432 'PowerShell\7\pwsh.exe') }
+    if ($env:ProgramFiles) { $c += (Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe') }
+    if ($env:LOCALAPPDATA) { $c += (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pwsh.exe') }
+    foreach ($p in $c) { if ($p -and (Test-Path -LiteralPath $p)) { return $p } }
+    return ''
+}
+function Get-HUPsHostFile { return (Join-Path $script:AppRoot 'Config\powershell-host.txt') }
+# auto (Standard) | 5 | 7
+function Get-HUPsHostSetting {
+    $f = Get-HUPsHostFile
+    try { if (Test-Path -LiteralPath $f) { $v = ([IO.File]::ReadAllText($f)).Trim().ToLowerInvariant(); if ($v -in 'auto', '5', '7') { return $v } } } catch { }
+    return 'auto'
+}
+function Set-HUPsHostSetting([ValidateSet('auto', '5', '7')][string]$Value) {
+    $f = Get-HUPsHostFile
+    if ($Value -eq 'auto') { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force }; return }
+    [IO.File]::WriteAllText($f, $Value, (New-Object System.Text.UTF8Encoding $false))
+}
+# Programm und Argumente fuer einen Start von Main.ps1 (Neustart, Taskleiste). -Extra: weitere Argumente fuer Main.ps1
+function Get-HUAppStartInfo([string]$Extra = '') {
+    $mode = Get-HUPsHostSetting
+    $pw = $(if ($mode -eq '5') { '' } else { Get-HUPwshPath })
+    $exe = $(if ($pw) { $pw } else { [IO.Path]::Combine("$env:SystemRoot", 'System32\WindowsPowerShell\v1.0\powershell.exe') })
+    $a = "-NoProfile $(if ($pw) { '-STA ' })-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $script:AppRoot 'Main.ps1')`"$(if ($Extra) { " $Extra" })"
+    return [pscustomobject]@{ Exe = $exe; Args = $a; Is7 = [bool]$pw }
+}
+# Anzeige: laufende Version und was beim naechsten Start genommen wird
+function Get-HUPsHostInfoText {
+    $pw = Get-HUPwshPath
+    $run = "Laeuft gerade mit $(if ($PSVersionTable.PSEdition -eq 'Core') { 'PowerShell' } else { 'Windows PowerShell' }) $($PSVersionTable.PSVersion)."
+    $next = switch (Get-HUPsHostSetting) {
+        '5' { 'Naechster Start: Windows PowerShell 5.1.' }
+        '7' { $(if ($pw) { 'Naechster Start: PowerShell 7.' } else { 'PowerShell 7 ist nicht installiert - Start mit 5.1 (winget install Microsoft.PowerShell).' }) }
+        default { $(if ($pw) { 'Naechster Start: PowerShell 7 (installiert).' } else { 'Naechster Start: Windows PowerShell 5.1 (PowerShell 7 nicht installiert).' }) }
+    }
+    return "$run $next"
+}
+
+# Dateiversion des vorhandenen Starters ('' = keiner oder alter Starter ohne Version)
+function Get-HULauncherVersion {
+    $exe = Join-Path $script:AppRoot $script:LauncherName
+    if (-not (Test-Path -LiteralPath $exe)) { return '' }
+    try { return "$((Get-Item -LiteralPath $exe).VersionInfo.FileVersion)".Trim() } catch { return '' }
+}
+# Starter erzeugen. Ohne -Force nur, wenn er fehlt oder aelter ist (bestehende Installationen bekommen so den neuen Starter).
+# Uebersetzt wird mit csc.exe des .NET Framework (unter PS 5.1 und PS 7 gleich; PS 7 kann keine .exe per Add-Type erzeugen).
 function New-HULauncher {
     param([switch]$Force)
     $exe = Join-Path $script:AppRoot $script:LauncherName
     $ico = Join-Path $script:AppRoot 'Assets\icon.ico'
-    if ((Test-Path -LiteralPath $exe) -and -not $Force) { return $true }
+    if ((Test-Path -LiteralPath $exe) -and -not $Force -and (Get-HULauncherVersion) -eq $script:LauncherVersion) { return $true }
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("HU-Starter-{0}" -f [guid]::NewGuid().ToString('N').Substring(0, 8))
     try {
+        $csc = @("$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe", "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        if (-not $csc) { throw 'csc.exe (.NET Framework 4) nicht gefunden' }
         # alte Reste (*.old) aufraeumen - frueher gesperrte Starter
         Get-ChildItem -LiteralPath $script:AppRoot -Filter "$($script:LauncherName).*.old" -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+        [void](New-Item -ItemType Directory -Path $tmp -Force)
+        $src = Join-Path $tmp 'Starter.cs'; $out = Join-Path $tmp $script:LauncherName
+        [IO.File]::WriteAllText($src, $script:LauncherSource, (New-Object System.Text.UTF8Encoding $false))
+        $a = @('/nologo', '/target:winexe', '/optimize+', "/out:$out", '/r:System.Windows.Forms.dll')
+        if (Test-Path -LiteralPath $ico) { $a += "/win32icon:$ico" }
+        $msg = & $csc @a $src 2>&1
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $out)) { throw "csc: $((@($msg) | Select-Object -First 3) -join ' ')" }
         if (Test-Path -LiteralPath $exe) {
             try { Remove-Item -LiteralPath $exe -Force -ErrorAction Stop }
             catch {
@@ -58,21 +173,13 @@ function New-HULauncher {
                 Rename-Item -LiteralPath $exe -NewName "$($script:LauncherName).$([guid]::NewGuid().ToString('N').Substring(0, 8)).old" -Force -ErrorAction Stop
             }
         }
-        $cp = New-Object System.CodeDom.Compiler.CompilerParameters
-        $cp.GenerateExecutable = $true
-        $cp.GenerateInMemory = $false
-        $cp.OutputAssembly = $exe
-        $cp.CompilerOptions = '/target:winexe /optimize+' + $(if (Test-Path -LiteralPath $ico) { " /win32icon:`"$ico`"" } else { '' })
-        [void]$cp.ReferencedAssemblies.Add('System.dll')
-        [void]$cp.ReferencedAssemblies.Add('System.Windows.Forms.dll')
-        # eindeutiger Typname (mehrfaches Erzeugen in einer Sitzung)
-        $src = $script:LauncherSource -replace 'HUMultiTenantLauncher', ('HUMultiTenantLauncher' + [guid]::NewGuid().ToString('N'))
-        Add-Type -TypeDefinition $src -Language CSharp -CompilerParameters $cp -ErrorAction Stop
+        Move-Item -LiteralPath $out -Destination $exe -Force
+        Write-HULogOK "Starter $($script:LauncherName) $($script:LauncherVersion) erstellt (PowerShell 7, wenn installiert, sonst 5.1)"
         return (Test-Path -LiteralPath $exe)
     } catch {
         Write-HULogWarn "Starter $($script:LauncherName) nicht erstellt: $($_.Exception.Message)"
         return (Test-Path -LiteralPath $exe)   # vorhandener Starter bleibt nutzbar
-    }
+    } finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 # Verknuepfung anlegen. -Location Desktop | StartMenu, -AllUsers = oeffentlicher Desktop / Startmenue aller Benutzer (Adminrechte)
@@ -204,9 +311,7 @@ function Set-HUWindowTaskbar($Window) {
         $hwnd = (New-Object System.Windows.Interop.WindowInteropHelper $Window).Handle
         if ($hwnd -eq [IntPtr]::Zero) { return }
         $exe = Join-Path $script:AppRoot $script:LauncherName
-        $cmd = if (Test-Path -LiteralPath $exe) { "`"$exe`"" } else {
-            "`"$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe`" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $script:AppRoot 'Main.ps1')`""
-        }
+        $cmd = if (Test-Path -LiteralPath $exe) { "`"$exe`"" } else { $si = Get-HUAppStartInfo; "`"$($si.Exe)`" $($si.Args)" }
         $ico = Join-Path $script:AppRoot 'Assets\icon.ico'
         [void][HUTaskbar]::SetWindowAppId($hwnd, $script:HUAppId, $cmd, 'HU-MultiTenant', $(if (Test-Path -LiteralPath $ico) { $ico } else { '' }))
     } catch { Write-HULogDebug "Taskleiste: $($_.Exception.Message)" }

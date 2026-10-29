@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Dialoge einheitlich: nichts abgeschnitten. Fenster mit Anfasser und Mindestbreite, lange Texte umbrechen.
-    Ausnahmen: kleine Hinweis-Toasts und das Meldungsfenster (passt sich selbst an den Inhalt an).
+    Ausnahmen: kleine Hinweis-Toasts, das Meldungsfenster (passt sich selbst an den Inhalt an) und der Startbildschirm (fest, ohne Rahmen).
 #>
 Describe 'Dialoge: Groesse und Umbruch' {
     BeforeAll {
@@ -14,7 +14,7 @@ Describe 'Dialoge: Groesse und Umbruch' {
                 [pscustomobject]@{ File = $f.Name; Fn = $(if ($fn.Count) { $fn[$fn.Count - 1].Groups[1].Value } else { '' }); Xaml = $m.Groups[1].Value }
             }
         }
-        $script:Skip = @('Show-HUToast', 'Show-HUDialogBox')
+        $script:Skip = @('Show-HUToast', 'Show-HUDialogBox', 'Get-HUSplashXaml')
     }
     It 'gefunden' { @($Dialogs).Count | Should -BeGreaterThan 15 }
     It 'kein fest kleines Fenster: Anfasser und Mindestbreite' {
@@ -25,7 +25,7 @@ Describe 'Dialoge: Groesse und Umbruch' {
         @($bad) | Should -BeNullOrEmpty
     }
     It 'lange Texte brechen um (TextBlock mit TextWrapping oder HintText, CheckBox mit innerem TextBlock)' {
-        $bad = foreach ($d in $Dialogs) {
+        $bad = foreach ($d in @($Dialogs | Where-Object { $_.Fn -ne 'Get-HUSplashXaml' })) {
             foreach ($t in [regex]::Matches($d.Xaml, '(?s)<(TextBlock|CheckBox|RadioButton)\b[^>]*>')) {
                 $tag = $t.Value
                 $txt = [regex]::Match($tag, '\b(?:Text|Content)="([^"]*)"')

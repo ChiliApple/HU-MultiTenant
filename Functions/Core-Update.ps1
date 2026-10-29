@@ -220,6 +220,41 @@ function Publish-HMRelease([string]$Owner, [string]$Repo, [string]$Tag, [string]
     $why = Test-HMManifestSignature $man $sig $Thumbprint
     if ($why) { throw "Signatur von $Tag ungueltig ($why) - nicht freigegeben" }
     $rel = Invoke-RestMethod "https://api.github.com/repos/$Owner/$Repo/releases/tags/$Tag" -Headers $h -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
-    $body = @{ prerelease = $false; make_latest = 'true' } | ConvertTo-Json -Compress
+    $body = @{ prerelease = $false; make_latest = 'true' } | ConvertTo-Json -Depth 10 -Compress
     Invoke-RestMethod "https://api.github.com/repos/$Owner/$Repo/releases/$($rel.id)" -Method Patch -Headers $h -ContentType 'application/json' -Body $body -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop | Out-Null
+}
+# Stand von main gegen die Releases: Wird die neue Version gerade gebaut?
+# Nach dem Merge laufen erst die automatischen Tests (einige Minuten), erst danach legt die CI das Release samt Pruefsummen-Datei an.
+# Rueckgabe: Sha, AgeMin (Minuten seit dem Commit), Tag (Release dieses Commits, sonst leer), HasManifest
+function Get-HMMainBuildState([string]$Owner, [string]$Repo, [string]$Token, [string]$Branch = 'main') {
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+    $h = @{ Accept = 'application/vnd.github+json'; 'User-Agent' = $script:HMUserAgent; 'Cache-Control' = 'no-cache' }
+    if ($Token) { $h.Authorization = "token $Token" }
+    $n = [DateTime]::UtcNow.Ticks
+    $c = Invoke-RestMethod "https://api.github.com/repos/$Owner/$Repo/commits/$($Branch)?nocache=$n" -Headers $h -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+    $raw = Invoke-RestMethod "https://api.github.com/repos/$Owner/$Repo/releases?per_page=30&nocache=$n" -Headers $h -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+    return (ConvertTo-HMMainBuildState $c $raw ([DateTime]::UtcNow))
+}
+# Reine Funktion (testbar): Commit + Release-Liste der API -> Zustand
+function ConvertTo-HMMainBuildState($Commit, $Releases, [datetime]$NowUtc) {
+    $sha = "$($Commit.sha)"
+    $dv = $Commit.commit.committer.date
+    # PS 5.1 liefert das Datum als Text, PS 7 schon als DateTime
+    if ($dv -is [datetime]) { $d = $dv.ToUniversalTime() }
+    else { $d = [datetime]::Parse("$dv", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]'AdjustToUniversal, AssumeUniversal') }
+    $rel = @(@($Releases) | Where-Object { $_ -and "$($_.target_commitish)" -eq $sha })[0]
+    $man = $false
+    if ($rel) { $man = [bool]@(@($rel.assets) | Where-Object { $_ -and "$($_.name)" -eq $script:HMManifestName }).Count }
+    return [pscustomobject]@{
+        Sha = $sha; AgeMin = [int][Math]::Max(0, [Math]::Floor(($NowUtc - $d).TotalMinutes))
+        Tag = $(if ($rel) { "$($rel.tag_name)" } else { '' }); HasManifest = $man
+    }
+}
+# Lohnt sich Warten? 'Ready' = Release mit Pruefsumme da, 'Building' = Release (oder Pruefsumme) fehlt noch,
+# Commit juenger als $MaxAgeMin; 'None' = kein Release zu erwarten (Version nicht erhoeht oder Tests fehlgeschlagen)
+function Get-HMBuildWaitState($State, [int]$MaxAgeMin = 30) {
+    if (-not $State) { return 'None' }
+    if ($State.Tag -and $State.HasManifest) { return 'Ready' }
+    if ($State.AgeMin -lt $MaxAgeMin) { return 'Building' }
+    return 'None'
 }

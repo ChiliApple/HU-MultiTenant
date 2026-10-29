@@ -70,6 +70,19 @@ function Invoke-HUSetupGraph {
 }
 
 # Rechte-Liste (Config\graph-permissions.json)
+# Abfrageteil einer Adresse (?a=1&b=x%20y) in eine Tabelle zerlegen - ohne System.Web (laeuft so unter PS 5.1 und PS 7).
+# Unbekannte Schluessel liefern $null; doppelte Schluessel: der erste gilt.
+function ConvertFrom-HUQueryString([string]$Query) {
+    $h = @{}
+    foreach ($part in ("$Query".TrimStart('?') -split '&')) {
+        if (-not $part) { continue }
+        $kv = $part -split '=', 2
+        $k = [Uri]::UnescapeDataString(($kv[0] -replace '\+', ' '))
+        $v = if ($kv.Count -gt 1) { [Uri]::UnescapeDataString(($kv[1] -replace '\+', ' ')) } else { '' }
+        if (-not $h.ContainsKey($k)) { $h[$k] = $v }
+    }
+    return $h
+}
 function Get-HUPermissionCatalog([string]$AppRoot) {
     $f = Join-Path $AppRoot 'Config\graph-permissions.json'
     return (Get-Content -LiteralPath $f -Raw -Encoding UTF8 | ConvertFrom-Json)
@@ -145,8 +158,7 @@ function Receive-HUAdminLogin {
         $isAnswer = $m.Success -and $m.Groups[1].Value -match '[?&](code|error)='
         # Antwort ohne passenden state (z. B. von einem anderen lokalen Prozess) wie eine Vorab-Verbindung behandeln
         if ($isAnswer) {
-            Add-Type -AssemblyName System.Web
-            $qs0 = [System.Web.HttpUtility]::ParseQueryString(([Uri]("http://localhost$($m.Groups[1].Value)")).Query)
+            $qs0 = ConvertFrom-HUQueryString ([Uri]("http://localhost$($m.Groups[1].Value)")).Query
             if ($qs0['state'] -ne $Context.State) { $isAnswer = $false }
         }
         if (-not $isAnswer) {
@@ -164,8 +176,7 @@ function Receive-HUAdminLogin {
     } catch { } finally { try { $client.Close() } catch { } }
     Stop-HUAdminLogin $Context
     $res = [pscustomobject]@{ Ok = $false; Error = ''; Token = ''; Tid = ''; Upn = ''; Name = ''; Roles = @() }
-    Add-Type -AssemblyName System.Web
-    $qs = [System.Web.HttpUtility]::ParseQueryString(([Uri]("http://localhost$($m.Groups[1].Value)")).Query)
+    $qs = ConvertFrom-HUQueryString ([Uri]("http://localhost$($m.Groups[1].Value)")).Query
     if ($qs['error']) { $res.Error = "Anmeldung abgelehnt: $($qs['error']) - $((("$($qs['error_description'])") -split "`r?`n")[0])"; return $res }
     if (-not $qs['code']) { $res.Error = 'Kein Code in der Antwort'; return $res }
     $body = @{ client_id = $script:SetupClientId; grant_type = 'authorization_code'; code = $qs['code']; redirect_uri = $Context.Redirect; code_verifier = $Context.Verifier; scope = $script:SetupScopes }

@@ -392,3 +392,16 @@ Describe 'Rechte erteilen: nach dem Erteilen nicht dieselben Rechte wieder anbie
         Set-StrictMode -Off
     }
 }
+Describe 'Anmelde-Antwort lesen ohne System.Web (PS 5.1 und PS 7)' {
+    It 'ConvertFrom-HUQueryString: Kodierung, Plus, fehlender Wert, erster Schluessel gilt' {
+        InModuleScope HU.Setup {
+            $q = ConvertFrom-HUQueryString '?code=0.AX%2Fab-c&state=xy%3D1&error_description=AADSTS+65004%3A+abgelehnt&leer=&code=zweiter'
+            $q['code'] | Should -Be '0.AX/ab-c'
+            $q['state'] | Should -Be 'xy=1'
+            $q['error_description'] | Should -Be 'AADSTS 65004: abgelehnt'
+            $q['leer'] | Should -Be ''
+            $q['error'] | Should -BeNullOrEmpty
+            (ConvertFrom-HUQueryString '').Count | Should -Be 0
+        }
+    }
+}

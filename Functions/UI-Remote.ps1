@@ -217,7 +217,10 @@ function Get-HURemoteSetupState {
     $o.Cert = $cert
     $o.Ca = @(Get-ChildItem -Path 'Cert:\LocalMachine\My' -ErrorAction SilentlyContinue | Where-Object { $_.Subject -eq $cert.Issuer -and $_.FriendlyName -eq $script:HURemoteCaName } | Sort-Object NotAfter -Descending)[0]
     $san = Get-HURemoteCertSan $cert
-    $ips = @(Get-HURemoteIPv4List | Where-Object { $_.Private } | ForEach-Object { $_.IP })
+    # nur echte Netze pruefen (mit Gateway) - virtuelle Adapter ohne Gateway (Hyper-V-Standardswitch, WSL: z. B. 172.x)
+    # erreicht das Handy ohnehin nicht; gibt es gar keinen mit Gateway, alle privaten
+    $all = @(Get-HURemoteIPv4List | Where-Object { $_.Private })
+    $ips = @($(if (@($all | Where-Object { $_.Gateway }).Count) { $all | Where-Object { $_.Gateway } } else { $all }) | ForEach-Object { $_.IP })
     $miss = @($ips | Where-Object { $san.IPs -notcontains $_ })
     if ($miss.Count) { $o.Warn = "Das Zertifikat passt nicht zur Adresse $($miss -join ', ') - Einrichtung erneuern (Tipp: feste Adresse im Router)." }
     if ($cert.NotAfter -lt (Get-Date).AddDays(30)) { $o.Warn = "Zertifikat laeuft am $($cert.NotAfter.ToString('dd.MM.yyyy')) ab - Einrichtung erneuern." }
@@ -286,13 +289,14 @@ try {
     }
     & (Join-Path `$base 'HU.RemoteSetup.ps1') -Action '$Action' -Port $port -Sid '$sid' -Networks '$($nets -join ',')' -ResultFile `$res
 }
-catch { [IO.File]::WriteAllText(`$res, (@{ Ok = `$false; Error = "`$(`$_.Exception.Message)" } | ConvertTo-Json), (New-Object Text.UTF8Encoding `$false)) }
+catch { [IO.File]::WriteAllText(`$res, (@{ Ok = `$false; Error = "`$(`$_.Exception.Message)" } | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding `$false)) }
 finally { foreach (`$k in `$files.Keys) { Remove-Item -LiteralPath (Join-Path `$base `$k) -Force -ErrorAction SilentlyContinue } }
 "@
     $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($boot))
     $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc)
     try {
-        $p = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $argList -Verb RunAs -WindowStyle Hidden -PassThru -Wait -ErrorAction Stop
+        # immer Windows PowerShell 5.1 (unter PS 7 liegt in $PSHOME keine powershell.exe)
+        $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $argList -Verb RunAs -WindowStyle Hidden -PassThru -Wait -ErrorAction Stop
     } catch { Show-HUMessage "Einrichtung abgebrochen (keine Administratorrechte erteilt).`n$($_.Exception.Message)" -Icon Warning -Owner $Owner; return $false }
     $j = $null; try { $j = Get-Content -LiteralPath $res -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
     if (-not $j -or -not $j.Ok) { Show-HUMessage "Einrichtung fehlgeschlagen: $(if ($j) { $j.Error } else { 'kein Ergebnis' })" -Icon Error -Owner $Owner; return $false }

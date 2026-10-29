@@ -268,11 +268,73 @@ function Write-HUPub([string]$Text, [ValidateSet('OK', 'WARN', 'ERROR', 'INFO')]
     } catch { }
 }
 
-function Start-HUReleaseSigning([switch]$Addon) {
+# --- Warten auf das neue Release: Nach dem Merge laufen erst die automatischen Tests (einige Minuten),
+# erst danach gibt es das Release mit Pruefsummen-Datei. Bis dahin hiess es frueher "Nichts zu signieren". ---
+$script:RelWait = $null
+$script:RelWaitTimer = $null
+function Start-HUReleaseWait($Ctx) {
+    $script:RelWait = $Ctx
+    if (-not $script:RelWaitTimer) {
+        $t = [System.Windows.Threading.DispatcherTimer]::new()
+        $t.Interval = [TimeSpan]::FromSeconds(20)
+        $t.Add_Tick({ Update-HUReleaseWait })
+        $script:RelWaitTimer = $t
+    }
+    $script:RelWaitTimer.Start()
+    Write-HUPub "Warte auf das neue Release von $($Ctx.Owner)/$($Ctx.Repo) (Abfrage alle 20 s, hoechstens 15 Min.). Erneut 'Release signieren' bricht das Warten ab." INFO
+}
+function Stop-HUReleaseWait {
+    if ($script:RelWaitTimer) { $script:RelWaitTimer.Stop() }
+    $script:RelWait = $null
+}
+function Update-HUReleaseWait {
+    $w = $script:RelWait
+    if (-not $w) { Stop-HUReleaseWait; return }
+    if ($w.Busy) { return }
+    if (((Get-Date) - $w.Started).TotalMinutes -gt 15) {
+        Stop-HUReleaseWait
+        $msg = "Nach 15 Minuten gibt es noch kein neues Release mit Pruefsummen-Datei ($($w.Owner)/$($w.Repo)).`n`nAuf GitHub unter 'Actions' nachsehen, ob die automatischen Tests noch laufen oder fehlgeschlagen sind. Danach erneut 'Release signieren'."
+        Write-HUPub 'Warten beendet: nach 15 Minuten noch kein neues Release.' WARN
+        Show-HUMessage $msg 'Release signieren' -Icon Warning
+        return
+    }
+    $w.Busy = $true
+    Invoke-AsyncCommand -ScriptBlock {
+        param($lib, $tok, $owner, $repo)
+        try { . $lib; $st = Get-HMMainBuildState $owner $repo $tok; return "ST:$(Get-HMBuildWaitState $st)|$($st.Tag)|$($st.AgeMin)" }
+        catch { return "ERR:$($_.Exception.Message)" }
+    } -ArgumentList @($script:UpdateLib, $w.Token, $w.Owner, $w.Repo) -TimeoutSec 40 -OnComplete {
+        param($res)
+        $w = $script:RelWait
+        if (-not $w) { return }
+        $w.Busy = $false
+        $s = "$res".Trim()
+        if ($s -match '^ST:Ready\|([^|]*)\|') {
+            $tag = $Matches[1]; Stop-HUReleaseWait
+            Write-HUPub "$tag ist da (mit Pruefsummen-Datei) - weiter mit Signieren." OK
+            Start-HUReleaseSigning -Addon:$w.Addon -Target $w.Target
+            return
+        }
+        if ($s -match '^ST:None') {
+            Stop-HUReleaseWait
+            $msg = "Fuer den neuesten Stand auf main entsteht kein Release: Entweder wurde die Version nicht erhoeht, oder die automatischen Tests sind fehlgeschlagen (auf GitHub unter 'Actions' nachsehen)."
+            Write-HUPub $msg WARN; Show-HUMessage $msg 'Release signieren' -Icon Warning
+            return
+        }
+        if ($s -match '^ST:Building\|[^|]*\|(\d+)') { Write-HUPub "Noch nicht fertig (Merge vor $($Matches[1]) Min.) - warte weiter ..." INFO; return }
+        Write-HUPub "Abfrage fehlgeschlagen, versuche es weiter: $($s -replace '^ERR:\s*', '')" WARN
+    }
+}
+
+function Start-HUReleaseSigning([switch]$Addon, [object]$Target = $null) {
+    if ($script:RelWait) {
+        if (Confirm-HU "Es wird noch auf das neue Release von $($script:RelWait.Owner)/$($script:RelWait.Repo) gewartet.`n`nWarten abbrechen?" 'Release signieren') { Stop-HUReleaseWait; Write-HUPub 'Warten auf das neue Release abgebrochen.' WARN } # Warnung: nein - nur Warten; signiert wird erst nach eigener Rueckfrage
+        return
+    }
     $cfg = Update-UpdateConfig
     if (-not $cfg) { return }
     if ($Addon) {
-        $t = Select-HUAddonSignTarget 'Release signieren'; if (-not $t) { return }
+        $t = $(if ($Target) { $Target } else { Select-HUAddonSignTarget 'Release signieren' }); if (-not $t) { return }
         $cfg = [pscustomobject]@{ Owner = $t.Owner; Repo = $t.Repo; SignerThumbprint = $cfg.SignerThumbprint }
     }
     Write-HUPub "=== Release signieren ($($cfg.Owner)/$($cfg.Repo)) ===" INFO
@@ -296,19 +358,32 @@ function Start-HUReleaseSigning([switch]$Addon) {
             $noMan = @($all | Where-Object { -not $_.ManifestUrl } | Select-Object -First 5 | ForEach-Object { "$($_.Tag)" })
             $newest = @($all | Select-Object -First 1)[0]
             $nInfo = if ($newest) { "$($newest.Tag) ($(if ($newest.Prerelease) { 'Vorab' } else { 'freigegeben' }), $(if ($newest.SignatureUrl) { 'signiert' } elseif ($newest.ManifestUrl) { 'nicht signiert' } else { 'ohne Pruefsumme' }))" } else { '-' }
-            return ('TAGS:' + ($l -join ',') + '|' + ($noMan -join ',') + '|' + $nInfo)
+            # wird main gerade gebaut? (Fehler hier stoeren das Signieren nicht)
+            $b = 'None;0'
+            try { $st = Get-HMMainBuildState $owner $repo $tok; $b = "$(Get-HMBuildWaitState $st);$($st.AgeMin)" } catch { }
+            return ('TAGS:' + ($l -join ',') + '|' + ($noMan -join ',') + '|' + $nInfo + '|' + $b)
         } catch { return "ERR:$($_.Exception.Message)" }
     } -ArgumentList @($script:UpdateLib, $tok, $cfg.Owner, $cfg.Repo) -TimeoutSec 40 -OnComplete {
         param($result)
         $r = "$result".Trim()
-        if ($r -notmatch '^TAGS:([^|]*)\|([^|]*)\|(.*)$') {
+        if ($r -notmatch '^TAGS:([^|]*)\|([^|]*)\|([^|]*)\|(\w+);(\d+)$') {
             $msg = "Releases nicht lesbar: $($r -replace '^(ERR:|FEHLER:)\s*', '')"
             Write-HUPub $msg ERROR; Show-HUMessage $msg 'Release signieren' -Icon Error
             $script:SignCtx = $null; return
         }
-        $tags = @($Matches[1] -split ',' | Where-Object { $_ }); $noMan = "$($Matches[2])"; $newest = "$($Matches[3])"
+        $tags = @($Matches[1] -split ',' | Where-Object { $_ }); $noMan = "$($Matches[2])"; $newest = "$($Matches[3])"; $build = "$($Matches[4])"; $age = "$($Matches[5])"
         Write-HUPub "Neuestes Release: $newest" INFO
         if ($noMan) { Write-HUPub "Ohne Pruefsummen-Datei (automatische Tests noch nicht fertig oder fehlgeschlagen): $noMan" WARN }
+        if (-not $tags.Count -and $build -eq 'Building') {
+            # Merge ist erst ein paar Minuten her: Release kommt erst nach den automatischen Tests
+            $sc = $script:SignCtx; $script:SignCtx = $null
+            Write-HUPub "Neue Version wird gerade gebaut (Merge vor $age Min.)." INFO
+            if (Confirm-HU "Die neue Version wird gerade gebaut: Die automatischen Tests laufen seit $age Min. (meist 6 bis 8 Min.). Erst danach legt GitHub das Release mit Pruefsummen-Datei an.`n`nWarten und dann signieren?`n`n(Die App fragt alle 20 Sekunden nach, hoechstens 15 Minuten. Vor dem Signieren kommt wie immer die Rueckfrage.)" 'Release signieren') { # Warnung: nein - nur Warten; signiert wird erst nach eigener Rueckfrage
+                $tgt = $(if ($sc.Addon) { [pscustomobject]@{ Owner = $sc.Owner; Repo = $sc.Repo } } else { $null })
+                Start-HUReleaseWait ([pscustomobject]@{ Owner = $sc.Owner; Repo = $sc.Repo; Token = $sc.Token; Addon = [bool]$sc.Addon; Target = $tgt; Started = Get-Date; Busy = $false })
+            } else { Write-HUPub 'Nicht gewartet.' WARN }
+            return
+        }
         if (-not $tags.Count) {
             $msg = "Nichts zu signieren - alle Releases mit Pruefsumme sind bereits signiert.`n`nNeuestes Release: $newest$(if ($noMan) { "`nOhne Pruefsumme: $noMan" })`n`nEine neue Version entsteht erst mit dem Merge nach main (danach ein paar Minuten warten, bis die automatischen Tests die Pruefsummen-Datei angehaengt haben)."
             Write-HUPub 'Nichts zu signieren - alle Releases mit Pruefsumme sind bereits signiert.' OK
@@ -325,7 +400,7 @@ function Start-HUReleaseSigning([switch]$Addon) {
             try {
                 . $lib
                 $items = @(Invoke-HMReleaseSigning $owner $repo $tp $tok $tags | ForEach-Object { [pscustomobject]@{ Tag = "$($_.Tag)"; Ok = [bool]$_.Ok; Text = "$($_.Text)" } })
-                return ('RES:' + (ConvertTo-Json -InputObject @($items) -Compress))
+                return ('RES:' + (ConvertTo-Json -Depth 10 -InputObject @($items) -Compress))
             } catch { return "ERR:$($_.Exception.Message)" }
         } -ArgumentList @($script:UpdateLib, $sc.Owner, $sc.Repo, $sc.Thumb, $sc.Token, [string[]]$tags) -TimeoutSec 180 -OnComplete {
             param($res)
@@ -371,20 +446,23 @@ function Start-HUReleasePublish([switch]$Addon) {
             $stable = @($l | Where-Object { -not $_.Prerelease } | Select-Object -First 1)[0]
             $cand = @($l | Where-Object { $_.Prerelease -and $_.ManifestUrl -and $_.SignatureUrl -and (-not $stable -or $_.Version -gt $stable.Version) } | Select-Object -First 1)[0]
             $unsigned = @($l | Where-Object { $_.Prerelease -and -not $_.SignatureUrl -and (-not $stable -or $_.Version -gt $stable.Version) } | ForEach-Object { $_.Tag })
-            return "PUB:$(if ($cand) { $cand.Tag })|$(if ($stable) { $stable.Tag })|$($unsigned -join ',')"
+            $b = 'None'
+            try { $b = Get-HMBuildWaitState (Get-HMMainBuildState $owner $repo $tok) } catch { }
+            return "PUB:$(if ($cand) { $cand.Tag })|$(if ($stable) { $stable.Tag })|$($unsigned -join ',')|$b"
         } catch { return "ERR:$($_.Exception.Message)" }
     } -ArgumentList @($script:UpdateLib, $tok, $cfg.Owner, $cfg.Repo) -TimeoutSec 40 -OnComplete {
         param($result)
         $r = "$result".Trim()
-        if ($r -notmatch '^PUB:([^|]*)\|([^|]*)\|(.*)$') {
+        if ($r -notmatch '^PUB:([^|]*)\|([^|]*)\|([^|]*)\|(\w+)$') {
             $msg = "Releases nicht lesbar: $($r -replace '^(ERR:|FEHLER:)\s*', '')"
             Write-HUPub $msg ERROR; Show-HUMessage $msg 'Release freigeben' -Icon Error
             $script:PubCtx = $null; return
         }
-        $tag = $Matches[1]; $stable = $Matches[2]; $uns = $Matches[3]
+        $tag = $Matches[1]; $stable = $Matches[2]; $uns = $Matches[3]; $build = $Matches[4]
         Write-HUPub "Bisher freigegeben: $(if ($stable) { $stable } else { '-' })" INFO
         if (-not $tag) {
             $msg = "Kein signiertes Vorab-Release neuer als $(if ($stable) { $stable } else { '(keines)' }).$(if ($uns) { " Noch nicht signiert: $uns - zuerst 'Release signieren'." })"
+            if ($build -eq 'Building') { $msg += "`n`nDie neue Version wird gerade gebaut (automatische Tests laufen). Zuerst 'Release signieren' - das wartet auf Wunsch, bis das Release da ist." }
             Write-HUPub $msg WARN; Show-HUMessage $msg 'Release freigeben' -Icon Warning
             $script:PubCtx = $null; return
         }

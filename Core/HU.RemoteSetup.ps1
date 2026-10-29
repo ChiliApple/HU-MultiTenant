@@ -50,4 +50,4 @@ try {
     $res.Ok = $true
 }
 catch { $res.Error = "$($_.Exception.Message)" }
-[IO.File]::WriteAllText($ResultFile, ($res | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+[IO.File]::WriteAllText($ResultFile, ($res | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding $false))

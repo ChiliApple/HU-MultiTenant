@@ -110,7 +110,7 @@ if (Test-Path -LiteralPath (Join-Path $script:AppRoot 'Config\pull-journal.json'
 # ============================================================================
 # STARTBILDSCHIRM - erscheint sofort, waehrend Module und Oberflaeche laden
 # ============================================================================
-$script:Splash = $null; $script:SplashShown = Get-Date; $script:SplashStatus = $null
+$script:Splash = $null; $script:SplashShown = Get-Date; $script:SplashStatus = $null; $script:SplashSync = $null
 function Update-HUSplash {
     # Oberflaeche kurz zeichnen lassen (der UI-Thread ist waehrend des Ladens sonst blockiert)
     $frame = New-Object System.Windows.Threading.DispatcherFrame
@@ -118,11 +118,21 @@ function Update-HUSplash {
     [System.Windows.Threading.Dispatcher]::PushFrame($frame)
 }
 function Set-HUSplashStatus([string]$Text) {
+    if ($script:SplashSync) { $script:SplashSync.Status = $Text; return }   # Startbildschirm im eigenen Thread
     if (-not $script:Splash -or -not $script:SplashStatus) { return }
     try { $script:SplashStatus.Text = $Text; Update-HUSplash } catch { }
 }
-function Close-HUSplash([int]$MinMs = 0) {
+# -Animate: zum Abschied die Startanimation (Functions\UI-Splash.ps1), sonst sofort schliessen
+function Close-HUSplash([int]$MinMs = 0, [switch]$Animate) {
+    # Startbildschirm im eigenen Thread: nur Bescheid geben (Losfahren bzw. sofort schliessen)
+    if ($script:SplashSync) { if ($Animate) { $script:SplashSync.Go = $true; $script:SplashSync.MainReady = $true } else { $script:SplashSync.Close = $true }; $script:SplashSync = $null; return }
     if (-not $script:Splash) { return }
+    # laeuft die Animation schon: ohne -Animate (z. B. Fehler) sofort beenden
+    if ((Get-Variable -Name SplashAnim -Scope Script -ErrorAction SilentlyContinue) -and $script:SplashAnim) { if (-not $Animate) { Stop-HUSplashSweep }; return }
+    # mit Animation sofort los (sie dauert selbst lange genug) - die Mindestzeit gilt nur fuer das schlichte Schliessen
+    if ($Animate -and (Get-Command Start-HUSplashSweep -ErrorAction SilentlyContinue)) {
+        try { if ((Test-HUSplashAnimOn) -and (Start-HUSplashSweep)) { return } } catch { }
+    }
     $rest = $MinMs - ((Get-Date) - $script:SplashShown).TotalMilliseconds
     if ($rest -gt 0) { Start-Sleep -Milliseconds ([int]$rest) }
     try { $script:Splash.Close() } catch { }
@@ -132,11 +142,16 @@ if (-not $SmokeTest -and -not $Headless) {   # nie bei der geplanten Aufgabe (He
     try {
         $ver = '?'
         try { $ver = "$((Get-Content (Join-Path $script:AppRoot 'Config\version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version)" } catch { }
+        # bevorzugt im eigenen Thread: die Startanimation laeuft dann schon, waehrend die App laedt
+        $spf = Join-Path $script:AppRoot 'Functions\UI-Splash.ps1'
+        if (Test-Path -LiteralPath $spf) { try { . $spf; $script:SplashSync = Start-HUSplashThread $script:AppRoot $ver } catch { $script:SplashSync = $null } }
+        if ($script:SplashSync) { throw 'SPLASH-THREAD' }   # alter Weg entfaellt (catch unten faengt das ab)
         $sx = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" Width="440" Height="310"
         WindowStartupLocation="CenterScreen" Topmost="True" ShowInTaskbar="False" Title="HU-MultiTenant">
-  <Border Background="#FF1E1E1E" CornerRadius="12" BorderBrush="#FFB9A88A" BorderThickness="2">
+  <Grid>
+  <Border x:Name="bd" Background="#FF1E1E1E" CornerRadius="12" BorderBrush="#FFB9A88A" BorderThickness="2">
     <Grid>
       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
         <Image x:Name="img" Width="112" Height="112" RenderOptions.BitmapScalingMode="HighQuality"/>
@@ -147,6 +162,8 @@ if (-not $SmokeTest -and -not $Headless) {   # nie bei der geplanten Aufgabe (He
       <TextBlock Text="v$ver" FontSize="11" Foreground="#FF6A6A6A" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,12,8"/>
     </Grid>
   </Border>
+  <Canvas x:Name="ov" ClipToBounds="True" IsHitTestVisible="False"/>
+  </Grid>
 </Window>
 "@
         $script:Splash = [System.Windows.Markup.XamlReader]::Parse($sx)
@@ -161,7 +178,7 @@ if (-not $SmokeTest -and -not $Headless) {   # nie bei der geplanten Aufgabe (He
         }
         $script:Splash.Show()
         Update-HUSplash
-    } catch { $script:Splash = $null; $script:SplashStatus = $null }
+    } catch { if ("$_" -ne 'SPLASH-THREAD') { $script:Splash = $null; $script:SplashStatus = $null } }
     $script:SplashShown = Get-Date
 }
 
@@ -183,7 +200,7 @@ $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
 $uiFiles = @('Core-Async', 'Core-Update', 'Core-Addons', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
-             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-Recipes', 'UI-WinUpdates', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-MusterApply', 'UI-MusterExchange', 'UI-AppBackup', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
+             'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Splash', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-Recipes', 'UI-WinUpdates', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-MusterApply', 'UI-MusterExchange', 'UI-AppBackup', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
 # ohne Oberflaeche nur das Noetige (Einstellungen lesen/ergaenzen)
 if ($Headless) { $uiFiles = @('UI-Common', 'UI-Settings') }
 foreach ($f in $uiFiles) {
@@ -244,6 +261,8 @@ if (-not $script:FirstRun -and -not $SmokeTest) { [void](Show-SecretSetupDialog)
 # 3. HAUPTFENSTER
 # ============================================================================
 Set-HUSplashStatus "Oberfl$([char]0xE4)che wird aufgebaut ..."
+# Startanimation: jetzt losfahren - der Roboter saugt, waehrend das Hauptfenster entsteht
+if ($script:SplashSync) { $script:SplashSync.Go = $true }
 try {
     $d = New-HUWindow 'MainWindow'
 } catch { Show-HUFatal "Oberflaeche konnte nicht geladen werden (XAML\MainWindow.xaml):`n$($_.Exception.Message)" }
@@ -375,7 +394,7 @@ $script:Window.Add_PreviewMouseWheel({
 $script:Window.Add_ContentRendered({
     if ($script:StartupDone) { return }
     $script:StartupDone = $true
-    Close-HUSplash 1200
+    Close-HUSplash 1200 -Animate
     try { [void]$script:Window.Activate() } catch { }
     if (-not $script:SmokeTestFile) {
         Start-HULockTimer
@@ -401,7 +420,7 @@ $script:Window.Add_ContentRendered({
                 $script:SmokeCloser.Stop()
                 $tab = if ($script:Controls['tabMain'].SelectedItem -eq $script:Controls['tabQuickScript']) { 'QuickScript' } else { 'Extensions' }
                 if ($ok) { "OK Version=$($script:Version) Tenants=$(@($script:Settings.tenants).Count) Extensions=$($script:ExtensionItems.Count) Tab=$tab Lauf=$($h.Result)/$($h.Errors)Fehler Schritte=$($steps -join ',')" | Set-Content -LiteralPath $script:SmokeTestFile -Encoding UTF8 }
-                else { "FEHLER Lauf nicht abgeschlossen (Verlauf: $(if ($h) { $h | ConvertTo-Json -Compress }))" | Set-Content -LiteralPath $script:SmokeTestFile -Encoding UTF8 }
+                else { "FEHLER Lauf nicht abgeschlossen (Verlauf: $(if ($h) { $h | ConvertTo-Json -Depth 10 -Compress }))" | Set-Content -LiteralPath $script:SmokeTestFile -Encoding UTF8 }
                 $script:SkipCloseChecks = $true
                 $script:Window.Close()
                 return

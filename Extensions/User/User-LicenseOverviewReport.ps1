@@ -3,7 +3,8 @@
     Microsoft-365-Lizenzen: Auslastung und Zuweisung
 
 .DESCRIPTION
-    Zeigt alle verfuegbaren SKUs mit Auslastung (consumed/enabled),
+    Zeigt alle verfuegbaren SKUs mit Auslastung (consumed/enabled); SKUs mit mindestens 10.000 Plaetzen
+    (Gratis-Kontingente) sind als "unbegrenzt" markiert und zaehlen nicht in die Summen auf dem Dashboard,
     listet User mit/ohne Lizenz, identifiziert Mehrfach-Lizenzen.
     Sheets: Dashboard, SKU-Overview, Licensed-Users, Unlicensed-Users, Multi-Licensed.
 
@@ -115,6 +116,9 @@ function Invoke-LicenseOverviewReport {
                 $warning = if ($sku.prepaidUnits.warning) { [int]$sku.prepaidUnits.warning } else { 0 }
 
                 $status = if ($sku.capabilityStatus) { $sku.capabilityStatus } else { 'Unknown' }
+                # Gratis-SKUs mit riesigem Kontingent (z. B. 1.000.000 Plaetze bei Schul-Lizenzen) gelten als "unbegrenzt":
+                # sie zaehlen nicht in "Lizenzen gesamt" und "Auslastung" (sonst stuende dort z. B. 0,1 %)
+                $unlimited = $enabled -ge 10000   # ab so vielen Plaetzen: Gratis-/Test-/Viral-Kontingent (z. B. FLOW_FREE, POWER_BI_STANDARD)
 
                 $skuOverview += [PSCustomObject]@{
                     SKU          = $sku.skuPartNumber
@@ -125,6 +129,7 @@ function Invoke-LicenseOverviewReport {
                     UsagePercent = $usagePercent
                     Suspended    = $suspended
                     Warning      = $warning
+                    Kontingent   = $(if ($unlimited) { 'unbegrenzt' } else { 'fest' })
                 }
             }
 
@@ -194,14 +199,22 @@ function Invoke-LicenseOverviewReport {
 
             # 6. Calculate Dashboard Metrics
             $totalSKUs = ($skuOverview | Measure-Object).Count
-            $totalEnabled = ($skuOverview | Measure-Object -Property Enabled -Sum).Sum
-            $totalConsumed = ($skuOverview | Measure-Object -Property Consumed -Sum).Sum
+            # nur SKUs mit festem Kontingent (unbegrenzte verfaelschen Summe und Auslastung)
+            $fixedSkus = @($skuOverview | Where-Object { $_.Kontingent -ne 'unbegrenzt' })
+            $totalUnlimited = @($skuOverview | Where-Object { $_.Kontingent -eq 'unbegrenzt' }).Count
+            $totalEnabled = [int](($fixedSkus | Measure-Object -Property Enabled -Sum).Sum)
+            $totalConsumed = [int](($fixedSkus | Measure-Object -Property Consumed -Sum).Sum)
             $overallUsagePercent = if ($totalEnabled -gt 0) {
                 [math]::Round(($totalConsumed / $totalEnabled) * 100, 1)
             }
             else {
                 0
             }
+            # knappste Lizenz mit festem Kontingent (hoechste Auslastung) - das, worauf es ankommt
+            $tight = @($fixedSkus | Where-Object { $_.Enabled -gt 0 } | Sort-Object UsagePercent -Descending)[0]
+            # Kachel: grosser Wert kurz (sonst laeuft er ueber), Name der Lizenz in der Beschriftung
+            $tightValue = $(if ($tight) { "$($tight.UsagePercent)%" } else { '-' })
+            $tightLabel = $(if ($tight) { "Knappste: $($tight.SKU) ($($tight.Available) frei)" } else { 'Knappste Lizenz' })
             $totalUnlicensed = ($unlicensedUsers | Measure-Object).Count
             $totalMultiLicensed = ($multiLicensedUsers | Measure-Object).Count
 
@@ -217,6 +230,11 @@ function Invoke-LicenseOverviewReport {
 
             # 8. Export to Excel
             Write-HULog -Message 'Exportiere Excel-Report ...' -Level 'INFO' -Tenant $TenantKey
+            # ImportExcel laden (unter PowerShell 7 liegt es ggf. noch nicht im Modulpfad - dann wird es fuer den Benutzer installiert)
+            if (-not (Initialize-HUExcel)) {
+                Write-HULog -Message 'ImportExcel ist nicht verfuegbar - Excel-Report nicht moeglich (Install-Module ImportExcel -Scope CurrentUser)' -Level 'ERROR' -Tenant $TenantKey
+                return [PSCustomObject]@{ Success = $false; Error = 'ImportExcel nicht verfuegbar' }
+            }
 
             $version = 1
             do {
@@ -274,18 +292,20 @@ function Invoke-LicenseOverviewReport {
                     -GroupDefinitions @(
                         @{ Title = 'LIZENZ';     Columns = @('SKU', 'Status') }
                         @{ Title = 'AUSLASTUNG'; Columns = @('Enabled', 'Consumed', 'Available', 'UsagePercent') }
-                        @{ Title = 'SONSTIG';    Columns = @('Suspended', 'Warning') }
+                        @{ Title = 'SONSTIG';    Columns = @('Suspended', 'Warning', 'Kontingent') }
                     )
 
                 # --- Dashboard ---
                 $dashMetrics = [ordered]@{
                     'SKUs gesamt'        = $totalSKUs
-                    'Lizenzen gesamt'    = $totalEnabled
-                    'Verbraucht'         = $totalConsumed
-                    'Auslastung'         = "$overallUsagePercent%"
+                    'davon unbegrenzt'   = $totalUnlimited
+                    'Lizenzen (fest)'    = $totalEnabled
+                    'Verbraucht (fest)'  = $totalConsumed
+                    'Auslastung (fest)'  = "$overallUsagePercent%"
                     'Unlizenziert'       = $totalUnlicensed
                     'Mehrfach-lizenziert'= $totalMultiLicensed
                 }
+                $dashMetrics[$tightLabel] = $tightValue
 
                 $sheetLinks = @(
                     @{ SheetName = 'SKU-Overview';     RowCount = $skuOverview.Count;        Description = 'Alle SKUs' }

@@ -89,7 +89,7 @@ function New-HUClientAssertion {
     # nbf 60 s zurueck: eine leicht vorgehende PC-Uhr fuehrt sonst zur Ablehnung
     $pl = [ordered]@{ aud = $Audience; iss = $Issuer; sub = $(if ($Subject) { $Subject } else { $Issuer }); jti = [guid]::NewGuid().ToString(); nbf = $now - 60; iat = $now; exp = $now + 600 }
     $enc = New-Object System.Text.UTF8Encoding $false
-    $u = (ConvertTo-HUBase64Url ($enc.GetBytes((ConvertTo-Json $hdr -Compress)))) + '.' + (ConvertTo-HUBase64Url ($enc.GetBytes((ConvertTo-Json $pl -Compress))))
+    $u = (ConvertTo-HUBase64Url ($enc.GetBytes((ConvertTo-Json -Depth 10 $hdr -Compress)))) + '.' + (ConvertTo-HUBase64Url ($enc.GetBytes((ConvertTo-Json -Depth 10 $pl -Compress))))
     $pad = if ($Alg -eq 'PS256') { [System.Security.Cryptography.RSASignaturePadding]::Pss } else { [System.Security.Cryptography.RSASignaturePadding]::Pkcs1 }
     try { $sig = $rsa.SignData([System.Text.Encoding]::ASCII.GetBytes($u), [System.Security.Cryptography.HashAlgorithmName]::SHA256, $pad) }
     finally { try { $rsa.Dispose() } catch { } }

@@ -146,7 +146,7 @@ function Start-HUSecretCheckAll([switch]$Force, [scriptblock]$Done = $null) {
                 $out += $r
             }
         } catch { return "ERR:$($_.Exception.Message)" }
-        return ('RES:' + (ConvertTo-Json -InputObject @($out) -Compress))
+        return ('RES:' + (ConvertTo-Json -Depth 10 -InputObject @($out) -Compress))
     } -ArgumentList @($script:AppRoot, (Get-SettingsPath), [string[]]$keys) -TimeoutSec 120 -OnComplete {
         param($result)
         $s = "$result".Trim()

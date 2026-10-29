@@ -73,6 +73,7 @@ function Show-HUSettingsDialog {
         if ($cmb.Items.Count) { $cmb.SelectedIndex = 0 }
     }
     & $selTag $c.cmbStartTab (Get-HUProp $S.ui 'startTab' 'QuickScript')
+    $c.chkSplashAnim.IsChecked = [bool](Get-HUProp $S.ui 'splashAnimation' $true)
     foreach ($p in @(80, 90, 100, 110, 120, 130, 140, 150)) {
         $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = "$p %"; $it.Tag = "$($p / 100)"; [void]$c.cmbScale.Items.Add($it)
     }
@@ -117,6 +118,9 @@ function Show-HUSettingsDialog {
         $c.txtShortcutInfo.Text = "Starter: $(if (Test-Path -LiteralPath $exe) { $exe } else { 'noch nicht erstellt' })  |  Verknuepfung vorhanden: $(if (Test-HUShortcut) { 'ja' } else { 'nein' })"
     }
     & $updShortcutInfo
+    # PowerShell beim Start (Config\powershell-host.txt)
+    & $selTag $c.cmbPsHost (Get-HUPsHostSetting)
+    $c.txtPsHostInfo.Text = "$(Get-HUPsHostInfoText) Aenderung wirkt beim naechsten Start."
     $mkLink = {
         param([string]$Loc, [bool]$All)
         try {
@@ -479,6 +483,8 @@ function Show-HUSettingsDialog {
         if ($abErr) { $c.tabSettings.SelectedItem = $c.tabAppBackup; Show-HUMessage $abErr -Icon Warning -Owner $w; return }
         Set-HUProp $S 'tenants' @($st.Tenants.ToArray())
         Set-HUProp $S.ui 'startTab' "$($c.cmbStartTab.SelectedItem.Tag)"
+        Set-HUProp $S.ui 'splashAnimation' ([bool]$c.chkSplashAnim.IsChecked)
+        try { if ($c.cmbPsHost.SelectedItem) { Set-HUPsHostSetting "$($c.cmbPsHost.SelectedItem.Tag)" } } catch { Write-HULogWarn "PowerShell beim Start nicht gespeichert: $($_.Exception.Message)" }
         Set-HUProp $S.ui 'secretWarnDays' $wd
         Set-HUProp $S.ui 'checkSecretsOnStart' ([bool]$c.chkSecretCheckStart.IsChecked)
         Set-HUProp $S.ui 'author' $c.txtAuthor.Text.Trim()

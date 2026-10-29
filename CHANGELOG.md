@@ -1,5 +1,30 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.5 (Stable, 29.10.2026)
+
+### Geändert
+- **Release signieren:** Kurz nach dem Merge laufen erst die automatischen Tests, das Release entsteht einige Minuten später. Bisher hieß es in dieser Zeit „Nichts zu signieren“. Jetzt erkennt die App, dass die neue Version noch gebaut wird, und bietet an zu warten: Sie fragt alle 20 Sekunden nach (höchstens 15 Minuten) und signiert danach nach der üblichen Rückfrage. Gilt auch für Zusatzmodule. „Release freigeben“ weist in dieser Zeit darauf hin.
+- **Scrollbalken:** in allen Fenstern dunkel und schmaler, passend zum Design.
+- **Reiter-Hinweis** („Reiter mit der Maus ziehen …“) erscheint nur noch über dem Reiterkopf, nicht mehr über Spaltenköpfen und anderen Stellen im Reiter.
+
+- Startbildschirm geändert.
+
+### PowerShell 7
+- **HU-MultiTenant läuft jetzt auch unter PowerShell 7** (Windows). Alle automatischen Tests und der Starttest laufen zusätzlich unter PowerShell 7.
+- **Starter:** `HU-MultiTenant.exe` und `Start-HUMultiTenant.cmd` nehmen PowerShell 7, wenn es installiert ist, sonst wie bisher Windows PowerShell 5.1. Das gilt auch für Neustart und Update. Bestehende Starter werden beim nächsten Programmstart automatisch ersetzt.
+- **Einstellungen › Allgemein › PowerShell beim Start:** Automatisch (Standard), Windows PowerShell 5.1 oder PowerShell 7. Darunter steht, womit die App gerade läuft.
+- Windows Hello zum Entsperren funktioniert unter beiden Versionen.
+- Die Admin-Anmeldung (Tenant einrichten, Rechte erteilen) braucht kein `System.Web` mehr.
+
+### Tenant-Vergleich
+- **Authentifizierungsstärke im Conditional Access:** Verglichen wird jetzt, *welche* Stärke gilt (eingebaute über ihre feste Kennung, eigene über den Namen). Bisher erschienen bei Mustern, die nur die Kennung enthalten, fünf Felder fälschlich als „abweichend“, die eigentliche Wahl dagegen gar nicht.
+
+### Muster anwenden
+- **Offene Rechte beim Start:** eine Rückfrage für alle Tenants statt einer je Tenant. Bei „Ja“ folgt für jeden Tenant nacheinander die Admin-Anmeldung, ohne zweite Rückfrage. Bisher wurde nur der erste Tenant zurückgegeben.
+
+### Nach dem Update
+- PowerShell 7 installieren (optional): `winget install Microsoft.PowerShell`. Ohne PowerShell 7 läuft alles wie bisher.
+
 ## v2.6.4 (Stable, 28.10.2026)
 
 Stable-Release der Testversionen 2.6.1 bis 2.6.3 – „Windows-Updates“. Alle Punkte im Detail stehen in den Abschnitten darunter.

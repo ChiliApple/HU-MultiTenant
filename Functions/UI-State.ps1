@@ -189,6 +189,15 @@ function Initialize-HUTabDrag {
     foreach ($t in @($tc.Items | Where-Object { $_ -is [System.Windows.Controls.TabItem] })) {
         $t.AllowDrop = $true
         if (-not $t.ToolTip) { $t.ToolTip = 'Reiter mit der Maus an eine andere Stelle ziehen; Rechtsklick: Reihenfolge zuruecksetzen' }
+        # Hinweis nur ueber dem Reiter-Kopf: der Inhalt des Reiters gehoert logisch zum Reiter und wuerde ihn sonst ueberall
+        # dort zeigen, wo ein Element keinen eigenen Hinweis hat (z.B. Spaltenkoepfe von Tabellen)
+        $t.Add_ToolTipOpening({
+                param($s, $e)
+                try {
+                    $p = [System.Windows.Input.Mouse]::GetPosition($s)
+                    if ($p.X -lt 0 -or $p.Y -lt 0 -or $p.X -gt $s.ActualWidth -or $p.Y -gt $s.ActualHeight) { $e.Handled = $true }
+                } catch { }
+            })
         $t.Add_PreviewMouseLeftButtonDown({
                 param($s, $e)
                 # nur auf dem Reiter-Kopf ziehen - Klicks im Inhalt (Scrollbalken, Tabellen) nicht abfangen

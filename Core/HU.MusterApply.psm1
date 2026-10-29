@@ -130,7 +130,7 @@ function Enter-HUMaLock([string]$TenantKey) {
     }
     # atomar: alte (tote/eigene) Sperre weg, dann CreateNew - laeuft ein zweites Fenster gleichzeitig, scheitert eines
     if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
-    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes(([pscustomobject]@{ Tenant = $TenantKey; Pid = $PID; Host = "$env:COMPUTERNAME"; Time = (Get-Date).ToString('s') } | ConvertTo-Json))
+    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes(([pscustomobject]@{ Tenant = $TenantKey; Pid = $PID; Host = "$env:COMPUTERNAME"; Time = (Get-Date).ToString('s') } | ConvertTo-Json -Depth 10))
     try { $fs = [IO.File]::Open($f, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None) }
     catch { throw "Fuer diesen Tenant laeuft 'Muster anwenden' gerade in einem anderen Fenster." }
     try { $fs.Write($bytes, 0, $bytes.Length) } finally { $fs.Dispose() }

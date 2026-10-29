@@ -175,6 +175,8 @@ function Invoke-MFAStatusReport {
 
         # --- EXCEL EXPORT ---
         Write-HULog -Level 'INFO' -Message "[$functionName] Exportiere nach Excel ..." -Tenant $TenantKey
+        # ImportExcel laden (unter PowerShell 7 liegt es ggf. noch nicht im Modulpfad)
+        if (-not (Initialize-HUExcel)) { throw 'ImportExcel ist nicht verfuegbar - Excel-Report nicht moeglich (Install-Module ImportExcel -Scope CurrentUser)' }
 
         if (-not (Test-Path $reportFolder)) {
             New-Item -Path $reportFolder -ItemType Directory -Force | Out-Null
