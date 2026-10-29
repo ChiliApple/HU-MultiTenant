@@ -90,6 +90,11 @@ function Invoke-UpdateCheck([switch]$Quiet) {
             return "REL:$($rel.Version)|$($rel.Tag)|$($rel.Prerelease)"
         } catch {
             $code = 0; try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+            # 403 mit verbrauchtem Kontingent = Abfragelimit (ohne Token 60 je Stunde und Internetanschluss, auch bei oeffentlichen Repos)
+            $left = ''; $resp = $_.Exception.Response
+            try { $left = "$($resp.Headers['X-RateLimit-Remaining'])" } catch { }                                   # PS 5.1 (WebHeaderCollection)
+            if (-not $left) { try { $left = "$(@($resp.Headers.GetValues('X-RateLimit-Remaining'))[0])" } catch { } }  # PS 7 (HttpResponseHeaders)
+            if ($code -in 403, 429 -and $left -eq '0') { return "LIMIT:$code|$([bool]$token)" }
             if ($code -in 401, 403, 404) { return "AUTH:$code|$([bool]$token)" }
             return "ERR:$($_.Exception.Message)"
         }
@@ -112,11 +117,14 @@ function Invoke-UpdateCheck([switch]$Quiet) {
                 Set-HUUpdateButton
             }
         } elseif ($r -eq 'NONE') {
-            if (-not $script:UpdateQuiet) { Write-HULogInfo "Update-Pruefung: kein $(if ($cfg.RequireSignature) { 'signiertes ' })Release im $chan" }
+            Write-HULogInfo "Update-Pruefung: kein $(if ($cfg.RequireSignature) { 'signiertes ' })Release im $chan"
+        } elseif ($r -match '^LIMIT:(\d+)\|(True|False)$') {
+            Write-HULogWarn "Update-Pruefung: GitHub-Abfragelimit erreicht (HTTP $($Matches[1]))$(if ($Matches[2] -eq 'True') { ' - auch mit Token, spaeter erneut' } else { ' - ohne Token 60 Abfragen je Stunde; spaeter erneut oder Rechtsklick auf Update > GitHub-Token' })"
         } elseif ($r -match '^AUTH:(\d+)\|(True|False)$') {
-            if (-not $script:UpdateQuiet -or $Matches[2] -eq 'True') { Write-HULogWarn "Update-Pruefung: $($cfg.Owner)/$($cfg.Repo) nicht erreichbar (HTTP $($Matches[1]))$(if ($Matches[2] -eq 'True') { ' - gespeicherter GitHub-Token abgelehnt' } else { ' - privates Repo? Rechtsklick auf Update > GitHub-Token' })" }
+            Write-HULogWarn "Update-Pruefung: $($cfg.Owner)/$($cfg.Repo) nicht erreichbar (HTTP $($Matches[1]))$(if ($Matches[2] -eq 'True') { ' - gespeicherter GitHub-Token abgelehnt' } else { ' - privates Repo? Rechtsklick auf Update > GitHub-Token' })"
         } else {
-            if (-not $script:UpdateQuiet) { Write-HULogWarn "Update-Pruefung: $($r -replace '^(ERR:|FEHLER:)\s*', '')" } else { Write-HULogDebug "Update-Pruefung: $r" }
+            # auch beim stillen Start melden - sonst sieht man nie, warum kein Update angeboten wird
+            Write-HULogWarn "Update-Pruefung fehlgeschlagen: $($r -replace '^(ERR:|FEHLER:)\s*', '')"
         }
     }
 }
