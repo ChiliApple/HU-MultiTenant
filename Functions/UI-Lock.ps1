@@ -132,7 +132,7 @@ function Set-HULockPin([string]$Pin) {
     $p = Get-HULockPinPath
     $dir = Split-Path $p -Parent
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-    [IO.File]::WriteAllText($p, ($o | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText($p, ($o | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding $false))
 }
 
 function Test-HULockPinSet { return (Test-Path -LiteralPath (Get-HULockPinPath)) }

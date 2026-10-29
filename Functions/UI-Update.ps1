@@ -400,7 +400,7 @@ function Start-HUReleaseSigning([switch]$Addon, [object]$Target = $null) {
             try {
                 . $lib
                 $items = @(Invoke-HMReleaseSigning $owner $repo $tp $tok $tags | ForEach-Object { [pscustomobject]@{ Tag = "$($_.Tag)"; Ok = [bool]$_.Ok; Text = "$($_.Text)" } })
-                return ('RES:' + (ConvertTo-Json -InputObject @($items) -Compress))
+                return ('RES:' + (ConvertTo-Json -Depth 10 -InputObject @($items) -Compress))
             } catch { return "ERR:$($_.Exception.Message)" }
         } -ArgumentList @($script:UpdateLib, $sc.Owner, $sc.Repo, $sc.Thumb, $sc.Token, [string[]]$tags) -TimeoutSec 180 -OnComplete {
             param($res)

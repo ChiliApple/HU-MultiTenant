@@ -2150,7 +2150,7 @@ function Start-HURemSandboxTest {
     [IO.File]::WriteAllText((Join-Path $WorkFolder 'HURemTest.ps1'), $script:RemSandboxRunner, $bom)
     [IO.File]::WriteAllText((Join-Path $WorkFolder 'HUStep.ps1'), $script:RemSandboxStep, $bom)
     $cfg = [ordered]@{ RunAs = $RunAs; Use32 = [bool]$Use32; Timeout = $TimeoutSeconds; HasFix = [bool]"$Remediation".Trim() }
-    [IO.File]::WriteAllText((Join-Path $WorkFolder 'config.json'), ($cfg | ConvertTo-Json), $noBom)
+    [IO.File]::WriteAllText((Join-Path $WorkFolder 'config.json'), ($cfg | ConvertTo-Json -Depth 10), $noBom)
     $esc = { param($s) [System.Security.SecurityElement]::Escape($s) }
     $wsb = @"
 <Configuration>

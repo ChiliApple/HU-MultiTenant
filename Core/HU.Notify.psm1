@@ -444,7 +444,7 @@ function Set-HUNotifyTargets {
             $plain = ([ordered]@{ v = 1; items = @($clean) } | ConvertTo-Json -Depth 6 -Compress)
             $doc = [ordered]@{ v = 1; scope = 'CurrentUser'; updated = (Get-Date).ToString('s'); targets = (Protect-HUNotifyText -Text $plain) }
             $tmp = "$($script:NotifyFile).tmp.$PID"
-            [System.IO.File]::WriteAllText($tmp, ($doc | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
+            [System.IO.File]::WriteAllText($tmp, ($doc | ConvertTo-Json -Depth 10 -Compress), [System.Text.UTF8Encoding]::new($false))
             Move-Item -LiteralPath $tmp -Destination $script:NotifyFile -Force
         }
         Write-HUNotifyModuleLog "Ziele gespeichert: $($clean.Count)" 'OK'

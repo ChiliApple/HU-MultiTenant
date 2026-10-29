@@ -187,7 +187,7 @@ try {
 catch {
     # Fallback: minimal result
     $fallback = @{ Success = $false; ErrorMessage = $_.Exception.Message }
-    $fallback | ConvertTo-Json | Set-Content -Path $ResultFile -Encoding UTF8
+    $fallback | ConvertTo-Json -Depth 10 | Set-Content -Path $ResultFile -Encoding UTF8
 }
 
 # Exit-Code: 0 = OK, 1 = Fehler

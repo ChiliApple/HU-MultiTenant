@@ -286,7 +286,7 @@ try {
     }
     & (Join-Path `$base 'HU.RemoteSetup.ps1') -Action '$Action' -Port $port -Sid '$sid' -Networks '$($nets -join ',')' -ResultFile `$res
 }
-catch { [IO.File]::WriteAllText(`$res, (@{ Ok = `$false; Error = "`$(`$_.Exception.Message)" } | ConvertTo-Json), (New-Object Text.UTF8Encoding `$false)) }
+catch { [IO.File]::WriteAllText(`$res, (@{ Ok = `$false; Error = "`$(`$_.Exception.Message)" } | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding `$false)) }
 finally { foreach (`$k in `$files.Keys) { Remove-Item -LiteralPath (Join-Path `$base `$k) -Force -ErrorAction SilentlyContinue } }
 "@
     $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($boot))

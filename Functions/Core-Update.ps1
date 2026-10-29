@@ -220,7 +220,7 @@ function Publish-HMRelease([string]$Owner, [string]$Repo, [string]$Tag, [string]
     $why = Test-HMManifestSignature $man $sig $Thumbprint
     if ($why) { throw "Signatur von $Tag ungueltig ($why) - nicht freigegeben" }
     $rel = Invoke-RestMethod "https://api.github.com/repos/$Owner/$Repo/releases/tags/$Tag" -Headers $h -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
-    $body = @{ prerelease = $false; make_latest = 'true' } | ConvertTo-Json -Compress
+    $body = @{ prerelease = $false; make_latest = 'true' } | ConvertTo-Json -Depth 10 -Compress
     Invoke-RestMethod "https://api.github.com/repos/$Owner/$Repo/releases/$($rel.id)" -Method Patch -Headers $h -ContentType 'application/json' -Body $body -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop | Out-Null
 }
 # Stand von main gegen die Releases: Wird die neue Version gerade gebaut?

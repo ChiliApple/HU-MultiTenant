@@ -449,7 +449,7 @@ function Start-HUCertRenew([string]$TenantKey, [scriptblock]$Done = $null) {
             Import-Module (Join-Path $appRoot 'Core\HU.Setup.psm1') -Force -DisableNameChecking
             $t = $tenantJson | ConvertFrom-Json
             $r = Update-HUTenantCertificate -Tenant $t
-            return ('OK:' + ($r | ConvertTo-Json -Compress))
+            return ('OK:' + ($r | ConvertTo-Json -Depth 10 -Compress))
         } catch { return "ERR:$($_.Exception.Message)" }
     } -ArgumentList @($script:AppRoot, ($t | ConvertTo-Json -Depth 6 -Compress)) -TimeoutSec 400 -State $state -BusyTag 'cert' -BusyText 'Zertifikat erneuern' -OnComplete {
         param($result, $st)

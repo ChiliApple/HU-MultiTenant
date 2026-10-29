@@ -618,7 +618,7 @@ function Get-HURemoteVapid([string]$Path = (Get-HURemotePushFile), [switch]$NoCr
         $prot = [System.Security.Cryptography.ProtectedData]::Protect($blob, $ent, 'CurrentUser')
         $dir = Split-Path $Path -Parent
         if (-not (Test-Path -LiteralPath $dir)) { [void](New-Item -ItemType Directory -Path $dir -Force) }
-        [IO.File]::WriteAllText($Path, ([pscustomobject]@{ Private = [Convert]::ToBase64String($prot); Created = (Get-Date).ToString('yyyy-MM-dd HH:mm') } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+        [IO.File]::WriteAllText($Path, ([pscustomobject]@{ Private = [Convert]::ToBase64String($prot); Created = (Get-Date).ToString('yyyy-MM-dd HH:mm') } | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding $false))
     }
     # oeffentlicher Schluessel: EccPublicBlob = 8 Byte Kopf + X (32) + Y (32) -> unkomprimierter Punkt 04|X|Y
     $pub = $key.Export([System.Security.Cryptography.CngKeyBlobFormat]::EccPublicBlob)
@@ -630,7 +630,7 @@ function New-HURemoteVapidJwt($Vapid, [string]$Aud, [datetime]$Now = (Get-Date))
     $exp = [int64](($Now.ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds) + 12 * 3600
     $u8 = New-Object Text.UTF8Encoding $false
     $h = ConvertTo-HURB64Url ($u8.GetBytes('{"typ":"JWT","alg":"ES256"}'))
-    $c = ConvertTo-HURB64Url ($u8.GetBytes((ConvertTo-Json -Compress -InputObject ([ordered]@{ aud = $Aud; exp = $exp; sub = $script:HURPushSub }))))
+    $c = ConvertTo-HURB64Url ($u8.GetBytes((ConvertTo-Json -Depth 10 -Compress -InputObject ([ordered]@{ aud = $Aud; exp = $exp; sub = $script:HURPushSub }))))
     $ec = New-Object System.Security.Cryptography.ECDsaCng($Vapid.Key)
     try {
         $ec.HashAlgorithm = [System.Security.Cryptography.CngAlgorithm]::Sha256
@@ -729,7 +729,7 @@ function Set-HURemotePin([string]$Pin, [string]$Path = (Get-HURemotePinFile)) {
     $o = [pscustomobject]@{ v = 1; Salt = [Convert]::ToBase64String($salt); Rounds = $script:HURemotePinRounds; Hash = (Get-HURemotePinHash $Pin $salt $script:HURemotePinRounds); Set = (Get-Date).ToString('yyyy-MM-dd HH:mm') }
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path -LiteralPath $dir)) { [void](New-Item -ItemType Directory -Path $dir -Force) }
-    [IO.File]::WriteAllText($Path, ($o | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText($Path, ($o | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding $false))
 }
 # PIN-Daten (fuer den Webserver-Runspace einmal gelesen): $null = keine PIN eingerichtet
 function Read-HURemotePin([string]$Path = (Get-HURemotePinFile)) {
@@ -1209,7 +1209,7 @@ function Get-HURemoteResponse($S, $Req) {
                 $age = if ($e) { ($now - $e.At).TotalSeconds } else { 1e9 }
                 if ($e -and $e.State -eq 'pending' -and $age -lt 300) { $res = '{"ok":true,"pending":true}' }
                 elseif ($e -and $e.State -ne 'pending' -and ($age -lt 3 -or (-not $force -and $age -lt $ttl))) {
-                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('HH:mm:ss') + '","error":' + (ConvertTo-Json -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
+                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('HH:mm:ss') + '","error":' + (ConvertTo-Json -Depth 10 -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
                 }
                 elseif ($S.IQueue.Count -ge 20) { $full = $true }
                 else {
@@ -1243,7 +1243,7 @@ function Get-HURemoteResponse($S, $Req) {
                 $age = if ($e) { ($now - $e.At).TotalSeconds } else { 1e9 }
                 if ($e -and $e.State -eq 'pending' -and $age -lt 900) { $res = '{"ok":true,"pending":true}' }
                 elseif ($e -and $e.State -ne 'pending' -and ($age -lt 30 -or (-not $force -and $age -lt 900))) {
-                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('dd.MM. HH:mm') + '","error":' + (ConvertTo-Json -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
+                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('dd.MM. HH:mm') + '","error":' + (ConvertTo-Json -Depth 10 -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
                 }
                 elseif ($peek) { $res = '{"ok":true,"pending":false,"none":true}' }
                 elseif ($S.IQueue.Count -ge 20) { $full = $true }
@@ -1276,7 +1276,7 @@ function Get-HURemoteResponse($S, $Req) {
                 $age = if ($e) { ($now - $e.At).TotalSeconds } else { 1e9 }
                 if ($e -and $e.State -eq 'pending' -and $age -lt 300) { $res = '{"ok":true,"pending":true}' }
                 elseif ($e -and $e.State -ne 'pending' -and ($age -lt 3 -or (-not $force -and $age -lt 120))) {
-                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('HH:mm') + '","error":' + (ConvertTo-Json -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
+                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('HH:mm') + '","error":' + (ConvertTo-Json -Depth 10 -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
                 }
                 elseif ($S.IQueue.Count -ge 20) { $full = $true }
                 else {
@@ -1321,7 +1321,7 @@ function Get-HURemoteResponse($S, $Req) {
                 $age = if ($e) { ($now - $e.At).TotalSeconds } else { 1e9 }
                 if ($e -and $e.State -eq 'pending' -and $age -lt 300) { $res = '{"ok":true,"pending":true}' }
                 elseif ($e -and $e.State -ne 'pending' -and ($od.Once -or $age -lt 3 -or (-not ($body.force -eq $true) -and $age -lt $od.Ttl))) {
-                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('HH:mm') + '","error":' + (ConvertTo-Json -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
+                    $res = '{"ok":true,"pending":false,"at":"' + $e.At.ToString('HH:mm') + '","error":' + (ConvertTo-Json -Depth 10 -InputObject "$($e.Error)" -Compress) + ',"data":' + $(if ($e.Data) { $e.Data } else { 'null' }) + '}'
                     if ($od.Once) { $S.ICache.Remove($key) }
                 }
                 elseif ($od.Once -and -not $pinOk) { if ($e) { $S.ICache.Remove($key) }; $res = '{"ok":false,"error":"Abgelaufen - bitte neu anfordern"}' }

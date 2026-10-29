@@ -401,7 +401,7 @@ $script:Window.Add_ContentRendered({
                 $script:SmokeCloser.Stop()
                 $tab = if ($script:Controls['tabMain'].SelectedItem -eq $script:Controls['tabQuickScript']) { 'QuickScript' } else { 'Extensions' }
                 if ($ok) { "OK Version=$($script:Version) Tenants=$(@($script:Settings.tenants).Count) Extensions=$($script:ExtensionItems.Count) Tab=$tab Lauf=$($h.Result)/$($h.Errors)Fehler Schritte=$($steps -join ',')" | Set-Content -LiteralPath $script:SmokeTestFile -Encoding UTF8 }
-                else { "FEHLER Lauf nicht abgeschlossen (Verlauf: $(if ($h) { $h | ConvertTo-Json -Compress }))" | Set-Content -LiteralPath $script:SmokeTestFile -Encoding UTF8 }
+                else { "FEHLER Lauf nicht abgeschlossen (Verlauf: $(if ($h) { $h | ConvertTo-Json -Depth 10 -Compress }))" | Set-Content -LiteralPath $script:SmokeTestFile -Encoding UTF8 }
                 $script:SkipCloseChecks = $true
                 $script:Window.Close()
                 return

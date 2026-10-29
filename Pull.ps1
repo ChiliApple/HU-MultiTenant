@@ -399,7 +399,7 @@ $journal = Join-Path $cfgDir 'pull-journal.json'
 $moved = New-Object System.Collections.Generic.List[object]   # @(Ziel, Sicherung oder '')
 $repl = 0; $lastErr = ''
 try { if (-not (Test-Path -LiteralPath $cfgDir)) { New-Item -ItemType Directory -Path $cfgDir -Force | Out-Null } } catch { }
-try { ConvertTo-Json -InputObject @($staged | ForEach-Object { "$($_[1])" }) | Set-Content -LiteralPath $journal -Encoding UTF8 -ErrorAction Stop }
+try { ConvertTo-Json -Depth 10 -InputObject @($staged | ForEach-Object { "$($_[1])" }) | Set-Content -LiteralPath $journal -Encoding UTF8 -ErrorAction Stop }
 catch {
     foreach ($s in $staged) { Remove-Item -LiteralPath $s[0] -Force -ErrorAction SilentlyContinue }
     Stop-HMPull "Journal nicht schreibbar ($($_.Exception.Message)) - es wurde NICHTS veraendert."
@@ -462,7 +462,7 @@ try {
     [pscustomobject][ordered]@{
         Version = $(if ($useBranch) { "Branch $Branch" } else { "$($rel.Version)" }); Ref = "$ref"; Channel = $(if ($useBranch) { 'Branch' } elseif ($rel.Prerelease) { 'Test' } else { 'Stable' })
         Check = $verified; Date = (Get-Date).ToString('yyyy-MM-dd HH:mm'); Files = $ok; FileList = $newFiles
-    } | ConvertTo-Json | Set-Content -LiteralPath $instFile -Encoding UTF8
+    } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $instFile -Encoding UTF8
 } catch { }
 Write-Host "`n=== Pull fertig === $ok Dateien ($verified)$(if ($repl) { " | $repl NICHT ersetzt" })" -ForegroundColor Cyan
 if ($NoStart) { if ($repl) { exit 1 } else { exit 0 } }

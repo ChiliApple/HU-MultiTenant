@@ -355,6 +355,20 @@ Describe 'Quelltext-Fallen' {
             foreach ($ln in Get-Content -LiteralPath $f.FullName -Encoding UTF8) { $n++; if ($ln -match '\[char\]0x[0-9A-Fa-f]{5,}') { $bad += "$($f.Name):$n" } }
         }
         $bad | Should -BeNullOrEmpty
+    }    # PowerShell 7: gleiche Ergebnisse wie 5.1 - JSON nie mit der Standardtiefe 2 (schneidet still ab), kein System.Web
+    It 'PS 7: ConvertTo-Json immer mit -Depth, kein System.Web' {
+        $bad = @()
+        $files = @(Get-ChildItem (Join-Path $script:AppRoot 'Functions'), (Join-Path $script:AppRoot 'Core') -Include *.ps1, *.psm1 -Recurse -File) + @(Get-Item (Join-Path $script:AppRoot 'Main.ps1'), (Join-Path $script:AppRoot 'Pull.ps1'))
+        foreach ($f in $files) {
+            $n = 0
+            foreach ($ln in Get-Content -LiteralPath $f.FullName -Encoding UTF8) {
+                $n++
+                if ($ln -match '^\s*#') { continue }
+                if ($ln -match 'ConvertTo-Json(?!\w)' -and $ln -notmatch '-Depth' -and $ln -notmatch 'erzeugt den Body') { $bad += "$($f.Name):$n (ConvertTo-Json ohne -Depth)" }
+                if ($ln -match 'System\.Web\b') { $bad += "$($f.Name):$n (System.Web)" }
+            }
+        }
+        $bad | Should -BeNullOrEmpty
     }
 }
 
