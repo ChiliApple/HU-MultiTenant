@@ -217,7 +217,7 @@ function Start-HUSplashGo {
     $A.Going = $true
     $r = $A.R; $W = $A.W; $lane = $A.Lane
     $y = @(0..2 | ForEach-Object { $lane * ($_ + 0.5) })
-    $now = [double]$A.SW.ElapsedMilliseconds
+    $now = $(if ($A.ContainsKey('VT')) { [double]$A.VT - [double]$(if ($A.ContainsKey('Hold')) { $A.Hold } else { 0 }) } else { [double]$A.SW.ElapsedMilliseconds })
     # noch in der Verwandlung: diese erst fertig spielen
     $me = [double]$A.MorphEnd
     $t = [Math]::Max($now, $me)
@@ -245,7 +245,12 @@ function Get-HUEaseOutBack([double]$x) { $c1 = 1.70158; $c3 = $c1 + 1; return 1 
 function Update-HUSplashSweep {
     $A = $script:SplashAnim
     if (-not $A) { return }
-    $raw = [double]$A.SW.ElapsedMilliseconds
+    # Zeit der Animation: je Bild hoechstens 34 ms weiter. Haengt der Rechner kurz (die App laedt gleichzeitig Module),
+    # laeuft die Animation danach weich weiter statt zu springen.
+    $real = [double]$A.SW.ElapsedMilliseconds
+    if (-not $A.ContainsKey('VT')) { $A.VT = $real; $A.LastReal = $real }
+    $A.VT += [Math]::Min(34.0, [Math]::Max(0.0, $real - $A.LastReal)); $A.LastReal = $real
+    $raw = $A.VT
     if (-not $A.ContainsKey('Hold')) { $A.Hold = 0.0; $A.LastRaw = $raw }
     # letzte Bahn: kurz vor dem Ende warten, bis das Hauptfenster steht (sonst waere eine Zeit lang gar nichts zu sehen)
     $sy = $(if (Get-Variable -Name SplashSync -Scope Script -ErrorAction SilentlyContinue) { $script:SplashSync } else { $null })
