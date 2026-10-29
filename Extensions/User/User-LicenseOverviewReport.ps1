@@ -3,7 +3,7 @@
     Microsoft-365-Lizenzen: Auslastung und Zuweisung
 
 .DESCRIPTION
-    Zeigt alle verfuegbaren SKUs mit Auslastung (consumed/enabled); SKUs mit mindestens 100.000 Plaetzen
+    Zeigt alle verfuegbaren SKUs mit Auslastung (consumed/enabled); SKUs mit mindestens 10.000 Plaetzen
     (Gratis-Kontingente) sind als "unbegrenzt" markiert und zaehlen nicht in die Summen auf dem Dashboard,
     listet User mit/ohne Lizenz, identifiziert Mehrfach-Lizenzen.
     Sheets: Dashboard, SKU-Overview, Licensed-Users, Unlicensed-Users, Multi-Licensed.
@@ -118,7 +118,7 @@ function Invoke-LicenseOverviewReport {
                 $status = if ($sku.capabilityStatus) { $sku.capabilityStatus } else { 'Unknown' }
                 # Gratis-SKUs mit riesigem Kontingent (z. B. 1.000.000 Plaetze bei Schul-Lizenzen) gelten als "unbegrenzt":
                 # sie zaehlen nicht in "Lizenzen gesamt" und "Auslastung" (sonst stuende dort z. B. 0,1 %)
-                $unlimited = $enabled -ge 100000   # ab so vielen Plaetzen: Gratis-/Testkontingent
+                $unlimited = $enabled -ge 10000   # ab so vielen Plaetzen: Gratis-/Test-/Viral-Kontingent (z. B. FLOW_FREE, POWER_BI_STANDARD)
 
                 $skuOverview += [PSCustomObject]@{
                     SKU          = $sku.skuPartNumber
@@ -210,6 +210,11 @@ function Invoke-LicenseOverviewReport {
             else {
                 0
             }
+            # knappste Lizenz mit festem Kontingent (hoechste Auslastung) - das, worauf es ankommt
+            $tight = @($fixedSkus | Where-Object { $_.Enabled -gt 0 } | Sort-Object UsagePercent -Descending)[0]
+            # Kachel: grosser Wert kurz (sonst laeuft er ueber), Name der Lizenz in der Beschriftung
+            $tightValue = $(if ($tight) { "$($tight.UsagePercent)%" } else { '-' })
+            $tightLabel = $(if ($tight) { "Knappste: $($tight.SKU) ($($tight.Available) frei)" } else { 'Knappste Lizenz' })
             $totalUnlicensed = ($unlicensedUsers | Measure-Object).Count
             $totalMultiLicensed = ($multiLicensedUsers | Measure-Object).Count
 
@@ -292,13 +297,15 @@ function Invoke-LicenseOverviewReport {
 
                 # --- Dashboard ---
                 $dashMetrics = [ordered]@{
-                    'SKUs gesamt'        = $(if ($totalUnlimited) { "$totalSKUs ($totalUnlimited unbegrenzt)" } else { $totalSKUs })
+                    'SKUs gesamt'        = $totalSKUs
+                    'davon unbegrenzt'   = $totalUnlimited
                     'Lizenzen (fest)'    = $totalEnabled
                     'Verbraucht (fest)'  = $totalConsumed
                     'Auslastung (fest)'  = "$overallUsagePercent%"
                     'Unlizenziert'       = $totalUnlicensed
                     'Mehrfach-lizenziert'= $totalMultiLicensed
                 }
+                $dashMetrics[$tightLabel] = $tightValue
 
                 $sheetLinks = @(
                     @{ SheetName = 'SKU-Overview';     RowCount = $skuOverview.Count;        Description = 'Alle SKUs' }
