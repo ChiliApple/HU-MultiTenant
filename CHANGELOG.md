@@ -14,6 +14,9 @@
 - Windows Hello zum Entsperren funktioniert unter beiden Versionen.
 - Die Admin-Anmeldung (Tenant einrichten, Rechte erteilen) braucht kein `System.Web` mehr.
 
+### Tenant-Vergleich
+- **Authentifizierungsstärke im Conditional Access:** Verglichen wird jetzt, *welche* Stärke gilt (eingebaute über ihre feste Kennung, eigene über den Namen). Bisher erschienen bei Mustern, die nur die Kennung enthalten, fünf Felder fälschlich als „abweichend“, die eigentliche Wahl dagegen gar nicht.
+
 ### Muster anwenden
 - **Offene Rechte beim Start:** eine Rückfrage für alle Tenants statt einer je Tenant. Bei „Ja“ folgt für jeden Tenant nacheinander die Admin-Anmeldung, ohne zweite Rückfrage. Bisher wurde nur der erste Tenant zurückgegeben.
 

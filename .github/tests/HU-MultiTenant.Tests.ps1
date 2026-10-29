@@ -355,7 +355,8 @@ Describe 'Quelltext-Fallen' {
             foreach ($ln in Get-Content -LiteralPath $f.FullName -Encoding UTF8) { $n++; if ($ln -match '\[char\]0x[0-9A-Fa-f]{5,}') { $bad += "$($f.Name):$n" } }
         }
         $bad | Should -BeNullOrEmpty
-    }    # PowerShell 7: gleiche Ergebnisse wie 5.1 - JSON nie mit der Standardtiefe 2 (schneidet still ab), kein System.Web
+    }
+    # PowerShell 7: gleiche Ergebnisse wie 5.1 - JSON nie mit der Standardtiefe 2 (schneidet still ab), kein System.Web
     It 'PS 7: ConvertTo-Json immer mit -Depth, kein System.Web' {
         $bad = @()
         $files = @(Get-ChildItem (Join-Path $script:AppRoot 'Functions'), (Join-Path $script:AppRoot 'Core') -Include *.ps1, *.psm1 -Recurse -File) + @(Get-Item (Join-Path $script:AppRoot 'Main.ps1'), (Join-Path $script:AppRoot 'Pull.ps1'))
@@ -941,6 +942,15 @@ Describe 'Analyse: Vergleich-Details' {
         $d = @(Get-HUCompareDiff @{ a = $m1; b = $m2 } @('a', 'b'))
         ($d | Where-Object Einstellung -eq 'extra').T1 | Should -Be '(nicht gesetzt)'
         $d.Count | Should -Be 2
+    }
+    It 'CA-Authentifizierungsstaerke: Muster nur mit Kennung = Tenant ausgeklappt; andere Staerke weicht ab' {
+        $m = '{"grantControls":{"operator":"OR","authenticationStrength":{"id":"00000000-0000-0000-0000-000000000004"}}}' | ConvertFrom-Json
+        $t = '{"grantControls":{"operator":"OR","authenticationStrength":{"id":"00000000-0000-0000-0000-000000000004","displayName":"Phishing-resistant MFA","policyType":"builtIn","requirementsSatisfied":"mfa","allowedCombinations":["fido2","windowsHelloForBusiness"]}}}' | ConvertFrom-Json
+        $o = '{"grantControls":{"operator":"OR","authenticationStrength":{"id":"aaaaaaaa-1111-2222-3333-444444444444","displayName":"Schule MFA"}}}' | ConvertFrom-Json
+        @(Get-HUCompareDiff @{ m = (ConvertTo-HUFlatMap $m); t = (ConvertTo-HUFlatMap $t) } @('m', 't')).Count | Should -Be 0
+        (ConvertTo-HUFlatMap $t)['grantControls.authenticationStrength'] | Should -Be 'eingebaut: Phishing-resistente MFA'
+        $d = @(Get-HUCompareDiff @{ m = (ConvertTo-HUFlatMap $m); o = (ConvertTo-HUFlatMap $o) } @('m', 'o'))
+        $d.Count | Should -Be 1; $d[0].T1 | Should -Be 'Schule MFA'
     }
 }
 

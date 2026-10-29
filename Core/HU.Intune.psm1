@@ -2740,6 +2740,15 @@ function ConvertTo-HUFlatMap($Obj, [string]$Prefix = '', [hashtable]$Map = $null
         if ($p.Name -in $skip -or $p.Name -match '@odata\.(context|navigationLink|associationLink|etag)$|^id$') { continue }
         if ($null -eq $p.Value) { continue }
         if ($p.Name -eq '@odata.type' -and $Prefix) { continue }
+        # CA-Authentifizierungsstaerke: verglichen wird WELCHE (eingebaute ueber die feste Kennung, eigene ueber den Namen).
+        # Graph liefert sie im Tenant ausgeklappt (Kombinationen, Typ ...), Muster und Sicherungen oft nur mit der Kennung -
+        # sonst erschienen die ausgeklappten Felder als "abweichend" und die eigentliche Wahl gar nicht (id wird uebersprungen).
+        if ($p.Name -eq 'authenticationStrength' -and $p.Value -and $p.Value.PSObject.Properties['id']) {
+            $asId = "$($p.Value.id)"
+            $asName = $(if ($p.Value.PSObject.Properties['displayName']) { "$($p.Value.displayName)" } else { '' })
+            $Map[$(if ($Prefix) { "$Prefix.authenticationStrength" } else { 'authenticationStrength' })] = $(if ($asId -match '^0{8}-0{4}-0{4}-0{4}-0{9}\d{3}$') { $bi = @{ '2' = 'Mehrstufige Authentifizierung'; '3' = 'Kennwortlose MFA'; '4' = 'Phishing-resistente MFA' }[$asId.Substring(24).TrimStart('0')]; "eingebaut: $(if ($bi) { $bi } else { $asId })" } elseif ($asName) { $asName } else { "eigene ($asId)" })
+            continue
+        }
         [void](ConvertTo-HUFlatMap $p.Value $(if ($Prefix) { "$Prefix.$($p.Name)" } else { $p.Name }) $Map -WithAssignments:$WithAssignments -Full:$Full)
     }
     return $Map
