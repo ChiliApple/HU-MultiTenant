@@ -214,7 +214,8 @@ function Update-HUSplashSweep {
     if (-not $A.ContainsKey('Hold')) { $A.Hold = 0.0; $A.LastRaw = $raw }
     # letzte Bahn: kurz vor dem Ende warten, bis das Hauptfenster steht (sonst waere eine Zeit lang gar nichts zu sehen)
     $sy = $(if (Get-Variable -Name SplashSync -Scope Script -ErrorAction SilentlyContinue) { $script:SplashSync } else { $null })
-    if ($sy -and -not $sy.MainReady -and $A.Going -and ($raw - $A.Hold) -ge ($A.Total - 450) -and $A.SW.Elapsed.TotalSeconds -lt 60) { $A.Hold += $raw - $A.LastRaw }
+    $holding = [bool]($sy -and -not $sy.MainReady -and $A.Going -and ($raw - $A.Hold) -ge ($A.Total - 450) -and $A.SW.Elapsed.TotalSeconds -lt 60)
+    if ($holding) { $A.Hold += $raw - $A.LastRaw; if (-not $A.HoldStart) { $A.HoldStart = $raw } } else { $A.HoldStart = 0 }
     $A.LastRaw = $raw
     $t = $raw - $A.Hold
     if ($t -ge $A.Total) { Stop-HUSplashSweep; return }
@@ -268,15 +269,22 @@ function Update-HUSplashSweep {
             $dir = $s.Dir; $curLane = $s.L
             # Bahn bis knapp vor die Saugkante aufsaugen
             $front = $x + $dir * 0.35 * $r
-            $rect = $(if ($dir -gt 0) { New-Object System.Windows.Rect 0, ($A.Lane * $s.L), ([Math]::Max(0, [Math]::Min($A.W, $front))), ($A.Lane + 0.5) } else { $l0 = [Math]::Max(0, [Math]::Min($A.W, $front)); New-Object System.Windows.Rect $l0, ($A.Lane * $s.L), ($A.W - $l0), ($A.Lane + 0.5) })
+            # Bahnen ueberlappen 2 px, sonst bleiben an den Grenzen feine Linien (Kantenglaettung)
+            $rect = $(if ($dir -gt 0) { New-Object System.Windows.Rect -2, ($A.Lane * $s.L - 2), ([Math]::Max(0, [Math]::Min($A.W, $front)) + 2), ($A.Lane + 4) } else { $l0 = [Math]::Max(0, [Math]::Min($A.W, $front)); New-Object System.Windows.Rect $l0, ($A.Lane * $s.L - 2), ($A.W - $l0 + 2), ($A.Lane + 4) })
             $A.Lanes[$s.L].Rect = $rect
         }
         'turn' {
             $k = Get-HUEaseInOut $u
             $x = $s.X0 + ($s.X1 - $s.X0) * $k; $y = $s.Y0 + ($s.Y1 - $s.Y0) * $k
             $ang = $s.A0 + ($s.A1 - $s.A0) * $k
-            $A.Lanes[$s.Done].Rect = New-Object System.Windows.Rect 0, ($A.Lane * $s.Done), $A.W, ($A.Lane + 0.5)
+            $A.Lanes[$s.Done].Rect = New-Object System.Windows.Rect -2, ($A.Lane * $s.Done - 2), ($A.W + 4), ($A.Lane + 4)
         }
+    }
+    # wartet auf das Hauptfenster: tastet sich vor und zurueck und schaut sich um (statt still zu stehen)
+    if ($holding -and $A.HoldStart) {
+        $ht = $raw - $A.HoldStart; $ha = [Math]::Min(1, $ht / 400)
+        $ang += 22 * $ha * [Math]::Sin($ht / 280)
+        $x += $(if ($dir) { $dir } else { 1 }) * 0.18 * $r * $ha * [Math]::Sin($ht / 360)
     }
     $b.Tr.X = $x; $b.Tr.Y = $y; $b.Rot.Angle = $ang
     $b.TextRot.Angle = - $ang
