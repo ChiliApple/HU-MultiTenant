@@ -48,7 +48,9 @@ function New-HUSplashBot([double]$R) {
     foreach ($side in -1, 1) {
         $bc = New-Object System.Windows.Controls.Canvas
         $rt = New-Object System.Windows.Media.RotateTransform
-        $bc.RenderTransform = $rt
+        $bsc = New-Object System.Windows.Media.ScaleTransform
+        $btg = New-Object System.Windows.Media.TransformGroup; [void]$btg.Children.Add($bsc); [void]$btg.Children.Add($rt)
+        $bc.RenderTransform = $btg
         foreach ($k in 0..2) {
             $ln = New-Object System.Windows.Shapes.Line
             $a = $k * 120 * [Math]::PI / 180
@@ -59,7 +61,7 @@ function New-HUSplashBot([double]$R) {
         $hub = New-Object System.Windows.Shapes.Ellipse; $hub.Width = 5; $hub.Height = 5; $hub.Fill = Get-HUSplashBrush '#707070'
         [System.Windows.Controls.Canvas]::SetLeft($hub, -2.5); [System.Windows.Controls.Canvas]::SetTop($hub, -2.5); [void]$bc.Children.Add($hub)
         & $add $bc (0.58 * $R) ($side * 0.8 * $R)
-        $brushes += , @($rt, $side)
+        $brushes += , @($rt, $side, $bsc, $bc)
     }
 
     # Gehaeuse
@@ -68,8 +70,13 @@ function New-HUSplashBot([double]$R) {
     $g = New-Object System.Windows.Media.RadialGradientBrush
     $g.GradientOrigin = New-Object System.Windows.Point 0.35, 0.3; $g.Center = New-Object System.Windows.Point 0.45, 0.4; $g.RadiusX = 0.7; $g.RadiusY = 0.7
     foreach ($st in @(@('#FF505050', 0.0), @('#FF2A2A2A', 0.65), @('#FF161616', 1.0))) { [void]$g.GradientStops.Add((New-Object System.Windows.Media.GradientStop ([System.Windows.Media.ColorConverter]::ConvertFromString($st[0])), $st[1])) }
-    $body.Fill = $g; $body.Stroke = Get-HUSplashBrush '#B9A88A'; $body.StrokeThickness = 2
+    $body.Fill = $g
     & $add $body (-$R) (-$R)
+    # goldener Ring als eigener Pfad (wird bei der Verwandlung rundherum gezeichnet)
+    $ring = New-Object System.Windows.Shapes.Path
+    $ring.Data = New-Object System.Windows.Media.EllipseGeometry (New-Object System.Windows.Point 0, 0), ($R - 1), ($R - 1)
+    $ring.Stroke = Get-HUSplashBrush '#FFB9A88A'; $ring.StrokeThickness = 2; $ring.StrokeStartLineCap = 'Round'; $ring.StrokeEndLineCap = 'Round'
+    & $add $ring 0 0
 
     # Stossfaenger vorne
     $bump = New-Object System.Windows.Shapes.Path
@@ -101,7 +108,30 @@ function New-HUSplashBot([double]$R) {
     $tg = New-Object System.Windows.Media.TransformGroup
     [void]$tg.Children.Add($sc); [void]$tg.Children.Add($ro); [void]$tg.Children.Add($tr)
     $root.RenderTransform = $tg
-    return @{ Root = $root; Scale = $sc; Rot = $ro; Tr = $tr; Brushes = $brushes; Led = $led; Glow = $glow; TextRot = $trt }
+    $topSc = New-Object System.Windows.Media.ScaleTransform; $top.RenderTransformOrigin = New-Object System.Windows.Point 0.5, 0.5; $top.RenderTransform = $topSc
+    return @{ Root = $root; Scale = $sc; Rot = $ro; Tr = $tr; Brushes = $brushes; Led = $led; Glow = $glow; TextRot = $trt
+        R = $R; Body = $body; Shadow = $sh; Ring = $ring; Bump = $bump; Top = $top; TopScale = $topSc; Text = $tx; Built = -1.0 }
+}
+
+# Bau-Zustand des Roboters (0 = nichts, 1 = fertig): Gehaeuse blendet ein, der goldene Ring zieht sich rundherum,
+# dann kommen Deckel, Stossfaenger, Sensor (waechst aus der Mitte), Buersten (fahren aus) und die Aufschrift.
+function Set-HUSplashBotBuild($B, [double]$K) {
+    $K = [Math]::Max(0, [Math]::Min(1, $K))
+    if ([Math]::Abs($B.Built - $K) -lt 0.002) { return }
+    $B.Built = $K
+    $R = $B.R
+    $seg = { param([double]$a, [double]$e) [Math]::Max(0, [Math]::Min(1, ($K - $a) / ($e - $a))) }
+    $B.Body.Opacity = & $seg 0.0 0.45
+    $B.Shadow.Opacity = 0.45 * $B.Body.Opacity
+    $ring = & $seg 0.05 0.55
+    if ($ring -ge 0.999) { $B.Ring.Data = New-Object System.Windows.Media.EllipseGeometry (New-Object System.Windows.Point 0, 0), ($R - 1), ($R - 1) }
+    elseif ($ring -gt 0.001) { $B.Ring.Data = New-HUSplashArc ($R - 1) -90 (-90 + 359.9 * $ring) }
+    else { $B.Ring.Data = $null }
+    $tp = & $seg 0.35 0.7; $B.TopScale.ScaleX = $tp; $B.TopScale.ScaleY = $tp; $B.Top.Opacity = $tp
+    $bm = & $seg 0.45 0.8; if ($bm -gt 0.001) { $B.Bump.Data = New-HUSplashArc ($R - 3.5) (-62 * $bm) (62 * $bm) } else { $B.Bump.Data = $null }
+    $ld = & $seg 0.55 0.9; if ($ld -gt 0.001) { $B.Led.Data = New-HUSplashArc ($R - 9) (-34 * $ld) (34 * $ld) } else { $B.Led.Data = $null }
+    $br = & $seg 0.6 0.95; foreach ($x in $B.Brushes) { $x[2].ScaleX = $br; $x[2].ScaleY = $br }
+    $B.Text.Opacity = & $seg 0.7 1.0
 }
 
 # Animation starten. $false = nicht moeglich (dann schliesst der Aufrufer sofort).
@@ -150,23 +180,25 @@ function Start-HUSplashSweep([switch]$Idle) {
     # Verwandlung: Roboter erscheint in Groesse und Lage des Logos und wird aus der Unschaerfe scharf
     $script:SplashLogoSize = $(if ($img -and $img.ActualWidth -gt 0) { [double]$img.ActualWidth } else { 112.0 })
     $bot.Scale.ScaleX = $script:SplashLogoSize / (2 * $r); $bot.Scale.ScaleY = $bot.Scale.ScaleX
-    $bot.Root.Opacity = 0
-    $bb = New-Object System.Windows.Media.Effects.BlurEffect; $bb.Radius = 14; $bot.Root.Effect = $bb; $bot.Blur = $bb
+    Set-HUSplashBotBuild $bot 0
     $bot.Tr.X = $p0.X; $bot.Tr.Y = $p0.Y
     $script:SplashP0 = $p0
     [void]$ov.Children.Add($bot.Root)
 
     # Logo schrumpft um seine Mitte
     $ist = $null
-    $irt = $null; $ibl = $null
+    $irt = $null; $ibl = $null; $icl = $null
     if ($img) {
         $ist = New-Object System.Windows.Media.ScaleTransform; $irt = New-Object System.Windows.Media.RotateTransform
         $itg = New-Object System.Windows.Media.TransformGroup; [void]$itg.Children.Add($ist); [void]$itg.Children.Add($irt)
         $img.RenderTransformOrigin = New-Object System.Windows.Point 0.5, 0.5; $img.RenderTransform = $itg
         $ibl = New-Object System.Windows.Media.Effects.BlurEffect; $ibl.Radius = 0; $img.Effect = $ibl
+        $iw = $(if ($img.ActualWidth -gt 0) { [double]$img.ActualWidth } else { 112.0 }); $ih = $(if ($img.ActualHeight -gt 0) { [double]$img.ActualHeight } else { 112.0 })
+        $icl = New-Object System.Windows.Media.RectangleGeometry (New-Object System.Windows.Rect 0, 0, $iw, $ih), 0, 0
+        $img.Clip = $icl
     }
 
-    $script:SplashAnim = @{ W = $W; H = $H; Lane = $lane; R = $r; Bd = $bd; Lanes = $lanes; Bot = $bot; Dust = $dust; Img = $img; ImgScale = $ist; ImgRot = $irt; ImgBlur = $ibl
+    $script:SplashAnim = @{ W = $W; H = $H; Lane = $lane; R = $r; Bd = $bd; Lanes = $lanes; Bot = $bot; Dust = $dust; Img = $img; ImgScale = $ist; ImgRot = $irt; ImgBlur = $ibl; ImgClip = $icl
         Seg = @(@{ K = 'wait'; D = 600; T = 0 }, @{ K = 'morph'; D = 1800; T = 600 }, @{ K = 'idle'; D = 1e9; T = 2400 }); Total = 1e9; MorphEnd = 2400; SW = [System.Diagnostics.Stopwatch]::StartNew(); Handler = $null; Last = 0
         AutoGo = -not $Idle; Going = $false; P0 = $p0 }
     $h = [System.EventHandler] { try { Update-HUSplashSweep } catch { Stop-HUSplashSweep } }
@@ -230,25 +262,27 @@ function Update-HUSplashSweep {
     switch ($s.K) {
         'wait' { return }   # erst das Logo zeigen
         'morph' {
-            # Ueberblenden: Logo dreht sich eineinhalb Mal, waehrend es sich dreht, wird es unscharf und blendet aus;
-            # der Roboter dreht sich gleich mit (eine durchgehende Drehung) und wird scharf
+            # Verwandlung: Das Logo dreht sich, rundet sich zum Kreis ab und verblasst - im selben Schwung baut sich
+            # der Roboter auf (Gehaeuse, goldener Ring rundherum, Deckel, Sensor, Buersten, Aufschrift)
             $k = Get-HUEaseInOut $u
             $spin = 540 * $k
             $z0 = $script:SplashLogoSize / (2 * $r)
             $z = $z0 + (1.35 - $z0) * $k
             $b.Scale.ScaleX = $z; $b.Scale.ScaleY = $z
             $ang = $spin - 540
-            $b.Root.Opacity = [Math]::Max(0, [Math]::Min(1, ($u - 0.35) / 0.4))
-            if ($b.Blur) { $b.Blur.Radius = 14 * (1 - $k) }
+            Set-HUSplashBotBuild $b (($u - 0.25) / 0.7)
             if ($A.Img) {
-                $A.Img.Opacity = [Math]::Max(0, [Math]::Min(1, 1 - ($u - 0.45) / 0.4))
-                $q = 1 - 0.2 * $k; $A.ImgScale.ScaleX = $q; $A.ImgScale.ScaleY = $q
+                # Ecken runden sich ab, bis das Logo ein Kreis ist; dann verblasst es ins Gehaeuse
+                $rc = [Math]::Min(1, $u / 0.45)
+                if ($A.ImgClip) { $hw = $script:SplashLogoSize / 2; $A.ImgClip.RadiusX = $hw * $rc; $A.ImgClip.RadiusY = $hw * $rc }
+                $A.Img.Opacity = [Math]::Max(0, [Math]::Min(1, 1 - ($u - 0.35) / 0.4))
+                $q = 1 - 0.15 * $k; $A.ImgScale.ScaleX = $q; $A.ImgScale.ScaleY = $q
                 if ($A.ImgRot) { $A.ImgRot.Angle = $spin }
-                if ($A.ImgBlur) { $A.ImgBlur.Radius = 10 * [Math]::Max(0, ($u - 0.3) / 0.7) }
+                if ($A.ImgBlur) { $A.ImgBlur.Radius = 6 * [Math]::Max(0, ($u - 0.4) / 0.6) }
             }
         }
         'idle' {
-            if ($b.Blur) { $b.Blur.Radius = 0; $b.Root.Opacity = 1 }
+            Set-HUSplashBotBuild $b 1
             # wartet am Logo: atmet leicht, schaut sich um - weich aus der Verwandlung heraus (Ausschlag waechst in 0,8 s an)
             if ($A.AutoGo) { [void](Start-HUSplashGo); return }
             $ti = $t - $s.T; $amp = [Math]::Min(1, $ti / 800); $amp = $amp * $amp
