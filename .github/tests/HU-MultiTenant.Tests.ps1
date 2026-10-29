@@ -357,6 +357,13 @@ Describe 'Quelltext-Fallen' {
         $bad | Should -BeNullOrEmpty
     }
     # PowerShell 7: gleiche Ergebnisse wie 5.1 - JSON nie mit der Standardtiefe 2 (schneidet still ab), kein System.Web
+    It 'Extensions mit Excel-Export laden ImportExcel selbst (Initialize-HUExcel) - unter PS 7 ist es sonst nicht geladen' {
+        $bad = foreach ($f in @(Get-ChildItem (Join-Path $script:AppRoot 'Extensions') -Filter *.ps1 -Recurse -File)) {
+            $t = [IO.File]::ReadAllText($f.FullName)
+            if ($t -match 'Export-Excel' -and $t -notmatch 'Initialize-HUExcel') { $f.Name }
+        }
+        @($bad) | Should -BeNullOrEmpty
+    }
     It 'PS 7: ConvertTo-Json immer mit -Depth, kein System.Web' {
         $bad = @()
         $files = @(Get-ChildItem (Join-Path $script:AppRoot 'Functions'), (Join-Path $script:AppRoot 'Core') -Include *.ps1, *.psm1 -Recurse -File) + @(Get-Item (Join-Path $script:AppRoot 'Main.ps1'), (Join-Path $script:AppRoot 'Pull.ps1'))

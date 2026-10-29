@@ -225,6 +225,11 @@ function Invoke-LicenseOverviewReport {
 
             # 8. Export to Excel
             Write-HULog -Message 'Exportiere Excel-Report ...' -Level 'INFO' -Tenant $TenantKey
+            # ImportExcel laden (unter PowerShell 7 liegt es ggf. noch nicht im Modulpfad - dann wird es fuer den Benutzer installiert)
+            if (-not (Initialize-HUExcel)) {
+                Write-HULog -Message 'ImportExcel ist nicht verfuegbar - Excel-Report nicht moeglich (Install-Module ImportExcel -Scope CurrentUser)' -Level 'ERROR' -Tenant $TenantKey
+                return [PSCustomObject]@{ Success = $false; Error = 'ImportExcel nicht verfuegbar' }
+            }
 
             $version = 1
             do {
