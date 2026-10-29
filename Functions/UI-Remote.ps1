@@ -292,7 +292,8 @@ finally { foreach (`$k in `$files.Keys) { Remove-Item -LiteralPath (Join-Path `$
     $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($boot))
     $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc)
     try {
-        $p = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $argList -Verb RunAs -WindowStyle Hidden -PassThru -Wait -ErrorAction Stop
+        # immer Windows PowerShell 5.1 (unter PS 7 liegt in $PSHOME keine powershell.exe)
+        $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $argList -Verb RunAs -WindowStyle Hidden -PassThru -Wait -ErrorAction Stop
     } catch { Show-HUMessage "Einrichtung abgebrochen (keine Administratorrechte erteilt).`n$($_.Exception.Message)" -Icon Warning -Owner $Owner; return $false }
     $j = $null; try { $j = Get-Content -LiteralPath $res -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
     if (-not $j -or -not $j.Ok) { Show-HUMessage "Einrichtung fehlgeschlagen: $(if ($j) { $j.Error } else { 'kein Ergebnis' })" -Icon Error -Owner $Owner; return $false }

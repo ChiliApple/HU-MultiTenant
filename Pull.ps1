@@ -471,7 +471,16 @@ if ($repl -eq 0) {
     Start-Sleep -Seconds 1
     $exe = Join-Path $Target 'HU-MultiTenant.exe'
     if (Test-Path $exe) { Start-Process -FilePath $exe -WorkingDirectory $Target }
-    else { Start-Process powershell.exe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', "`"$(Join-Path $Target 'Main.ps1')`"" -WorkingDirectory $Target }
+    else {
+        # ohne Starter: gleiche Regel wie HU-MultiTenant.exe - PowerShell 7, wenn installiert (Config\powershell-host.txt: auto | 5 | 7)
+        $mode = 'auto'; $hf = Join-Path $Target 'Config\powershell-host.txt'
+        try { if (Test-Path -LiteralPath $hf) { $mode = ([IO.File]::ReadAllText($hf)).Trim().ToLowerInvariant() } } catch { }
+        $pw = ''
+        if ($mode -ne '5') { foreach ($p in @($(if ($env:ProgramW6432) { Join-Path $env:ProgramW6432 'PowerShell\7\pwsh.exe' }), (Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'))) { if ($p -and (Test-Path -LiteralPath $p)) { $pw = $p; break } } }
+        $main = "`"$(Join-Path $Target 'Main.ps1')`""
+        if ($pw) { Start-Process -FilePath $pw -ArgumentList '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', $main -WorkingDirectory $Target }
+        else { Start-Process powershell.exe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', $main -WorkingDirectory $Target }
+    }
     exit 0
 }
 Stop-HMPull "Einzelne Dateien konnten nicht ersetzt werden (gesperrt?) - HU-MultiTenant wird NICHT automatisch gestartet. Manuell: cd '$Target'; .\Pull.ps1"
