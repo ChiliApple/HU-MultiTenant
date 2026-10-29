@@ -125,6 +125,8 @@ function Start-HUSplashSweep([switch]$Idle) {
     $full = New-Object System.Windows.Media.RectangleGeometry (New-Object System.Windows.Rect 0, 0, $W, $H), 12, 12
     $lanes = @(0..2 | ForEach-Object { New-Object System.Windows.Media.RectangleGeometry (New-Object System.Windows.Rect 0, 0, 0, 0) })
     $grp = New-Object System.Windows.Media.GeometryGroup
+    # Nonzero: ueberlappende Bahnen bleiben aufgesaugt (EvenOdd, der Standard, wuerde die Ueberlappung wieder zeigen = Linien)
+    $grp.FillRule = [System.Windows.Media.FillRule]::Nonzero
     foreach ($l in $lanes) { [void]$grp.Children.Add($l) }
     $bd.Clip = New-Object System.Windows.Media.CombinedGeometry ([System.Windows.Media.GeometryCombineMode]::Exclude), $full, $grp
 
