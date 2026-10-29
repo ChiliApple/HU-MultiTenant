@@ -97,7 +97,7 @@ function New-HUSplashBot([double]$R) {
 
     # Aufschrift (bleibt aufrecht, auch wenn der Roboter nach links faehrt)
     $tx = New-Object System.Windows.Controls.TextBlock
-    $tx.Text = 'HU'; $tx.FontSize = [Math]::Max(9, 0.42 * $R); $tx.FontWeight = 'Bold'; $tx.Foreground = Get-HUSplashBrush '#FFB9A88A'
+    $tx.Text = 'HU'; $tx.FontSize = [Math]::Max(9.0, 0.42 * $R); $tx.FontWeight = 'Bold'; $tx.Foreground = Get-HUSplashBrush '#FFB9A88A'
     $tx.Width = 2 * $R; $tx.TextAlignment = 'Center'
     $trt = New-Object System.Windows.Media.RotateTransform; $tx.RenderTransform = $trt; $tx.RenderTransformOrigin = New-Object System.Windows.Point 0.5, 0.5
     & $add $tx (-$R - 0.08 * $R) (-0.68 * $tx.FontSize)
@@ -116,12 +116,12 @@ function New-HUSplashBot([double]$R) {
 # Bau-Zustand des Roboters (0 = nichts, 1 = fertig): Gehaeuse blendet ein, der goldene Ring zieht sich rundherum,
 # dann kommen Deckel, Stossfaenger, Sensor (waechst aus der Mitte), Buersten (fahren aus) und die Aufschrift.
 function Set-HUSplashBotBuild($B, [double]$K) {
-    $K = [Math]::Max(0, [Math]::Min(1, $K))
+    $K = [Math]::Max(0.0, [Math]::Min(1.0, $K))
     if ([Math]::Abs($B.Built - $K) -lt 0.002) { return }
     $B.Built = $K
     $R = $B.R
     # je Teil weich ein (Smoothstep), damit nichts ploetzlich da ist
-    $seg = { param([double]$a, [double]$e) $v = [Math]::Max(0, [Math]::Min(1, ($K - $a) / ($e - $a))); $v * $v * (3 - 2 * $v) }
+    $seg = { param([double]$a, [double]$e) $v = [Math]::Max(0.0, [Math]::Min(1.0, ($K - $a) / ($e - $a))); $v * $v * (3 - 2 * $v) }
     $B.Body.Opacity = & $seg 0.0 0.6
     $B.Shadow.Opacity = 0.45 * $B.Body.Opacity
     $ring = & $seg 0.1 0.65
@@ -222,7 +222,7 @@ function Start-HUSplashGo {
     $me = [double]$A.MorphEnd
     $t = [Math]::Max($now, $me)
     $b = $A.Bot
-    $seg = @(@($A.Seg | Where-Object { $_.K -in 'wait', 'morph' }) + @(@{ K = 'idle'; D = [Math]::Max(0, $t - $me); T = $me }))
+    $seg = @(@($A.Seg | Where-Object { $_.K -in 'wait', 'morph' }) + @(@{ K = 'idle'; D = [Math]::Max(0.0, $t - $me); T = $me }))
     $sx = $b.Tr.X; $sy = $b.Tr.Y
     if ($A.P0) { $sx = $A.P0.X; $sy = $A.P0.Y }
     $plan = @(
@@ -280,10 +280,10 @@ function Update-HUSplashSweep {
             Set-HUSplashBotBuild $b (($u - 0.08) / 0.84)
             if ($A.Img) {
                 # Ecken runden sich ab, bis das Logo ein Kreis ist; dann verblasst es ins Gehaeuse
-                $rc = [Math]::Min(1, $u / 0.4); $rc = $rc * $rc * (3 - 2 * $rc)
+                $rc = [Math]::Min(1.0, $u / 0.4); $rc = $rc * $rc * (3 - 2 * $rc)
                 if ($A.ImgClip) { $hw = $script:SplashLogoSize / 2; $A.ImgClip.RadiusX = $hw * $rc; $A.ImgClip.RadiusY = $hw * $rc }
                 # sanft (Smoothstep) und lange: das dunkle Gehaeuse legt sich darueber, waehrend das Logo verblasst
-                $fo = [Math]::Max(0, [Math]::Min(1, ($u - 0.1) / 0.75)); $fo = $fo * $fo * (3 - 2 * $fo)
+                $fo = [Math]::Max(0.0, [Math]::Min(1.0, ($u - 0.1) / 0.75)); $fo = $fo * $fo * (3 - 2 * $fo)
                 $A.Img.Opacity = 1 - $fo
                 $q = 1 - 0.15 * $k; $A.ImgScale.ScaleX = $q; $A.ImgScale.ScaleY = $q
                 if ($A.ImgRot) { $A.ImgRot.Angle = $spin }
@@ -294,7 +294,7 @@ function Update-HUSplashSweep {
             Set-HUSplashBotBuild $b 1
             # wartet am Logo: atmet leicht, schaut sich um - weich aus der Verwandlung heraus (Ausschlag waechst in 0,8 s an)
             if ($A.AutoGo) { [void](Start-HUSplashGo); return }
-            $ti = $t - $s.T; $amp = [Math]::Min(1, $ti / 800); $amp = $amp * $amp
+            $ti = $t - $s.T; $amp = [Math]::Min(1.0, $ti / 800); $amp = $amp * $amp
             $q = 1.35 + 0.035 * $amp * [Math]::Sin($ti / 300)
             $b.Scale.ScaleX = $q; $b.Scale.ScaleY = $q
             $ang = 12 * $amp * [Math]::Sin($ti / 560)
@@ -317,7 +317,7 @@ function Update-HUSplashSweep {
             # Bahn bis knapp vor die Saugkante aufsaugen
             $front = $x + $dir * 0.35 * $r
             # Bahnen ueberlappen 2 px, sonst bleiben an den Grenzen feine Linien (Kantenglaettung)
-            $rect = $(if ($dir -gt 0) { New-Object System.Windows.Rect -2, ($A.Lane * $s.L - 2), ([Math]::Max(0, [Math]::Min($A.W, $front)) + 2), ($A.Lane + 4) } else { $l0 = [Math]::Max(0, [Math]::Min($A.W, $front)); New-Object System.Windows.Rect $l0, ($A.Lane * $s.L - 2), ($A.W - $l0 + 2), ($A.Lane + 4) })
+            $rect = $(if ($dir -gt 0) { New-Object System.Windows.Rect -2, ($A.Lane * $s.L - 2), ([Math]::Max(0.0, [Math]::Min($A.W, $front)) + 2), ($A.Lane + 4) } else { $l0 = [Math]::Max(0.0, [Math]::Min($A.W, $front)); New-Object System.Windows.Rect $l0, ($A.Lane * $s.L - 2), ($A.W - $l0 + 2), ($A.Lane + 4) })
             $A.Lanes[$s.L].Rect = $rect
         }
         'turn' {
@@ -329,7 +329,7 @@ function Update-HUSplashSweep {
     }
     # wartet auf das Hauptfenster: tastet sich vor und zurueck und schaut sich um (statt still zu stehen)
     if ($holding -and $A.HoldStart) {
-        $ht = $raw - $A.HoldStart; $ha = [Math]::Min(1, $ht / 400)
+        $ht = $raw - $A.HoldStart; $ha = [Math]::Min(1.0, $ht / 400)
         $ang += 22 * $ha * [Math]::Sin($ht / 280)
         $x += $(if ($dir) { $dir } else { 1 }) * 0.18 * $r * $ha * [Math]::Sin($ht / 360)
     }
@@ -346,7 +346,7 @@ function Update-HUSplashSweep {
         $ahead = ($d.X - $x) * $dir
         if ($ahead -lt -0.1 * $r) { $d.E.Visibility = 'Collapsed'; continue }
         if ($ahead -lt 1.9 * $r) {
-            $k = 1 - ($ahead + 0.1 * $r) / (2.0 * $r); $k = [Math]::Max(0, [Math]::Min(1, $k)); $k2 = $k * $k
+            $k = 1 - ($ahead + 0.1 * $r) / (2.0 * $r); $k = [Math]::Max(0.0, [Math]::Min(1.0, $k)); $k2 = $k * $k
             $tx = $x + $dir * 0.8 * $r; $ty = $y
             $nx = $d.X + ($tx - $d.X) * $k2; $ny = $d.Y + ($ty - $d.Y) * $k2
             $sz = $d.S * (1 - 0.6 * $k)
