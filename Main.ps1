@@ -126,11 +126,12 @@ function Close-HUSplash([int]$MinMs = 0, [switch]$Animate) {
     if (-not $script:Splash) { return }
     # laeuft die Animation schon: ohne -Animate (z. B. Fehler) sofort beenden
     if ((Get-Variable -Name SplashAnim -Scope Script -ErrorAction SilentlyContinue) -and $script:SplashAnim) { if (-not $Animate) { Stop-HUSplashSweep }; return }
-    $rest = $MinMs - ((Get-Date) - $script:SplashShown).TotalMilliseconds
-    if ($rest -gt 0) { Start-Sleep -Milliseconds ([int]$rest) }
+    # mit Animation sofort los (sie dauert selbst lange genug) - die Mindestzeit gilt nur fuer das schlichte Schliessen
     if ($Animate -and (Get-Command Start-HUSplashSweep -ErrorAction SilentlyContinue)) {
         try { if ((Test-HUSplashAnimOn) -and (Start-HUSplashSweep)) { return } } catch { }
     }
+    $rest = $MinMs - ((Get-Date) - $script:SplashShown).TotalMilliseconds
+    if ($rest -gt 0) { Start-Sleep -Milliseconds ([int]$rest) }
     try { $script:Splash.Close() } catch { }
     $script:Splash = $null; $script:SplashStatus = $null
 }
