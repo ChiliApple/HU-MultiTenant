@@ -189,6 +189,35 @@ Describe 'Update-Bibliothek' {
         $cfg.Repo | Should -Be 'HU-MultiTenant'
         $cfg.RequireSignature | Should -BeTrue
     }
+    Context 'Signieren: Warten auf das neue Release' {
+        BeforeAll {
+            $script:BsNow = [datetime]::Parse('2026-10-28T16:38:00Z', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]'AdjustToUniversal, AssumeUniversal')
+            $script:BsCommit = [pscustomobject]@{ sha = 'abc123'; commit = [pscustomobject]@{ committer = [pscustomobject]@{ date = '2026-10-28T16:34:21Z' } } }
+        }
+        It 'Merge vor wenigen Minuten, noch kein Release -> Building' {
+            $st = ConvertTo-HMMainBuildState $script:BsCommit @() $script:BsNow
+            $st.AgeMin | Should -Be 3
+            $st.Tag | Should -BeNullOrEmpty
+            Get-HMBuildWaitState $st | Should -Be 'Building'
+        }
+        It 'Release da, Pruefsumme fehlt noch -> Building' {
+            $rel = @([pscustomobject]@{ target_commitish = 'abc123'; tag_name = 'v9.9.9'; assets = @() })
+            Get-HMBuildWaitState (ConvertTo-HMMainBuildState $script:BsCommit $rel $script:BsNow) | Should -Be 'Building'
+        }
+        It 'Release mit Pruefsumme -> Ready' {
+            $rel = @([pscustomobject]@{ target_commitish = 'abc123'; tag_name = 'v9.9.9'; assets = @([pscustomobject]@{ name = $script:HMManifestName }) })
+            $st = ConvertTo-HMMainBuildState $script:BsCommit $rel $script:BsNow
+            $st.Tag | Should -Be 'v9.9.9'
+            Get-HMBuildWaitState $st | Should -Be 'Ready'
+        }
+        It 'alter Commit ohne Release (Version nicht erhoeht) -> None' {
+            Get-HMBuildWaitState (ConvertTo-HMMainBuildState $script:BsCommit @() $script:BsNow.AddMinutes(40)) | Should -Be 'None'
+        }
+        It 'Datum als DateTime (PowerShell 7) wird genauso gelesen' {
+            $c = [pscustomobject]@{ sha = 'abc123'; commit = [pscustomobject]@{ committer = [pscustomobject]@{ date = $script:BsNow.AddMinutes(-5) } } }
+            (ConvertTo-HMMainBuildState $c @() $script:BsNow).AgeMin | Should -Be 5
+        }
+    }
 }
 
 Describe 'Snippet-Parameter' {
