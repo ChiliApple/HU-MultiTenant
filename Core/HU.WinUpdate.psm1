@@ -356,7 +356,7 @@ function Get-HUWuSummary($Inventory) {
         Text = "$n Geraete: $akt aktuell, $zur mit 1 fehlenden Update, $alt veraltet$(if ($ohne) { ", $ohne ohne Sync > $($script:HUWuStaleDays) T." })"
         Haupt = $(if ($top) { "meist $($top.Name)" } else { '' })
         Total = $n; Current = $akt; Behind = $zur; Old = $alt; Stale = $ohne
-        Ampel = $(if (-not $n) { 'grau' } elseif ($alt -gt [Math]::Max(2, $n * 0.1)) { 'rot' } elseif ($alt -or $zur -gt $n * 0.2) { 'gelb' } else { 'gruen' })
+        Ampel = $(if (-not $n) { 'grau' } elseif ($alt -gt [Math]::Max(2.0, $n * 0.1)) { 'rot' } elseif ($alt -or $zur -gt $n * 0.2) { 'gelb' } else { 'gruen' })
     }
 }
 
