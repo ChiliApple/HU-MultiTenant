@@ -3,7 +3,8 @@
     Microsoft-365-Lizenzen: Auslastung und Zuweisung
 
 .DESCRIPTION
-    Zeigt alle verfuegbaren SKUs mit Auslastung (consumed/enabled),
+    Zeigt alle verfuegbaren SKUs mit Auslastung (consumed/enabled); SKUs mit mindestens 100.000 Plaetzen
+    (Gratis-Kontingente) sind als "unbegrenzt" markiert und zaehlen nicht in die Summen auf dem Dashboard,
     listet User mit/ohne Lizenz, identifiziert Mehrfach-Lizenzen.
     Sheets: Dashboard, SKU-Overview, Licensed-Users, Unlicensed-Users, Multi-Licensed.
 
@@ -115,6 +116,9 @@ function Invoke-LicenseOverviewReport {
                 $warning = if ($sku.prepaidUnits.warning) { [int]$sku.prepaidUnits.warning } else { 0 }
 
                 $status = if ($sku.capabilityStatus) { $sku.capabilityStatus } else { 'Unknown' }
+                # Gratis-SKUs mit riesigem Kontingent (z. B. 1.000.000 Plaetze bei Schul-Lizenzen) gelten als "unbegrenzt":
+                # sie zaehlen nicht in "Lizenzen gesamt" und "Auslastung" (sonst stuende dort z. B. 0,1 %)
+                $unlimited = $enabled -ge 100000   # ab so vielen Plaetzen: Gratis-/Testkontingent
 
                 $skuOverview += [PSCustomObject]@{
                     SKU          = $sku.skuPartNumber
@@ -125,6 +129,7 @@ function Invoke-LicenseOverviewReport {
                     UsagePercent = $usagePercent
                     Suspended    = $suspended
                     Warning      = $warning
+                    Kontingent   = $(if ($unlimited) { 'unbegrenzt' } else { 'fest' })
                 }
             }
 
@@ -194,8 +199,11 @@ function Invoke-LicenseOverviewReport {
 
             # 6. Calculate Dashboard Metrics
             $totalSKUs = ($skuOverview | Measure-Object).Count
-            $totalEnabled = ($skuOverview | Measure-Object -Property Enabled -Sum).Sum
-            $totalConsumed = ($skuOverview | Measure-Object -Property Consumed -Sum).Sum
+            # nur SKUs mit festem Kontingent (unbegrenzte verfaelschen Summe und Auslastung)
+            $fixedSkus = @($skuOverview | Where-Object { $_.Kontingent -ne 'unbegrenzt' })
+            $totalUnlimited = @($skuOverview | Where-Object { $_.Kontingent -eq 'unbegrenzt' }).Count
+            $totalEnabled = [int](($fixedSkus | Measure-Object -Property Enabled -Sum).Sum)
+            $totalConsumed = [int](($fixedSkus | Measure-Object -Property Consumed -Sum).Sum)
             $overallUsagePercent = if ($totalEnabled -gt 0) {
                 [math]::Round(($totalConsumed / $totalEnabled) * 100, 1)
             }
@@ -274,15 +282,15 @@ function Invoke-LicenseOverviewReport {
                     -GroupDefinitions @(
                         @{ Title = 'LIZENZ';     Columns = @('SKU', 'Status') }
                         @{ Title = 'AUSLASTUNG'; Columns = @('Enabled', 'Consumed', 'Available', 'UsagePercent') }
-                        @{ Title = 'SONSTIG';    Columns = @('Suspended', 'Warning') }
+                        @{ Title = 'SONSTIG';    Columns = @('Suspended', 'Warning', 'Kontingent') }
                     )
 
                 # --- Dashboard ---
                 $dashMetrics = [ordered]@{
-                    'SKUs gesamt'        = $totalSKUs
-                    'Lizenzen gesamt'    = $totalEnabled
-                    'Verbraucht'         = $totalConsumed
-                    'Auslastung'         = "$overallUsagePercent%"
+                    'SKUs gesamt'        = $(if ($totalUnlimited) { "$totalSKUs ($totalUnlimited unbegrenzt)" } else { $totalSKUs })
+                    'Lizenzen (fest)'    = $totalEnabled
+                    'Verbraucht (fest)'  = $totalConsumed
+                    'Auslastung (fest)'  = "$overallUsagePercent%"
                     'Unlizenziert'       = $totalUnlicensed
                     'Mehrfach-lizenziert'= $totalMultiLicensed
                 }
