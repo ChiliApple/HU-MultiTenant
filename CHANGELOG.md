@@ -1,5 +1,12 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.5 (in Arbeit)
+
+### Geändert
+- **Release signieren:** Kurz nach dem Merge laufen erst die automatischen Tests, das Release entsteht einige Minuten später. Bisher hieß es in dieser Zeit „Nichts zu signieren“. Jetzt erkennt die App, dass die neue Version noch gebaut wird, und bietet an zu warten: Sie fragt alle 20 Sekunden nach (höchstens 15 Minuten) und signiert danach nach der üblichen Rückfrage. Gilt auch für Zusatzmodule. „Release freigeben“ weist in dieser Zeit darauf hin.
+- **Scrollbalken:** in allen Fenstern dunkel und schmaler, passend zum Design.
+- **Reiter-Hinweis** („Reiter mit der Maus ziehen …“) erscheint nur noch über dem Reiterkopf, nicht mehr über Spaltenköpfen und anderen Stellen im Reiter.
+
 ## v2.6.4 (Stable, 28.10.2026)
 
 Stable-Release der Testversionen 2.6.1 bis 2.6.3 – „Windows-Updates“. Alle Punkte im Detail stehen in den Abschnitten darunter.
