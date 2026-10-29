@@ -217,7 +217,10 @@ function Get-HURemoteSetupState {
     $o.Cert = $cert
     $o.Ca = @(Get-ChildItem -Path 'Cert:\LocalMachine\My' -ErrorAction SilentlyContinue | Where-Object { $_.Subject -eq $cert.Issuer -and $_.FriendlyName -eq $script:HURemoteCaName } | Sort-Object NotAfter -Descending)[0]
     $san = Get-HURemoteCertSan $cert
-    $ips = @(Get-HURemoteIPv4List | Where-Object { $_.Private } | ForEach-Object { $_.IP })
+    # nur echte Netze pruefen (mit Gateway) - virtuelle Adapter ohne Gateway (Hyper-V-Standardswitch, WSL: z. B. 172.x)
+    # erreicht das Handy ohnehin nicht; gibt es gar keinen mit Gateway, alle privaten
+    $all = @(Get-HURemoteIPv4List | Where-Object { $_.Private })
+    $ips = @($(if (@($all | Where-Object { $_.Gateway }).Count) { $all | Where-Object { $_.Gateway } } else { $all }) | ForEach-Object { $_.IP })
     $miss = @($ips | Where-Object { $san.IPs -notcontains $_ })
     if ($miss.Count) { $o.Warn = "Das Zertifikat passt nicht zur Adresse $($miss -join ', ') - Einrichtung erneuern (Tipp: feste Adresse im Router)." }
     if ($cert.NotAfter -lt (Get-Date).AddDays(30)) { $o.Warn = "Zertifikat laeuft am $($cert.NotAfter.ToString('dd.MM.yyyy')) ab - Einrichtung erneuern." }
