@@ -149,6 +149,8 @@ function Add-HUOutputTools($Rtb) {
         })
     [void]$bar.Children.Add($bRev); [void]$bar.Children.Add($bDel)
     [void]$g.Children.Add($bar)
+    # Platz fuer die Knoepfe: erste Zeile beginnt darunter (sonst liegen Umkehren/Loeschen ueber der neuesten Zeile)
+    try { $pd = $Rtb.Padding; $Rtb.Padding = [System.Windows.Thickness]::new($pd.Left, [Math]::Max([double]$pd.Top, 24.0), $pd.Right, $pd.Bottom) } catch { }
 }
 # alle schreibgeschuetzten Ausgaben unter $Root ausstatten (Hauptfenster, Fenster, Modul-Reiter)
 function Set-HUOutputTools($Root) {
