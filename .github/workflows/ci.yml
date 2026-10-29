@@ -60,6 +60,47 @@ jobs:
         shell: powershell
         run: Get-ChildItem .\Logs -Filter *.log -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 80 }
 
+  # Umstieg auf PowerShell 7 (Schritt 1): dieselben Pruefungen und der Starttest unter pwsh - vorerst NICHT blockierend,
+  # damit Unterschiede sichtbar werden, ohne Releases aufzuhalten. Releases haengen weiter nur an "test" (PS 5.1).
+  test-ps7:
+    name: Pruefungen (PowerShell 7, nicht blockierend)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+      - name: PowerShell-Version
+        shell: pwsh
+        run: $PSVersionTable | Out-String
+      - name: Pruefungen
+        shell: pwsh
+        timeout-minutes: 15
+        run: .\.github\tests\Invoke-CITests.ps1
+      - name: Starttest (Main.ps1 -SmokeTest unter pwsh)
+        if: always()
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $f = Join-Path $env:RUNNER_TEMP 'smoke7.txt'
+          $s = Get-Content .\Config\settings.example.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $s.tenants[0].tenantId = '11111111-1111-1111-1111-111111111111'; $s.tenants[0].appId = '22222222-2222-2222-2222-222222222222'
+          $s.tenants[1].tenantId = '33333333-3333-3333-3333-333333333333'; $s.tenants[1].appId = '44444444-4444-4444-4444-444444444444'
+          $s | ConvertTo-Json -Depth 10 | Set-Content .\Config\settings.json -Encoding UTF8
+          '{ "snippets": [ { "name": "Geraet [Test]", "code": "Write-Host ok", "created": "2026-01-01 10:00:00" } ] }' | Set-Content .\Config\quick-snippets.json -Encoding UTF8
+          # WPF braucht STA
+          $p = Start-Process pwsh.exe -ArgumentList '-NoProfile','-STA','-ExecutionPolicy','Bypass','-File',"`"$((Resolve-Path .\Main.ps1).Path)`"",'-ShowConsole','-SmokeTest',"`"$f`"" -PassThru -Wait
+          if (-not (Test-Path $f)) { throw "Starttest PS7: kein Ergebnis (Exitcode $($p.ExitCode))" }
+          $r = Get-Content $f -Raw
+          "Starttest PS7: $r"
+          "### Starttest PowerShell 7: $r" | Add-Content $env:GITHUB_STEP_SUMMARY
+          if ($r -notmatch '^OK') { throw "Starttest PS7 fehlgeschlagen: $r" }
+      - name: Protokoll bei Fehler
+        if: failure()
+        shell: pwsh
+        run: Get-ChildItem .\Logs -Filter *.log -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 80 }
+
   release:
     name: Release + Pruefsummen-Datei
     if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
