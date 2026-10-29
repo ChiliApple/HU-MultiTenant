@@ -122,7 +122,8 @@ function Invoke-HURemoteChild($S, [hashtable]$Vars, [string]$Script, [string]$Pr
             $hung = $false
         }
         if (-not $hung) {
-            try { [void]$ps.EndInvoke($h) } catch { if ($res -ne 'cancel') { $pos.Errs++; Add-HURemoteLineTo $S ("$Prefix" + (Protect-HURemoteText "$($_.Exception.Message)" $Secrets)) 'Error' } }
+            # Meldung ohne die technische Huelle ("Ausnahme beim Aufrufen von EndInvoke ...") - der eigentliche Grund steckt innen
+            try { [void]$ps.EndInvoke($h) } catch { if ($res -ne 'cancel') { $pos.Errs++; $ex = $_.Exception; while ($ex.InnerException -and $ex -is [System.Management.Automation.MethodInvocationException]) { $ex = $ex.InnerException }; Add-HURemoteLineTo $S ("$Prefix" + (Protect-HURemoteText "$($ex.Message)" $Secrets)) 'Error' } }
             Read-HURemoteStreams $ps $out $pos $S $Prefix $Secrets $Log
             if ($TailFile) { Read-HURemoteLogTail $TailFile $pos $S $Prefix $Secrets $Log }
         }
