@@ -120,10 +120,11 @@ function Set-HUSplashBotBuild($B, [double]$K) {
     if ([Math]::Abs($B.Built - $K) -lt 0.002) { return }
     $B.Built = $K
     $R = $B.R
-    $seg = { param([double]$a, [double]$e) [Math]::Max(0, [Math]::Min(1, ($K - $a) / ($e - $a))) }
-    $B.Body.Opacity = & $seg 0.0 0.45
+    # je Teil weich ein (Smoothstep), damit nichts ploetzlich da ist
+    $seg = { param([double]$a, [double]$e) $v = [Math]::Max(0, [Math]::Min(1, ($K - $a) / ($e - $a))); $v * $v * (3 - 2 * $v) }
+    $B.Body.Opacity = & $seg 0.0 0.6
     $B.Shadow.Opacity = 0.45 * $B.Body.Opacity
-    $ring = & $seg 0.05 0.55
+    $ring = & $seg 0.1 0.65
     if ($ring -ge 0.999) { $B.Ring.Data = New-Object System.Windows.Media.EllipseGeometry (New-Object System.Windows.Point 0, 0), ($R - 1), ($R - 1) }
     elseif ($ring -gt 0.001) { $B.Ring.Data = New-HUSplashArc ($R - 1) -90 (-90 + 359.9 * $ring) }
     else { $B.Ring.Data = $null }
@@ -270,15 +271,18 @@ function Update-HUSplashSweep {
             $z = $z0 + (1.35 - $z0) * $k
             $b.Scale.ScaleX = $z; $b.Scale.ScaleY = $z
             $ang = $spin - 540
-            Set-HUSplashBotBuild $b (($u - 0.25) / 0.7)
+            # Roboter baut sich ueber fast die ganze Drehung auf - lange Ueberblendung statt Umschalten
+            Set-HUSplashBotBuild $b (($u - 0.08) / 0.84)
             if ($A.Img) {
                 # Ecken runden sich ab, bis das Logo ein Kreis ist; dann verblasst es ins Gehaeuse
-                $rc = [Math]::Min(1, $u / 0.45)
+                $rc = [Math]::Min(1, $u / 0.4); $rc = $rc * $rc * (3 - 2 * $rc)
                 if ($A.ImgClip) { $hw = $script:SplashLogoSize / 2; $A.ImgClip.RadiusX = $hw * $rc; $A.ImgClip.RadiusY = $hw * $rc }
-                $A.Img.Opacity = [Math]::Max(0, [Math]::Min(1, 1 - ($u - 0.35) / 0.4))
+                # sanft (Smoothstep) und lange: das dunkle Gehaeuse legt sich darueber, waehrend das Logo verblasst
+                $fo = [Math]::Max(0, [Math]::Min(1, ($u - 0.1) / 0.75)); $fo = $fo * $fo * (3 - 2 * $fo)
+                $A.Img.Opacity = 1 - $fo
                 $q = 1 - 0.15 * $k; $A.ImgScale.ScaleX = $q; $A.ImgScale.ScaleY = $q
                 if ($A.ImgRot) { $A.ImgRot.Angle = $spin }
-                if ($A.ImgBlur) { $A.ImgBlur.Radius = 6 * [Math]::Max(0, ($u - 0.4) / 0.6) }
+                if ($A.ImgBlur) { $A.ImgBlur.Radius = 4 * $fo }
             }
         }
         'idle' {
