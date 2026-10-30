@@ -1,5 +1,11 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.6 (in Arbeit)
+
+### Behoben
+- **Autopilot „Laden“** (Übersicht, Tags & Gruppen) meldete „Bitte mindestens einen Tenant markieren“, obwohl Tenants markiert waren. Auch die Rechteprüfung des Moduls nahm ohne eigene Liste keine Rechte mehr. Zusatzmodul Autopilot 0.5.4.
+- **Update-Prüfung beim Start:** Schlägt sie fehl (z. B. GitHub-Abfragelimit ohne Token: 60 je Stunde und Internetanschluss), steht der Grund jetzt im Protokoll. Bisher blieb sie still, und man sah nicht, warum kein Update angeboten wurde.
+
 ## v2.6.5 (Stable, 29.10.2026)
 
 ### Geändert

@@ -1,5 +1,11 @@
 # Changelog – Zusatzmodul Autopilot
 
+## v0.5.4 – 30.10.2026 (mit HU-MultiTenant 2.6.6)
+
+### 🐞 Behoben
+- **„Laden“** meldete „Bitte mindestens einen Tenant markieren“, obwohl Tenants markiert waren.
+- **Rechteprüfung** ohne eigene Liste prüfte keine Rechte (betraf die Hinweise auf fehlende Leserechte).
+
 ## v0.5.3 – 27.10.2026 (mit HU-MultiTenant 2.6.0 Stable)
 
 ### 🛡️ Sicherheit
