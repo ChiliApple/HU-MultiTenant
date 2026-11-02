@@ -1,6 +1,6 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.6.6 (in Arbeit)
+## v2.6.6 (Testversion)
 
 ### Muster
 - **CA Schule (Praxis-Set):** 100 sperrt für Nicht-Admins zusätzlich die Azure-Verwaltung (Windows Azure Service Management API, damit auch Azure PowerShell und CLI). 102 verlangt von Admins alle 10 Stunden eine neue Anmeldung und merkt sich die Browsersitzung nicht. Die Notiz weist darauf hin, dass 100 auch die Office-Installationsseite im Microsoft 365 admin center sperrt.
