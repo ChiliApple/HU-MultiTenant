@@ -1788,7 +1788,7 @@
       "steps": [
         "Entra ID > Users > All users > User settings oeffnen.",
         "\"Restrict access to Microsoft Entra admin center\" auf Yes > Save.",
-        "Laut Microsoft keine Sicherheitsmassnahme: es sperrt nur haeufig besuchte Seiten, nicht PowerShell, Graph oder Direktlinks. Die wirksame Sperre ist die CA-Richtlinie 100 mit der Windows Azure Service Management API (Paket CA Schule).",
+        "Laut Microsoft keine Sicherheitsmassnahme: es sperrt nur haeufig besuchte Seiten, nicht PowerShell, Graph oder Direktlinks. Die wirksame Sperre ist die CA-Richtlinie 100 mit der Windows Azure Service Management API, im Portal \"Azure Resource Manager\" (Paket CA Schule).",
         "Einzelne Nicht-Admins, die das Portal brauchen, bekommen eine Rolle wie Global Reader."
       ],
       "learn": [
