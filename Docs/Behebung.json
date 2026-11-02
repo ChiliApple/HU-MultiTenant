@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "2026-10-26",
+  "stand": "2026-11-02",
   "hinweis": "Menuenamen wie in der englischen Portal-Oberflaeche und in Microsoft Learn. Massgeblich ist der verlinkte Learn-Artikel; Microsoft benennt Menues gelegentlich um.",
   "rules": {
     "A01": {
@@ -1702,6 +1702,171 @@
         }
       ],
       "checked": "2026-10-26"
+    },
+    "H01": {
+      "title": "Kennwoerter laufen nie ab (nur reine Cloud-Konten)",
+      "portal": "m365",
+      "path": "Microsoft 365 admin center > Settings > Org Settings > Security and Privacy > Password expiration policy",
+      "steps": [
+        "Mit mindestens der Rolle User Administrator anmelden; links \"... Show all\" > Settings > Org Settings.",
+        "Tab \"Security and Privacy\" > \"Password expiration policy\" oeffnen.",
+        "\"Set passwords to never expire (recommended)\" anhaken > Save. Microsoft-Standard ist bereits \"nie\" - meist nur kontrollieren.",
+        "Gilt nur fuer reine Cloud-Konten. Fuer Konten aus dem lokalen AD (Password Hash Sync) zaehlt die Kennwortrichtlinie des lokalen AD - dort pruefen.",
+        "Neue Domaenen (oder von federated auf managed umgestellte) behalten den Standard: danach die Einstellung erneut speichern."
+      ],
+      "note": "Microsoft empfiehlt keinen regelmaessigen Kennwortwechsel, sondern MFA und lange Kennwoerter.",
+      "learn": [
+        {
+          "title": "Kennwortablauf fuer die Organisation festlegen",
+          "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/manage/set-password-expiration-policy"
+        }
+      ],
+      "checked": "2026-11-02"
+    },
+    "H02": {
+      "title": "Self-Service-Kennwortzuruecksetzung (SSPR) fuer alle",
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Password reset > Properties",
+      "steps": [
+        "Mit mindestens der Rolle Authentication Policy Administrator Entra ID > Password reset oeffnen (Lizenz: mindestens Entra ID P1).",
+        "Properties: \"Self service password reset enabled\" auf \"All\" stellen (zum Testen zuerst \"Selected\" mit einer Testgruppe) > Save.",
+        "Authentication methods: \"Number of methods required to reset\" auf 2, unter \"Methods available to users\" z. B. Mobile app notification, Mobile app code und Email > Save.",
+        "Registration: \"Require users to register when signing in\" auf Yes, erneute Bestaetigung nach 180 Tagen > Save.",
+        "Notifications: \"Notify users on password resets?\" und \"Notify all admins when other admins reset their password?\" auf Yes > Save.",
+        "Konten aus dem lokalen AD: Das neue Kennwort kommt nur mit Password Writeback (Entra Connect) im lokalen AD an."
+      ],
+      "note": "In Schulen: SSPR braucht registrierte Methoden (Handy, private Mail). Wo Schueler das nicht haben, zuerst mit \"Selected\" fuer Lehrer und Personal starten.",
+      "learn": [
+        {
+          "title": "SSPR einschalten (Tutorial)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/tutorial-enable-sspr"
+        }
+      ],
+      "checked": "2026-11-02"
+    },
+    "H03": {
+      "title": "Eigene Liste verbotener Kennwoerter",
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Authentication methods > Password protection",
+      "steps": [
+        "Mit mindestens der Rolle Authentication Policy Administrator Entra ID > Authentication methods > Password protection oeffnen (Lizenz: mindestens Entra ID P1).",
+        "\"Enforce custom list\" auf Yes.",
+        "Unter \"Custom banned password list\" ein Begriff je Zeile: 4 bis 16 Zeichen, hoechstens 1000 Begriffe. Gross-/Kleinschreibung und uebliche Ersetzungen (o/0, a/@) werden mitgeprueft.",
+        "Fuer Schulen sinnvoll: Schulname und Abkuerzungen, Ort, Schuljahr, Monats- und Wochentagsnamen.",
+        "Save. Die Liste wirkt erst nach einigen Stunden.",
+        "Fuer das lokale AD zusaetzlich den Kennwortschutz mit Agenten auf den Domaenencontrollern einrichten (Katalogregel A28)."
+      ],
+      "learn": [
+        {
+          "title": "Eigene Liste verbotener Kennwoerter (Tutorial)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/tutorial-configure-custom-password-protection"
+        }
+      ],
+      "checked": "2026-11-02"
+    },
+    "H04": {
+      "title": "LinkedIn-Kontoverbindungen ausschalten",
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Users > User settings",
+      "steps": [
+        "Als Global Administrator Entra ID > Users > All users > User settings oeffnen.",
+        "Unter \"LinkedIn account connections\" die Option \"No\" waehlen > Save.",
+        "Hinweis: Oeffentliche LinkedIn-Profile bleiben ohne Zustimmung sichtbar. In Office-Apps laesst sich LinkedIn zusaetzlich per Richtlinie \"Show LinkedIn features in Office applications\" ausschalten."
+      ],
+      "learn": [
+        {
+          "title": "LinkedIn-Kontoverbindungen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/linkedin-integration"
+        }
+      ],
+      "checked": "2026-11-02"
+    },
+    "H05": {
+      "title": "Zugriff auf das Entra Admin Center beschraenken",
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Users > User settings",
+      "steps": [
+        "Entra ID > Users > All users > User settings oeffnen.",
+        "\"Restrict access to Microsoft Entra admin center\" auf Yes > Save.",
+        "Laut Microsoft keine Sicherheitsmassnahme: es sperrt nur haeufig besuchte Seiten, nicht PowerShell, Graph oder Direktlinks. Die wirksame Sperre ist die CA-Richtlinie 100 mit der Windows Azure Service Management API (Paket CA Schule).",
+        "Einzelne Nicht-Admins, die das Portal brauchen, bekommen eine Rolle wie Global Reader."
+      ],
+      "learn": [
+        {
+          "title": "Standardberechtigungen der Benutzer einschraenken",
+          "url": "https://learn.microsoft.com/en-us/entra/fundamentals/users-default-permissions#restrict-member-users-default-permissions"
+        }
+      ],
+      "checked": "2026-11-02"
+    },
+    "H06": {
+      "title": "Defender for Office 365: voreingestellte Sicherheitsrichtlinien",
+      "portal": "defender",
+      "path": "Microsoft Defender portal > Email & collaboration > Policies & rules > Threat policies > Preset Security Policies",
+      "steps": [
+        "Mit der Rolle Security Administrator (oder Rollengruppe Organization Management) im Microsoft Defender portal anmelden.",
+        "Email & collaboration > Policies & rules > Threat policies > Preset Security Policies (Abschnitt Templated policies).",
+        "\"Standard protection\" auf On > \"Manage protection settings\".",
+        "\"Apply Exchange Online Protection\": Empfaenger waehlen (z. B. alle Domaenen der Schule) > Next.",
+        "\"Apply Defender for Office 365 protection\" (nur mit Lizenz Defender for Office 365): \"Previously selected recipients\" > Next.",
+        "Den Assistenten mit den Vorgaben abschliessen und bestaetigen. \"Strict protection\" optional fuer besonders gefaehrdete Konten (z. B. Direktion, Admins)."
+      ],
+      "note": "Nicht ueber Graph setzbar (Exchange Online PowerShell) - deshalb nicht im Muster.",
+      "learn": [
+        {
+          "title": "Voreingestellte Sicherheitsrichtlinien",
+          "url": "https://learn.microsoft.com/en-us/defender-office-365/preset-security-policies"
+        }
+      ],
+      "checked": "2026-11-02"
+    },
+    "H07": {
+      "title": "Teams: Gastzugriff festlegen",
+      "portal": "teams",
+      "path": "Teams admin center > Users > Guest access",
+      "steps": [
+        "Im Teams admin center Users > Guest access oeffnen.",
+        "\"Guest access\" auf On oder Off - je nachdem, ob die Schule mit Gaesten in Teams arbeitet.",
+        "Bei On unter Calling, Meeting und Messaging nur freigeben, was Gaeste brauchen (z. B. Screen sharing \"Single application\", Giphy content rating \"Strict\") > Save.",
+        "Wer Gaeste einladen darf, steuert Entra (Paket Entra Schule: nur Admins und Gast-Einlader).",
+        "Beim Ausschalten verlieren bestehende Gaeste den Zugriff, bleiben aber im Team sichtbar - Team-Besitzer sollen sie entfernen."
+      ],
+      "note": "Teams-Einstellungen gehen nicht ueber Graph (Teams PowerShell) - deshalb nicht im Muster.",
+      "learn": [
+        {
+          "title": "Gastzugriff in Teams ein- oder ausschalten",
+          "url": "https://learn.microsoft.com/en-us/microsoftteams/set-up-guests"
+        },
+        {
+          "title": "Gastzugriff in Teams (Ueberblick)",
+          "url": "https://learn.microsoft.com/en-us/microsoftteams/guest-access"
+        }
+      ],
+      "checked": "2026-11-02"
+    },
+    "H08": {
+      "title": "Internet Explorer 11 als eigenen Browser deaktivieren",
+      "portal": "intune",
+      "path": "Intune admin center > Devices > Manage devices > Configuration > Create > New policy",
+      "steps": [
+        "Devices > Manage devices > Configuration > Create > New policy: Platform \"Windows 10 and later\", Profile type \"Settings catalog\" > Create.",
+        "Namen vergeben, z. B. \"Win - IE11 deaktivieren\" > Next.",
+        "Add settings > nach \"Internet Explorer\" suchen > \"Disable Internet Explorer 11 as a standalone browser\" waehlen und auf Enabled stellen.",
+        "Benachrichtigung waehlen: Never, Always oder Once per user > Next.",
+        "Einer Geraetegruppe zuweisen > Create. IE-Aufrufe oeffnen danach Microsoft Edge; der IE-Modus in Edge bleibt nutzbar."
+      ],
+      "note": "Ein Intune-Profil gehoert nicht zu Conditional Access oder Entra - deshalb nicht im Muster.",
+      "learn": [
+        {
+          "title": "Internet Explorer 11 deaktivieren",
+          "url": "https://learn.microsoft.com/en-us/deployedge/edge-ie-disable-ie11"
+        },
+        {
+          "title": "Richtlinie im Einstellungskatalog anlegen",
+          "url": "https://learn.microsoft.com/en-us/intune/device-configuration/settings-catalog/"
+        }
+      ],
+      "checked": "2026-11-02"
     }
   }
 }

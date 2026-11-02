@@ -2209,7 +2209,7 @@ $script:HUSecFixData = $null
 $script:HUSecFixMaxAgeDays = 180
 
 # Learn-Links nur auf Doku-Bereiche (keine Foren/Q&A wie /answers/), immer mit Sprachteil (Review 040 B3)
-$script:HUSecFixLearnRx = '^https://learn\.microsoft\.com/[a-z]{2}-[a-z]{2}/(entra|intune|microsoft-365|sharepoint|defender-[a-z-]+|purview|microsoftteams|graph|powershell|troubleshoot|microsoft-copilot-studio|windows-server|windows)/[A-Za-z0-9/_\-.#?=%&]*$'
+$script:HUSecFixLearnRx = '^https://learn\.microsoft\.com/[a-z]{2}-[a-z]{2}/(entra|intune|microsoft-365|sharepoint|defender-[a-z-]+|purview|microsoftteams|graph|powershell|troubleshoot|microsoft-copilot-studio|windows-server|windows|deployedge)/[A-Za-z0-9/_\-.#?=%&]*$'
 
 function ConvertTo-HUSecFixText([string]$Text, [int]$Max) {
     # Steuer- und Formatzeichen entfernen (u. a. Bidi- und Null-Breite-Zeichen; Review 040 B4), Laenge begrenzen
@@ -2243,7 +2243,9 @@ function ConvertTo-HUSecFixSet($J, [datetime]$Now = (Get-Date)) {
         $portal = "$($v.portal)"; if (-not $script:HUSecFixPortals.Contains($portal)) { $portal = '' }
         $checked = "$($v.checked)"; if (-not (Test-HUSecFixDate $checked $Now)) { $checked = '' }
         $note = ConvertTo-HUSecFixText "$($v.note)" 600; if ($null -eq $note) { $note = '' }
-        $rules[$id] = [pscustomobject]@{ Path = $path; Steps = $steps; Learn = $learn; Portal = $portal; Checked = $checked; Note = $note }
+        # Titel nur fuer Anleitungen ohne Katalogregel (z. B. Hxx = Hinweise aus Mustern)
+        $title = ConvertTo-HUSecFixText "$($v.title)" 150; if ($null -eq $title) { $title = '' }
+        $rules[$id] = [pscustomobject]@{ Path = $path; Steps = $steps; Learn = $learn; Portal = $portal; Checked = $checked; Note = $note; Title = $title }
     }
     $hint = ConvertTo-HUSecFixText "$($J.hinweis)" 600; if ($null -eq $hint) { $hint = '' }
     return [pscustomobject]@{ Stand = $stand; Hint = $hint; Rules = $rules }
@@ -2264,9 +2266,9 @@ function Get-HUSecFix {
     # Anleitung einer Regel fuer Anzeige (PC und Handy). Ohne Eintrag: Has = $false und ein Link auf die Learn-Suche.
     param([Parameter(Mandatory)][string]$RuleId, [string]$LocalPath, [datetime]$Now = (Get-Date))
     $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $RuleId })[0]
-    $title = if ($rule) { "$($rule.Title)" } else { $RuleId }
     $set = Get-HUSecFixData -LocalPath $LocalPath
     $e = if ($set) { $set.Rules[$RuleId] } else { $null }
+    $title = if ($rule) { "$($rule.Title)" } elseif ($e -and $e.Title) { "$($e.Title)" } else { $RuleId }
     $search = 'https://learn.microsoft.com/en-us/search/?terms=' + [uri]::EscapeDataString(($title -replace '\(.*?\)', '').Trim())
     if (-not $e) { return [pscustomobject]@{ RuleId = $RuleId; Title = $title; Has = $false; SearchUrl = $search; Path = ''; Steps = @(); Learn = @(); PortalName = ''; PortalUrl = ''; Checked = ''; Old = $false; Hint = ''; Note = ''; Stand = $(if ($set) { $set.Stand } else { '' }) } }
     $old = $true

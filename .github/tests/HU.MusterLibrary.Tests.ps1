@@ -406,14 +406,15 @@ Describe 'Mitgelieferte Pakete (Programmordner Muster)' {
         Set-HUMusterBuiltinRoot (Join-Path ([IO.Path]::GetTempPath()) 'HU-MUL-keine-mitgelieferten')
         Remove-Item -LiteralPath $script:Bb -Recurse -Force -ErrorAction SilentlyContinue
     }
-    It 'neun Pakete, schreibgeschuetzt, zuerst gelistet, Kategorie Mitgeliefert' {
+    It 'zehn Pakete, schreibgeschuetzt, zuerst gelistet, Kategorie Mitgeliefert' {
         $all = @(Get-HUMusterPackages $script:Sb)
         $b = @($all | Where-Object BuiltIn)
-        $b.Count | Should -Be 9
+        $b.Count | Should -Be 10
         @($b | Where-Object { $_.Category -ne 'Mitgeliefert' }).Count | Should -Be 0
         $all[0].BuiltIn | Should -BeTrue
-        # Praxis-Set Schule ganz oben (Order 10), die anderen danach
+        # Praxis-Set Schule ganz oben (Order 10), Entra Schule direkt darunter (Order 11), die anderen danach
         $all[0].Id | Should -Be 'mitgeliefert-ca-schule-praxis'
+        $all[1].Id | Should -Be 'mitgeliefert-entra-schule-praxis'
         @($b | ForEach-Object { $_.CopyCategory } | Sort-Object -Unique) -join '|' | Should -Be 'Compliance|Conditional Access|Entra-Grundschutz'
         foreach ($p in $b) { $p.Count | Should -BeGreaterThan 0; @($p.Learn).Count | Should -BeGreaterThan 0; $p.Sources -join '' | Should -Be 'mitgeliefert' }
     }
@@ -480,6 +481,44 @@ Describe 'Mitgelieferte Pakete (Programmordner Muster)' {
         $g = Get-HUMusterPackage $script:Sb 'mitgeliefert-ca-geoblock-admins'
         (Get-HUMusterLocationNames @($g.Folder))['a1b2c3d4-0903-4000-8000-000000000903'] | Should -Be 'Erlaubte Länder (Geoblock)'
         (Get-HUMusterLocationNames @('')).Count | Should -Be 0
+    }
+    It 'Praxis-Set Schule 2.6.6: 100 sperrt auch die Azure-Verwaltung, 102 mit Neuanmeldung alle 10 h' {
+        $p = Get-HUMusterPackage $script:Sb 'mitgeliefert-ca-schule-praxis'
+        $o100 = Read-HUBackupJson (Join-Path $p.Folder (Get-HUMusterPackageItems $p | Where-Object { $_.Name -like '100 *' }).File)
+        @($o100.conditions.applications.includeApplications) | Should -Contain 'MicrosoftAdminPortals'
+        @($o100.conditions.applications.includeApplications) | Should -Contain '797f4846-ba00-4fd7-ba43-dac1f8f63013'
+        $o102 = Read-HUBackupJson (Join-Path $p.Folder (Get-HUMusterPackageItems $p | Where-Object { $_.Name -like '102 *' }).File)
+        $o102.sessionControls.signInFrequency.value | Should -Be 10
+        $o102.sessionControls.persistentBrowser.mode | Should -Be 'never'
+        @($o102.conditions.applications.includeApplications) | Should -Be @('All')
+    }
+    It 'Entra Schule: Gaeste einladen nur Admins, Admin-Zustimmung nur mit Rollen als Pruefer' {
+        $p = Get-HUMusterPackage $script:Sb 'mitgeliefert-entra-schule-praxis'
+        $p.CopyCategory | Should -Be 'Entra-Grundschutz'
+        $a = Read-HUBackupJson (Join-Path $p.Folder (Get-HUMusterPackageItems $p | Where-Object { $_.Id -eq 'authorizationPolicy' }).File)
+        $a.allowInvitesFrom | Should -Be 'adminsAndGuestInviters'
+        $c = Read-HUBackupJson (Join-Path $p.Folder (Get-HUMusterPackageItems $p | Where-Object { $_.Id -eq 'adminConsentRequestPolicy' }).File)
+        $c.isEnabled | Should -BeTrue
+        @($c.reviewers).Count | Should -Be 2
+        foreach ($r in @($c.reviewers)) { "$($r.query)" | Should -Match "^/beta/roleManagement/directory/roleAssignments\?\`$filter=roleDefinitionId eq '[0-9a-f-]{36}'$" }
+    }
+    It 'Hinweise (Fix) der mitgelieferten Pakete: nur gueltige Kennungen mit Anleitung in Docs/Behebung.json' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $fix = Get-Content -LiteralPath (Join-Path $root 'Docs\Behebung.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $p = Get-HUMusterPackage $script:Sb 'mitgeliefert-entra-schule-praxis'
+        @($p.Fix).Count | Should -Be 8
+        foreach ($id in @(Get-HUMusterBuiltinPackages | ForEach-Object { @($_.Fix) })) {
+            $fix.rules.PSObject.Properties.Name | Should -Contain $id
+            "$($fix.rules.$id.title)" | Should -Not -BeNullOrEmpty -Because $id
+        }
+    }
+    It 'Fix in paket.json: nur Kennungen wie A01 oder H01, doppelte einmal' {
+        $d = Join-Path $TestDrive 'fixpk'; New-Item -ItemType Directory -Path $d -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $d 'index.json') -Value '{"Items":[]}' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $d 'paket.json') -Value '{"Id":"x","Title":"x","Category":"Conditional Access","Fix":["H01","H01","h02","../x","A25",""]}' -Encoding UTF8
+        @((InModuleScope HU.Muster -Parameters @{ D = $d } { param($D) Read-HUMusterPackage $D }).Fix) -join ',' | Should -Be 'H01,A25'
+        Set-Content -LiteralPath (Join-Path $d 'paket.json') -Value '{"Id":"x","Title":"x","Category":"Conditional Access"}' -Encoding UTF8
+        @((InModuleScope HU.Muster -Parameters @{ D = $d } { param($D) Read-HUMusterPackage $D }).Fix).Count | Should -Be 0
     }
     It 'Praxis-Set Schule: Gruppen nur als Platzhalter (huGruppen), keine Konten' {
         $p = Get-HUMusterPackage $script:Sb 'mitgeliefert-ca-schule-praxis'

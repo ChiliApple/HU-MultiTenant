@@ -1434,7 +1434,8 @@ Describe 'So behebst du es (Docs/Behebung.json)' {
         $j = Get-Content -LiteralPath $script:FixLocal -Raw -Encoding UTF8 | ConvertFrom-Json
         $ids = @(InModuleScope HU.SecCatalog { Get-HUSecRules } | ForEach-Object { "$($_.Id)" })
         foreach ($p in $j.rules.PSObject.Properties) {
-            $ids | Should -Contain $p.Name
+            # Hxx = Hinweise aus Mustern (keine Katalogregel) - brauchen einen eigenen Titel
+            if ($p.Name -cmatch '^H\d{2}$') { "$($p.Value.title)" | Should -Not -BeNullOrEmpty -Because $p.Name } else { $ids | Should -Contain $p.Name }
             "$($p.Value.portal)" | Should -BeIn @('entra', 'intune', 'defender', 'm365', 'teams', 'purview', '')
             "$($p.Value.checked)" | Should -Match '^\d{4}-\d{2}-\d{2}$'
             @($p.Value.steps).Count | Should -BeGreaterThan 1
@@ -1442,6 +1443,27 @@ Describe 'So behebst du es (Docs/Behebung.json)' {
         }
         $f = Get-HUSecFix -RuleId 'E11' -LocalPath $script:FixLocal
         $f.Has | Should -BeTrue; $f.PortalUrl | Should -Be 'https://intune.microsoft.com'; @($f.Learn).Count | Should -BeGreaterThan 0
+    }
+    It 'Hinweis ohne Katalogregel (H01): Titel aus der Anleitung, Portal und Schritte da' {
+        $f = Get-HUSecFix -RuleId 'H01' -LocalPath $script:FixLocal
+        $f.Has | Should -BeTrue
+        $f.Title | Should -Not -Be 'H01'
+        $f.Title | Should -BeLike 'Kennwoerter laufen nie ab*'
+        $f.PortalUrl | Should -Be 'https://admin.cloud.microsoft'
+        @($f.Steps).Count | Should -BeGreaterThan 1
+        # Katalogregel hat Vorrang vor einem title-Feld
+        $j = '{"stand":"2026-01-01","rules":{"A25":{"title":"fremd","portal":"entra","path":"p","steps":["a","b"],"learn":[],"checked":"2026-01-01"}}}' | ConvertFrom-Json
+        (InModuleScope HU.SecCatalog -Parameters @{ J = $j } { param($J) ConvertTo-HUSecFixSet $J }).Rules['A25'].Title | Should -Be 'fremd'
+        (Get-HUSecFix -RuleId 'A25' -LocalPath $script:FixLocal).Title | Should -Not -Be 'fremd'
+    }
+    It 'Learn-Links aus der Edge-Doku (deployedge) erlaubt' {
+        $j = '{"stand":"2026-01-01","rules":{"H08":{"portal":"intune","path":"p","steps":["a","b"],"learn":[{"title":"ok","url":"https://learn.microsoft.com/en-us/deployedge/edge-ie-disable-ie11"}],"checked":"2026-01-01"}}}' | ConvertFrom-Json
+        @((InModuleScope HU.SecCatalog -Parameters @{ J = $j } { param($J) ConvertTo-HUSecFixSet $J }).Rules['H08'].Learn).Count | Should -Be 1
+    }
+    It 'Muster-Reiter: Hinweise des Pakets oeffnen "So behebst du es"' {
+        $mu = Get-Content -LiteralPath (Join-Path $script:FixRoot 'Functions\UI-Muster.ps1') -Raw
+        $mu | Should -Match 'Show-HUSecFix -RuleId'
+        $mu | Should -Match 'Set-HUMuNoteView \$c\[''lblMuNote''\] "\$\(\$p\.Note\)" @\(\$p\.Learn\) @\(\$p\.Fix\)'
     }
     It 'ohne Eintrag: Learn-Suche mit dem Regeltitel' {
         $f = Get-HUSecFix -RuleId 'A99' -LocalPath $script:FixLocal

@@ -2,6 +2,11 @@
 
 ## v2.6.6 (in Arbeit)
 
+### Muster
+- **CA Schule (Praxis-Set):** 100 sperrt für Nicht-Admins zusätzlich die Azure-Verwaltung (Windows Azure Service Management API, damit auch Azure PowerShell und CLI). 102 verlangt von Admins alle 10 Stunden eine neue Anmeldung und merkt sich die Browsersitzung nicht. Die Notiz weist darauf hin, dass 100 auch die Office-Installationsseite im Microsoft 365 admin center sperrt.
+- **Neues Paket „Entra Schule (Praxis-Set)“:** Autorisierung wie im Entra-Grundschutz, dazu Gäste einladen nur durch Admins und Gast-Einlader. Admin-Zustimmungs-Workflow ein, Prüfer sind die Rollen Global Administrator und Application Administrator.
+- **Im Portal einstellen:** Ein Paket kann jetzt Einstellungen nennen, die es selbst nicht überträgt. Sie stehen unter der Notiz, ein Klick öffnet die Anleitung „So behebst du es“. Das Entra-Schulpaket nennt acht: Kennwortablauf, Self-Service-Kennwortzurücksetzung, eigene Liste verbotener Kennwörter, LinkedIn, Zugriff auf das Entra admin center, Defender for Office 365, Teams-Gastzugriff, Internet Explorer 11.
+
 ### Behoben
 - **Autopilot „Laden“** (Übersicht, Tags & Gruppen) meldete „Bitte mindestens einen Tenant markieren“, obwohl Tenants markiert waren. Auch die Rechteprüfung des Moduls nahm ohne eigene Liste keine Rechte mehr. Zusatzmodul Autopilot 0.5.4.
 - **Update-Prüfung beim Start:** Schlägt sie fehl (z. B. GitHub-Abfragelimit ohne Token: 60 je Stunde und Internetanschluss), steht der Grund jetzt im Protokoll. Bisher blieb sie still, und man sah nicht, warum kein Update angeboten wurde.

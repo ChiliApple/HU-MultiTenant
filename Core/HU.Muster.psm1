@@ -310,6 +310,8 @@ function Read-HUMusterPackage([string]$Folder, [switch]$BuiltIn) {
         # Kategorie fuer eine Kopie (mitgelieferte Pakete stehen unter 'Mitgeliefert', die Kopie unter ihrer echten Kategorie)
         CopyCategory = $(if ("$($p.CopyCategory)" -and $script:HUMuCategories -contains "$($p.CopyCategory)") { "$($p.CopyCategory)" } elseif ($script:HUMuCategories -contains "$($p.Category)") { "$($p.Category)" } else { 'Conditional Access' })
         Learn = @($p.Learn | Where-Object { "$_" } | ForEach-Object { "$_" })
+        # 2.6.6 Anleitungen "So behebst du es" (Kennungen aus Docs/Behebung.json) fuer Einstellungen, die das Paket nicht uebertraegt
+        Fix = @($p.Fix | ForEach-Object { "$_" } | Where-Object { $_ -cmatch '^[A-Z]\d{1,3}$' } | Select-Object -Unique)
         # 2.5.7 importierte Pakete: Herausgeber, Import-Datum, Pruefsumme; ungeprueft = Anwenden erst nach Bestaetigung
         Publisher = "$($p.Publisher)"; Imported = $(& $iso $p.Imported); ImportSha256 = "$($p.ImportSha256)"
         Checked = $(if ("$($p.Origin)" -in 'importiert', 'vorlage' -or @($items | Where-Object { "$($_.Source)" -eq 'importiert' }).Count) { [bool]$p.Checked } else { $true })

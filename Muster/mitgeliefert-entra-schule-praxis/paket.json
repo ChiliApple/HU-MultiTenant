@@ -1,0 +1,34 @@
+{
+  "Format": 1,
+  "Id": "mitgeliefert-entra-schule-praxis",
+  "Title": "Entra Schule (Praxis-Set)",
+  "Category": "Mitgeliefert",
+  "CopyCategory": "Entra-Grundschutz",
+  "Tags": [
+    "Schule",
+    "Praxis",
+    "Entra"
+  ],
+  "Note": "Gehört zum Paket „CA Schule (Praxis-Set)“: Entra-Einstellungen nach Secure Score und Microsoft-365-Empfehlungen.\nAutorisierung wie im Entra-Grundschutz: keine App-Registrierung, Sicherheitsgruppen oder Tenants durch Benutzer, Gäste eingeschränkt, MSOL blockiert, Zustimmung nur gering.\nDazu: Gäste einladen dürfen nur Admins und Benutzer mit der Rolle Gast-Einlader.\nAdmin-Zustimmung: Benutzer können für Apps eine Freigabe anfragen. Prüfer sind die Rollen Global Administrator und Application Administrator (in jedem Tenant gleich).\nÜbertragen ändert nur diese Werte; Zustimmungsrechte für eigene Ressourcen (z. B. Teams) bleiben.\nWas nicht über Graph geht, steht unten unter „Im Portal einstellen“ – mit Anleitung je Punkt.",
+  "Learn": [
+    "https://learn.microsoft.com/en-us/entra/external-id/external-collaboration-settings-configure",
+    "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-admin-consent-workflow",
+    "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-user-consent"
+  ],
+  "Fix": [
+    "H01",
+    "H02",
+    "H03",
+    "H04",
+    "H05",
+    "H06",
+    "H07",
+    "H08"
+  ],
+  "Created": "2026-11-02T00:00:00",
+  "Changed": "2026-11-02T00:00:00",
+  "By": "HU-MultiTenant",
+  "Origin": "mitgeliefert",
+  "Complete": false,
+  "Order": 11
+}
