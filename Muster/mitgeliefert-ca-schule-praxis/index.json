@@ -34,7 +34,7 @@
       "Id": "mitgeliefert-ca-schule-praxis-04",
       "File": "Conditional_Access/004_100_-_Adminportale_nur_fuer_Admin_Rollen.json",
       "Source": "mitgeliefert",
-      "Stand": "2026-10-25_000000"
+      "Stand": "2026-11-02_000000"
     },
     {
       "Typ": "Conditional Access",
@@ -46,11 +46,11 @@
     },
     {
       "Typ": "Conditional Access",
-      "Name": "102 - Multi-Faktor-Authentifizierung für Administratoren erfordern",
+      "Name": "102 - Multi-Faktor-Authentifizierung für Administratoren + Frequency 10h",
       "Id": "mitgeliefert-ca-schule-praxis-06",
       "File": "Conditional_Access/006_102_-_Multi-Faktor-Authentifizierung_fuer_Administratoren_er.json",
       "Source": "mitgeliefert",
-      "Stand": "2026-10-25_000000"
+      "Stand": "2026-11-02_000000"
     },
     {
       "Typ": "Conditional Access",

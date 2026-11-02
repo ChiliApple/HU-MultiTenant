@@ -45,7 +45,8 @@ function Get-HUMuTipNote([string]$Note, [int]$Max = 240, [int]$Line = 90) {
 function Get-HUMuLinkText([string]$Url) {
     try { $u = [Uri]$Url; $leaf = ($u.AbsolutePath.TrimEnd('/') -split '/')[-1]; return "$($u.Host) - $(($leaf -replace '[-_]', ' '))" } catch { return $Url }
 }
-function Set-HUMuNoteView($Tb, [string]$Note, [string[]]$Learn = @()) {
+# 2.6.6 Fix: Kennungen aus Docs/Behebung.json - je Zeile ein Link auf "So behebst du es" (Einstellungen, die das Paket nicht uebertraegt)
+function Set-HUMuNoteView($Tb, [string]$Note, [string[]]$Learn = @(), [string[]]$Fix = @()) {
     $Tb.Inlines.Clear()
     $lines = @("$Note" -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $first = $true
@@ -63,6 +64,22 @@ function Set-HUMuNoteView($Tb, [string]$Note, [string[]]$Learn = @()) {
             [void]$h.Inlines.Add((Get-HUMuLinkText $u))
             $h.Foreground = Get-HUBrush '#90CAF9'; $h.Tag = $u; $h.ToolTip = $u
             $h.Add_Click({ Open-HUUrl "$($this.Tag)" })
+            [void]$Tb.Inlines.Add('    '); [void]$Tb.Inlines.Add($h)
+        }
+        $first = $false
+    }
+    $fixIds = @($Fix | Where-Object { "$_" })
+    if ($fixIds.Count) {
+        if (-not $first) { [void]$Tb.Inlines.Add((New-Object System.Windows.Documents.LineBreak)) }
+        $b = New-Object System.Windows.Documents.Run('Im Portal einstellen (nicht Teil des Pakets):'); $b.FontWeight = 'SemiBold'; [void]$Tb.Inlines.Add($b)
+        $fixPath = Join-Path $script:AppRoot 'Docs\Behebung.json'
+        foreach ($id in $fixIds) {
+            $t = $id; try { $t = "$((Get-HUSecFix -RuleId $id -LocalPath $fixPath).Title)" } catch { }
+            [void]$Tb.Inlines.Add((New-Object System.Windows.Documents.LineBreak))
+            $h = New-Object System.Windows.Documents.Hyperlink
+            [void]$h.Inlines.Add("$id - $t")
+            $h.Foreground = Get-HUBrush '#81C784'; $h.Tag = $id; $h.ToolTip = 'Anleitung oeffnen: wo im Portal, Schritte, Quellen (So behebst du es)'
+            $h.Add_Click({ Show-HUSecFix -RuleId "$($this.Tag)" })
             [void]$Tb.Inlines.Add('    '); [void]$Tb.Inlines.Add($h)
         }
         $first = $false
@@ -192,7 +209,7 @@ function Update-HUMuDetail {
     $c['btnMuDel'].ToolTip = $(if ($p.BuiltIn) { 'Mitgelieferte Pakete kommen mit dem Programm und lassen sich nicht loeschen' } else { 'Paket in den Papierkorb der Bibliothek verschieben' })
     $c['lblMuTags'].Text = $p.TagText
     $c['lblMuTags'].Visibility = $(if ($p.TagText) { 'Visible' } else { 'Collapsed' })
-    Set-HUMuNoteView $c['lblMuNote'] "$($p.Note)" @($p.Learn)
+    Set-HUMuNoteView $c['lblMuNote'] "$($p.Note)" @($p.Learn) @($p.Fix)
     $words = @("$($c['txtMuItemFilter'].Text)" -split '\s+' | Where-Object { $_ })
     $items = foreach ($it in @($p.Items)) {
         $o = [pscustomobject]@{ Typ = "$($it.Typ)"; Name = "$($it.Name)"; Herkunft = (Get-HUAnaTenantName "$($it.Source)"); StandText = (Get-HUMuStandText "$($it.Stand)"); Hinweis = (Get-HUMuItemHint "$($it.Typ)" "$($it.Name)" "$($it.Source)"); Source = "$($it.Source)"; File = "$($it.File)" }

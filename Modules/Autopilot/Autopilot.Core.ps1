@@ -84,7 +84,7 @@ function Get-APAll([string]$Token, [string]$Endpoint, [string]$ApiVersion = 'v1.
 
 # Fehlende Rechte eines Tenants aus dem Token (Claim roles). X.Read.All gilt auch durch X.ReadWrite.All als erfuellt.
 # -Liste: andere Rechte pruefen (z. B. die fuer Aufnehmen). Group.Create gilt auch durch Group.ReadWrite.All als erfuellt.
-function Get-APFehlendeRechte([string]$TenantKey, $Settings, [switch]$Neu, [string[]]$Liste, [string]$Art = '') {
+function Get-APFehlendeRechte([string]$TenantKey, $Settings, [switch]$Neu, [string[]]$Liste = @(), [string]$Art = '') {
     $r = [pscustomobject]@{ Tenant = $TenantKey; Fehlt = @(); Fehler = ''; Art = $Art }
     $namen = if (@($Liste).Count) { @($Liste) } else { @($script:APRechte | ForEach-Object { $_.Name }) }
     try {

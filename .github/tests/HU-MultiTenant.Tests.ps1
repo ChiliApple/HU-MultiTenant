@@ -364,6 +364,23 @@ Describe 'Quelltext-Fallen' {
         }
         @($bad) | Should -BeNullOrEmpty
     }
+    # $x = if (@($P).Count) { @($P) } else { ... }: ohne Aufrufwert ist [string[]]$P = $null, @($null).Count = 1 und die
+    # Zuweisung entpackt @($null) zu $null -> der Standardweg wird nie genommen (Autopilot "Laden" meldete "keinen Tenant markiert")
+    It 'Array-Parameter mit Standardweg haben einen leeren Standardwert' {
+        $bad = @()
+        $files = @(Get-ChildItem (Join-Path $script:AppRoot 'Functions'), (Join-Path $script:AppRoot 'Core'), (Join-Path $script:AppRoot 'Modules') -Include *.ps1, *.psm1 -Recurse -File)
+        foreach ($f in $files) {
+            $t = [IO.File]::ReadAllText($f.FullName)
+            foreach ($m in [regex]::Matches($t, 'if \(@\(\$(\w+)\)\.Count\) \{ @\(\$\1\) \}')) {
+                $nm = $m.Groups[1].Value
+                # Kopf der umgebenden Funktion (letztes 'function' davor)
+                $fi = $t.LastIndexOf('function ', $m.Index); if ($fi -lt 0) { continue }
+                $kopf = $t.Substring($fi, [Math]::Min(400, $m.Index - $fi)).Split("`n")[0]
+                if ($kopf -match ('\[string\[\]\]\$' + $nm + '\s*[,)]')) { $bad += "$($f.Name): `$$nm ohne = @()" }
+            }
+        }
+        $bad | Should -BeNullOrEmpty
+    }
     It 'PS 7: ConvertTo-Json immer mit -Depth, kein System.Web' {
         $bad = @()
         $files = @(Get-ChildItem (Join-Path $script:AppRoot 'Functions'), (Join-Path $script:AppRoot 'Core') -Include *.ps1, *.psm1 -Recurse -File) + @(Get-Item (Join-Path $script:AppRoot 'Main.ps1'), (Join-Path $script:AppRoot 'Pull.ps1'))

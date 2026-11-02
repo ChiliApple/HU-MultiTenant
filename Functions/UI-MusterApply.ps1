@@ -513,7 +513,8 @@ function Show-HUMusterApply {
         & $S.SetBusy 'Wird angewendet ...'
         $c.lblT5.Text = "Wird angewendet: $($todo.Count) Eintraege nach $(Get-HUAnaTenantName $S.Tenant) ..."
         try { [void](Write-HUMaMarker -TenantKey $S.Tenant -Stage 'laeuft') } catch { }
-        $rows = @($todo | ForEach-Object { [pscustomobject]@{ Order = $_.Order; Typ = $_.Typ; Name = $_.Name; Paket = $_.Paket; PaketId = $_.PaketId; Folder = $_.Folder; File = $_.File; Id = $_.Id; Source = $_.Source } })
+        # Status und Reason aus der Vorschau mitgeben: Invoke-HUMaStep vergleicht damit (060 B2) - ohne sie galt jede angehakte Zusatzkopie "(von Muster)" als geaendert
+        $rows = @($todo | ForEach-Object { [pscustomobject]@{ Order = $_.Order; Typ = $_.Typ; Name = $_.Name; Paket = $_.Paket; PaketId = $_.PaketId; Folder = $_.Folder; File = $_.File; Id = $_.Id; Source = $_.Source; Status = $_.Status; Reason = $_.Reason } })
         $tm = New-Object System.Windows.Threading.DispatcherTimer; $tm.Interval = [TimeSpan]::FromMilliseconds(600)
         $tm.Add_Tick({
                 $S2 = $script:MA; if (-not $S2) { $this.Stop(); return }

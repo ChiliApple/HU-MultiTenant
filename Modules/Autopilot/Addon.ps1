@@ -144,7 +144,7 @@ function Update-APGrid {
     Reset-APGridBreiten 'apGridTags'
 }
 
-function Start-APLaden([string[]]$Tenants) {
+function Start-APLaden([string[]]$Tenants = @()) {
     $ten = if (@($Tenants).Count) { @($Tenants) } else { @(Get-APTenants) }
     if (-not $ten.Count) { Show-HUMessage 'Bitte mindestens einen Tenant markieren.' -Icon Info; return }
     $namen = @($ten | ForEach-Object { Get-APTenantName $_ }) -join ', '

@@ -401,6 +401,8 @@ Describe 'Conditional Access uebertragen (2.4.5)' {
         $global:EtList['Z|/identity/conditionalAccess/namedLocations'] = @($ix.Items | Where-Object Typ -eq 'Benannter Ort' | ForEach-Object { [pscustomobject]@{ id = "z-$($_.Name)"; displayName = $_.Name } })
         $global:EtFx['Z|/roleManagement/directory/roleDefinitions/'] = [pscustomobject]@{ id = 'r'; isBuiltIn = $true; displayName = 'Rolle' }
         $global:EtFx['Z|/policies/authenticationStrengthPolicies/00000000-0000-0000-0000-000000000004'] = [pscustomobject]@{ id = '00000000-0000-0000-0000-000000000004'; displayName = 'Phishing-resistant MFA'; policyType = 'builtIn' }
+        # 2.6.6: 100 sperrt auch die Azure-Verwaltung (Windows Azure Service Management API) - Dienstprinzipal im Ziel vorhanden
+        $global:EtFx["Z|/servicePrincipals(appId='797f4846-ba00-4fd7-ba43-dac1f8f63013')"] = [pscustomobject]@{ id = 'sp-azmgmt' }
         # Live-Test 25.10.: Quelle mitgeliefert hat KEINE Notfallkonten (leere Liste) - darf nicht scheitern
         $global:EtBg['mitgeliefert'] = @($null)
         # 100: alle eingebauten Rollen des Ziels (eigene Rolle nicht)

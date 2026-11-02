@@ -1,5 +1,5 @@
 {
-  "displayName": "102 - Multi-Faktor-Authentifizierung für Administratoren erfordern",
+  "displayName": "102 - Multi-Faktor-Authentifizierung für Administratoren + Frequency 10h",
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "users": {
@@ -48,6 +48,19 @@
     ],
     "customAuthenticationFactors": [],
     "termsOfUse": []
+  },
+  "sessionControls": {
+    "signInFrequency": {
+      "value": 10,
+      "type": "hours",
+      "authenticationType": "primaryAndSecondaryAuthentication",
+      "frequencyInterval": "timeBased",
+      "isEnabled": true
+    },
+    "persistentBrowser": {
+      "mode": "never",
+      "isEnabled": true
+    }
   },
   "huGruppen": [
     {
