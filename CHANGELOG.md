@@ -8,6 +8,7 @@
 - **Im Portal einstellen:** Ein Paket kann jetzt Einstellungen nennen, die es selbst nicht überträgt. Sie stehen unter der Notiz, ein Klick öffnet die Anleitung „So behebst du es“. Das Entra-Schulpaket nennt acht: Kennwortablauf, Self-Service-Kennwortzurücksetzung, eigene Liste verbotener Kennwörter, LinkedIn, Zugriff auf das Entra admin center, Defender for Office 365, Teams-Gastzugriff, Internet Explorer 11.
 
 ### Behoben
+- **Muster anwenden:** Eine in der Vorschau bewusst angehakte Zusatzkopie „(von Muster)“ wurde beim Ausführen nicht angelegt („Stand im Ziel hat sich seit der Vorschau geändert, vorher ''“). Der Lauf bekam den Stand aus der Vorschau nicht mit. Geschrieben wurde dabei nichts.
 - **Autopilot „Laden“** (Übersicht, Tags & Gruppen) meldete „Bitte mindestens einen Tenant markieren“, obwohl Tenants markiert waren. Auch die Rechteprüfung des Moduls nahm ohne eigene Liste keine Rechte mehr. Zusatzmodul Autopilot 0.5.4.
 - **Update-Prüfung beim Start:** Schlägt sie fehl (z. B. GitHub-Abfragelimit ohne Token: 60 je Stunde und Internetanschluss), steht der Grund jetzt im Protokoll. Bisher blieb sie still, und man sah nicht, warum kein Update angeboten wurde.
 

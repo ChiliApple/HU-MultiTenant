@@ -204,6 +204,23 @@ Describe 'Muster anwenden (2.5.2): Ausfuehren und Paket-Rueckgaengig' {
         (Invoke-HUMaStep -Settings $script:Set -TargetKey 'Z' -Row $ca -Run $run).Ok | Should -BeTrue
         Should -Invoke -ModuleName HU.MusterApply Invoke-HUEntraTransfer -Times 1
     }
+    It 'Zusatzkopie (von Muster) schon in der Vorschau bewusst angehakt: wird geschrieben (2.6.6)' {
+        $run = New-HUMaRun -Settings $script:Set -TenantKey 'Z' -Packages @('Testpaket')
+        Mock -ModuleName HU.MusterApply Invoke-HUEntraTransfer { [pscustomobject]@{ Ok = $true; UndoFile = ''; Mismatch = @() } }
+        Mock -ModuleName HU.MusterApply Get-HUEntraTransferPlan { New-MaPlan -Kind 'caNew' -Name '100 - Adminportale (von Muster)' }
+        $ca = [pscustomobject]@{ Typ = 'Conditional Access'; Name = '100 - Adminportale'; Paket = 'Testpaket'; PaketId = 'p1'; Folder = $script:Pk; File = 'Conditional_Access/002.json'; Id = 'ca-1'; Source = 'mitgeliefert'
+            Status = 'neu'; Reason = "Gibt es im Ziel schon - wuerde zusaetzlich als '100 - Adminportale (von Muster)' angelegt." }
+        (Invoke-HUMaStep -Settings $script:Set -TargetKey 'Z' -Row $ca -Run $run).Ok | Should -BeTrue
+        Should -Invoke -ModuleName HU.MusterApply Invoke-HUEntraTransfer -Times 1
+    }
+    It 'Oberflaeche gibt Status und Reason der Vorschau an den Hintergrundlauf weiter (sonst vorher leer)' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $src = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-MusterApply.ps1') -Raw
+        $m = [regex]::Match($src, '\$rows = @\(\$todo \| ForEach-Object \{ \[pscustomobject\]@\{[^\r\n]*')
+        $m.Success | Should -BeTrue
+        $m.Value | Should -Match 'Status = \$_\.Status'
+        $m.Value | Should -Match 'Reason = \$_\.Reason'
+    }
     It 'Paket rueckgaengig in umgekehrter Reihenfolge; Fehler in einem Schritt = Rest trotzdem, Durchgang bleibt offen' {
         $run = New-HUMaRun -Settings $script:Set -TenantKey 'Z2' -Packages @('Testpaket') -Now (Get-Date).AddMinutes(1)
         $uf = foreach ($n in 'ort', 'win', 'ca') { $f = Join-Path $script:Tmp "undo-$n.json"; Set-Content -LiteralPath $f -Value '{}'; $f }
