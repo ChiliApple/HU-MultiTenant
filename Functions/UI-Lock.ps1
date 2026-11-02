@@ -287,10 +287,14 @@ function Lock-HUApp([switch]$AtStart) {
     # Inhalt und offene Unterfenster verbergen
     $hidden = @()
     try { $main.Content.Visibility = 'Hidden' } catch { }
-    foreach ($ow in @($main.OwnedWindows)) { if ($ow.IsVisible) { $ow.Visibility = 'Hidden'; $hidden += $ow } }
+    # nur den Inhalt verbergen: Visibility=Hidden am Fenster beendet einen offenen ShowDialog (Rueckfrage kam als "Nein"
+    # zurueck, danach blieb ein Fenster ohne Funktion stehen)
+    foreach ($ow in @($main.OwnedWindows)) {
+        try { if ($ow.IsVisible -and $ow.Content -is [System.Windows.UIElement] -and $ow.Content.Visibility -eq 'Visible') { $ow.Content.Visibility = 'Hidden'; $hidden += $ow } } catch { }
+    }
     try { Show-HULockDialog -AtStart:$AtStart } finally {
         try { $main.Content.Visibility = 'Visible' } catch { }
-        foreach ($ow in $hidden) { try { $ow.Visibility = 'Visible' } catch { } }
+        foreach ($ow in $hidden) { try { $ow.Content.Visibility = 'Visible' } catch { } }
         $script:LockActive = $false
     }
 }

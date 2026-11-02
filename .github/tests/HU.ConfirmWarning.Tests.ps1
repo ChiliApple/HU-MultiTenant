@@ -17,3 +17,14 @@ Describe 'Rueckfragen mit -Warning' {
         @($bad) | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Sperre und offene Rueckfragen (2.6.7)' {
+    It 'Sperre verbirgt bei Unterfenstern nur den Inhalt (Visibility=Hidden am Fenster beendet ShowDialog)' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $src = [IO.File]::ReadAllText((Join-Path $root 'Functions\UI-Lock.ps1'))
+        $m = [regex]::Match($src, '(?s)function Lock-HUApp.*?\r?\n}')
+        $m.Success | Should -BeTrue
+        $m.Value | Should -Not -Match '\$ow\.Visibility\s*='
+        $m.Value | Should -Match '\$ow\.Content\.Visibility = ''Hidden'''
+    }
+}
