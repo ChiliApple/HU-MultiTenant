@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "2026-11-02",
+  "stand": "2026-11-03",
   "hinweis": "Menuenamen wie in der englischen Portal-Oberflaeche und in Microsoft Learn. Massgeblich ist der verlinkte Learn-Artikel; Microsoft benennt Menues gelegentlich um.",
   "rules": {
     "A01": {
@@ -296,7 +296,7 @@
           "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-session-lifetime#configuring-authentication-session-controls"
         }
       ],
-      "checked": "2026-10-21",
+      "checked": "2026-11-03",
       "note": "Ist \"Remember MFA on trusted devices\" eingeschaltet, empfiehlt Learn, es vor der Sign-in frequency abzuschalten, da beide zusammen unerwartete Abfragen ausloesen koennen."
     },
     "A24": {
@@ -539,7 +539,7 @@
           "url": "https://learn.microsoft.com/en-us/powershell/module/sharepoint-online/set-spotenant"
         }
       ],
-      "checked": "2026-10-21"
+      "checked": "2026-11-03"
     },
     "A35": {
       "portal": "m365",
@@ -690,7 +690,7 @@
           "url": "https://learn.microsoft.com/en-us/entra/identity/authentication/concept-sms-voice-retirement"
         }
       ],
-      "checked": "2026-10-21",
+      "checked": "2026-11-03",
       "note": "Microsoft stellt die eigene SMS-/Sprachzustellung ab 1. Februar 2027 ein, fuer Global Administrators und externe Benutzer ab 1. Juli 2027."
     },
     "A41": {
@@ -860,7 +860,7 @@
           "url": "https://learn.microsoft.com/en-us/entra/identity/users/clean-up-stale-guest-accounts"
         }
       ],
-      "checked": "2026-10-21",
+      "checked": "2026-11-03",
       "note": "Access reviews brauchen Microsoft Entra ID Governance oder Entra Suite, nicht in P1 enthalten."
     },
     "C03": {
@@ -887,7 +887,7 @@
           "url": "https://learn.microsoft.com/en-us/microsoftteams/manage-teams-in-modern-portal"
         }
       ],
-      "checked": "2026-10-21"
+      "checked": "2026-11-03"
     },
     "C04": {
       "portal": "m365",
@@ -912,7 +912,7 @@
           "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/ownerless-groups-teams#set-up-the-ownerless-group-or-team-policy"
         }
       ],
-      "checked": "2026-10-21"
+      "checked": "2026-11-03"
     },
     "C05": {
       "portal": "teams",
@@ -960,7 +960,7 @@
           "url": "https://learn.microsoft.com/en-us/microsoftteams/set-up-guests#configure-guest-access-in-the-teams-admin-center"
         }
       ],
-      "checked": "2026-10-21"
+      "checked": "2026-11-03"
     },
     "C07": {
       "portal": "m365",
@@ -982,7 +982,7 @@
           "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/email/create-edit-or-delete-a-security-group#manage-security-groups-in-the-admin-center"
         }
       ],
-      "checked": "2026-10-21",
+      "checked": "2026-11-03",
       "note": "Der Admin, der das einrichtet, und die Mitglieder der erlaubten Gruppe brauchen Microsoft Entra ID P1/P2 oder Microsoft Entra Basic EDU."
     },
     "C08": {
@@ -1009,7 +1009,7 @@
           "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/manage-guest-access-in-groups#manage-groups-guest-access"
         }
       ],
-      "checked": "2026-10-21"
+      "checked": "2026-11-03"
     },
     "E01": {
       "portal": "intune",
@@ -1221,7 +1221,7 @@
           "url": "https://learn.microsoft.com/en-us/intune/device-security/security-baselines/ref-windows-mdm-settings"
         }
       ],
-      "checked": "2026-10-21",
+      "checked": "2026-11-03",
       "note": "Eine zugewiesene Sicherheits-Baseline fuer Windows schaltet mit ihren Standardwerten die Firewall bereits ein (\"Enable Domain/Private/Public Network Firewall\" = True)."
     },
     "E11": {
@@ -1318,7 +1318,7 @@
           "url": "https://learn.microsoft.com/en-us/intune/device-configuration/endpoint-security/manage-policies"
         }
       ],
-      "checked": "2026-10-21",
+      "checked": "2026-11-03",
       "note": "Braucht eine Lizenz fuer Defender for Endpoint (z. B. Defender for Endpoint Plan 1 oder Microsoft 365 A5); ohne Lizenz die Regel als Ausnahme eintragen."
     },
     "E15": {
@@ -1634,7 +1634,7 @@
           "url": "https://learn.microsoft.com/en-us/windows/release-health/windows-server-release-info"
         }
       ],
-      "checked": "2026-10-26"
+      "checked": "2026-11-03"
     },
     "M03": {
       "portal": "",

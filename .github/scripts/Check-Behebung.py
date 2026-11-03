@@ -4,7 +4,8 @@
 Je Regel:
   - jeder Learn-Link muss erreichbar sein (HTTP 200)
   - geaendert: Learn-Seite seit "checked" aktualisiert (meta updated_at, sonst ms.date)
-  - Pfad: jeder Menuename aus "path" (Teile zwischen " > ", ohne Portalname) muss in mindestens einer Learn-Seite der Regel vorkommen
+  - Pfad: jeder Menuename aus "path" (Teile zwischen " > ", ohne Portalname) muss in mindestens einer Learn-Seite der Regel vorkommen;
+    nicht bei Regeln ohne Portal (lokales AD, deutsche Windows-Oberflaeche, Learn ist englisch)
   - alt: "checked" aelter als 180 Tage
 Ausgabe: Markdown-Bericht (stdout bzw. Datei aus Argument 1); Exit 0 = alles gut, 1 = etwas zu pruefen, 2 = Datei kaputt.
 """
@@ -75,7 +76,7 @@ def main():
             d = page_date(raw)
             if d and checked and d > checked:
                 findings.append((rid, "Learn-Seite geaendert am %s (geprueft %s): %s" % (d, checked, u)))
-        if texts:
+        if texts and e.get("portal"):                       # ohne Portal: lokale deutsche Oberflaeche
             for term in path_terms(e.get("path", "")):
                 if not any(term.lower() in t for t in texts):
                     findings.append((rid, "Menuename nicht im Learn-Artikel gefunden: \"%s\"" % term))

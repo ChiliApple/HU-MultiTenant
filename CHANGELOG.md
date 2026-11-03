@@ -1,5 +1,10 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.7 (Testversion)
+
+### Behoben
+- **Sperre bei offener Rückfrage:** Sperrte sich die App, während eine Rückfrage offen war (z. B. „Diese Releases jetzt signieren?“), galt die Rückfrage als mit „Nein“ beantwortet. Nach dem Entsperren stand sie noch da, ließ sich aber nicht mehr bedienen. Jetzt verbirgt die Sperre nur den Inhalt der offenen Fenster, die Rückfrage bleibt bedienbar.
+
 ## v2.6.6 (Testversion)
 
 ### Muster
