@@ -373,6 +373,51 @@ $script:HUWuEp = @{
 }
 function Get-HUWuEpInfo([string]$Art) { if ($script:HUWuEp.ContainsKey($Art)) { return $script:HUWuEp[$Art] }; throw "Unbekannte Art '$Art'" }
 
+# 074 B28: Wertebereiche (Tage) an einer Stelle - App und Zusatzmodule nehmen dieselben (Graph beta).
+# Feature-Aufschub 0-365 wie im Ring-Feld, Fristen 0-30, Neustart-Nachfrist 0-7, Treiber-Aufschub 0-30.
+$script:HUWuRanges = @{
+    qualityUpdatesDeferralPeriodInDays = @(0, 30); featureUpdatesDeferralPeriodInDays = @(0, 365)
+    deadlineForQualityUpdatesInDays = @(0, 30); deadlineForFeatureUpdatesInDays = @(0, 30); deadlineGracePeriodInDays = @(0, 7)
+    deploymentDeferralInDays = @(0, 30)
+}
+function Get-HUWuRange([string]$Field) { if ($script:HUWuRanges.ContainsKey($Field)) { return @($script:HUWuRanges[$Field]) }; throw "Kein Wertebereich fuer '$Field'" }
+
+# 074 B32: Ids kommen aus Graph und landen im URL-Pfad. Zeichen, die den Pfad veraendern wuerden, werden abgewiesen
+# (bewusst keine strenge GUID-Pruefung - Graph-Ids anderer Form sollen weiter gehen).
+function Assert-HUWuId([string]$Id, [string]$What = 'Id') {
+    if (-not "$Id".Trim() -or "$Id" -match '[/\\?#%&\s]') { throw "$What '$Id' ungueltig - erwartet eine Id aus Intune" }
+}
+
+# 074 B36: Hinweis zur aktiven Zeit (leer = unauffaellig). Sperrt nichts - die Rueckfrage zeigt den Hinweis.
+# Microsoft Learn (Policy CSP Update): ActiveHoursStart/End 0-23 = volle Stunden, ActiveHoursMaxRange 8-18, Standard 18.
+function Get-HUWuActiveHoursHint([string]$Start, [string]$End) {
+    $p = { param($t) $d = [datetime]::MinValue; if ([datetime]::TryParseExact("$t".Trim(), [string[]]@('HH:mm', 'H:mm'), [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$d)) { $d } else { $null } }
+    $s = & $p $Start; $e = & $p $End
+    if (-not $s -or -not $e) { return '' }
+    $h = @()
+    if ($s.Minute -or $e.Minute) { $h += 'Windows rechnet die aktive Zeit in vollen Stunden - die Minuten werden vermutlich nicht beruecksichtigt.' }
+    $span = ($e.TimeOfDay - $s.TimeOfDay).TotalHours; if ($span -le 0) { $span += 24 }
+    if ($span -gt 18) { $h += "Die aktive Zeit umfasst $([Math]::Round($span, 1)) Stunden. Windows laesst standardmaessig hoechstens 18 Stunden zu - die Spanne wird am Geraet eventuell nicht so uebernommen." }
+    return ($h -join ' ')
+}
+
+# Gemini 075 B2: Wert aus einer Vorlagendatei bereinigen - auch verschachtelte Objekte werden zu Hashtables.
+# Erhalten bleibt "@odata.type" mit einem Microsoft-Graph-Typ (z. B. installationSchedule braucht ihn), andere @odata-Angaben fallen weg.
+function ConvertTo-HUWuCleanValue($V, [int]$Depth = 0) {
+    if ($null -eq $V -or $V -is [string] -or $V -is [ValueType]) { return $V }
+    if ($Depth -gt 10) { return $null }
+    if ($V -is [System.Collections.IList]) { return , @(foreach ($x in $V) { ConvertTo-HUWuCleanValue $x ($Depth + 1) }) }
+    $h = @{}
+    $props = if ($V -is [System.Collections.IDictionary]) { @(foreach ($k in $V.Keys) { [pscustomobject]@{ Name = "$k"; Value = $V[$k] } }) } else { @($V.PSObject.Properties) }
+    foreach ($pp in $props) {
+        $n = "$($pp.Name)"
+        if ($n -eq '@odata.type') { if ("$($pp.Value)" -match '^#microsoft\.graph\.[A-Za-z0-9.]+$') { $h[$n] = "$($pp.Value)" }; continue }
+        if ($n -like '*@odata*') { continue }
+        $h[$n] = ConvertTo-HUWuCleanValue $pp.Value ($Depth + 1)
+    }
+    return $h
+}
+
 # Stand vor einer Aenderung sichern (JSON). Rueckgabe: Pfad.
 # 074 B5: Zuweisungen werden mitgesichert (Eigenschaft "assignments"; beim Import werden sie verworfen).
 function Save-HUWuBefore([string]$TenantKey, [string]$Art, $Obj, [string]$Root = '', [object[]]$Assignments = $null) {
@@ -390,7 +435,7 @@ function Save-HUWuBefore([string]$TenantKey, [string]$Art, $Obj, [string]$Root =
 
 # Zuweisungen frisch aus Intune lesen. Fehlt "value" (Teilfehler, Drosselung), wird nicht geraten (074 B31).
 function Get-HUWuAssignmentsFresh([string]$TenantKey, $Settings, [string]$Art, [string]$Id) {
-    $e = Get-HUWuEpInfo $Art
+    $e = Get-HUWuEpInfo $Art; Assert-HUWuId $Id
     $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id/assignments"
     if (-not $r -or -not $r.PSObject.Properties['value']) { throw "Zuweisungen von '$Id' nicht lesbar - zur Sicherheit nichts geloescht" }
     return @($r.value | Where-Object { $_ })
@@ -423,7 +468,7 @@ function Set-HUWuAssignment {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id,
         [object[]]$Add = @(), [string[]]$RemoveKeys = @(), [string]$BackupRoot = '', [hashtable]$Info = $null)
-    $e = Get-HUWuEpInfo $Art
+    $e = Get-HUWuEpInfo $Art; Assert-HUWuId $Id
     foreach ($a in @($Add)) { if (-not $e.AllOk -and "$($a.Kind)" -in 'allDevices', 'allUsers') { throw "$Art laesst sich nur Geraetegruppen zuweisen (Microsoft), nicht 'Alle Geraete' oder 'Alle Benutzer'" } }
     $cur = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id/assignments")
     $before = $null; try { $before = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id" } catch { }
@@ -455,7 +500,7 @@ function Set-HUWuAssignment {
 function Set-HUWuSettings {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][hashtable]$Changes, [string]$BackupRoot = '')
-    $e = Get-HUWuEpInfo $Art
+    $e = Get-HUWuEpInfo $Art; Assert-HUWuId $Id
     # 074 B11: die Freigabeart einer Treiber-Richtlinie laesst sich nach dem Anlegen nicht aendern (Microsoft Learn)
     if ($Art -eq 'Treiber-Update' -and $Changes.ContainsKey('approvalType')) { throw 'Die Freigabeart (automatisch/manuell) einer Treiber-Richtlinie laesst sich nicht aendern - dafuer eine neue Richtlinie anlegen' }
     $before = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id"
@@ -479,6 +524,7 @@ function Set-HUWuRingPause {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Id,
         [ValidateSet('quality', 'feature')][string]$What, [ValidateSet('pause', 'resume', 'extend')][string]$Action, [string]$BackupRoot = '')
+    Assert-HUWuId $Id
     if ($Action -eq 'extend') {
         $ep = "/deviceManagement/deviceConfigurations/$Id/$(if ($What -eq 'quality') { 'extendQualityUpdatesPause' } else { 'extendFeatureUpdatesPause' })"
         [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint $ep -Method POST -Body @{})
@@ -626,7 +672,7 @@ function Read-HUWuExportFile([string]$Path) {
             foreach ($pp in @($it.Body.PSObject.Properties)) {
                 $n = "$($pp.Name)"
                 if ($n -like '*@odata*' -or $script:HUWuExportSkip -contains $n) { continue }
-                $h[$n] = $pp.Value
+                $h[$n] = ConvertTo-HUWuCleanValue $pp.Value
             }
             $h['@odata.type'] = (Get-HUWuEpInfo "$($it.Art)").Type
             $h['roleScopeTagIds'] = @('0')
@@ -650,6 +696,7 @@ function Invoke-HUWuDriverAction {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$ProfileId,
         [ValidateSet('approve', 'decline', 'suspend')][string]$Action, [Parameter(Mandatory)][string[]]$DriverIds, [datetime]$Date = (Get-Date))
+    Assert-HUWuId $ProfileId 'Treiber-Richtlinie'
     $body = @{ actionName = $Action; driverIds = @($DriverIds) }
     if ($Action -eq 'approve') { $body.deploymentDate = $Date.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
     $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/windowsDriverUpdateProfiles/$ProfileId/executeAction" -Method POST -Body $body
@@ -662,7 +709,7 @@ function Invoke-HUWuDriverAction {
 function Remove-HUWuProfile {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id, [string]$BackupRoot = '', [switch]$Force)
-    $e = Get-HUWuEpInfo $Art
+    $e = Get-HUWuEpInfo $Art; Assert-HUWuId $Id
     # frisch nachgesehen, nicht aus der Anzeige
     $asg = @(Get-HUWuAssignmentsFresh $TenantKey $Settings $Art $Id)
     if ($asg.Count) {
@@ -695,7 +742,7 @@ function Get-HUWuPolicyGroups([object[]]$Inventories, [hashtable]$TenantNames = 
     }
 }
 
-Export-ModuleMember -Function ConvertTo-HUWuExportBody, New-HUWuExportDoc, Read-HUWuExportFile, New-HUWuFromBody, New-HUWuRing, New-HUWuRingBody, New-HUWuDriverProfile, Get-HUWuEpInfo, Save-HUWuBefore, ConvertTo-HUWuTarget, Get-HUWuTargetKey, Set-HUWuAssignment, Set-HUWuSettings, Set-HUWuRingPause,
+Export-ModuleMember -Function Get-HUWuRange, Assert-HUWuId, Get-HUWuActiveHoursHint, ConvertTo-HUWuCleanValue, ConvertTo-HUWuExportBody, New-HUWuExportDoc, Read-HUWuExportFile, New-HUWuFromBody, New-HUWuRing, New-HUWuRingBody, New-HUWuDriverProfile, Get-HUWuEpInfo, Save-HUWuBefore, ConvertTo-HUWuTarget, Get-HUWuTargetKey, Set-HUWuAssignment, Set-HUWuSettings, Set-HUWuRingPause,
     Get-HUWuCatalogChoices, New-HUWuFeatureProfile, Remove-HUWuProfile, Get-HUWuAssignmentsFresh, ConvertTo-HUWuRollout, New-HUWuExpedite, Invoke-HUWuDriverAction, Get-HUWuPolicyGroups,
     ConvertTo-HUWuJoinText, ConvertTo-HUWuDriverRow, Get-HUWuDriverMatrix, Get-HUWuBuildInfo, ConvertFrom-HUWuCatalog, Get-HUWuPatchState, Get-HUWuMissingCount, Get-HUWuLatestText, Get-HUWuInventory,
     ConvertTo-HUWuPolicyRow, Get-HUWuMatrix, Get-HUWuSummary, Get-HUWuAssignText

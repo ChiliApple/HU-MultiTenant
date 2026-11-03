@@ -1,5 +1,18 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.8 (Testversion)
+
+### 🪟 WIN-Updates (Wartung)
+- **Aktive Zeit beim neuen Update-Ring:** Die Rückfrage warnt, wenn die Zeit nicht auf volle Stunden fällt oder mehr als 18 Stunden umfasst. Windows rechnet nur in vollen Stunden und lässt standardmäßig höchstens 18 Stunden zu. Angelegt wird trotzdem, wenn du bestätigst.
+- **Einheitliche Wertebereiche:** Aufschub, Fristen und Nachfrist gelten überall gleich, im Detailbereich, beim Anlegen und im Zusatzmodul. Der Feature-Aufschub reicht überall von 0 bis 365 Tagen.
+- **Speichern bei mehreren Tenants:** Ein Feld, das im ersten Tenant leer ist und das du nicht ausfüllst, bleibt auch in den anderen Tenants unverändert. Bisher konnte so ein Wert dort gelöscht werden.
+- **Auswahl für Feature-Update und Expedite:** Lässt sich die Liste der Versionen und Updates im ersten Tenant nicht lesen, versucht es die App beim nächsten. Klappt es nirgends, nennt sie den Grund.
+- **Lesen ohne Ergebnis:** Kommt beim Lesen dreimal hintereinander nichts zurück, hört die App auf und schreibt es ins Protokoll. Bisher konnte sie es endlos neu versuchen.
+
+### 🔐 Sicherheit
+- **Vorlagen importieren:** Auch verschachtelte Einstellungen, z. B. die aktive Zeit, werden beim Import bereinigt. Nötige Typangaben bleiben erhalten, fremde Zusatzangaben fallen weg.
+- **Prüfung der Kennungen:** Kennungen von Ringen und Profilen mit Zeichen, die eine Graph-Adresse verändern würden, werden vor dem Senden abgewiesen.
+
 ## v2.6.7 (Testversion)
 
 ### Behoben
