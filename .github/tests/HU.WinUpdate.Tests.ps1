@@ -439,3 +439,16 @@ Describe 'Windows-Updates: Paket C (2.6.10)' {
         $alt.Hinweis | Should -BeLike 'altes Expedite (08?2026, 94 T.)*'
     }
 }
+
+Describe 'Graph-Fehlertext unter PS 5.1 und 7 (2.6.10)' {
+    It 'Antworttext aus ErrorDetails (PS 7: Response ohne GetResponseStream)' {
+        InModuleScope HU.Intune {
+            $er = [System.Management.Automation.ErrorRecord]::new([Exception]::new('Der Antwortstatuscode weist nicht auf einen erfolgreichen Vorgang hin: 400'), 'x', 'NotSpecified', $null)
+            $er.ErrorDetails = [System.Management.Automation.ErrorDetails]::new('{"error":{"code":"BadRequest","message":"Feld ungueltig"}}')
+            (Get-HUGraphErrorBody $er | ConvertFrom-Json).error.message | Should -Be 'Feld ungueltig'
+            $leer = [System.Management.Automation.ErrorRecord]::new([Exception]::new('x'), 'x', 'NotSpecified', $null)
+            Get-HUGraphErrorBody $leer | Should -Be ''
+            Get-HUGraphRetryAfter $null | Should -Be 0
+        }
+    }
+}

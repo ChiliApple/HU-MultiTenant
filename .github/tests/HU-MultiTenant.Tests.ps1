@@ -568,6 +568,18 @@ Describe 'Intune: Apps und Wartung (HU.Intune)' {
         $def.UninstallCmd = ''
         { ConvertTo-HUWin32Payload $def } | Should -Throw
     }
+    It 'Win32-App aktualisieren: PATCH ohne applicableArchitectures (Intune lehnt es ab, Einstellung bleibt)' {
+        $def = [pscustomobject]@{ Name = 'Test'; Publisher = 'P'; Description = ''; Version = '1.0'; SetupFile = 'a.exe'; InstallCmd = 'a.exe /S'; UninstallCmd = 'u.exe /S'
+            RunAs = 'system'; Kind = 'exe'; UpgradeCode = ''; Detection = [pscustomobject]@{ Type = 'file'; Path = 'C:\X'; FileName = 'a.exe' } }
+        (ConvertTo-HUWin32Payload $def).applicableArchitectures | Should -Be 'x64' -Because 'Anlegen bleibt unveraendert'
+        $script:Sent = $null
+        Mock -ModuleName HU.Intune Invoke-HUIntuneGraph { $script:Sent = @{ M = $Method; B = $Body }; $null }
+        Update-HUWin32App -TenantKey 't' -Settings ([pscustomobject]@{}) -AppId 'a1' -Def $def -IntuneWinName 'a.intunewin'
+        $script:Sent.M | Should -Be 'PATCH'
+        $script:Sent.B.ContainsKey('applicableArchitectures') | Should -BeFalse
+        $script:Sent.B.ContainsKey('allowedArchitectures') | Should -BeFalse
+        $script:Sent.B.displayVersion | Should -Be '1.0'
+    }
     It 'Zeitplan taeglich / stuendlich / einmal' {
         $d = New-HURunSchedule @{ Type = 'daily'; Interval = 2; Time = '7:30' }
         $d['@odata.type'] | Should -Be '#microsoft.graph.deviceHealthScriptDailySchedule'

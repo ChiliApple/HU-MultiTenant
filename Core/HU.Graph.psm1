@@ -126,14 +126,17 @@ function Invoke-GraphRequest {
             if ($_.Exception.Response) {
                 $statusCode = [int]$_.Exception.Response.StatusCode
 
-                # Response Body lesen für detaillierte Fehlermeldung
+                # Response Body lesen für detaillierte Fehlermeldung.
+                # PS 7: Response ist ein HttpResponseMessage ohne GetResponseStream() - Text steht in ErrorDetails.Message
                 try {
-                    $stream = $_.Exception.Response.GetResponseStream()
-                    if ($stream) {
-                        $reader = [System.IO.StreamReader]::new($stream)
+                    $errorBody = ''
+                    if ($_.ErrorDetails -and "$($_.ErrorDetails.Message)".Trim()) { $errorBody = "$($_.ErrorDetails.Message)" }
+                    elseif ($_.Exception.Response.PSObject.Methods['GetResponseStream']) {
+                        $reader = [System.IO.StreamReader]::new($_.Exception.Response.GetResponseStream())
                         $errorBody = $reader.ReadToEnd()
                         $reader.Close()
-
+                    }
+                    if ($errorBody) {
                         $errorJson = $errorBody | ConvertFrom-Json -ErrorAction SilentlyContinue
                         if ($errorJson.error.message) {
                             $errorDetail = "$statusCode - $($errorJson.error.code): $($errorJson.error.message)"

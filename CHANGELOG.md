@@ -10,6 +10,14 @@
 - **Fenster bleibt offen:** Öffnest du die Anleitungen eines anderen Bereichs, wechselt das offene Fenster nur den Inhalt und behält Größe und Platz.
 - **Hinweis zu Dialogen:** Ist in der App ein Dialog offen, lässt sich das Anleitungsfenster erst danach wieder bedienen. Das steht jetzt unten im Fenster.
 
+### 📦 Apps verteilen
+- **Vorhandene Win32-Apps aktualisieren:** Intune lehnte das Aktualisieren mit „400 Bad Request“ ab, weil es die Architektur einer App inzwischen über eine neue Einstellung führt. Die App schickt die Architektur beim Aktualisieren nicht mehr mit. Was in Intune eingestellt ist, bleibt so, wie es ist.
+  - Neue Apps werden wie bisher für x64 angelegt.
+
+### 🧩 Fehlermeldungen
+- **Grund von Microsoft Graph auch unter PowerShell 7:** Lehnt Graph eine Anfrage ab, steht der Grund wieder in der Meldung, z. B. „400 - BadRequest: …“. Unter PowerShell 7 kam bisher nur „Der Antwortstatuscode weist nicht auf einen erfolgreichen Vorgang hin“.
+  - Auch die Wartezeit, die Intune beim Drosseln vorgibt, wird unter PowerShell 7 jetzt beachtet.
+
 ### ♿ Bedienung
 - **Quellen per Tastatur:** Die Links zu Microsoft Learn sind mit Tab erreichbar und öffnen mit der Eingabetaste.
 - **Screenreader:** Ansicht, Tabelle, Filter, Zuweisungen, Ziel, Gruppenname und alle Eingabefelder in WIN-Updates haben jetzt Namen.
