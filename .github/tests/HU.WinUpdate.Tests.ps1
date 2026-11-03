@@ -426,3 +426,29 @@ Describe 'Windows-Updates: Paket B (2.6.9)' {
         @(Get-HUWuExistingNames -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Feature-Update').Count | Should -Be 2
     }
 }
+
+Describe 'Windows-Updates: Paket C (2.6.10)' {
+    It '074 B41: Expedite zeigt sein Alter, Hinweis erst ab 60 Tagen' {
+        $now = [datetime]'2026-11-03'
+        $mk = { param($d) [pscustomobject]@{ id = 'e1'; displayName = 'Exp'; expeditedUpdateSettings = [pscustomobject]@{ qualityUpdateRelease = $d; daysUntilForcedReboot = 1 } } }
+        $jung = ConvertTo-HUWuPolicyRow -Tenant 't' -Art 'Expedite' -O (& $mk '2026-10-04T00:00:00Z') -Asg @() -Names @{} -Now $now
+        $jung.Einstellung | Should -BeLike '*Alter 30 T.*'
+        $jung.Hinweis | Should -BeNullOrEmpty
+        $alt = ConvertTo-HUWuPolicyRow -Tenant 't' -Art 'Expedite' -O (& $mk '2026-08-01T00:00:00Z') -Asg @() -Names @{} -Now $now
+        $alt.Einstellung | Should -BeLike '*Alter 94 T.*'
+        $alt.Hinweis | Should -BeLike 'altes Expedite (08?2026, 94 T.)*'
+    }
+}
+
+Describe 'Graph-Fehlertext unter PS 5.1 und 7 (2.6.10)' {
+    It 'Antworttext aus ErrorDetails (PS 7: Response ohne GetResponseStream)' {
+        InModuleScope HU.Intune {
+            $er = [System.Management.Automation.ErrorRecord]::new([Exception]::new('Der Antwortstatuscode weist nicht auf einen erfolgreichen Vorgang hin: 400'), 'x', 'NotSpecified', $null)
+            $er.ErrorDetails = [System.Management.Automation.ErrorDetails]::new('{"error":{"code":"BadRequest","message":"Feld ungueltig"}}')
+            (Get-HUGraphErrorBody $er | ConvertFrom-Json).error.message | Should -Be 'Feld ungueltig'
+            $leer = [System.Management.Automation.ErrorRecord]::new([Exception]::new('x'), 'x', 'NotSpecified', $null)
+            Get-HUGraphErrorBody $leer | Should -Be ''
+            Get-HUGraphRetryAfter $null | Should -Be 0
+        }
+    }
+}

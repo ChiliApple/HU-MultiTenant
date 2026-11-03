@@ -57,6 +57,24 @@ function Invoke-HUIntuneGraph {
     }
 }
 
+# Antworttext eines Graph-Fehlers. PS 7: Exception.Response ist ein HttpResponseMessage ohne GetResponseStream() -
+# der Text steht dort nur in ErrorDetails.Message (geht auch unter 5.1). Rueckfall: Stream wie bisher (PS 5.1).
+function Get-HUGraphErrorBody($Err) {
+    try { if ($Err.ErrorDetails -and "$($Err.ErrorDetails.Message)".Trim()) { return "$($Err.ErrorDetails.Message)" } } catch { }
+    try {
+        $r = $Err.Exception.Response
+        if ($r -and $r.PSObject.Methods['GetResponseStream']) { $sr = New-Object IO.StreamReader($r.GetResponseStream()); return $sr.ReadToEnd() }
+    } catch { }
+    return ''
+}
+# Retry-After in Sekunden (PS 5.1: Header-Text, PS 7: Headers.RetryAfter)
+function Get-HUGraphRetryAfter($Response) {
+    if (-not $Response) { return 0 }
+    try { if ($Response.Headers.PSObject.Properties['RetryAfter'] -and $Response.Headers.RetryAfter) { $ra = $Response.Headers.RetryAfter; if ($ra.Delta) { return [int]$ra.Delta.TotalSeconds } } } catch { }
+    try { return [int]"$($Response.Headers['Retry-After'])" } catch { }
+    return 0
+}
+
 # Eigener Aufruf statt Invoke-GraphRequest: Body als UTF-8-Bytes (PS 5.1 schickt Text sonst als ISO-8859-1 - Umlaute
 # in Namen/Beschreibungen kaemen kaputt an), Fehler als Objekt wie HU.Graph.
 function Invoke-HUGraphRaw {
@@ -78,10 +96,9 @@ function Invoke-HUGraphRaw {
         $code = $null; $msg = $_.Exception.Message; $ra = 0
         if ($_.Exception.Response) {
             $code = [int]$_.Exception.Response.StatusCode
-            try { $ra = [int]"$($_.Exception.Response.Headers['Retry-After'])" } catch { }
+            $ra = Get-HUGraphRetryAfter $_.Exception.Response
             try {
-                $sr = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())
-                $j = $sr.ReadToEnd() | ConvertFrom-Json -ErrorAction SilentlyContinue
+                $j = (Get-HUGraphErrorBody $_) | ConvertFrom-Json -ErrorAction SilentlyContinue
                 if ($j.error.message) { $msg = "$code - $($j.error.code): $($j.error.message)" }
             } catch { }
         }
@@ -488,6 +505,10 @@ function Update-HUWin32App {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$AppId, [Parameter(Mandatory)]$Def, [string]$IntuneWinName = '')
     $body = ConvertTo-HUWin32Payload $Def $IntuneWinName
+    # Architektur beim Aendern nicht mitsenden: Intune fuehrt Apps inzwischen ueber allowedArchitectures, PATCH mit
+    # applicableArchitectures lehnt es ab ("can only be set via ODataAction: enableApplicableArchitectures", 400).
+    # Die Einstellung der vorhandenen App bleibt so, wie sie in Intune ist.
+    $body.Remove('applicableArchitectures')
     [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceAppManagement/mobileApps/$AppId" -Method PATCH -Body $body)
 }
 

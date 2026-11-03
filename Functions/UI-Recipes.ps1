@@ -7,7 +7,8 @@
     Einheitlich fuer alle Bereiche:
       - Inhalt: Docs\SoGehts.json -> Bereiche.<bereich>.Rezepte (Titel, Kurz, Schritte, Achtung, Quellen)
       - Knopf je Schritt: Aktion = ID, die der Bereich mit Register-HURecipeAction anmeldet, oder url:https://...
-      - Fenster: Show-HURecipeWindow '<bereich>' (nicht modal - man kann daneben weiterarbeiten)
+      - Fenster: Show-HURecipeWindow '<bereich>' (nicht modal - man kann daneben weiterarbeiten; ist in der App ein
+        Dialog offen, ist das Fenster bis zu dessen Ende gesperrt)
 #>
 
 $script:HURecipeActions = @{}
@@ -36,8 +37,14 @@ function Get-HURecipes([string]$Area, [string]$Path = '') {
 function Show-HURecipeWindow([string]$Area, [string]$SelectId = '') {
     $r = Get-HURecipes $Area
     if (-not $r -or -not @($r.Rezepte).Count) { Show-HUMessage 'Fuer diesen Bereich gibt es noch keine Anleitungen.' -Icon Info; return }
-    # schon offen: nach vorne holen und Bereich wechseln
-    if ($script:HURecipeWin -and $script:HURecipeWin.IsVisible) { try { $script:HURecipeWin.Close() } catch { } }
+    # 074 B37: schon offen - Fenster behalten (Groesse, Platz), nur Bereich wechseln und nach vorne holen
+    if ($script:HURecipeWin -and $script:HURecipeWin.IsVisible -and $script:HURecipeCur) {
+        $script:HURecipeCur.R = $r
+        $script:HURecipeWin.Title = $r.Titel
+        Update-HURecipeList $SelectId
+        try { $script:HURecipeWin.Activate() | Out-Null } catch { }
+        return
+    }
     $x = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Width="900" Height="600" MinWidth="640" MinHeight="380" WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip" Background="#1E1E1E" ShowInTaskbar="False">
@@ -80,21 +87,31 @@ function Show-HURecipeWindow([string]$Area, [string]$SelectId = '') {
     $w.Title = $r.Titel
     $script:HURecipeWin = $w
     $script:HURecipeCur = @{ C = $d.C; R = $r; Win = $w }
-    $d.C.lblStand.Text = "Stand der Anleitungen: $($r.Stand). Knoepfe oeffnen die passende Stelle in der App - das Fenster bleibt offen."
-    foreach ($rec in @($r.Rezepte)) {
+    $d.C.lblStand.Text = "Stand der Anleitungen: $($r.Stand). Knoepfe oeffnen die passende Stelle in der App - das Fenster bleibt offen. Ist in der App ein Dialog offen, zuerst diesen schliessen."
+    [System.Windows.Automation.AutomationProperties]::SetName($d.C.lstRec, 'Anleitungen')
+    $d.C.lstRec.Add_SelectionChanged({ $it = $script:HURecipeCur.C.lstRec.SelectedItem; if ($it) { Show-HURecipe "$($it.Tag)" } })
+    $d.C.btnClose.Add_Click({ $script:HURecipeCur.Win.Close() })
+    $w.Add_Closed({ $script:HURecipeWin = $null })
+    Update-HURecipeList $SelectId
+    $w.Show()
+}
+
+# Liste links fuellen (neu oder beim Bereichswechsel im offenen Fenster)
+function Update-HURecipeList([string]$SelectId = '') {
+    $c = $script:HURecipeCur.C
+    $c.lstRec.Items.Clear()
+    foreach ($rec in @($script:HURecipeCur.R.Rezepte)) {
         $li = New-Object System.Windows.Controls.ListBoxItem
         $tb = New-Object System.Windows.Controls.TextBlock
         $tb.Text = "$($rec.Titel)"; $tb.TextWrapping = 'Wrap'
         $li.Content = $tb; $li.Tag = "$($rec.Id)"; $li.Padding = [System.Windows.Thickness]::new(6, 5, 6, 5)
-        [void]$d.C.lstRec.Items.Add($li)
+        [System.Windows.Automation.AutomationProperties]::SetName($li, "$($rec.Titel)")
+        [void]$c.lstRec.Items.Add($li)
     }
-    $d.C.lstRec.Add_SelectionChanged({ $it = $script:HURecipeCur.C.lstRec.SelectedItem; if ($it) { Show-HURecipe "$($it.Tag)" } })
-    $d.C.btnClose.Add_Click({ $script:HURecipeCur.Win.Close() })
-    $w.Add_Closed({ $script:HURecipeWin = $null })
     $sel = 0
-    if ($SelectId) { for ($i = 0; $i -lt $d.C.lstRec.Items.Count; $i++) { if ("$($d.C.lstRec.Items[$i].Tag)" -eq $SelectId) { $sel = $i } } }
-    $d.C.lstRec.SelectedIndex = $sel
-    $w.Show()
+    if ($SelectId) { for ($i = 0; $i -lt $c.lstRec.Items.Count; $i++) { if ("$($c.lstRec.Items[$i].Tag)" -eq $SelectId) { $sel = $i } } }
+    $c.lstRec.SelectedIndex = -1
+    $c.lstRec.SelectedIndex = $sel
 }
 
 # Ein Rezept rechts anzeigen
@@ -141,10 +158,15 @@ function Show-HURecipe([string]$Id) {
     }
     $c.bdWarn.Visibility = $(if ($c.spWarn.Children.Count) { 'Visible' } else { 'Collapsed' })
     foreach ($q in @($rec.Quellen | Where-Object { $_ })) {
+        # 074 B19: Hyperlink statt Mausklick auf Text - per Tab erreichbar, Eingabe oeffnet
         $lt = New-Object System.Windows.Controls.TextBlock
-        $lt.Text = "$($q.Titel)"; $lt.ToolTip = "$($q.Url)"; $lt.Cursor = 'Hand'; $lt.TextDecorations = [System.Windows.TextDecorations]::Underline
-        $lt.Foreground = $bc.ConvertFromString('#4FC3F7'); $lt.FontSize = 12; $lt.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4); $lt.Tag = "$($q.Url)"
-        $lt.Add_MouseLeftButtonUp({ param($s, $e) Open-HUUrl "$($s.Tag)" })
+        $lt.FontSize = 12; $lt.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4); $lt.TextWrapping = 'Wrap'
+        $hl = New-Object System.Windows.Documents.Hyperlink
+        [void]$hl.Inlines.Add("$($q.Titel)")
+        $hl.Foreground = $bc.ConvertFromString('#4FC3F7'); $hl.ToolTip = "$($q.Url)"; $hl.Tag = "$($q.Url)"
+        [System.Windows.Automation.AutomationProperties]::SetName($hl, "Quelle: $($q.Titel)")
+        $hl.Add_Click({ param($s, $e) Open-HUUrl "$($s.Tag)" })
+        [void]$lt.Inlines.Add($hl)
         [void]$c.spSrc.Children.Add($lt)
     }
     $c.lblSrcHead.Visibility = $(if ($c.spSrc.Children.Count) { 'Visible' } else { 'Collapsed' })
