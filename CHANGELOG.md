@@ -16,7 +16,7 @@
 
 ### 🧩 Fehlermeldungen
 - **Grund von Microsoft Graph auch unter PowerShell 7:** Lehnt Graph eine Anfrage ab, steht der Grund wieder in der Meldung, z. B. „400 - BadRequest: …“. Unter PowerShell 7 kam bisher nur „Der Antwortstatuscode weist nicht auf einen erfolgreichen Vorgang hin“.
-  - Auch die Wartezeit, die Intune beim Drosseln vorgibt, wird unter PowerShell 7 jetzt beachtet.
+  - Auch die Wartezeit, die Intune oder Teams beim Drosseln vorgibt, wird unter PowerShell 7 jetzt beachtet.
 
 ### ♿ Bedienung
 - **Quellen per Tastatur:** Die Links zu Microsoft Learn sind mit Tab erreichbar und öffnen mit der Eingabetaste.

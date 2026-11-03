@@ -795,7 +795,13 @@ function Send-HUTeamsCard {
             if ($code -eq 404) { return 'Senden abgelehnt (404): Workflow nicht gefunden - geloescht oder deaktiviert' }
             if (-not $retry -or $i -eq $Retries) { break }
             $wait = 3 * ($i + 1)
-            try { $ra = [int]"$($_.Exception.Response.Headers['Retry-After'])"; if ($ra -gt 0) { $wait = [math]::Min(30, $ra) } } catch { }
+            # Retry-After: PS 5.1 Header-Text, PS 7 Headers.RetryAfter (HttpResponseMessage kennt keinen Text-Index)
+            $ra = 0; $rsp = $_.Exception.Response
+            if ($rsp) {
+                try { if ($rsp.Headers.PSObject.Properties['RetryAfter'] -and $rsp.Headers.RetryAfter -and $rsp.Headers.RetryAfter.Delta) { $ra = [int]$rsp.Headers.RetryAfter.Delta.TotalSeconds } } catch { }
+                if (-not $ra) { try { $ra = [int]"$($rsp.Headers['Retry-After'])" } catch { } }
+            }
+            if ($ra -gt 0) { $wait = [math]::Min(30, $ra) }
             # Review 030 B17: hoechstens ca. 45 s je Ziel (Timeouts + Wartezeiten zusammen)
             if ($sw.Elapsed.TotalSeconds + $wait -gt 45) { break }
             Start-Sleep -Seconds $wait
