@@ -1,5 +1,19 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.9 (Testversion)
+
+### 🪟 WIN-Updates (Wartung)
+- **Ergebnis am Ende:** Nach jeder Aktion über mehrere Tenants steht eine Schlusszeile im Protokoll, z. B. „2 von 3 ok; Fehler in: …“. Grün, orange bei Hinweisen, rot bei Fehlern.
+- **Genaueres Protokoll:** Jede Zeile nennt Art und Kennung des Rings oder Profils.
+  - Speichern: welche Werte gesetzt werden sollten
+  - Anlegen: die wichtigsten Einstellungen und die neue Kennung
+  - Löschen: welche Zuweisungen das Profil hatte
+- **Neue Hinweise in der Spalte „Hinweis“:**
+  - dieselbe Gruppe in zwei Feature-Update- oder zwei Treiber-Profilen
+  - Update-Ring mit Feature-Aufschub über 0, obwohl Feature-Update-Profile die Version vorgeben
+  - aktive Pause: Geräte bekommen bis zum Ende der Pause keine Updates
+- **Import:** Kurz vor dem Anlegen prüft die App in jedem Tenant frisch, ob es den Namen schon gibt, und lässt ihn dann aus. Das gilt auch für Tenants, die noch nicht gelesen waren. Die Rückfrage nennt diese Tenants.
+
 ## v2.6.8 (Testversion)
 
 ### 🪟 WIN-Updates (Wartung)
