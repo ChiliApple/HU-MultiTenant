@@ -193,7 +193,38 @@ function Get-HUWuInventory {
         # Tenant ohne Geraete: dass keine Treiber gemeldet werden, ist dann kein Problem
         if (-not @($inv.Devices).Count) { $p.Hinweis = (@("$($p.Hinweis)" -split '; ' | Where-Object { $_ -and $_ -notlike 'Noch keine Treiber gemeldet*' -and $_ -notlike 'Keine Geraete melden*' }) -join '; ') }
     }
+    Add-HUWuCrossHints @($inv.Policies)
     return $inv
+}
+
+# 074 B15: Hinweise, die sich erst aus mehreren Ringen/Profilen eines Tenants ergeben (Fehlersuche "Profil wirkt nicht").
+# - dieselbe Gruppe in zwei Feature-Update- bzw. Treiber-Profilen
+# - Update-Ring mit Feature-Aufschub > 0, obwohl Feature-Update-Profile die Version vorgeben (Microsoft empfiehlt dann 0)
+function Add-HUWuCrossHints([object[]]$Rows) {
+    $add = { param($r, $t) $r.Hinweis = (@("$($r.Hinweis)", $t) | Where-Object { $_ }) -join '; ' }
+    foreach ($art in 'Feature-Update', 'Treiber-Update') {
+        $map = @{}
+        foreach ($r in @($Rows | Where-Object { $_ -and $_.Art -eq $art })) {
+            foreach ($a in @($r.AsgList | Where-Object { $_ -and "$($_.Key)" -like 'group|*' })) {
+                if (-not $map.ContainsKey("$($a.Key)")) { $map["$($a.Key)"] = New-Object System.Collections.Generic.List[object] }
+                $map["$($a.Key)"].Add([pscustomobject]@{ R = $r; Z = "$($a.Ziel)" })
+            }
+        }
+        foreach ($k in @($map.Keys)) {
+            $l = $map[$k]
+            if (@($l | ForEach-Object { $_.R.Id } | Select-Object -Unique).Count -lt 2) { continue }
+            foreach ($e in $l) {
+                $o = @($l | Where-Object { $_.R.Id -ne $e.R.Id } | ForEach-Object { "'$($_.R.Name)'" } | Select-Object -Unique)
+                & $add $e.R "$($e.Z) steckt auch in $art $($o -join ', ') - eine Gruppe nur einem $art-Profil zuweisen"
+            }
+        }
+    }
+    if (@($Rows | Where-Object { $_ -and $_.Art -eq 'Feature-Update' }).Count) {
+        foreach ($r in @($Rows | Where-Object { $_ -and $_.Art -eq 'Update-Ring' })) {
+            $fd = $null; if ($r.Raw -and $r.Raw.PSObject.Properties['featureUpdatesDeferralPeriodInDays']) { $fd = $r.Raw.featureUpdatesDeferralPeriodInDays }
+            if ($null -ne $fd -and [int]$fd -gt 0) { & $add $r "Feature-Aufschub $fd T. verzoegert die Feature-Update-Profile - mit Profil empfiehlt Microsoft 0" }
+        }
+    }
 }
 
 # Ring/Profil -> Zeile: Art, Name, Einstellung, Pause, Zuweisung
@@ -216,7 +247,9 @@ function ConvertTo-HUWuPolicyRow([string]$Tenant, [string]$Art, $O, [object[]]$A
                 if ((& $g "$($k[0])UpdatesPaused") -eq $true) {
                     $ex = Get-HUWuDate (& $g "$($k[0])UpdatesPauseExpiryDateTime")
                     $p += "$($k[1]) bis $(if ($ex) { $ex.ToLocalTime().ToString('dd.MM.') } else { '?' })"
-                    if ($ex -and ($ex - $Now).TotalDays -le 3) { $warn = (@($warn, "$($k[1])-Pause endet $($ex.ToLocalTime().ToString('dd.MM.'))") | Where-Object { $_ }) -join '; ' }
+                    # 074 B15: aktive Pause ist eine haeufige Ursache fuer "Updates kommen nicht"
+                    $pt = $(if ($ex -and ($ex - $Now).TotalDays -le 3) { "$($k[1])-Pause endet $($ex.ToLocalTime().ToString('dd.MM.'))" } else { "$($k[1])-Updates pausiert - Geraete bekommen bis dahin keine" })
+                    $warn = (@($warn, $pt) | Where-Object { $_ }) -join '; '
                 }
             }
             $pause = $p -join ', '
@@ -681,6 +714,16 @@ function Read-HUWuExportFile([string]$Path) {
         })
 }
 
+# 074 B40: Namen einer Art frisch aus Intune (Import prueft kurz vor dem Anlegen, nicht gegen die Anzeige)
+function Get-HUWuExistingNames {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art)
+    $e = Get-HUWuEpInfo $Art
+    $l = @(Get-HUIntuneGraphAll -TenantKey $TenantKey -Settings $Settings -Endpoint $e.Ep)
+    if ($Art -eq 'Update-Ring') { $l = @($l | Where-Object { "$($_.'@odata.type')" -match 'windowsUpdateForBusinessConfiguration' }) }
+    return @($l | ForEach-Object { "$($_.displayName)" } | Where-Object { $_ })
+}
+
 # Aus Sicherung anlegen (ohne Zuweisung). Name optional ueberschreiben.
 function New-HUWuFromBody {
     [CmdletBinding()]
@@ -708,7 +751,7 @@ function Invoke-HUWuDriverAction {
 # zugewiesene Feature- und Treiber-Profile nur mit -Force (App: zweite Rueckfrage; MCP: nie).
 function Remove-HUWuProfile {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id, [string]$BackupRoot = '', [switch]$Force)
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$Art, [Parameter(Mandatory)][string]$Id, [string]$BackupRoot = '', [switch]$Force, [hashtable]$Info = $null)
     $e = Get-HUWuEpInfo $Art; Assert-HUWuId $Id
     # frisch nachgesehen, nicht aus der Anzeige
     $asg = @(Get-HUWuAssignmentsFresh $TenantKey $Settings $Art $Id)
@@ -718,6 +761,7 @@ function Remove-HUWuProfile {
     }
     $before = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id"
     $f = Save-HUWuBefore $TenantKey $Art $before $BackupRoot $asg
+    if ($Info) { $Info['Assignments'] = @($asg | Where-Object { $_ -and $_.target } | ForEach-Object { Get-HUWuTargetKey $_.target }) }   # 074 B17: fuers Protokoll
     [void](Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "$($e.Ep)/$Id" -Method DELETE)
     return $f
 }
@@ -742,7 +786,7 @@ function Get-HUWuPolicyGroups([object[]]$Inventories, [hashtable]$TenantNames = 
     }
 }
 
-Export-ModuleMember -Function Get-HUWuRange, Assert-HUWuId, Get-HUWuActiveHoursHint, ConvertTo-HUWuCleanValue, ConvertTo-HUWuExportBody, New-HUWuExportDoc, Read-HUWuExportFile, New-HUWuFromBody, New-HUWuRing, New-HUWuRingBody, New-HUWuDriverProfile, Get-HUWuEpInfo, Save-HUWuBefore, ConvertTo-HUWuTarget, Get-HUWuTargetKey, Set-HUWuAssignment, Set-HUWuSettings, Set-HUWuRingPause,
+Export-ModuleMember -Function Add-HUWuCrossHints, Get-HUWuExistingNames, Get-HUWuRange, Assert-HUWuId, Get-HUWuActiveHoursHint, ConvertTo-HUWuCleanValue, ConvertTo-HUWuExportBody, New-HUWuExportDoc, Read-HUWuExportFile, New-HUWuFromBody, New-HUWuRing, New-HUWuRingBody, New-HUWuDriverProfile, Get-HUWuEpInfo, Save-HUWuBefore, ConvertTo-HUWuTarget, Get-HUWuTargetKey, Set-HUWuAssignment, Set-HUWuSettings, Set-HUWuRingPause,
     Get-HUWuCatalogChoices, New-HUWuFeatureProfile, Remove-HUWuProfile, Get-HUWuAssignmentsFresh, ConvertTo-HUWuRollout, New-HUWuExpedite, Invoke-HUWuDriverAction, Get-HUWuPolicyGroups,
     ConvertTo-HUWuJoinText, ConvertTo-HUWuDriverRow, Get-HUWuDriverMatrix, Get-HUWuBuildInfo, ConvertFrom-HUWuCatalog, Get-HUWuPatchState, Get-HUWuMissingCount, Get-HUWuLatestText, Get-HUWuInventory,
     ConvertTo-HUWuPolicyRow, Get-HUWuMatrix, Get-HUWuSummary, Get-HUWuAssignText

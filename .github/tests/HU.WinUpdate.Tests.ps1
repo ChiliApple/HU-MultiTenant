@@ -362,3 +362,67 @@ Describe 'Windows-Updates: Paket A (2.6.8)' {
         $v.aus | Should -BeFalse
     }
 }
+
+Describe 'Windows-Updates: Paket B (2.6.9)' {
+    BeforeAll {
+        $script:Row = { param($Art, $Id, $Name, [string[]]$Keys, $Raw = $null)
+            [pscustomobject]@{ Tenant = 't'; Art = $Art; Name = $Name; Id = $Id; Hinweis = ''; Raw = $Raw
+                AsgList = @(foreach ($k in $Keys) { [pscustomobject]@{ Key = $k; Ziel = "Gruppe $($k.Split('|')[1])" } }) } }
+    }
+    It '074 B15: dieselbe Gruppe in zwei Feature-Update-Profilen - Hinweis an beiden' {
+        $a = & $script:Row 'Feature-Update' 'f1' 'Win11 25H2' @('group|g1')
+        $b = & $script:Row 'Feature-Update' 'f2' 'Win11 24H2' @('group|g1', 'group|g2')
+        $c = & $script:Row 'Feature-Update' 'f3' 'Andere' @('group|g3')
+        Add-HUWuCrossHints @($a, $b, $c)
+        $a.Hinweis | Should -BeLike "*steckt auch in Feature-Update 'Win11 24H2'*"
+        $b.Hinweis | Should -BeLike "*'Win11 25H2'*"
+        $c.Hinweis | Should -BeNullOrEmpty
+    }
+    It '074 B15: Ausschluss zaehlt nicht, gleiche Gruppe zweimal im selben Profil auch nicht' {
+        $a = & $script:Row 'Treiber-Update' 'd1' 'T1' @('group|g1', 'group|g1')
+        $b = & $script:Row 'Treiber-Update' 'd2' 'T2' @('exclude|g1')
+        Add-HUWuCrossHints @($a, $b)
+        $a.Hinweis | Should -BeNullOrEmpty
+        $b.Hinweis | Should -BeNullOrEmpty
+    }
+    It '074 B15: Ring mit Feature-Aufschub > 0 neben Feature-Update-Profil' {
+        $r1 = & $script:Row 'Update-Ring' 'r1' 'Ring A' @() ([pscustomobject]@{ featureUpdatesDeferralPeriodInDays = 30 })
+        $r2 = & $script:Row 'Update-Ring' 'r2' 'Ring B' @() ([pscustomobject]@{ featureUpdatesDeferralPeriodInDays = 0 })
+        Add-HUWuCrossHints @($r1, $r2)
+        $r1.Hinweis | Should -BeNullOrEmpty -Because 'ohne Feature-Update-Profil kein Hinweis'
+        $f = & $script:Row 'Feature-Update' 'f1' 'Win11' @()
+        Add-HUWuCrossHints @($r1, $r2, $f)
+        $r1.Hinweis | Should -BeLike '*Feature-Aufschub 30 T.*'
+        $r2.Hinweis | Should -BeNullOrEmpty
+    }
+    It '074 B15: aktive Pause steht im Hinweis' {
+        $now = [datetime]'2026-11-03'
+        $o = [pscustomobject]@{ id = 'r1'; displayName = 'Ring'; qualityUpdatesPaused = $true; qualityUpdatesPauseExpiryDateTime = '2026-11-20T00:00:00Z'; featureUpdatesPaused = $false }
+        $r = ConvertTo-HUWuPolicyRow -Tenant 't' -Art 'Update-Ring' -O $o -Asg @() -Names @{} -Now $now
+        $r.Hinweis | Should -BeLike '*Qualitaet-Updates pausiert*'
+        $o.qualityUpdatesPauseExpiryDateTime = '2026-11-05T00:00:00Z'
+        (ConvertTo-HUWuPolicyRow -Tenant 't' -Art 'Update-Ring' -O $o -Asg @() -Names @{} -Now $now).Hinweis | Should -BeLike '*Qualitaet-Pause endet*'
+    }
+    It '074 B17: Loeschen meldet die Zuweisungen fuers Protokoll' {
+        $bk = Join-Path ([IO.Path]::GetTempPath()) ("HU-WU-B17-" + [guid]::NewGuid().ToString('N'))
+        try {
+            Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph {
+                if ($Endpoint -like '*/assignments') { return [pscustomobject]@{ value = @([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'G1' } }) } }
+                if ($Method -eq 'DELETE') { return $null }
+                [pscustomobject]@{ id = 'e1'; displayName = 'Exp' }
+            }
+            $inf = @{}
+            $f = Remove-HUWuProfile -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Expedite' -Id 'e1' -BackupRoot $bk -Info $inf
+            Test-Path -LiteralPath $f | Should -BeTrue
+            @($inf.Assignments) | Should -Be @('group|g1')
+        } finally { Remove-Item -LiteralPath $bk -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It '074 B40: vorhandene Namen frisch - bei Ringen nur Update-Ringe' {
+        Mock -ModuleName HU.WinUpdate Get-HUIntuneGraphAll {
+            @([pscustomobject]@{ '@odata.type' = '#microsoft.graph.windowsUpdateForBusinessConfiguration'; displayName = 'Ring A' }
+                [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10GeneralConfiguration'; displayName = 'Ring B' })
+        }
+        @(Get-HUWuExistingNames -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring') | Should -Be @('Ring A')
+        @(Get-HUWuExistingNames -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Feature-Update').Count | Should -Be 2
+    }
+}

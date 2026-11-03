@@ -536,6 +536,7 @@ function Start-HUWuJob([string]$Op, [object[]]$Work, [hashtable]$P, [string]$Wha
     if (Test-HUJobRunning 'WuAct') { Show-HUMessage 'Es laeuft noch eine Aenderung - bitte warten.' -Icon Info; return }
     Add-HURtbLine $script:Controls['rtbRem'] "=== WIN-Updates: $What ===" '#4FC3F7'
     [void](Start-HUJob -Name 'WuAct' -Output $script:Controls['rtbRem'] -Vars @{ Op = $Op; Work = @($Work); P = $P } -Code {
+            $seen = @{}   # Import: schon gelesene Namen je Tenant und Art
             foreach ($x in $Work) {
                 $tk = "$($x.Tenant)"
                 try {
@@ -560,14 +561,30 @@ function Start-HUWuJob([string]$Op, [object[]]$Work, [hashtable]$P, [string]$Wha
                             $msg = "$($x.Name) [$($x.Art), $($x.Id)]: Zuweisung entfernt ($n bleiben, vorher: $($inf.Backup))"
                             if ($inf.Mismatch) { $msg += " - $($inf.Mismatch)"; $lvl = 'WARN' }
                         }
-                        'settings' { $f = Set-HUWuSettings -TenantKey $tk -Settings $Settings -Art $x.Art -Id $x.Id -Changes $P.Changes; $msg = $(if ($f) { "$($x.Name): gespeichert (vorher: $f)" } else { "$($x.Name): schon so eingestellt - unveraendert" }) }
-                        'pause' { [void](Set-HUWuRingPause -TenantKey $tk -Settings $Settings -Id $x.Id -What $x.What -Action $x.Action); $msg = "$($x.Name): $($x.What) $($x.Action)" }
-                        'delete' { $f = Remove-HUWuProfile -TenantKey $tk -Settings $Settings -Art $x.Art -Id $x.Id -Force:([bool]$x.Force); $msg = "$($x.Name): entfernt (vorher: $f)" }
-                        'newFeature' { $id = New-HUWuFeatureProfile -TenantKey $tk -Settings $Settings -Name $P.Name -Version $P.Version -Rollout $P.Rollout -Win10Fallback ([bool]$P.Win10); $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
-                        'newExpedite' { $id = New-HUWuExpedite -TenantKey $tk -Settings $Settings -Name $P.Name -Release $P.Release -RebootDays $P.Reboot; $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
-                        'import' { $id = New-HUWuFromBody -TenantKey $tk -Settings $Settings -Art $x.Art -Body $x.Body; $msg = "'$($x.Name)' angelegt aus Sicherung (ohne Zuweisung)" }
-                        'newRing' { $id = New-HUWuRing -TenantKey $tk -Settings $Settings -Name $P.Name -QualityDeferral $P.qd -QualityDeadline $P.dq -FeatureDeadline $P.df -Grace $P.gp -ActiveStart $P.ahs -ActiveEnd $P.ahe -UserPause ([bool]$P.up) -AllowWin11 ([bool]$P.w11); $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
-                        'newDriver' { $id = New-HUWuDriverProfile -TenantKey $tk -Settings $Settings -Name $P.Name -Approval $P.appr -DeferDays $P.defer; $msg = "'$($P.Name)' angelegt (ohne Zuweisung)" }
+                        'settings' {
+                            $f = Set-HUWuSettings -TenantKey $tk -Settings $Settings -Art $x.Art -Id $x.Id -Changes $P.Changes
+                            # 074 B17: was gesetzt werden sollte, steht im Protokoll (gesendet wird je Tenant nur, was dort anders war)
+                            $soll = (@($P.Changes.Keys | Sort-Object | ForEach-Object { "$_=$(ConvertTo-Json -InputObject $P.Changes[$_] -Compress -Depth 5)" }) -join ', ')
+                            $msg = $(if ($f) { "$($x.Name) [$($x.Art), $($x.Id)]: gespeichert - $soll (vorher: $f)" } else { "$($x.Name) [$($x.Art), $($x.Id)]: schon so eingestellt - unveraendert ($soll)" })
+                        }
+                        'pause' { [void](Set-HUWuRingPause -TenantKey $tk -Settings $Settings -Id $x.Id -What $x.What -Action $x.Action); $msg = "$($x.Name) [Update-Ring, $($x.Id)]: $($x.What) $($x.Action)" }
+                        'delete' {
+                            $inf = @{}
+                            $f = Remove-HUWuProfile -TenantKey $tk -Settings $Settings -Art $x.Art -Id $x.Id -Force:([bool]$x.Force) -Info $inf
+                            $za = @($inf.Assignments)
+                            $msg = "$($x.Name) [$($x.Art), $($x.Id)]: entfernt$(if ($za.Count) { ", hatte $($za.Count) Zuweisung(en): $($za -join ', ')" } else { ', ohne Zuweisung' }) (vorher: $f)"
+                        }
+                        'newFeature' { $id = New-HUWuFeatureProfile -TenantKey $tk -Settings $Settings -Name $P.Name -Version $P.Version -Rollout $P.Rollout -Win10Fallback ([bool]$P.Win10); $msg = "'$($P.Name)' [Feature-Update, $id] angelegt (ohne Zuweisung): Zielversion $($P.Version)" }
+                        'newExpedite' { $id = New-HUWuExpedite -TenantKey $tk -Settings $Settings -Name $P.Name -Release $P.Release -RebootDays $P.Reboot; $msg = "'$($P.Name)' [Expedite, $id] angelegt (ohne Zuweisung): Update $($P.Release), Neustart nach $($P.Reboot) T." }
+                        'import' {
+                            # 074 B40: kurz vor dem Anlegen frisch nachsehen - die Anzeige kann veraltet oder noch nicht gelesen sein
+                            $ck = "$tk|$($x.Art)"
+                            if (-not $seen.ContainsKey($ck)) { $seen[$ck] = @(Get-HUWuExistingNames -TenantKey $tk -Settings $Settings -Art $x.Art) }
+                            if (@($seen[$ck] | Where-Object { $_ -ieq "$($x.Name)" }).Count) { $msg = "'$($x.Name)' [$($x.Art)] gibt es in diesem Tenant schon - ausgelassen"; $lvl = 'WARN' }
+                            else { $id = New-HUWuFromBody -TenantKey $tk -Settings $Settings -Art $x.Art -Body $x.Body; $seen[$ck] = @($seen[$ck]) + @("$($x.Name)"); $msg = "'$($x.Name)' [$($x.Art), $id] angelegt aus Sicherung (ohne Zuweisung)" }
+                        }
+                        'newRing' { $id = New-HUWuRing -TenantKey $tk -Settings $Settings -Name $P.Name -QualityDeferral $P.qd -QualityDeadline $P.dq -FeatureDeadline $P.df -Grace $P.gp -ActiveStart $P.ahs -ActiveEnd $P.ahe -UserPause ([bool]$P.up) -AllowWin11 ([bool]$P.w11); $msg = "'$($P.Name)' [Update-Ring, $id] angelegt (ohne Zuweisung): Aufschub $($P.qd) T., Fristen $($P.dq)/$($P.df) T., Nachfrist $($P.gp) T., aktive Zeit $($P.ahs)-$($P.ahe)" }
+                        'newDriver' { $id = New-HUWuDriverProfile -TenantKey $tk -Settings $Settings -Name $P.Name -Approval $P.appr -DeferDays $P.defer; $msg = "'$($P.Name)' [Treiber-Update, $id] angelegt (ohne Zuweisung): Freigabe $($P.appr)$(if ($P.appr -eq 'automatic') { ", Aufschub $($P.defer) T." })" }
                         'driver' {
                             $r = Invoke-HUWuDriverAction -TenantKey $tk -Settings $Settings -ProfileId $x.Id -Action $P.Action -DriverIds @($x.DriverIds) -Date $P.Date
                             # 074 B12: Teilfehler als WARN, Totalfehler als ERROR, mit den betroffenen Ids
@@ -577,19 +594,29 @@ function Start-HUWuJob([string]$Op, [object[]]$Work, [hashtable]$P, [string]$Wha
                         }
                     }
                     Write-HULog -Message $msg -Level $lvl -Tenant $tk
-                    [pscustomobject]@{ Tenant = $tk; Ok = ($lvl -ne 'ERROR'); Missing = '' }
+                    [pscustomobject]@{ Tenant = $tk; Ok = ($lvl -ne 'ERROR'); Warn = ($lvl -eq 'WARN'); Missing = '' }
                 } catch {
                     $m = "$($_.Exception.Message)"
                     $miss = ''
                     # 074 B13: Lizenz zuerst - eine Lizenz-Ablehnung kann auch als 403 kommen, dann hilft kein Recht
                     if ($m -match '(?i)licen|lizenz|autopatch') { $m += ' -> Windows-Lizenz mit Autopatch-Berechtigung noetig (z. B. A3/A5); ein fehlendes Recht ist das nicht' }
                     elseif ($m -match '403|Forbidden|Authorization') { $miss = 'DeviceManagementConfiguration.ReadWrite.All'; $m += ' -> Berechtigung DeviceManagementConfiguration.ReadWrite.All erteilen, danach die Aktion erneut ausfuehren' }
-                    Write-HULog -Message "$($x.Name): $m" -Level 'ERROR' -Tenant $tk
-                    [pscustomobject]@{ Tenant = $tk; Ok = $false; Missing = $miss }
+                    Write-HULog -Message "$($x.Name)$(if ($x.Art) { " [$($x.Art)$(if ($x.Id) { ", $($x.Id)" })]" }): $m" -Level 'ERROR' -Tenant $tk
+                    [pscustomobject]@{ Tenant = $tk; Ok = $false; Warn = $false; Missing = $miss }
                 }
             }
         } -OnDone {
             param($Result, $Errors)
+            # 074 B16: Schlusszeile - Teilerfolge ueber mehrere Tenants sind sonst leicht zu uebersehen
+            $rr = @($Result | Where-Object { $_ -and $_.PSObject.Properties['Ok'] })
+            if ($rr.Count) {
+                $nm = Get-HUWuTenantNames
+                $bad = @($rr | Where-Object { -not $_.Ok } | ForEach-Object { $nm["$($_.Tenant)"] } | Select-Object -Unique)
+                $wn = @($rr | Where-Object { $_.Ok -and $_.PSObject.Properties['Warn'] -and $_.Warn } | ForEach-Object { $nm["$($_.Tenant)"] } | Select-Object -Unique)
+                $ok = @($rr | Where-Object { $_.Ok }).Count
+                $line = "--- Ergebnis: $ok von $($rr.Count) ok$(if ($bad.Count) { "; Fehler in: $($bad -join ', ')" })$(if ($wn.Count) { "; Hinweis in: $($wn -join ', ')" }) ---"
+                Add-HURtbLine $script:Controls['rtbRem'] $line $(if ($bad.Count) { '#EF5350' } elseif ($wn.Count) { '#FFB74D' } else { '#81C784' })
+            }
             Request-HUMissingRight $Result 'Windows-Updates aendern'
             # Intune braucht einen Moment, bis Aenderungen gelesen werden koennen
             Invoke-HUDelayed 4 { Start-HUWuLoad -Force; Update-HUWuView }
@@ -847,7 +874,10 @@ function Start-HUWuImport([string]$Path) {
     $tn = (@($keys | ForEach-Object { $names[$_] }) -join ', ')
     $msg = "Aus Sicherung anlegen in: $tn ($($work.Count) neu)`n`n$list"
     if ($skip.Count) { $msg += "`n`nSchon vorhanden, wird ausgelassen:`n$($skip -join "`n")" }
-    $msg += "`n`nAngelegt OHNE Zuweisung - danach markieren und unten zuweisen."
+    # 074 B40: noch nicht gelesene Tenants nennen - dort prueft der Lauf kurz vor dem Anlegen
+    $unread = @($keys | Where-Object { -not $script:WuRaw[$_] } | ForEach-Object { $names[$_] })
+    if ($unread.Count) { $msg += "`n`nNoch nicht gelesen: $($unread -join ', ') - dort wird kurz vor dem Anlegen geprueft, ob es den Namen schon gibt." }
+    $msg += "`n`nAngelegt OHNE Zuweisung - danach markieren und unten zuweisen. Gibt es den Namen beim Anlegen schon, wird er ausgelassen."
     if (-not (Confirm-HU -Warning $msg)) { return }
     Start-HUWuJob 'import' $work.ToArray() @{} "Importieren ($($work.Count))"
     $script:WuView = 'policies'
