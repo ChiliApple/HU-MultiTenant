@@ -303,3 +303,62 @@ Describe 'Windows-Updates: aendern (Schritt 2)' {
         $m[0].'Schule (b)' | Should -Be '2 (2 aktuell)'
     }
 }
+
+Describe 'Windows-Updates: Paket A (2.6.8)' {
+    It '074 B28: Wertebereiche an einer Stelle, Feature-Aufschub 0-365' {
+        (Get-HUWuRange 'featureUpdatesDeferralPeriodInDays') -join '-' | Should -Be '0-365'
+        (Get-HUWuRange 'qualityUpdatesDeferralPeriodInDays') -join '-' | Should -Be '0-30'
+        (Get-HUWuRange 'deadlineForQualityUpdatesInDays') -join '-' | Should -Be '0-30'
+        (Get-HUWuRange 'deadlineGracePeriodInDays') -join '-' | Should -Be '0-7'
+        (Get-HUWuRange 'deploymentDeferralInDays') -join '-' | Should -Be '0-30'
+        { Get-HUWuRange 'gibtsnicht' } | Should -Throw
+    }
+    It '074 B32: Ids mit Pfadzeichen werden abgewiesen, normale Ids gehen' {
+        { Assert-HUWuId 'r1' } | Should -Not -Throw
+        { Assert-HUWuId ([guid]::NewGuid().ToString()) } | Should -Not -Throw
+        { Assert-HUWuId 'a_b-c.d' } | Should -Not -Throw
+        foreach ($bad in 'a/b', '..\x', 'x?y=1', 'x#y', 'a%2F', 'a b', '') { { Assert-HUWuId $bad } | Should -Throw -Because "'$bad'" }
+    }
+    It '074 B32: Set-HUWuSettings mit falscher Id ruft Graph nicht auf' {
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { throw 'darf nicht aufgerufen werden' }
+        { Set-HUWuSettings -TenantKey 't' -Settings ([pscustomobject]@{}) -Art 'Update-Ring' -Id 'r1/../x' -Changes @{ deadlineForQualityUpdatesInDays = 3 } } | Should -Throw '*ungueltig*'
+        Should -Invoke -ModuleName HU.WinUpdate Invoke-HUIntuneGraph -Times 0 -Exactly
+    }
+    It '074 B36: aktive Zeit - Hinweis bei Minuten und mehr als 18 Stunden, sonst leer' {
+        Get-HUWuActiveHoursHint '07:00' '15:00' | Should -BeNullOrEmpty
+        Get-HUWuActiveHoursHint '22:00' '06:00' | Should -BeNullOrEmpty
+        Get-HUWuActiveHoursHint '07:30' '15:00' | Should -BeLike '*vollen Stunden*'
+        Get-HUWuActiveHoursHint '05:00' '23:30' | Should -BeLike '*18 Stunden*'
+        Get-HUWuActiveHoursHint '04:00' '23:00' | Should -BeLike '*19 Stunden*'
+        Get-HUWuActiveHoursHint 'x' '15:00' | Should -BeNullOrEmpty
+    }
+    It 'Gemini 075 B2: Import bereinigt verschachtelte Objekte und behaelt deren @odata.type' {
+        $f = Join-Path ([IO.Path]::GetTempPath()) "wu-g2-$([guid]::NewGuid()).json"
+        try {
+            $body = @{ qualityUpdatesDeferralPeriodInDays = 3
+                installationSchedule = @{ '@odata.type' = '#microsoft.graph.windowsUpdateActiveHoursInstall'; 'x@odata.context' = 'weg'; activeHoursStart = '07:00:00.0000000'
+                    inner = @{ '@odata.type' = 'boese typ'; wert = 1; liste = @(@{ '@odata.id' = 'weg'; ok = 'ja' }) } } }
+            $doc = @{ Format = 'HU-WinUpdates'; FormatVersion = 1; Items = @(@{ Art = 'Update-Ring'; Name = 'Ring B'; Body = $body }) }
+            [IO.File]::WriteAllText($f, ($doc | ConvertTo-Json -Depth 10))
+            $r = @(Read-HUWuExportFile $f)
+            $s = $r[0].Body.installationSchedule
+            $s | Should -BeOfType [hashtable]
+            $s['@odata.type'] | Should -Be '#microsoft.graph.windowsUpdateActiveHoursInstall'
+            $s.ContainsKey('x@odata.context') | Should -BeFalse
+            $s.activeHoursStart | Should -Be '07:00:00.0000000'
+            $s.inner.ContainsKey('@odata.type') | Should -BeFalse
+            $s.inner.wert | Should -Be 1
+            @($s.inner.liste).Count | Should -Be 1
+            @($s.inner.liste)[0].ContainsKey('@odata.id') | Should -BeFalse
+            @($s.inner.liste)[0].ok | Should -Be 'ja'
+            $r[0].Body.qualityUpdatesDeferralPeriodInDays | Should -Be 3
+        } finally { Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue }
+    }
+    It 'Gemini 075 B2: Listen einfacher Werte bleiben Listen' {
+        $v = ConvertTo-HUWuCleanValue ([pscustomobject]@{ ids = @('a', 'b'); leer = @(); zahl = 5; aus = $false })
+        @($v.ids) -join ',' | Should -Be 'a,b'
+        @($v.leer).Count | Should -Be 0
+        $v.zahl | Should -Be 5
+        $v.aus | Should -BeFalse
+    }
+}

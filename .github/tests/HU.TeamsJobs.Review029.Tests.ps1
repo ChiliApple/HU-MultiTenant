@@ -13,8 +13,14 @@ BeforeAll {
     $script:Repo = if ($env:HU_REPO) { $env:HU_REPO } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
     $script:TestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("HU-TeamsJobsQ-" + [guid]::NewGuid().ToString('N'))
     New-Item -Path (Join-Path $script:TestRoot 'Config') -ItemType Directory -Force | Out-Null
-    if (-not $env:APPDATA) { $env:APPDATA = $script:TestRoot }
+    # eigenes, leeres Profil VOR dem Laden von HU.Notify - das Modul legt den Pfad der Teams-Ziele beim Laden fest.
+    # Sonst gingen auf einem echten Admin-PC Testkarten an echte Kanaele.
+    $script:OldAppDataAll = $env:APPDATA
+    $env:APPDATA = Join-Path $script:TestRoot 'appdata-all'
+    New-Item -Path $env:APPDATA -ItemType Directory -Force | Out-Null
     Import-Module (Join-Path $script:Repo 'Core\HU.Notify.psm1') -Force -DisableNameChecking
+    $nf = & (Get-Module HU.Notify) { $script:NotifyFile }
+    if (-not "$nf".StartsWith($script:TestRoot)) { throw "Teams-Ziele zeigen nicht in den Testordner ($nf) - Abbruch, damit keine echten Karten gesendet werden" }
     Grant-HUSendApproval -Reason 'Test'
     Import-Module (Join-Path $script:Repo 'Core\HU.TeamsJobs.psm1') -Force -DisableNameChecking
     $script:JobsFile = Join-Path $script:TestRoot 'Config\teams-jobs.json'
@@ -23,6 +29,7 @@ BeforeAll {
 
 AfterAll {
     Remove-Module HU.TeamsJobs, HU.Notify -Force -ErrorAction SilentlyContinue
+    $env:APPDATA = $script:OldAppDataAll
     Remove-Item -LiteralPath $script:TestRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 

@@ -18,6 +18,8 @@ $script:WuRows = @()
 $script:WuGroups = @{}       # Key (Art|name) -> zusammengefasster Eintrag (Ringe und Profile)
 $script:WuSelKey = ''        # markierter Eintrag in Ringe und Profile
 $script:WuChoices = $null    # Zielversionen und beschleunigbare Updates aus dem Katalog
+$script:WuChoicesError = ''  # warum die Auswahl nicht gelesen werden konnte (074 B18)
+$script:WuLoadTries = 0      # Neustarts des Lesens ohne Ergebnis hintereinander (074 B18)
 $script:WuSetCtl = @{}       # Eingabefelder im Bereich Einstellungen
 
 function Show-HUWuMode([bool]$On) {
@@ -85,14 +87,29 @@ function Start-HUWuLoad([switch]$Force) {
                     [pscustomobject]@{ Tenant = $k; Devices = @(); Policies = @(); Catalog = $c; Errors = @("$($_.Exception.Message)") }
                 }
             }
-            # Zielversionen und beschleunigbare Updates (fuer + Feature-Update / + Expedite) - einmal je Sitzung
-            if ($NeedChoices -and @($Need).Count) { try { [pscustomobject]@{ WuChoices = (Get-HUWuCatalogChoices -TenantKey @($Need)[0] -Settings $Settings) } } catch { Write-HULog -Message "Katalog-Auswahl: $($_.Exception.Message)" -Level 'WARN' } }
+            # Zielversionen und beschleunigbare Updates (fuer + Feature-Update / + Expedite) - einmal je Sitzung.
+            # 074 B18: klappt es beim ersten Tenant nicht, der Reihe nach beim naechsten; der Grund geht an die Oberflaeche
+            if ($NeedChoices) {
+                $why = @()
+                foreach ($k in @($Need)) {
+                    try { [pscustomobject]@{ WuChoices = (Get-HUWuCatalogChoices -TenantKey $k -Settings $Settings) }; $why = @(); break }
+                    catch { $why += "$($_.Exception.Message)"; Write-HULog -Message "Katalog-Auswahl: $($_.Exception.Message)" -Level 'WARN' -Tenant $k }
+                }
+                if ($why.Count) { [pscustomobject]@{ WuChoicesError = ($why | Select-Object -Last 1) } }
+            }
         } -OnDone {
             param($Result, $Errors)
-            foreach ($r in @($Result | Where-Object { $_ -and $_.PSObject.Properties['Tenant'] -and $_.PSObject.Properties['Devices'] })) { $script:WuRaw["$($r.Tenant)"] = @{ Inv = $r; Time = Get-Date } }
-            foreach ($r in @($Result | Where-Object { $_ -and $_.PSObject.Properties['WuChoices'] })) { $script:WuChoices = $r.WuChoices }
+            $got = 0
+            foreach ($r in @($Result | Where-Object { $_ -and $_.PSObject.Properties['Tenant'] -and $_.PSObject.Properties['Devices'] })) { $script:WuRaw["$($r.Tenant)"] = @{ Inv = $r; Time = Get-Date }; $got++ }
+            foreach ($r in @($Result | Where-Object { $_ -and $_.PSObject.Properties['WuChoices'] })) { $script:WuChoices = $r.WuChoices; $script:WuChoicesError = '' }
+            foreach ($r in @($Result | Where-Object { $_ -and $_.PSObject.Properties['WuChoicesError'] })) { $script:WuChoicesError = "$($r.WuChoicesError)" }
             Update-HUWuView
-            if (@(Get-HUWuTenants | Where-Object { -not $script:WuRaw[$_] }).Count) { Start-HUWuLoad }
+            # 074 B18: hoechstens 3-mal hintereinander ohne Ergebnis neu starten - sonst Dauerschleife mit Graph-Last
+            if ($got) { $script:WuLoadTries = 0 } else { $script:WuLoadTries++ }
+            if (@(Get-HUWuTenants | Where-Object { -not $script:WuRaw[$_] }).Count) {
+                if ($script:WuLoadTries -lt 3) { Start-HUWuLoad }
+                else { $script:WuLoadTries = 0; Write-HULog -Message 'Windows-Updates: Lesen dreimal ohne Ergebnis abgebrochen - Protokoll pruefen, dann "Neu laden"' -Level 'ERROR'; $script:Controls['lblWuState'].Text = 'Lesen ohne Ergebnis abgebrochen - siehe Protokoll' }
+            }
         })
 }
 
@@ -429,7 +446,7 @@ function Show-HUWuDetail {
     switch ($g.Art) {
         'Update-Ring' {
             Add-HUWuField 'qd' 'Aufschub Qualitaet (Tage)' (& $rv 'qualityUpdatesDeferralPeriodInDays') 40 '0-30: so viele Tage nach Erscheinen wird ein Qualitaetsupdate angeboten'
-            Add-HUWuField 'fd' 'Aufschub Feature (Tage)' (& $rv 'featureUpdatesDeferralPeriodInDays') 40 '0 lassen, wenn ein Feature-Update-Profil die Version vorgibt (Microsoft-Empfehlung)'
+            Add-HUWuField 'fd' 'Aufschub Feature (Tage)' (& $rv 'featureUpdatesDeferralPeriodInDays') 40 '0-365. 0 lassen, wenn ein Feature-Update-Profil die Version vorgibt (Microsoft-Empfehlung)'
             Add-HUWuField 'dq' 'Frist Qualitaet (Tage)' (& $rv 'deadlineForQualityUpdatesInDays') 40 '0-30: spaetestens so viele Tage nach dem Angebot wird installiert (leer = keine Frist)'
             Add-HUWuField 'df' 'Frist Feature (Tage)' (& $rv 'deadlineForFeatureUpdatesInDays') 40 '0-30 (leer = keine Frist)'
             Add-HUWuField 'gp' 'Kulanz (Tage)' (& $rv 'deadlineGracePeriodInDays') 40 '0-7: so lange nach der Frist darf der Nutzer den Neustart noch verschieben'
@@ -619,11 +636,13 @@ function Start-HUWuSave {
     $ch = @{}; $txt = @()
     switch ($g.Art) {
         'Update-Ring' {
-            foreach ($f in @(@('qd', 'qualityUpdatesDeferralPeriodInDays', 0, 30, 'Aufschub Qualitaet'), @('fd', 'featureUpdatesDeferralPeriodInDays', 0, 365, 'Aufschub Feature'),
-                    @('dq', 'deadlineForQualityUpdatesInDays', 0, 30, 'Frist Qualitaet'), @('df', 'deadlineForFeatureUpdatesInDays', 0, 30, 'Frist Feature'), @('gp', 'deadlineGracePeriodInDays', 0, 7, 'Kulanz'))) {
-                $r = Get-HUWuIntField $f[0] $f[2] $f[3] $f[4]
+            # 074 B28: Bereiche aus dem Core (Get-HUWuRange), gleich wie im Zusatzmodul
+            foreach ($f in @(@('qd', 'qualityUpdatesDeferralPeriodInDays', 'Aufschub Qualitaet'), @('fd', 'featureUpdatesDeferralPeriodInDays', 'Aufschub Feature'),
+                    @('dq', 'deadlineForQualityUpdatesInDays', 'Frist Qualitaet'), @('df', 'deadlineForFeatureUpdatesInDays', 'Frist Feature'), @('gp', 'deadlineGracePeriodInDays', 'Kulanz'))) {
+                $rg = Get-HUWuRange $f[1]
+                $r = Get-HUWuIntField $f[0] $rg[0] $rg[1] $f[2]
                 if (-not $r.Ok) { return }
-                $ch[$f[1]] = $r.Value; $txt += "  $($f[4]): $(if ($null -eq $r.Value) { 'leer' } else { "$($r.Value) Tage" })"
+                $ch[$f[1]] = $r.Value; $txt += "  $($f[2]): $(if ($null -eq $r.Value) { 'leer' } else { "$($r.Value) Tage" })"
             }
             # Aufschub darf nicht leer sein (Pflichtfeld im Ring)
             foreach ($k in 'qualityUpdatesDeferralPeriodInDays', 'featureUpdatesDeferralPeriodInDays') { if ($null -eq $ch[$k]) { $ch.Remove($k) } }
@@ -642,7 +661,8 @@ function Start-HUWuSave {
             # Freigabeart nicht senden (074 B11) - nur der Aufschub ist aenderbar, und der nur bei automatischer Freigabe
             $auto = ("$($script:WuSetCtl['appr'].SelectedItem)" -eq 'automatisch')
             if (-not $auto) { Show-HUMessage 'Bei manueller Freigabe gibt es hier nichts zu speichern - Treiber unter "Treiber" einzeln freigeben.' -Icon Info; return }
-            if ($auto) { $r = Get-HUWuIntField 'defer' 0 30 'Aufschub'; if (-not $r.Ok) { return }; if ($null -ne $r.Value) { $ch['deploymentDeferralInDays'] = $r.Value; $txt += "  Aufschub: $($r.Value) Tage" } }
+            $rg = Get-HUWuRange 'deploymentDeferralInDays'
+            if ($auto) { $r = Get-HUWuIntField 'defer' $rg[0] $rg[1] 'Aufschub'; if (-not $r.Ok) { return }; if ($null -ne $r.Value) { $ch['deploymentDeferralInDays'] = $r.Value; $txt += "  Aufschub: $($r.Value) Tage" } }
         }
         default { return }
     }
@@ -651,7 +671,7 @@ function Start-HUWuSave {
     $shown = @($g.Items)[0].Raw
     if ($shown) {
         foreach ($k in @($ch.Keys)) {
-            if (-not $shown.PSObject.Properties[$k]) { continue }
+            if (-not $shown.PSObject.Properties[$k]) { if ($null -eq $ch[$k]) { $ch.Remove($k) }; continue }   # leer gelassen und im ersten Tenant nicht gesetzt = nicht angefasst
             $o = ConvertTo-Json -InputObject $shown.$k -Depth 10 -Compress; $n = ConvertTo-Json -InputObject $ch[$k] -Depth 10 -Compress
             if ($o -eq $n -or ($null -eq $shown.$k -and $null -eq $ch[$k])) { $ch.Remove($k) }
         }
@@ -745,7 +765,16 @@ function Start-HUWuNew([string]$Kind) {
     $keys = @(Get-HUWuTenants)
     if (-not $keys.Count) { Show-HUMessage 'Bitte links Tenants anhaken.' -Icon Info; return }
     if ($Kind -in 'ring', 'driver') { Start-HUWuNewSimple $Kind $keys; return }
-    if (-not $script:WuChoices) { Show-HUMessage 'Die Auswahl (Versionen/Updates) wird noch gelesen - gleich noch einmal versuchen.' -Icon Info; Start-HUWuLoad -Force; return }
+    if (-not $script:WuChoices) {
+        # 074 B18: nennen, warum - und nur neu lesen, wenn nicht schon gelesen wird
+        if ($script:WuChoicesError -and -not (Test-HUJobRunning 'WuLoad')) {
+            Show-HUMessage "Die Auswahl (Versionen/Updates) liess sich in keinem angehakten Tenant lesen:`n`n$($script:WuChoicesError)`n`nRechte pruefen (z. B. DeviceManagementConfiguration.Read.All), dann 'Neu laden'." -Icon Warning
+            $script:WuChoicesError = ''; return
+        }
+        Show-HUMessage 'Die Auswahl (Versionen/Updates) wird noch gelesen - gleich noch einmal versuchen.' -Icon Info
+        if (-not (Test-HUJobRunning 'WuLoad')) { Start-HUWuLoad -Force }
+        return
+    }
     $names = Get-HUWuTenantNames
     $r = Show-HUWuNewDialog $Kind
     if (-not $r) { return }
@@ -830,28 +859,33 @@ function Start-HUWuNewSimple([string]$Kind, [string[]]$Keys) {
     $names = Get-HUWuTenantNames
     $tn = (@($Keys | ForEach-Object { $names[$_] }) -join ', ')
     if ($Kind -eq 'ring') {
+        $qd = Get-HUWuRange 'qualityUpdatesDeferralPeriodInDays'; $dq = Get-HUWuRange 'deadlineForQualityUpdatesInDays'; $df = Get-HUWuRange 'deadlineForFeatureUpdatesInDays'; $gp = Get-HUWuRange 'deadlineGracePeriodInDays'
         $f = @(
             @{ Key = 'Name'; Label = 'Name'; Value = 'WU-Ring Standard'; Width = 320 }
-            @{ Key = 'qd'; Label = 'Aufschub Qualitaet (Tage, 0-30)'; Value = '3'; Int = @(0, 30) }
-            @{ Key = 'dq'; Label = 'Frist Qualitaet (Tage, 0-30)'; Value = '3'; Int = @(0, 30); Tip = 'Danach wird das Update erzwungen' }
-            @{ Key = 'df'; Label = 'Frist Feature (Tage, 0-30)'; Value = '7'; Int = @(0, 30) }
-            @{ Key = 'gp'; Label = 'Nachfrist Neustart (Tage, 0-7)'; Value = '2'; Int = @(0, 7); Tip = 'Nach der Frist so viele Tage bis zum erzwungenen Neustart' }
-            @{ Key = 'ahs'; Label = 'Aktive Zeit von (HH:mm)'; Value = '07:00'; Time = $true; Tip = 'In dieser Zeit kein automatischer Neustart' }
-            @{ Key = 'ahe'; Label = 'Aktive Zeit bis (HH:mm)'; Value = '15:00'; Time = $true }
+            @{ Key = 'qd'; Label = "Aufschub Qualitaet (Tage, $($qd[0])-$($qd[1]))"; Value = '3'; Int = $qd }
+            @{ Key = 'dq'; Label = "Frist Qualitaet (Tage, $($dq[0])-$($dq[1]))"; Value = '3'; Int = $dq; Tip = 'Danach wird das Update erzwungen' }
+            @{ Key = 'df'; Label = "Frist Feature (Tage, $($df[0])-$($df[1]))"; Value = '7'; Int = $df }
+            @{ Key = 'gp'; Label = "Nachfrist Neustart (Tage, $($gp[0])-$($gp[1]))"; Value = '2'; Int = $gp; Tip = 'Nach der Frist so viele Tage bis zum erzwungenen Neustart' }
+            @{ Key = 'ahs'; Label = 'Aktive Zeit von (HH:mm)'; Value = '07:00'; Time = $true; Tip = 'In dieser Zeit kein automatischer Neustart. Windows rechnet in vollen Stunden, hoechstens 18 Stunden.' }
+            @{ Key = 'ahe'; Label = 'Aktive Zeit bis (HH:mm)'; Value = '15:00'; Time = $true; Tip = 'Windows rechnet in vollen Stunden, hoechstens 18 Stunden ab dem Beginn' }
             @{ Key = 'up'; Label = 'Benutzer duerfen Updates pausieren'; Check = $true; Value = $false }
             @{ Key = 'w11'; Label = 'Windows-10-Geraete auf Windows 11 heben (wenn geeignet)'; Check = $true; Value = $false; Tip = 'Aus = Windows 10 bleibt Windows 10, bis ein Feature-Update-Profil etwas anderes vorgibt' }
         )
         $r = Show-HUWuFormDialog 'Neuer Update-Ring' 'Update-Ring (Aufschub, Fristen, aktive Zeit)' 'Feature-Aufschub ist fest 0 - die Windows-Version steuert das Feature-Update-Profil. Neustart-Pruefung wird nicht uebersprungen. Angelegt ohne Zuweisung.' $f
         if (-not $r) { return }
         $txt = "  Name: $($r.Name)`n  Aufschub Qualitaet $($r.qd) T., Feature 0 T.`n  Frist Qualitaet $($r.dq) T., Feature $($r.df) T., Nachfrist $($r.gp) T.`n  Aktive Zeit $($r.ahs)-$($r.ahe)`n  Benutzer duerfen pausieren: $(if ($r.up) { 'ja' } else { 'nein' })`n  Windows 10 auf Windows 11 heben: $(if ($r.w11) { 'JA' } else { 'nein' })"
+        # 074 B36: ungewoehnliche aktive Zeit nur melden, nicht sperren
+        $ah = Get-HUWuActiveHoursHint $r.ahs $r.ahe
+        if ($ah) { $txt += "`n`n  ACHTUNG aktive Zeit: $ah" }
         if (-not (Confirm-HUWuNameFree 'Update-Ring' $r.Name $Keys)) { return }
         if (-not (Confirm-HU -Warning "Update-Ring anlegen in: $tn`n`n$txt`n`nAngelegt OHNE Zuweisung - danach markieren und unten zuweisen.")) { return }
         $op = 'newRing'
     } else {
+        $dd = Get-HUWuRange 'deploymentDeferralInDays'
         $f = @(
             @{ Key = 'Name'; Label = 'Name'; Value = 'Treiber automatisch'; Width = 320 }
             @{ Key = 'appr'; Label = 'Freigabe'; Items = @('automatisch', 'manuell'); Value = 'automatisch' }
-            @{ Key = 'defer'; Label = 'Aufschub (Tage, nur automatisch)'; Value = '7'; Int = @(0, 30); Tip = 'Empfohlene Treiber erst nach so vielen Tagen - fehlerhafte fallen vorher auf' }
+            @{ Key = 'defer'; Label = "Aufschub (Tage, $($dd[0])-$($dd[1]), nur automatisch)"; Value = '7'; Int = $dd; Tip = 'Empfohlene Treiber erst nach so vielen Tagen - fehlerhafte fallen vorher auf' }
         )
         $r = Show-HUWuFormDialog 'Neue Treiber-Richtlinie' 'Treiber-Updates' 'Automatisch: empfohlene Treiber werden nach dem Aufschub freigegeben. Manuell: jeder Treiber muss unter Treiber freigegeben werden. Wirkt nur auf Entra- bzw. Hybrid-beigetretene Geraete. Angelegt ohne Zuweisung.' $f
         if (-not $r) { return }
