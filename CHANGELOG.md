@@ -1,5 +1,63 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.13 (Stable, Entwurf)
+
+Stable-Release der Testversionen 2.6.6 bis 2.6.12 – „WIN-Updates im Alltag, Rechte und PowerShell 7“. Alle Punkte im Detail stehen in den Abschnitten darunter.
+
+### 🪟 WIN-Updates (Wartung)
+- **Klarere Rückmeldungen:**
+  - Schlusszeile nach jeder Aktion über mehrere Tenants („2 von 3 ok; Fehler in: …“), farbig nach Ergebnis
+  - Protokoll mit Art und Kennung, beim Speichern mit den Sollwerten, beim Löschen mit den Zuweisungen
+- **Neue Hinweise in der Spalte „Hinweis“:**
+  - dieselbe Gruppe in zwei Feature-Update- oder Treiber-Profilen
+  - Feature-Aufschub über 0 neben Feature-Update-Profilen
+  - aktive Pause
+  - Expedites erst ab 60 Tagen Alter (das Alter steht unter „Einstellung“)
+- **Aktive Zeit beim neuen Ring:** Warnung bei Minuten und bei mehr als 18 Stunden; angelegt wird trotzdem, wenn du bestätigst.
+- **Einheitliche Wertebereiche:** Feature-Aufschub überall 0 bis 365 Tage.
+- **Speichern über mehrere Tenants:** Ein leeres Feld, das du nicht angefasst hast, bleibt in den anderen Tenants unverändert.
+- **Gestaffelt verteilen:** Rezept und Tooltips nennen, dass jede Gruppe mindestens 100 Geräte hat.
+- **Import:** prüft kurz vor dem Anlegen frisch, ob es den Namen im Tenant schon gibt; bereinigt auch verschachtelte Einstellungen.
+- **Auswahl für Feature-Update und Expedite:** kommt aus dem nächsten Tenant, wenn der erste nicht lesbar ist; sonst nennt die App den Grund.
+
+### 📦 Apps verteilen
+- **Vorhandene Win32-Apps aktualisieren:** Intune lehnte das mit „400 Bad Request“ ab, weil es die Architektur einer App über eine neue Einstellung führt. Die App schickt sie beim Aktualisieren nicht mehr mit; die Einstellung in Intune bleibt unverändert. Das Protokoll sagt das bei jedem Aktualisieren dazu.
+
+### 🔐 Rechte
+- **Schreibrechte entziehen:** Im Fenster *Berechtigungen* je Tenant – Auswahl ohne Vorwahl, Bestätigung mit Tenant-Namen, danach Admin-Anmeldung im Browser. Leserechte bleiben.
+  - Die Auswahl zeigt auch Rechte zum Anlegen, Verwalten, Einladen und Sperren von Konten (z. B. `Group.Create`, `User.Invite.All`).
+
+### 🧩 Muster
+- **CA Schule (Praxis-Set):** 100 sperrt für Nicht-Admins zusätzlich die Azure-Verwaltung; 102 verlangt von Admins alle 10 Stunden eine neue Anmeldung.
+- **Neues Paket „Entra Schule (Praxis-Set)“** mit Admin-Zustimmungs-Workflow und eingeschränkten Gast-Einladungen.
+- **Im Portal einstellen:** Pakete nennen Einstellungen, die sie selbst nicht übertragen, mit Anleitung per Klick.
+- **Muster anwenden:** eine bewusst angehakte Zusatzkopie „(von Muster)“ wird wieder angelegt.
+- **Klarere Notizen:** CA Schule nennt, dass 100 für Nicht-Admins auch Azure-Portal, Azure CLI und Azure PowerShell sperrt (z. B. Azure for Students). Entra Schule nennt, dass Lehrer als Team-Besitzer dann keine externen Gäste mehr einladen können, außer mit der Rolle Gast-Einlader.
+
+### 🧩 Fehlermeldungen und PowerShell 7
+- **Grund von Microsoft Graph auch unter PowerShell 7** in jeder Fehlermeldung, z. B. „400 - BadRequest: …“.
+- **Wartezeit beim Drosseln** (Intune, Teams) wird unter PowerShell 7 beachtet, auch wenn sie als Zeitpunkt kommt.
+- **Update-Prüfung beim Start** schreibt den Grund ins Protokoll, wenn sie fehlschlägt (z. B. GitHub-Abfragelimit).
+
+### 🎨 Oberfläche und Bedienung
+- **Sperre:** Eine offene Rückfrage bleibt nach dem Entsperren bedienbar.
+- **So geht's:** Das Fenster bleibt beim Bereichswechsel offen; Quellen sind per Tastatur erreichbar.
+- **Screenreader:** WIN-Updates und die neuen Fenster haben Namen für alle Elemente.
+- **Autopilot „Laden“** funktioniert wieder mit markierten Tenants (Zusatzmodul Autopilot 0.5.4).
+- **Menüname** im Intune Admin Center korrigiert: *Mandantenverwaltung › Connectors und Token › Windows-Daten*.
+
+### ⚠️ Nach dem Update
+- **Muster CA Schule 100** sperrt nach dem Anwenden für Nicht-Admins auch die Office-Installationsseite im Microsoft 365 admin center (laut Microsoft Learn) sowie Azure-Portal, Azure CLI und Azure PowerShell.
+- **Windows-10-Option im Feature-Update:** Windows 10 bekommt seit 14.10.2025 keine Sicherheitsupdates mehr (außer mit ESU).
+
+### 🚧 Grenzen
+- Beim Import gibt es noch keine Wahl „ersetzen“ oder „als Kopie“ – gleichnamige Einträge werden ausgelassen.
+- Ein Zurückspielen aus `WinUpdates-vorher` gibt es noch nicht.
+- Die Oberfläche schreibt Umlaute noch als ae/oe/ue; das kommt in einer eigenen Version.
+
+### ✅ Qualität
+- 1045 automatische Tests, alle bestanden unter Windows PowerShell 5.1 und PowerShell 7.
+
 ## v2.6.12 (Testversion)
 
 ### 🔐 Rechte

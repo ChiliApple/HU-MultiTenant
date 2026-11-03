@@ -63,14 +63,21 @@ function Get-HUGraphErrorBody($Err) {
     try { if ($Err.ErrorDetails -and "$($Err.ErrorDetails.Message)".Trim()) { return "$($Err.ErrorDetails.Message)" } } catch { }
     try {
         $r = $Err.Exception.Response
-        if ($r -and $r.PSObject.Methods['GetResponseStream']) { $sr = New-Object IO.StreamReader($r.GetResponseStream()); return $sr.ReadToEnd() }
+        if ($r -and $r.PSObject.Methods['GetResponseStream']) { $sr = New-Object IO.StreamReader($r.GetResponseStream()); try { return $sr.ReadToEnd() } finally { $sr.Close() } }
     } catch { }
     return ''
 }
 # Retry-After in Sekunden (PS 5.1: Header-Text, PS 7: Headers.RetryAfter)
 function Get-HUGraphRetryAfter($Response) {
     if (-not $Response) { return 0 }
-    try { if ($Response.Headers.PSObject.Properties['RetryAfter'] -and $Response.Headers.RetryAfter) { $ra = $Response.Headers.RetryAfter; if ($ra.Delta) { return [int]$ra.Delta.TotalSeconds } } } catch { }
+    try {
+        if ($Response.Headers.PSObject.Properties['RetryAfter'] -and $Response.Headers.RetryAfter) {
+            $ra = $Response.Headers.RetryAfter
+            if ($ra.Delta) { return [int]$ra.Delta.TotalSeconds }
+            # 078 Grok B3: Retry-After kann auch ein Zeitpunkt sein
+            if ($ra.Date) { $s = [int][Math]::Ceiling(([DateTimeOffset]$ra.Date - [DateTimeOffset]::UtcNow).TotalSeconds); return $(if ($s -gt 0) { $s } else { 0 }) }
+        }
+    } catch { }
     try { return [int]"$($Response.Headers['Retry-After'])" } catch { }
     return 0
 }
@@ -964,7 +971,8 @@ function Publish-HUWin32App {
     if ($AppId -and -not $existing) { Write-HULog -Message "$($Def.Name): frueher hochgeladene App gibt es in Intune nicht mehr - wird neu angelegt" -Level 'WARN' -Tenant $TenantKey; $AppId = '' }
     if ($existing) {
         Update-HUWin32App -TenantKey $TenantKey -Settings $Settings -AppId $AppId -Def $w32 -IntuneWinName $Package.IntuneWinName
-        Write-HULog -Message "$($Def.Name): aktualisiert (v$($Def.Version))" -Level 'OK' -Tenant $TenantKey
+        # 078 Grok B5: Architektur wird beim Aktualisieren nicht gesendet - sagen, dass sie bleibt, wie sie in Intune ist
+        Write-HULog -Message "$($Def.Name): aktualisiert (v$($Def.Version)) - Architektur bleibt wie in Intune eingestellt (aendern im Intune Admin Center)" -Level 'OK' -Tenant $TenantKey
     } else {
         $new = New-HUWin32App -TenantKey $TenantKey -Settings $Settings -Def $w32 -IntuneWinName $Package.IntuneWinName
         $AppId = "$($new.id)"

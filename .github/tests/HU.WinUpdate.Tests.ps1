@@ -452,3 +452,24 @@ Describe 'Graph-Fehlertext unter PS 5.1 und 7 (2.6.10)' {
         }
     }
 }
+
+Describe 'Stable-Pruefung 078 (2.6.13)' {
+    It 'Gemini B2: Treiberliste nur aus Leerzeichen geht nicht an Graph' {
+        Mock -ModuleName HU.WinUpdate Invoke-HUIntuneGraph { throw 'darf nicht aufgerufen werden' }
+        { Invoke-HUWuDriverAction -TenantKey 't' -Settings ([pscustomobject]@{}) -ProfileId 'p1' -Action 'approve' -DriverIds @(' ') } | Should -Throw '*Keine Treiber*'
+        Should -Invoke -ModuleName HU.WinUpdate Invoke-HUIntuneGraph -Times 0 -Exactly
+    }
+    It 'Grok B3: Retry-After als Zeitpunkt wird in Sekunden umgerechnet' {
+        try { Add-Type -AssemblyName System.Net.Http -ErrorAction Stop } catch { }
+        if (-not ('System.Net.Http.HttpResponseMessage' -as [type])) { Set-ItResult -Skipped -Because 'System.Net.Http fehlt'; return }
+        InModuleScope HU.Intune {
+            $m = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]::ServiceUnavailable)
+            $m.Headers.RetryAfter = [System.Net.Http.Headers.RetryConditionHeaderValue]::new([DateTimeOffset]::UtcNow.AddSeconds(20))
+            $s = Get-HUGraphRetryAfter $m
+            $s | Should -BeGreaterThan 15
+            $s | Should -BeLessOrEqual 21
+            $m.Headers.RetryAfter = [System.Net.Http.Headers.RetryConditionHeaderValue]::new([TimeSpan]::FromSeconds(7))
+            Get-HUGraphRetryAfter $m | Should -Be 7
+        }
+    }
+}

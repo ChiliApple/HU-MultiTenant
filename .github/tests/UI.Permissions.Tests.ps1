@@ -40,6 +40,10 @@ Describe 'Rechte-Fenster: Schreibrechte entziehen (2.6.12, Altbefund Sicherheit 
         $r = @(Get-HUWriteRoles @('Directory.Read.All', 'DeviceManagementApps.ReadWrite.All', 'User.ReadWrite.All', 'DeviceManagementManagedDevices.PrivilegedOperations.All', 'Mail.Send', 'AuditLog.Read.All', 'Policy.Read.All', 'Sites.FullControl.All', 'Group.Read.All', 'DeviceManagementApps.ReadWrite.All'))
         $r | Should -Be @('DeviceManagementApps.ReadWrite.All', 'DeviceManagementManagedDevices.PrivilegedOperations.All', 'Mail.Send', 'Sites.FullControl.All', 'User.ReadWrite.All')
     }
+    It '078 Grok B1: auch Anlegen, Verwalten, Einladen und Konten sperren' {
+        $r = @(Get-HUWriteRoles @('Group.Create', 'Team.Create', 'User.Invite.All', 'User.EnableDisableAccount.All', 'Sites.Manage.All', 'Group.Read.All', 'Sites.Read.All'))
+        $r | Should -Be @('Group.Create', 'Sites.Manage.All', 'Team.Create', 'User.EnableDisableAccount.All', 'User.Invite.All')
+    }
     It 'leer und nur Leserechte ergeben keine Auswahl' {
         @(Get-HUWriteRoles @()).Count | Should -Be 0
         @(Get-HUWriteRoles $null).Count | Should -Be 0

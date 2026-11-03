@@ -798,7 +798,13 @@ function Send-HUTeamsCard {
             # Retry-After: PS 5.1 Header-Text, PS 7 Headers.RetryAfter (HttpResponseMessage kennt keinen Text-Index)
             $ra = 0; $rsp = $_.Exception.Response
             if ($rsp) {
-                try { if ($rsp.Headers.PSObject.Properties['RetryAfter'] -and $rsp.Headers.RetryAfter -and $rsp.Headers.RetryAfter.Delta) { $ra = [int]$rsp.Headers.RetryAfter.Delta.TotalSeconds } } catch { }
+                try {
+                    if ($rsp.Headers.PSObject.Properties['RetryAfter'] -and $rsp.Headers.RetryAfter) {
+                        $rh = $rsp.Headers.RetryAfter
+                        if ($rh.Delta) { $ra = [int]$rh.Delta.TotalSeconds }
+                        elseif ($rh.Date) { $ra = [int][Math]::Ceiling(([DateTimeOffset]$rh.Date - [DateTimeOffset]::UtcNow).TotalSeconds) }   # 078 Grok B3
+                    }
+                } catch { }
                 if (-not $ra) { try { $ra = [int]"$($rsp.Headers['Retry-After'])" } catch { } }
             }
             if ($ra -gt 0) { $wait = [math]::Min(30, $ra) }

@@ -743,6 +743,8 @@ function Invoke-HUWuDriverAction {
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$ProfileId,
         [ValidateSet('approve', 'decline', 'suspend')][string]$Action, [Parameter(Mandatory)][string[]]$DriverIds, [datetime]$Date = (Get-Date))
     Assert-HUWuId $ProfileId 'Treiber-Richtlinie'
+    $DriverIds = @($DriverIds | Where-Object { "$_".Trim() })   # 078 Gemini B2: leere Eintraege nicht senden
+    if (-not $DriverIds.Count) { throw 'Keine Treiber gewaehlt - nichts zu tun' }
     $body = @{ actionName = $Action; driverIds = @($DriverIds) }
     if ($Action -eq 'approve') { $body.deploymentDate = $Date.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
     $r = Invoke-HUIntuneGraph -TenantKey $TenantKey -Settings $Settings -Endpoint "/deviceManagement/windowsDriverUpdateProfiles/$ProfileId/executeAction" -Method POST -Body $body
