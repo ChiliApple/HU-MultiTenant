@@ -1,5 +1,13 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.12 (Testversion)
+
+### 🔐 Rechte
+- **Schreibrechte entziehen:** Im Fenster *Berechtigungen* gibt es je Tenant den Knopf „Schreibrechte entziehen …“. Er listet alle erteilten Rechte, mit denen die App ändern, senden oder Geräte steuern kann, mit Risiko und Verwendung.
+  - Nichts ist vorgewählt. Du markierst, was weg soll, und bestätigst mit dem Tenant-Namen.
+  - Danach Admin-Anmeldung im Browser; entzogen werden genau die markierten Rechte, Leserechte bleiben.
+  - Zurück geht es jederzeit mit „Fehlende Rechte erteilen“.
+
 ## v2.6.11 (Testversion)
 
 ### 🪟 WIN-Updates (Wartung)

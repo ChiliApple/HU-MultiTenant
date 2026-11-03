@@ -196,7 +196,7 @@ function Update-HUPermView {
             $o['Genutzt von'] = $(if ($usage[$p]) { @($usage[$p]) -join ', ' } else { '' })
             [pscustomobject]$o
         }
-        $c.btnWriteOff.IsEnabled = $false; $c.btnWriteOn.IsEnabled = $false   # im Vergleich kein einzelner Tenant gewaehlt
+        $c.btnWriteOff.IsEnabled = $false; $c.btnWriteOn.IsEnabled = $false; $c.btnRevokeWrite.IsEnabled = $false   # im Vergleich kein einzelner Tenant gewaehlt
         $c.lblGranted.Text = "Vergleich aller Tenants  ($([char]0x2714) erteilt, ($([char]0x2714)) im ReadWrite-Recht enthalten, - nicht erteilt, ? kein Token)"
         $c.gridGranted.ItemsSource = @($rows)
         $errs = @($keys | Where-Object { $script:PermCache[$_] -and $script:PermCache[$_].Error } | ForEach-Object { "$(Get-HUTenantDisplayName $_): $($script:PermCache[$_].Error)" })
@@ -216,24 +216,40 @@ function Update-HUPermView {
         $known = ($entry -and -not $entry.Error)
         $c.btnWriteOff.IsEnabled = (-not $known) -or [bool]$wp.Count
         $c.btnWriteOn.IsEnabled = (-not $known) -or ($wp.Count -lt $script:HUWritePackage.Count)
+        # Altbefund Sicherheit B1: Schreibrechte gezielt entziehen - nur wenn der Stand bekannt ist und es welche gibt
+        $wr = @(Get-HUWriteRoles $roles)
+        $c.btnRevokeWrite.IsEnabled = ($known -and $wr.Count -gt 0)
+        $c.btnRevokeWrite.ToolTip = $(if (-not $known) { 'Erst die erteilten Rechte lesen (Neu lesen)' } elseif (-not $wr.Count) { 'Keine Schreibrechte erteilt - nichts zu entziehen' } else { "$($wr.Count) Schreibrecht(e) erteilt - auswaehlen, was entzogen wird (Admin-Anmeldung im Browser):`n$($wr -join "`n")" })
         $c.btnWriteOff.ToolTip = $(if ($known -and -not $wp.Count) { "Entra-Schreibrechte sind nicht erteilt - nichts zu entziehen:`n$($script:HUWritePackage -join "`n")" } else { "Genau diese 4 Rechte wieder entziehen (Admin-Anmeldung im Browser):`n$($script:HUWritePackage -join "`n")`n`nAndere Schreibrechte (Intune, Benutzer, Apps) bleiben." })
 
     }
 }
 
+# Schreibrechte unter den erteilten Rechten (Altbefund Sicherheit B1): alles, was aendern, senden oder Geraete steuern kann
+function Get-HUWriteRoles([string[]]$Roles) {
+    return @(@($Roles) | Where-Object { "$_" -match '(?i)ReadWrite|PrivilegedOperations|\.Send(\.|$)|\.Write(\.|$)|FullControl' } | Sort-Object -Unique)
+}
+
 # Schreibpaket entziehen: Admin-Anmeldung im Browser, dann genau diese Rechte entfernen (Remove-HUAppPermissions)
 function Start-HUWritePkgRevoke([string]$Key) {
     $ui = $script:PermUi
+    if (-not (Confirm-HU -Warning "Entra-Schreibrechte fuer $(Get-HUTenantDisplayName $Key) entziehen?`n`n$($script:HUWritePackage -join "`n")`n`nAndere Schreibrechte (Intune, Benutzer, Apps) bleiben. Es oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $(if ($ui) { $ui.Window } else { $null }))) { return }
+    Start-HUPermRevoke $Key $script:HUWritePackage 'Entra-Schreibrechte'
+}
+
+# Gewaehlte Rechte entziehen (nach eigener Rueckfrage des Aufrufers): Admin-Anmeldung im Browser, dann genau diese Rechte entfernen
+function Start-HUPermRevoke([string]$Key, [string[]]$Perms, [string]$What = 'Schreibrechte') {
+    $ui = $script:PermUi
     $t = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $Key })[0]
     if (-not $t -or -not "$($t.appId)" -or -not "$($t.tenantId)") { Show-HUMessage 'Tenant-ID bzw. Anwendungs-ID fehlen.' -Icon Warning; return }
+    if (-not @($Perms).Count) { return }
     if ($script:HUWriteRevoke) { Show-HUMessage 'Eine Anmeldung zum Entziehen laeuft schon - bitte im Browser abschliessen.' -Icon Info; return }
-    if (-not (Confirm-HU -Warning "Entra-Schreibrechte fuer $(Get-HUTenantDisplayName $Key) entziehen?`n`n$($script:HUWritePackage -join "`n")`n`nAndere Schreibrechte (Intune, Benutzer, Apps) bleiben. Es oeffnet sich der Browser zur Admin-Anmeldung (Global Admin oder Privileged Role Admin)." -Owner $(if ($ui) { $ui.Window } else { $null }))) { return }
     $ctx = $null
     try { $ctx = Start-HUAdminLogin -TenantId "$($t.tenantId)" } catch { Show-HUMessage "Anmeldung nicht gestartet: $($_.Exception.Message)" -Icon Error; return }
     if ($ui) { $ui.C.txtStatus.Text = 'Bitte im Browser als Admin anmelden ...' }
     $tm = New-Object System.Windows.Threading.DispatcherTimer
     $tm.Interval = [TimeSpan]::FromMilliseconds(500)
-    $script:HUWriteRevoke = @{ Ctx = $ctx; Timer = $tm; Key = $Key; AppId = "$($t.appId)" }
+    $script:HUWriteRevoke = @{ Ctx = $ctx; Timer = $tm; Key = $Key; AppId = "$($t.appId)"; Perms = @($Perms); What = $What }
     $tm.Add_Tick({
             $r = $script:HUWriteRevoke
             if (-not $r) { return }
@@ -244,15 +260,85 @@ function Start-HUWritePkgRevoke([string]$Key) {
             if (-not $res.Ok) { Show-HUMessage "Nicht entzogen: $($res.Error)" -Icon Error; return }
             if (-not (Test-HUAdminCanGrant $res)) { Show-HUMessage 'Das angemeldete Konto darf keine App-Rechte entziehen (Global Admin oder Privileged Role Admin noetig). Nichts geaendert.' -Icon Warning; return }
             $removed = @()
-            try { $removed = @(Remove-HUAppPermissions -Login $res -AppId $r.AppId -Permissions $script:HUWritePackage) }
+            try { $removed = @(Remove-HUAppPermissions -Login $res -AppId $r.AppId -Permissions @($r.Perms)) }
             catch { Show-HUMessage "Entziehen fehlgeschlagen: $(Get-HUSetupErrorText $_)" -Icon Error; return }
-            Set-HUWritePkgSince $r.Key $null
-            Write-HULog -Message "Entra-Schreibrechte entzogen ($(Get-HUTenantDisplayName $r.Key)): $(if ($removed.Count) { $removed -join ', ' } else { 'waren nicht erteilt' }) (durch $($res.Upn))" -Level 'OK'
+            # Entra-Paket ganz weg -> Erinnerung zuruecksetzen
+            if (-not @($script:HUWritePackage | Where-Object { @($r.Perms) -notcontains $_ }).Count) { Set-HUWritePkgSince $r.Key $null }
+            Write-HULog -Message "$($r.What) entzogen ($(Get-HUTenantDisplayName $r.Key)): $(if ($removed.Count) { $removed -join ', ' } else { 'waren nicht erteilt' }) (durch $($res.Upn))" -Level 'OK'
             $script:PermCache.Remove($r.Key)
             if ($script:PermUi) { Update-HUPermView; Start-HUPermFetch -Keys @($r.Key) -Force }
-            Show-HUMessage "$(if ($removed.Count) { "Entzogen: $($removed -join ', ')." } else { 'Die Entra-Schreibrechte waren nicht erteilt - nichts zu tun.' })`n`nEin schon geholtes Token kann sie noch bis zu einer Stunde enthalten; Schreiben wird danach abgelehnt." -Icon Info
+            Show-HUMessage "$(if ($removed.Count) { "Entzogen: $($removed -join ', ')." } else { "Die $($r.What) waren nicht erteilt - nichts zu tun." })`n`nEin schon geholtes Token kann sie noch bis zu einer Stunde enthalten; Schreiben wird danach abgelehnt." -Icon Info
         })
     $tm.Start()
+}
+
+# Auswahl: welche erteilten Schreibrechte entzogen werden. Nichts vorgewaehlt; ausfuehren erst nach eingetipptem Tenant-Namen.
+# Rueckgabe: gewaehlte Rechte oder leer
+function Show-HUWriteRevokeDialog([string]$Key, [string[]]$Roles) {
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="760" Height="560" MinWidth="560" MinHeight="380" WindowStartupLocation="CenterOwner" Background="#1E1E1E" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <!--HU:THEME-->
+    </Window.Resources>
+    <DockPanel Margin="16">
+        <TextBlock DockPanel.Dock="Top" x:Name="txtHead" Style="{StaticResource SectionTitle}" TextWrapping="Wrap"/>
+        <TextBlock DockPanel.Dock="Top" x:Name="txtInfo" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <TextBlock x:Name="lblName" Style="{StaticResource FieldLabel}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+            <TextBox x:Name="txtName" Style="{StaticResource DarkTextBox}" AutomationProperties.Name="Tenant-Name zur Bestaetigung" ToolTip="Zur Bestaetigung den Anzeigenamen des Tenants genau so eintippen"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                <Button x:Name="btnAll" Content="Alle markieren" Width="120" Background="#555555" Style="{StaticResource DarkButton}" Margin="0,0,8,0" ToolTip="Alle aufgefuehrten Schreibrechte markieren"/>
+                <Button x:Name="btnOk" Content="Entziehen ..." Width="120" Background="#C62828" Style="{StaticResource DarkButton}" IsEnabled="False" Margin="0,0,8,0" ToolTip="Erst moeglich, wenn mindestens ein Recht markiert und der Tenant-Name eingetippt ist" ToolTipService.ShowOnDisabled="True"/>
+                <Button x:Name="btnCancel" Content="Abbrechen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" ToolTip="Nichts aendern"/>
+            </StackPanel>
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="spList"/>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
+'@
+    $theme = Get-HUXaml 'Theme'
+    $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
+    $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
+    $w = $d.Window; $dc = $d.C   # eigener Name: die CI gleicht $dc. mit PermissionsWindow.xaml ab
+    try { if ($script:PermUi) { $w.Owner = $script:PermUi.Window } else { $w.Owner = $script:Window } } catch { }
+    $name = Get-HUTenantDisplayName $Key
+    $w.Title = 'Schreibrechte entziehen'
+    $dc.txtHead.Text = "Schreibrechte entziehen: $name"
+    $dc.txtInfo.Text = "Erteilte Rechte, mit denen die App aendern, senden oder Geraete steuern kann. Markiere, was weg soll - Leserechte bleiben. Danach Admin-Anmeldung im Browser (Global Admin oder Privileged Role Admin). Funktionen, die ein entzogenes Recht brauchen, melden dann 'Berechtigung fehlt'; zurueck geht es mit 'Fehlende Rechte erteilen'."
+    $dc.lblName.Text = "Zur Bestaetigung den Tenant-Namen eintippen: $name"
+    $appNeed = Get-HUAppPermNeed
+    $usage = Get-HUPermUsage -WithSnippets
+    $st = @{ Boxes = @(); R = @(); Name = $name; C = $dc; W = $w }
+    foreach ($p in @($Roles)) {
+        $i = Get-HUPermInfo $p
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Style = $w.FindResource('DarkCheckBox'); $cb.Tag = "$p"; $cb.Margin = [System.Windows.Thickness]::new(0, 3, 0, 3)
+        $tb = New-Object System.Windows.Controls.TextBlock
+        $need = $(if ($appNeed[$p]) { "App braucht: $($appNeed[$p])" } elseif ($usage[$p]) { "genutzt von: $(@($usage[$p]) -join ', ')" } else { 'nicht gebraucht' })
+        $tb.Text = "$p  (Risiko $($i.Risk); $need)"; $tb.TextWrapping = 'Wrap'
+        $cb.Content = $tb
+        $cb.ToolTip = $(if ($i.Desc) { "$($i.Desc)" } else { "$p" })
+        [System.Windows.Automation.AutomationProperties]::SetName($cb, "$p")
+        [void]$dc.spList.Children.Add($cb)
+        $st.Boxes += $cb
+    }
+    $script:HUWrd = $st
+    $chk = {
+        $s = $script:HUWrd
+        $any = @($s.Boxes | Where-Object { $_.IsChecked }).Count -gt 0
+        $ok = ("$($s.C.txtName.Text)".Trim() -ieq "$($s.Name)".Trim())
+        $s.C.btnOk.IsEnabled = ($any -and $ok)
+    }
+    foreach ($cb in $st.Boxes) { $cb.Add_Checked($chk); $cb.Add_Unchecked($chk) }
+    $dc.txtName.Add_TextChanged($chk)
+    $dc.btnAll.Add_Click({ foreach ($cb in $script:HUWrd.Boxes) { $cb.IsChecked = $true } })
+    $dc.btnOk.Add_Click({ $s = $script:HUWrd; $s.R = @($s.Boxes | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" }); $s.W.Close() })
+    [void]$w.ShowDialog()
+    $r = @($script:HUWrd.R); $script:HUWrd = $null
+    return $r
 }
 
 function Show-HUPermissions([string]$TenantKey = '') {
@@ -328,6 +414,14 @@ function Show-HUPermissions([string]$TenantKey = '') {
             $k = $script:PermUi.Key; $e = $script:PermCache[$k]
             if ($e -and -not $e.Error -and -not @($script:HUWritePackage | Where-Object { @($e.Roles) -contains $_ }).Count) { Show-HUMessage "Fuer $(Get-HUTenantDisplayName $k) sind keine Entra-Schreibrechte erteilt - nichts zu entziehen." -Icon Info -Owner $script:PermUi.Window; return }
             Start-HUWritePkgRevoke $k
+        })
+    $c.btnRevokeWrite.Add_Click({
+            $k = $script:PermUi.Key; $e = $script:PermCache[$k]
+            if (-not $e -or $e.Error) { Show-HUMessage 'Die erteilten Rechte sind noch nicht gelesen.' -Icon Info -Owner $script:PermUi.Window; return }
+            $wr = @(Get-HUWriteRoles @($e.Roles))
+            if (-not $wr.Count) { Show-HUMessage "Fuer $(Get-HUTenantDisplayName $k) sind keine Schreibrechte erteilt." -Icon Info -Owner $script:PermUi.Window; return }
+            $sel = @(Show-HUWriteRevokeDialog $k $wr)
+            if ($sel.Count) { Start-HUPermRevoke $k $sel 'Schreibrechte' }
         })
     $c.btnClose.Add_Click({ $script:PermUi.Window.Close() })
     $w.Add_Loaded({ Update-HUPermView })
