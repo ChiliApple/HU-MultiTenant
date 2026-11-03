@@ -6,6 +6,9 @@
 - **Gestaffelt verteilen:** Rezept und Tooltip nennen jetzt, dass jede Gruppe mindestens 100 Geräte hat. In kleineren Schulen gibt es nur eine Gruppe, und alle Geräte bekommen das Feature-Update gleichzeitig. Dazu die passende Seite bei Microsoft Learn.
 - **Windows-10-Option im Feature-Update:** Der Tooltip weist darauf hin, dass Windows 10 seit 14.10.2025 keine Sicherheitsupdates mehr bekommt (außer mit ESU).
 
+### 🛠️ Wartung
+- **Menüname korrigiert:** Anleitung und Hinweise nennen jetzt den Menüpunkt so, wie er im Intune Admin Center heißt: *Mandantenverwaltung › Connectors und Token › Windows-Daten*.
+
 ## v2.6.10 (Testversion)
 
 ### 🪟 WIN-Updates (Wartung)
