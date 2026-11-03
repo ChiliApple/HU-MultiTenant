@@ -86,7 +86,7 @@ Einstellungen, Snippets, Apps- und Wartungs-Bibliothek, Protokolle, Reports und 
 | *Fehlende Berechtigungen* | Knopf **Berechtigungen** › **Fehlende Rechte erteilen …** – danach nach etwa 1 Minute neu lesen |
 | *Secret-Ablauf unbekannt* | `Application.Read.All` erteilen oder Datum manuell eintragen |
 | Excel-Report schlägt fehl | `Install-Module ImportExcel -Scope CurrentUser` |
-| Wartung: Fehler mit *license* | Intune Admin Center › Mandantenverwaltung › Connectors und Token › Windows-Datenverarbeitung › *Windows-Lizenzüberprüfung* einschalten (A3/E3 nötig) |
+| Wartung: Fehler mit *license* | Intune Admin Center › Mandantenverwaltung › Connectors und Token › Windows-Daten › *Windows-Lizenzüberprüfung* einschalten (A3/E3 nötig) |
 | Testinstallation: Sandbox fehlt | Knopf im Hinweisfenster aktiviert sie (Admin, Neustart); Windows Home hat keine Sandbox |
 | Oberfläche zu klein/groß | Strg + Mausrad, Strg + 0 = 100 % |
 

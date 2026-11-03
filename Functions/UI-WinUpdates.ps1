@@ -465,7 +465,7 @@ function Show-HUWuDetail {
             Add-HUWuCombo 'mode' 'Verfuegbar' @('sofort', 'ab Datum', 'gestaffelt') $(if ($s1 -and $s2) { 'gestaffelt' } elseif ($s1) { 'ab Datum' } else { 'sofort' }) 110
             Add-HUWuField 'start' 'ab' $(if ($s1) { $s1.ToString('dd.MM.yyyy') } else { '' }) 80 'TT.MM.JJJJ (gestaffelt: mindestens 2 Tage in der Zukunft)'
             Add-HUWuField 'end' 'bis' $(if ($s2) { $s2.ToString('dd.MM.yyyy') } else { '' }) 80 'TT.MM.JJJJ - letzte Gruppe'
-            Add-HUWuField 'int' 'Abstand (Tage)' $iv 40 'Tage zwischen den Gruppen'
+            Add-HUWuField 'int' 'Abstand (Tage)' $iv 40 'Tage zwischen den Gruppen. Jede Gruppe hat mindestens 100 Geraete - bei weniger Geraeten gibt es nur eine Gruppe (Microsoft)'
         }
         'Treiber-Update' {
             Add-HUWuCombo 'appr' 'Freigabe' @('manuell', 'automatisch') $(if ((& $rv 'approvalType') -eq 'automatic') { 'automatisch' } else { 'manuell' }) 120
@@ -1046,10 +1046,10 @@ function Show-HUWuNewDialog([string]$Kind) {
                 <TextBlock Text="bis" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="12,0,6,0"/>
                 <TextBox x:Name="txtEnd" Style="{StaticResource DarkTextBox}" Width="90" ToolTip="TT.MM.JJJJ - letzte Gruppe"/>
                 <TextBlock Text="alle" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="12,0,6,0"/>
-                <TextBox x:Name="txtInt" Style="{StaticResource DarkTextBox}" Width="40" Text="7"/>
+                <TextBox x:Name="txtInt" Style="{StaticResource DarkTextBox}" Width="40" Text="7" ToolTip="Tage zwischen den Gruppen. Jede Gruppe hat mindestens 100 Geraete - bei weniger Geraeten gibt es nur eine Gruppe (Microsoft)"/>
                 <TextBlock Text="Tage" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="6,0,0,0"/>
             </StackPanel>
-            <CheckBox Grid.Row="4" Grid.Column="1" x:Name="chkWin10" Style="{StaticResource DarkCheckBox}" Margin="0,6,0,0"><TextBlock Text="Geraete, die kein Windows 11 koennen: neuestes Windows 10" TextWrapping="Wrap"/></CheckBox>
+            <CheckBox Grid.Row="4" Grid.Column="1" x:Name="chkWin10" Style="{StaticResource DarkCheckBox}" Margin="0,6,0,0"><TextBlock Text="Geraete, die kein Windows 11 koennen: neuestes Windows 10" TextWrapping="Wrap"/><CheckBox.ToolTip>Windows 10 bekommt seit 14.10.2025 keine Sicherheitsupdates mehr (ausser mit ESU). Der Haken haelt solche Geraete nur auf dem letzten Stand von Windows 10.</CheckBox.ToolTip></CheckBox>
         </Grid>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
             <Button x:Name="btnOk" Content="Weiter" Width="110" Background="#1976D2" Style="{StaticResource DarkButton}" IsDefault="True" Margin="0,0,8,0"/>

@@ -37,12 +37,17 @@
             "Wirkt nur auf Entra- oder Hybrid-beigetretene Geräte – „nur registrierte“ (private) Geräte erreicht es nicht.",
             "Diagnosedaten am Gerät mindestens „Erforderlich“, Dienst „Microsoft-Konto-Anmelde-Assistent“ (wlidsvc) nicht deaktiviert.",
             "Windows-Lizenz mit Autopatch-Berechtigung nötig (z. B. Windows/Microsoft 365 Education A3/A5); LTSC wird nicht unterstützt.",
-            "Zuweisung nur an Gerätegruppen, nicht an „Alle Geräte“. Gestaffelt: Beginn frühestens 2 Tage in der Zukunft."
+            "Zuweisung nur an Gerätegruppen, nicht an „Alle Geräte“. Gestaffelt: Beginn frühestens 2 Tage in der Zukunft.",
+            "Gestaffelt: Jede Gruppe hat mindestens 100 Geräte. Hat eine Schule weniger, gibt es nur eine Gruppe – alle Geräte bekommen das Update gleichzeitig. Für eine Testgruppe dann besser zuerst eine kleine Gerätegruppe zuweisen."
           ],
           "Quellen": [
             {
               "Titel": "Manage Windows feature updates",
               "Url": "https://learn.microsoft.com/intune/device-updates/windows/manage-feature-updates"
+            },
+            {
+              "Titel": "Verteiloptionen (gestaffelt) für Feature-Updates",
+              "Url": "https://learn.microsoft.com/intune/device-updates/windows/configure-rollout-options"
             },
             {
               "Titel": "Windows update management overview",

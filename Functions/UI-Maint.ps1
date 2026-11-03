@@ -11,7 +11,7 @@
       4. "Ergebnisse" zeigt je Geraet: Problem gefunden, behoben, Fehler, Ausgabe. "Jetzt auf Geraet ..." startet sofort.
     Bibliothek: Config\remediations.json (lokal). Beispiele: Config\remediations.example.json.
     Lizenz: Remediations brauchen Windows Enterprise/Education E3/A3 o. ae. und einmalig im Intune Admin Center
-    "Mandantenverwaltung > Connectors und Token > Windows-Datenverarbeitung > Windows-Lizenzueberpruefung" eingeschaltet.
+    "Mandantenverwaltung > Connectors und Token > Windows-Daten > Windows-Lizenzueberpruefung" eingeschaltet.
 .NOTES
     Dot-Source aus Main.ps1. Zielmaschine: der PC, auf dem HU-MultiTenant laeuft.
 #>
@@ -410,7 +410,7 @@ $script:RemDeployCode = {
         } catch {
             $r.Error = $_.Exception.Message
             $hint = ''
-            if ($r.Error -match '(?i)licen|lizenz') { $hint = ' -> Intune Admin Center: Mandantenverwaltung > Connectors und Token > Windows-Datenverarbeitung > "Windows-Lizenzueberpruefung" einschalten (A3/E3 noetig)' }
+            if ($r.Error -match '(?i)licen|lizenz') { $hint = ' -> Intune Admin Center: Mandantenverwaltung > Connectors und Token > Windows-Daten > "Windows-Lizenzueberpruefung" einschalten (A3/E3 noetig)' }
             elseif ($r.Error -match '403|Forbidden|Authorization') { $hint = ' -> Berechtigung DeviceManagementScripts.ReadWrite.All (und Group.Read.All) erteilen'; $r.Missing = 'DeviceManagementScripts.ReadWrite.All' }
             Write-HULog -Message "$($r.Error)$hint" -Level 'ERROR' -Tenant $tk
         }
