@@ -9,7 +9,7 @@ BeforeAll {
     Import-Module (Join-Path $root 'Core\HU.Setup.psm1') -Force -DisableNameChecking
     $src = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Permissions.ps1') -Raw -Encoding UTF8
     $ast = [System.Management.Automation.Language.Parser]::ParseInput($src, [ref]$null, [ref]$null)
-    foreach ($f in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $args[0].Name -in 'Get-HUPermUsage', 'Get-HUAppPermNeed' }, $true)) {
+    foreach ($f in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $args[0].Name -in 'Get-HUPermUsage', 'Get-HUAppPermNeed', 'Get-HUWriteRoles' }, $true)) {
         . ([scriptblock]::Create($f.Extent.Text.Replace('function ', 'function global:')))
     }
     $script:AppRoot = $root
@@ -32,5 +32,17 @@ Describe 'Rechte-Fenster: Herkunft der Rechte (2.6.2)' {
         $n['DeviceManagementApps.ReadWrite.All'] | Should -Be 'Verteilen'
         $n['Group.Create'] | Should -Be 'bei Bedarf'
         $n.ContainsKey('User.ReadWrite.All') | Should -BeFalse
+    }
+}
+
+Describe 'Rechte-Fenster: Schreibrechte entziehen (2.6.12, Altbefund Sicherheit B1)' {
+    It 'waehlt nur Rechte, mit denen die App aendern, senden oder Geraete steuern kann' {
+        $r = @(Get-HUWriteRoles @('Directory.Read.All', 'DeviceManagementApps.ReadWrite.All', 'User.ReadWrite.All', 'DeviceManagementManagedDevices.PrivilegedOperations.All', 'Mail.Send', 'AuditLog.Read.All', 'Policy.Read.All', 'Sites.FullControl.All', 'Group.Read.All', 'DeviceManagementApps.ReadWrite.All'))
+        $r | Should -Be @('DeviceManagementApps.ReadWrite.All', 'DeviceManagementManagedDevices.PrivilegedOperations.All', 'Mail.Send', 'Sites.FullControl.All', 'User.ReadWrite.All')
+    }
+    It 'leer und nur Leserechte ergeben keine Auswahl' {
+        @(Get-HUWriteRoles @()).Count | Should -Be 0
+        @(Get-HUWriteRoles $null).Count | Should -Be 0
+        @(Get-HUWriteRoles @('Directory.Read.All', 'Reports.Read.All')).Count | Should -Be 0
     }
 }
