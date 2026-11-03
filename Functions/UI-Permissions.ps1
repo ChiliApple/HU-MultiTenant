@@ -227,7 +227,8 @@ function Update-HUPermView {
 
 # Schreibrechte unter den erteilten Rechten (Altbefund Sicherheit B1): alles, was aendern, senden oder Geraete steuern kann
 function Get-HUWriteRoles([string[]]$Roles) {
-    return @(@($Roles) | Where-Object { "$_" -match '(?i)ReadWrite|PrivilegedOperations|\.Send(\.|$)|\.Write(\.|$)|FullControl' } | Sort-Object -Unique)
+    # 078 Grok B1: auch Rechte ohne ReadWrite im Namen, die anlegen, verwalten, einladen oder Konten sperren
+    return @(@($Roles) | Where-Object { "$_" -match '(?i)ReadWrite|PrivilegedOperations|\.Send(\.|$)|\.Write(\.|$)|FullControl|\.Create(\.|$)|\.Manage(\.|$)|\.Invite(\.|$)|EnableDisable' } | Sort-Object -Unique)
 }
 
 # Schreibpaket entziehen: Admin-Anmeldung im Browser, dann genau diese Rechte entfernen (Remove-HUAppPermissions)
