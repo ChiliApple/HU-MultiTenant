@@ -268,7 +268,10 @@ function ConvertTo-HUWuPolicyRow([string]$Tenant, [string]$Art, $O, [object[]]$A
             $ex = & $g 'expeditedUpdateSettings'
             $rel = $(if ($ex) { Get-HUWuDate $ex.qualityUpdateRelease } else { $null })
             $set = $(if ($ex) { "beschleunigt: Update vom $(if ($rel) { $rel.ToString('dd.MM.yyyy') } else { "$($ex.qualityUpdateRelease)" }), Neustart nach $($ex.daysUntilForcedReboot) T." } else { 'Qualitaets-Update-Profil' })
-            $warn = $(if ($rel -and ($Now - $rel).TotalDays -gt 60) { "altes Expedite ($($rel.ToString('MM/yyyy'))) - entfernen (Microsoft-Empfehlung)" } else { 'nach dem Ausrollen wieder entfernen (Microsoft-Empfehlung)' })
+            # 074 B41: Alter zeigen; ein Hinweis (orange) erst bei alten Expedites - sonst uebertoent er echte Warnungen
+            $age = $(if ($rel) { [int]($Now.Date - $rel.Date).TotalDays } else { $null })   # Kalendertage (Zeitzone egal)
+            if ($null -ne $age) { $set += "; Alter $age T." }
+            $warn = $(if ($null -ne $age -and $age -gt 60) { "altes Expedite ($($rel.ToString('MM/yyyy')), $age T.) - entfernen (Microsoft-Empfehlung)" } else { '' })
         }
         'Qualitaets-Update' { $set = "$(if (& $g 'hotpatchEnabled') { 'Hotpatch an' } else { 'Hotpatch aus' })" }
         'Treiber-Update' {

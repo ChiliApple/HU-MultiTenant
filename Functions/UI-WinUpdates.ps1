@@ -498,6 +498,7 @@ function Add-HUWuField([string]$Key, [string]$Label, [string]$Value, [int]$Width
     $l.Text = $Label; $l.Foreground = Get-HUBrush '#BBBBBB'; $l.FontSize = 11; $l.VerticalAlignment = 'Center'; $l.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
     $t = New-Object System.Windows.Controls.TextBox
     $t.Style = $script:Window.FindResource('DarkTextBox'); $t.Width = $Width; $t.Text = $Value
+    [System.Windows.Automation.AutomationProperties]::SetName($t, $Label)   # 074 B19: Screenreader
     if ($Tip) { $t.ToolTip = $Tip; $l.ToolTip = $Tip }
     [void]$sp.Children.Add($l); [void]$sp.Children.Add($t)
     [void]$script:Controls['pnlWuSet'].Children.Add($sp)
@@ -511,6 +512,7 @@ function Add-HUWuCombo([string]$Key, [string]$Label, [string[]]$Items, [string]$
     $l.Text = $Label; $l.Foreground = Get-HUBrush '#BBBBBB'; $l.FontSize = 11; $l.VerticalAlignment = 'Center'; $l.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
     $cb = New-Object System.Windows.Controls.ComboBox
     $cb.Style = $script:Window.FindResource('DarkComboBox'); $cb.Width = $Width
+    [System.Windows.Automation.AutomationProperties]::SetName($cb, $Label)   # 074 B19: Screenreader
     foreach ($i in @($Items)) { [void]$cb.Items.Add("$i") }
     if ($Value) { $cb.SelectedItem = $Value }
     [void]$sp.Children.Add($l); [void]$sp.Children.Add($cb)
@@ -983,6 +985,7 @@ function Show-HUWuFormDialog([string]$Title, [string]$Head, [string]$Info, [obje
                 if ($f.Tip) { $e.ToolTip = $f.Tip }
             }
             $e.Margin = [System.Windows.Thickness]::new(0, 3, 0, 3)
+            [System.Windows.Automation.AutomationProperties]::SetName($e, "$($f.Label)")   # 074 B19: Screenreader
             [System.Windows.Controls.Grid]::SetColumn($e, 1)
         }
         [System.Windows.Controls.Grid]::SetRow($e, $row); [void]$c.grdF.Children.Add($e)

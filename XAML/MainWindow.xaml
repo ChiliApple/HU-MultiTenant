@@ -838,7 +838,7 @@
                                     <Button x:Name="btnWuLoad" DockPanel.Dock="Right" Content="&#x21BB;" Style="{StaticResource ToolButton}" Background="#1976D2" Foreground="White" FontSize="12" Padding="8,1" Margin="4,0,0,0" ToolTip="Neu laden"/>
                                     <TextBlock Text="Ansicht" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center"/>
                                 </DockPanel>
-                                <ListBox x:Name="lstWuView" DockPanel.Dock="Top" Style="{StaticResource DarkListBox}" Margin="0,0,0,8">
+                                <ListBox x:Name="lstWuView" AutomationProperties.Name="WIN-Updates: Ansicht" DockPanel.Dock="Top" Style="{StaticResource DarkListBox}" Margin="0,0,0,8">
                                     <ListBoxItem Content="&#x1F4CA; &#xDC;bersicht (Versionen)" Tag="matrix" IsSelected="True"/>
                                     <ListBoxItem Content="&#x2699; Ringe und Profile" Tag="policies"/>
                                     <ListBoxItem Content="&#x1F4BB; Ger&#xE4;te" Tag="devices"/>
@@ -846,7 +846,7 @@
                                 </ListBox>
                                 <TextBlock DockPanel.Dock="Top" Text="Je Tenant" Foreground="#AAAAAA" FontSize="11" Margin="0,0,0,2"/>
                                 <TextBlock DockPanel.Dock="Bottom" x:Name="lblWuState" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                                <ListBox x:Name="lstWuTenants" Style="{StaticResource DarkListBox}">
+                                <ListBox x:Name="lstWuTenants" AutomationProperties.Name="WIN-Updates: Stand je Tenant" Style="{StaticResource DarkListBox}">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <StackPanel Margin="0,2" ToolTip="{Binding Tip}">
@@ -992,7 +992,7 @@
                                     <Button x:Name="btnWuHelp" DockPanel.Dock="Right" Content="? So geht's" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,3" Margin="6,0,0,0"
                                             ToolTip="Kurze Anleitungen: neue Windows-Version verteilen, Treiber, Expedite, in andere Tenants uebernehmen, Fehlersuche"/>
                                     <Grid DockPanel.Dock="Right" Width="200">
-                                        <TextBox x:Name="txtWuFilter" Style="{StaticResource DarkTextBox}"/>
+                                        <TextBox x:Name="txtWuFilter" AutomationProperties.Name="WIN-Updates: Filter" Style="{StaticResource DarkTextBox}"/>
                                         <TextBlock x:Name="lblWuFilterHint" Text="Filtern ..." Foreground="#666666" Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
                                     </Grid>
                                     <Ellipse x:Name="dotWuRun" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed" ToolTip="liest ..."/>
@@ -1062,7 +1062,7 @@
                                         <RowDefinition Height="*" MinHeight="120"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-                                    <DataGrid x:Name="gridWu" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="True" IsReadOnly="True" HeadersVisibility="Column"
+                                    <DataGrid x:Name="gridWu" AutomationProperties.Name="WIN-Updates: Tabelle" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="True" IsReadOnly="True" HeadersVisibility="Column"
                                               SelectionMode="Extended" CanUserSortColumns="True" AllowDrop="True"/>
                                     <!-- Ringe und Profile: wie Wartung > In Intune - Zuweisungen und Einstellungen des markierten Eintrags -->
                                     <Border Grid.Row="1" x:Name="pnlWuDetail" Visibility="Collapsed" Background="#252526" CornerRadius="4" Padding="10" Margin="0,8,0,0">
@@ -1072,7 +1072,7 @@
                                             <TextBlock x:Name="txtWuDetTitle" Foreground="#E0E0E0" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                             <TextBlock x:Name="txtWuDetInfo" Style="{StaticResource HintText}" TextWrapping="Wrap"/>
                                             <TextBlock Text="Zuweisungen" Style="{StaticResource SectionTitle}" Margin="0,8,0,4"/>
-                                            <DataGrid x:Name="gridWuAssign" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                            <DataGrid x:Name="gridWuAssign" AutomationProperties.Name="Zuweisungen des markierten Eintrags" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
                                                       SelectionMode="Extended" MinHeight="40" MaxHeight="150">
                                                 <DataGrid.Columns>
                                                     <DataGridTextColumn Header="Ziel" Binding="{Binding Ziel}" Width="2*"/>
@@ -1080,13 +1080,13 @@
                                                 </DataGrid.Columns>
                                             </DataGrid>
                                             <WrapPanel Margin="0,6,0,0">
-                                                <ComboBox x:Name="cmbWuTarget" Style="{StaticResource DarkComboBox}" Width="160" Margin="0,0,4,4">
+                                                <ComboBox x:Name="cmbWuTarget" AutomationProperties.Name="Ziel der Zuweisung" Style="{StaticResource DarkComboBox}" Width="160" Margin="0,0,4,4">
                                                     <ComboBoxItem Content="Gruppe" Tag="group" IsSelected="True"/>
                                                     <ComboBoxItem Content="Gruppe ausschliessen" Tag="exclude"/>
                                                     <ComboBoxItem Content="Alle Geraete" Tag="allDevices"/>
                                                     <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
                                                 </ComboBox>
-                                                <TextBox x:Name="txtWuGroup" Style="{StaticResource DarkTextBox}" Width="200" Margin="0,0,2,4" ToolTip="Gruppenname - wird je Tenant gesucht"/>
+                                                <TextBox x:Name="txtWuGroup" AutomationProperties.Name="Gruppenname" Style="{StaticResource DarkTextBox}" Width="200" Margin="0,0,2,4" ToolTip="Gruppenname - wird je Tenant gesucht"/>
                                                 <Button x:Name="btnWuGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,6,4"/>
                                                 <Button x:Name="btnWuAssignAdd" Content="+ Zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"/>
                                                 <Button x:Name="btnWuAssignRemove" Content="Markierte entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4"/>

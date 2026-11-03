@@ -1,5 +1,19 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.10 (Testversion)
+
+### 🪟 WIN-Updates (Wartung)
+- **Expedites aufräumen:** Unter „Einstellung“ steht das Alter in Tagen. Ein Hinweis erscheint erst, wenn ein Expedite älter als 60 Tage ist. Bisher war jedes Expedite markiert, und echte Warnungen gingen unter.
+  - Mit dem Filter „altes Expedite“ siehst du nur die alten.
+
+### 📖 So geht's
+- **Fenster bleibt offen:** Öffnest du die Anleitungen eines anderen Bereichs, wechselt das offene Fenster nur den Inhalt und behält Größe und Platz.
+- **Hinweis zu Dialogen:** Ist in der App ein Dialog offen, lässt sich das Anleitungsfenster erst danach wieder bedienen. Das steht jetzt unten im Fenster.
+
+### ♿ Bedienung
+- **Quellen per Tastatur:** Die Links zu Microsoft Learn sind mit Tab erreichbar und öffnen mit der Eingabetaste.
+- **Screenreader:** Ansicht, Tabelle, Filter, Zuweisungen, Ziel, Gruppenname und alle Eingabefelder in WIN-Updates haben jetzt Namen.
+
 ## v2.6.9 (Testversion)
 
 ### 🪟 WIN-Updates (Wartung)
