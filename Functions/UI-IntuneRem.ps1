@@ -190,8 +190,10 @@ function Update-HURintScheduleUi {
     $c['txtRintTime'].Visibility = $c['lblRintTime'].Visibility
     $c['txtRintDate'].Visibility = $(if ($t -eq 'once') { 'Visible' } else { 'Collapsed' })
     $k = Get-HUComboTag $c['cmbRintTarget']
-    $c['txtRintGroup'].IsEnabled = ($k -in 'group', 'exclude')
-    $c['btnRintGroupPick'].IsEnabled = $c['txtRintGroup'].IsEnabled
+    # Wert selbst setzen, nicht vom Textfeld lesen: solange das Formular gesperrt ist, liefert IsEnabled dort immer $false
+    $grpOn = ($k -in 'group', 'exclude')
+    $c['txtRintGroup'].IsEnabled = $grpOn
+    $c['btnRintGroupPick'].IsEnabled = $grpOn
     $ex = ($k -eq 'exclude')
     foreach ($n in 'cmbRintSchedule', 'txtRintInterval', 'txtRintTime', 'txtRintDate', 'chkRintFix') { $c[$n].IsEnabled = -not $ex }
 }

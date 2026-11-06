@@ -1,5 +1,21 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.14 (Testversion)
+
+### 🛠️ Wartung
+- **Spalte „Reparatur“ stimmt wieder:** Sie zeigt „ja“, wenn das Skript ein Reparaturskript hat, sonst „nein (nur pruefen)“.
+  - Bisher stand dort immer „nein“, auch bei Skripten, die nachweislich reparieren. Intune liefert das Kennzeichen je Zuweisung immer als „aus“ und wertet es nicht aus; repariert wird, sobald ein Reparaturskript da ist.
+  - Bei Skripten von Microsoft bleibt die Spalte leer, weil Intune deren Inhalt nicht zeigt.
+  - „In andere Tenants kopieren“ übernimmt die Zuweisungen dadurch wieder mit Reparatur.
+- **Haken „mit Reparatur“:** Der Tooltip erklärt, dass Intune ihn derzeit nicht auswertet. Nur prüfen = Reparaturskript leer lassen.
+- **Lupe neben dem Gruppenfeld:** Sie war bei „In Intune“ nach dem Start ausgegraut und öffnete keine Suche. Jetzt geht sie auf, sobald ein Skript gewählt ist; dasselbe in der Bibliothek.
+
+### 📦 Apps verteilen
+- **Lupe neben dem Gruppenfeld:** blieb unter Umständen ausgegraut, jetzt wie bei der Wartung behoben.
+
+### ✅ Qualität
+- 5 neue Prüfungen.
+
 ## v2.6.13 (Stable, Entwurf)
 
 Stable-Release der Testversionen 2.6.6 bis 2.6.12 – „WIN-Updates im Alltag, Rechte und PowerShell 7“. Alle Punkte im Detail stehen in den Abschnitten darunter.

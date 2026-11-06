@@ -456,7 +456,7 @@ function Update-HUAppTargetUi {
     $c['txtAppGroup'].IsEnabled = ($kind -eq 'group')
     foreach ($n in 'cmbAppIntent', 'chkAppPilot', 'btnAppPilotPick', 'txtAppDeadline', 'cmbAppNotify') { $c[$n].IsEnabled = ($kind -ne 'none') }
     $c['txtAppPilot'].IsEnabled = [bool]$c['chkAppPilot'].IsChecked -and $kind -ne 'none'
-    $c['btnAppGroupPick'].IsEnabled = $c['txtAppGroup'].IsEnabled
+    $c['btnAppGroupPick'].IsEnabled = ($kind -eq 'group')
 }
 
 function Update-HUAppButtons {
