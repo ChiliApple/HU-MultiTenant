@@ -127,8 +127,10 @@ function Update-HURemScheduleUi {
     $c['txtRemTime'].Visibility = $c['lblRemTime'].Visibility
     $c['lblRemTime'].Text = $(if ($t -eq 'once') { 'am' } else { $(if ($t -eq 'hourly') { '' } else { 'Tag(e) um' }) })
     $c['txtRemDate'].Visibility = $(if ($t -eq 'once') { 'Visible' } else { 'Collapsed' })
-    $c['txtRemGroup'].IsEnabled = ((Get-HUComboTag $c['cmbRemTarget']) -eq 'group')
-    $c['btnRemGroupPick'].IsEnabled = $c['txtRemGroup'].IsEnabled
+    # Wert selbst setzen, nicht vom Textfeld lesen: in einem gesperrten Bereich liefert IsEnabled dort immer $false
+    $grpOn = ((Get-HUComboTag $c['cmbRemTarget']) -eq 'group')
+    $c['txtRemGroup'].IsEnabled = $grpOn
+    $c['btnRemGroupPick'].IsEnabled = $grpOn
     $none = ((Get-HUComboTag $c['cmbRemTarget']) -eq 'none')
     foreach ($n in 'chkRemPilot', 'btnRemPilotPick', 'cmbRemSchedule', 'txtRemInterval', 'txtRemTime', 'txtRemDate') { $c[$n].IsEnabled = -not $none }
     $c['txtRemPilot'].IsEnabled = [bool]$c['chkRemPilot'].IsChecked -and -not $none

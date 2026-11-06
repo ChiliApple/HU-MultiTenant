@@ -1529,12 +1529,17 @@ function ConvertFrom-HURunSchedule($S) {
 }
 
 # Zuweisung eines Wartungsskripts -> lesbare Zeile; Key = Art|Gruppenname wie bei Apps
-function ConvertFrom-HURemAssignment($A, [hashtable]$Names = @{}) {
+# Reparatur: Intune liefert runRemediationScript bei jeder Zuweisung als false (auch bei Zuweisungen aus dem Portal,
+# die nachweislich reparieren) - repariert wird, sobald das Skript ein Reparaturskript hat. Daher zaehlt -HasFix
+# ($true/$false; $null = unbekannt -> leer). Der Rohwert bleibt in RunRemediationScript.
+function ConvertFrom-HURemAssignment($A, [hashtable]$Names = @{}, $HasFix = $null) {
     $b = ConvertFrom-HUAssignment ([pscustomobject]@{ target = $A.target; intent = ''; settings = $null }) $Names
     $sc = ConvertFrom-HURunSchedule $A.runSchedule
+    $rep = if ($b.Kind -eq 'exclude' -or $null -eq $HasFix) { '' } elseif ($HasFix) { 'ja' } else { 'nein (nur pruefen)' }
     return [pscustomobject]@{
         Key = $b.Key; Kind = $b.Kind; GroupId = $b.GroupId; GroupName = $b.GroupName; Ziel = $b.Ziel
-        Zeitplan = $(if ($b.Kind -eq 'exclude') { '' } else { $sc.Text }); Reparatur = $(if ($b.Kind -eq 'exclude') { '' } elseif ($A.runRemediationScript) { 'ja' } else { 'nein' })
+        Zeitplan = $(if ($b.Kind -eq 'exclude') { '' } else { $sc.Text }); Reparatur = $rep
+        RunRemediationScript = [bool]$A.runRemediationScript
         Schedule = $sc
     }
 }
@@ -1557,13 +1562,14 @@ function Get-HUTenantRemediationList {
     }
     Write-HULog -Message "$($all.Count) Wartungsskript(e) gelesen" -Level 'INFO' -Tenant $TenantKey
     foreach ($s in $all) {
+        $hasFix = $(if ($s.PSObject.Properties['remediationScriptContent']) { [bool]"$($s.remediationScriptContent)".Trim() } else { $null })
         [pscustomobject]@{
             Name = "$($s.displayName)"; Description = "$($s.description)"; Publisher = "$($s.publisher)"; Id = "$($s.id)"
             RunAs = $(if ("$($s.runAsAccount)" -eq 'user') { 'user' } else { 'system' }); RunAs32 = [bool]$s.runAs32Bit
             Global = [bool]$s.isGlobalScript; Version = "$($s.version)"; Modified = "$($s.lastModifiedDateTime)"
-            HasRemediation = $(if ($s.PSObject.Properties['remediationScriptContent']) { [bool]"$($s.remediationScriptContent)".Trim() } else { $null })
+            HasRemediation = $hasFix
             AssignKnown = $withAsg
-            Assignments = @(if ($withAsg) { @($s.assignments) | Where-Object { $_ } | ForEach-Object { ConvertFrom-HURemAssignment $_ $names } })
+            Assignments = @(if ($withAsg) { @($s.assignments) | Where-Object { $_ } | ForEach-Object { ConvertFrom-HURemAssignment $_ $names $hasFix } })
         }
     }
 }
@@ -1584,11 +1590,14 @@ function Get-HURemediationDetail {
             try { if ($x.lastScriptRunDateTime) { $sum += " | letzter Lauf $(([datetime]$x.lastScriptRunDateTime).ToLocalTime().ToString('dd.MM. HH:mm'))" } } catch { }
         }
     } catch { }
+    $remText = ConvertFrom-HUBase64Text "$($s.remediationScriptContent)"
+    # Skripte von Microsoft liefern keinen Inhalt -> Reparatur unbekannt
+    $hasFix = $(if ("$remText".Trim()) { $true } elseif ([bool]$s.isGlobalScript) { $null } else { $false })
     return [pscustomobject]@{
         Tenant = $TenantKey; Id = $Id; Name = "$($s.displayName)"; Description = "$($s.description)"; Publisher = "$($s.publisher)"
         RunAs = $(if ("$($s.runAsAccount)" -eq 'user') { 'user' } else { 'system' }); RunAs32 = [bool]$s.runAs32Bit; Global = [bool]$s.isGlobalScript
-        Detection = (ConvertFrom-HUBase64Text "$($s.detectionScriptContent)"); Remediation = (ConvertFrom-HUBase64Text "$($s.remediationScriptContent)")
-        Assignments = @($asg | ForEach-Object { ConvertFrom-HURemAssignment $_ $names }); Summary = $sum
+        Detection = (ConvertFrom-HUBase64Text "$($s.detectionScriptContent)"); Remediation = $remText
+        Assignments = @($asg | ForEach-Object { ConvertFrom-HURemAssignment $_ $names $hasFix }); Summary = $sum
     }
 }
 

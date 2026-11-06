@@ -857,6 +857,14 @@ Describe 'Wartung: vorhandene Skripte lesen' {
         (ConvertFrom-HURunSchedule ([pscustomobject]@{ '@odata.type' = '#microsoft.graph.deviceHealthScriptHourlySchedule'; interval = 4 })).Text | Should -Be 'alle 4 Std.'
         $a = ConvertFrom-HURemAssignment ([pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.exclusionGroupAssignmentTarget'; groupId = 'g1' }; runRemediationScript = $true; runSchedule = $null }) @{ g1 = 'Lehrer' }
         $a.Key | Should -Be 'exclude|lehrer'; $a.Zeitplan | Should -Be ''
+        # Reparatur richtet sich nach dem Reparaturskript, nicht nach runRemediationScript (Intune liefert dort immer false)
+        $gA = [pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = 'g1' }; runRemediationScript = $false; runSchedule = $null }
+        (ConvertFrom-HURemAssignment $gA @{ g1 = 'Lehrer' } $true).Reparatur | Should -Be 'ja'
+        (ConvertFrom-HURemAssignment $gA @{ g1 = 'Lehrer' } $false).Reparatur | Should -Be 'nein (nur pruefen)'
+        (ConvertFrom-HURemAssignment $gA @{ g1 = 'Lehrer' }).Reparatur | Should -Be ''
+        (ConvertFrom-HURemAssignment $gA @{ g1 = 'Lehrer' } $true).RunRemediationScript | Should -BeFalse
+        $exA = [pscustomobject]@{ target = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.exclusionGroupAssignmentTarget'; groupId = 'g1' }; runRemediationScript = $false; runSchedule = $null }
+        (ConvertFrom-HURemAssignment $exA @{ g1 = 'Lehrer' } $true).Reparatur | Should -Be ''
         ConvertFrom-HUBase64Text ([Convert]::ToBase64String([byte[]](0xFF, 0xFE) + [Text.Encoding]::Unicode.GetBytes('exit 1'))) | Should -Be 'exit 1'
         ConvertFrom-HUBase64Text (ConvertTo-HUBase64Utf8 "Write-Output 'Ä'") | Should -Be "Write-Output 'Ä'"
         ConvertTo-HUInstallStateText '3' | Should -Be 'Nicht installiert'

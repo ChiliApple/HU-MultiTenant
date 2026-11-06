@@ -615,8 +615,9 @@ function Register-HUIntAppHandlers {
         })
     $c['cmbIntTarget'].Add_SelectionChanged({
             $k = Get-HUComboTag $script:Controls['cmbIntTarget']
-            $script:Controls['txtIntGroup'].IsEnabled = ($k -in 'group', 'exclude')
-            $script:Controls['btnIntGroupPick'].IsEnabled = $script:Controls['txtIntGroup'].IsEnabled
+            $grpOn = ($k -in 'group', 'exclude')
+            $script:Controls['txtIntGroup'].IsEnabled = $grpOn
+            $script:Controls['btnIntGroupPick'].IsEnabled = $grpOn
         })
     $c['btnIntGroupPick'].Add_Click({
             if (-not $script:IntCurrent) { return }

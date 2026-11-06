@@ -680,7 +680,7 @@
                                                 <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
                                             </ComboBox>
                                             <TextBox x:Name="txtIntGroup" Style="{StaticResource DarkTextBox}" Width="190" Margin="0,0,2,4" ToolTip="Gruppenname - wird je Tenant gesucht"/>
-                                            <Button x:Name="btnIntGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,4,4"/>
+                                            <Button x:Name="btnIntGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,4,4" ToolTip="Gruppe aus den Tenants dieser App suchen und auswaehlen"/>
                                             <ComboBox x:Name="cmbIntIntent" Style="{StaticResource DarkComboBox}" Width="170" Margin="0,0,4,4">
                                                 <ComboBoxItem Content="Erforderlich" Tag="required" IsSelected="True"/>
                                                 <ComboBoxItem Content="Verfuegbar (Portal)" Tag="available"/>
@@ -929,7 +929,7 @@
                                                 <ComboBoxItem Content="Alle Benutzer" Tag="allUsers"/>
                                             </ComboBox>
                                             <TextBox x:Name="txtRintGroup" Style="{StaticResource DarkTextBox}" Width="180" Margin="0,0,2,4" ToolTip="Gruppenname - wird je Tenant gesucht"/>
-                                            <Button x:Name="btnRintGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,6,4"/>
+                                            <Button x:Name="btnRintGroupPick" Content="&#x1F50D;" Style="{StaticResource ToolButton}" FontSize="11" Padding="6,1" Margin="0,0,6,4" ToolTip="Gruppe aus den Tenants dieses Skripts suchen und auswaehlen"/>
                                             <ComboBox x:Name="cmbRintSchedule" Style="{StaticResource DarkComboBox}" Width="100" Margin="0,0,4,4">
                                                 <ComboBoxItem Content="Taeglich" Tag="daily" IsSelected="True"/>
                                                 <ComboBoxItem Content="Stuendlich" Tag="hourly"/>
@@ -941,7 +941,7 @@
                                             <TextBlock x:Name="lblRintTime" Text="um" Style="{StaticResource FieldLabel}" Margin="2,0,4,4"/>
                                             <TextBox x:Name="txtRintTime" Style="{StaticResource DarkTextBox}" Width="54" Text="08:00" Margin="0,0,6,4"/>
                                             <CheckBox x:Name="chkRintFix" Content="mit Reparatur" Style="{StaticResource DarkCheckBox}" IsChecked="True" VerticalAlignment="Center" Margin="0,0,6,4"
-                                                      ToolTip="Aus = nur pruefen und berichten"/>
+                                                      ToolTip="Wird an Intune uebergeben, Intune wertet es derzeit aber nicht aus: Repariert wird immer, wenn das Skript ein Reparaturskript hat. Nur pruefen = Reparaturskript leer lassen."/>
                                             <Button x:Name="btnRintAssignAdd" Content="+ Zuweisen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="0,0,4,4"
                                                     ToolTip="Zuweisung ergaenzen bzw. aendern (gleiche Gruppe: Zeitplan wird ersetzt)"/>
                                             <Button x:Name="btnRintAssignRemove" Content="Markierte entfernen" Style="{StaticResource ToolButton}" FontSize="11" Padding="8,2" Margin="0,0,4,4"/>
