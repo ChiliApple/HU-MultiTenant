@@ -762,25 +762,18 @@ function Show-HUCmpDetail {
                 }
                 catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $it.Tenant }
             }
-            # zusaetzlich alle Einstellungen (auch gleiche), damit das Fenster immer die Werte zeigt
+            # alle Einstellungen (auch gleiche), damit das Fenster immer die Werte zeigt - eine Zeile je Einstellung, einheitlich benannt
             $tk = @($Items | ForEach-Object { $_.Tenant })
-            $allKeys = @($maps.Values | ForEach-Object { @($_.Keys) } | Sort-Object -Unique)
-            $all = foreach ($k in $allKeys) {
-                $o = [ordered]@{ Einstellung = "$k" }
-                for ($i = 0; $i -lt $tk.Count; $i++) { $mp = $maps[$tk[$i]]; $o["T$i"] = $(if ($mp -and $mp.Contains($k)) { "$($mp[$k])" } else { '' }) }
-                [pscustomobject]$o
-            }
-            [pscustomobject]@{ __Diff = @(Get-HUCompareDiff $maps $tk); __All = @($all); Count = $maps.Count }
+            [pscustomobject]@{ __Rows = @(Get-HUCompareRows $maps $tk); Count = $maps.Count }
         } -OnDone {
             param($Result, $Errors)
-            $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__Diff'] }) | Select-Object -First 1
+            $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__Rows'] }) | Select-Object -First 1
             if (-not $d) { return }
             $keys = @($script:CmpDetailKeys)
             if ($d.Count -lt 2) { Add-HURtbLine $script:Controls['rtbAna'] 'Nicht in allen Tenants lesbar - kein Vergleich.' '#FFB74D'; return }
-            $diffNames = @(@($d.__Diff) | ForEach-Object { "$($_.Einstellung)" })
-            $mk = { param($x, [string]$st) $o = [ordered]@{ Unterschied = $st; Einstellung = $x.Einstellung }; for ($i = 0; $i -lt $keys.Count; $i++) { $o[(Get-HUAnaTenantName $keys[$i])] = $x."T$i" }; [pscustomobject]$o }
-            # abweichende zuerst (Werte wie im Vergleich), danach alle gleichen
-            $rows = @(@(@($d.__Diff) | ForEach-Object { & $mk $_ 'abweichend' }) + @(@($d.__All) | Where-Object { $diffNames -notcontains "$($_.Einstellung)" } | ForEach-Object { & $mk $_ 'gleich' }))
+            # abweichende zuerst (Werte wie im Vergleich), danach alle gleichen - Reihenfolge und Status kommen aus Get-HUCompareRows
+            $rows = @(@($d.__Rows) | ForEach-Object { $x = $_; $o = [ordered]@{ Unterschied = "$($x.Unterschied)"; Einstellung = $x.Einstellung }; for ($i = 0; $i -lt $keys.Count; $i++) { $o[(Get-HUAnaTenantName $keys[$i])] = $x."T$i" }; [pscustomobject]$o })
+            $diffNames = @($rows | Where-Object { $_.Unterschied -eq 'abweichend' })
             if (-not $rows.Count) { Show-HUMessage "$($script:CmpDetailName)`n`nKeine Einstellungen gelesen." -Icon Info; return }
             Add-HURtbLine $script:Controls['rtbAna'] "$($diffNames.Count) abweichende, $($rows.Count - $diffNames.Count) gleiche Einstellung(en)" '#81C784'
             Show-HUQSTable -Title "Einstellungen - $($script:CmpDetailName) ($(if ($diffNames.Count) { "$($diffNames.Count) abweichend" } else { 'keine Unterschiede - nur IDs, Zeitstempel oder Name/Beschreibung' }))" -Objects $rows -FilePrefix 'Vergleich-Details'
