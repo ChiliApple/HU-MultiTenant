@@ -2809,8 +2809,36 @@ function Get-HUCompareDiff([hashtable]$Maps, [string[]]$Keys) {
                     })
             }
         }
-        $o = [ordered]@{ Einstellung = ($p -replace '^device_vendor_msft_policy_config_', '' -replace '\[device_vendor_msft_policy_config_', '[') }
+        $o = [ordered]@{ Einstellung = (ConvertTo-HUCompareLabel $p) }
         for ($i = 0; $i -lt $Keys.Count; $i++) { $o["T$i"] = $vals[$i] }
+        [pscustomobject]$o
+    }
+}
+
+# Anzeigename eines Pfads: lange Katalog-Praefixe kuerzen. Gilt fuer abweichende UND gleiche Zeilen, sonst erscheint
+# dieselbe Einstellung zweimal (einmal kurz als "abweichend", einmal mit langem Schluessel als "gleich").
+function ConvertTo-HUCompareLabel([string]$Path) {
+    return ("$Path" -replace '^device_vendor_msft_policy_config_', '' -replace '\[device_vendor_msft_policy_config_', '[')
+}
+
+# Alle Einstellungen fuers Detailfenster: abweichende zuerst (Werte wie Get-HUCompareDiff), danach die gleichen.
+# Eine Zeile je Einstellung mit einheitlichem Namen; fehlt sie bei einem Tenant, steht dort "(nicht gesetzt)" und sie zaehlt als abweichend.
+function Get-HUCompareRows([hashtable]$Maps, [string[]]$Keys) {
+    $diff = @(Get-HUCompareDiff $Maps $Keys)
+    $seen = @{}
+    foreach ($d in $diff) {
+        $seen["$($d.Einstellung)"] = $true
+        $o = [ordered]@{ Unterschied = 'abweichend'; Einstellung = "$($d.Einstellung)" }
+        for ($i = 0; $i -lt $Keys.Count; $i++) { $o["T$i"] = $d."T$i" }
+        [pscustomobject]$o
+    }
+    $paths = @($Keys | ForEach-Object { if ($Maps[$_]) { $Maps[$_].Keys } } | Sort-Object -Unique)
+    foreach ($p in $paths) {
+        $lbl = ConvertTo-HUCompareLabel $p
+        if ($seen.ContainsKey($lbl)) { continue }
+        $seen[$lbl] = $true
+        $o = [ordered]@{ Unterschied = 'gleich'; Einstellung = $lbl }
+        for ($i = 0; $i -lt $Keys.Count; $i++) { $mp = $Maps[$Keys[$i]]; $o["T$i"] = $(if ($mp -and $mp.ContainsKey($p)) { "$($mp[$p])" } else { '(nicht gesetzt)' }) }
         [pscustomobject]$o
     }
 }
@@ -3286,7 +3314,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-HURemediationPayload', 'Publish-HURemediation', 'New-HURunSchedule', 'Set-HURemediationAssignment',
     'Get-HURemediationRunStates', 'Start-HURemediationOnDevice', 'ConvertFrom-HUBase64Text', 'ConvertFrom-HURunSchedule', 'ConvertFrom-HURemAssignment', 'Get-HUTenantRemediationList', 'Get-HURemediationDetail', 'Remove-HURemediationAssignments', 'Update-HURemediation', 'Remove-HURemediation', 'Test-HURemediationScript', 'Get-HUAiPrompt', 'Split-HUAiAnswer',
     'Test-HUSandboxAvailable', 'Enable-HUSandbox', 'Start-HUSandboxTest', 'Start-HURemSandboxTest', 'Stop-HUSandbox', 'ConvertFrom-HUSandboxEntry',
-    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUBackupInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'New-HUIntuneObject', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'Resolve-HUFlatMapIds', 'Get-HUBackupRoot', 'Get-HUBackupEntraSources', 'Get-HUBackupMoreSources', 'Get-HUSourceItems', 'Get-HUCompareHashNeutral', 'Test-HUGraphForbidden', 'Test-HUGraphNotAvailable', 'ConvertTo-HUSafeFileName', 'Write-HUBackupJson', 'Read-HUBackupJson', 'Get-HUAssignmentHash', 'Save-HUTenantBackup', 'Get-HUBackupList', 'Remove-HUOldBackups', 'Compare-HUBackups', 'Get-HUBackupItemDiff', 'Restore-HUBackupItem', 'Get-HUAuditEvents', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
+    'Get-HUWorkPath', 'Get-HUAuthor', 'Get-HUAssignmentSources', 'Resolve-HUAssignmentTarget', 'Test-HUAssignmentMatch', 'ConvertTo-HUIntentText', 'Get-HUAssignmentReport', 'Get-HUCompareSources', 'ConvertTo-HUCleanObject', 'Get-HUCompareHash', 'Get-HUCompareInventory', 'Get-HUBackupInventory', 'Get-HUCompareMatrix', 'ConvertTo-HUHashtable', 'New-HUIntuneObject', 'Copy-HUIntuneObject', 'Get-HUCompareObject', 'ConvertTo-HUFlatMap', 'Get-HUCompareDiff', 'ConvertTo-HUCompareLabel', 'Get-HUCompareRows', 'Resolve-HUFlatMapIds', 'Get-HUBackupRoot', 'Get-HUBackupEntraSources', 'Get-HUBackupMoreSources', 'Get-HUSourceItems', 'Get-HUCompareHashNeutral', 'Test-HUGraphForbidden', 'Test-HUGraphNotAvailable', 'ConvertTo-HUSafeFileName', 'Write-HUBackupJson', 'Read-HUBackupJson', 'Get-HUAssignmentHash', 'Save-HUTenantBackup', 'Get-HUBackupList', 'Remove-HUOldBackups', 'Compare-HUBackups', 'Get-HUBackupItemDiff', 'Restore-HUBackupItem', 'Get-HUAuditEvents', 'Get-HUTenantAppCategories', 'New-HUAppCategory', 'Remove-HUAppCategory', 'Get-HUAppCategoryNames', 'Set-HUAppCategories', 'Sync-HUAppSource', 'Get-HUAppPackage', 'Resolve-HUTargets', 'Test-HUStoreId', 'Get-HUStoreIdFromText', 'Get-HUStoreAppInfo', 'Add-HUSilentUninstall',
     'New-HUInstallWrapper', 'Get-HUInstallPlan', 'New-HUWin32Def', 'Publish-HUWin32App', 'Get-HUDependencyBody', 'Set-HUAppDependencies',
     'ConvertTo-HUIconPng', 'Get-HUIconContent', 'Save-HUStoreAppIcon', 'Split-HUIconLocation', 'Select-HUSandboxEntry'
 )

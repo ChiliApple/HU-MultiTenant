@@ -1,5 +1,15 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.15 (Testversion)
+
+### 🔍 Analyse › Vergleich
+- **Detailfenster zeigt jede Einstellung nur einmal:** Bei Einstellungskatalog-Einträgen erschien jede abweichende Einstellung zweimal, einmal kurz als „abweichend“ und einmal mit langem Namen als „gleich“.
+  - Jetzt eine Zeile je Einstellung, immer mit dem kurzen Namen.
+- **Nur auf einer Seite gesetzt heißt abweichend:** Fehlt eine Einstellung in einem Tenant, steht dort „(nicht gesetzt)“ und die Zeile gilt als abweichend, nie als gleich.
+
+### ✅ Qualität
+- 2 neue Prüfungen.
+
 ## v2.6.14 (Testversion)
 
 ### 🛠️ Wartung

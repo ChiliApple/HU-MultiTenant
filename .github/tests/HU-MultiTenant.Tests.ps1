@@ -996,6 +996,30 @@ Describe 'Analyse: Vergleich-Details' {
         $d = @(Get-HUCompareDiff @{ m = (ConvertTo-HUFlatMap $m); o = (ConvertTo-HUFlatMap $o) } @('m', 'o'))
         $d.Count | Should -Be 1; $d[0].T1 | Should -Be 'Schule MFA'
     }
+    It 'Detailfenster: eine Zeile je Einstellung mit kurzem Namen, nur auf einer Seite gesetzt = abweichend' {
+        # Tenant a hat SmartScreen gesetzt, b nicht; Netzwerkschutz ist in beiden gleich
+        $a = '{"id":"1","name":"X","settings":[{"id":"0","settingInstance":{"settingDefinitionId":"device_vendor_msft_policy_config_browser_allowsmartscreen","choiceSettingValue":{"value":"on"}}},{"id":"1","settingInstance":{"settingDefinitionId":"device_vendor_msft_policy_config_defender_enablenetworkprotection","choiceSettingValue":{"value":"block"}}}]}' | ConvertFrom-Json
+        $b = '{"id":"2","name":"X","settings":[{"id":"0","settingInstance":{"settingDefinitionId":"device_vendor_msft_policy_config_defender_enablenetworkprotection","choiceSettingValue":{"value":"block"}}}]}' | ConvertFrom-Json
+        $rows = @(Get-HUCompareRows @{ a = (ConvertTo-HUFlatMap $a); b = (ConvertTo-HUFlatMap $b) } @('a', 'b'))
+        # jede Einstellung genau einmal, kein langer Schluessel mehr
+        @($rows | Group-Object Einstellung | Where-Object Count -gt 1).Count | Should -Be 0
+        @($rows | Where-Object { $_.Einstellung -match 'device_vendor_msft_policy_config_' }).Count | Should -Be 0
+        $smart = @($rows | Where-Object { $_.Einstellung -match 'browser_allowsmartscreen' })
+        $smart.Count | Should -BeGreaterThan 0
+        @($smart | Where-Object Unterschied -ne 'abweichend').Count | Should -Be 0
+        @($smart | Where-Object T1 -ne '(nicht gesetzt)').Count | Should -Be 0
+        $netz = @($rows | Where-Object { $_.Einstellung -match 'enablenetworkprotection' })
+        $netz.Count | Should -BeGreaterThan 0
+        @($netz | Where-Object Unterschied -ne 'gleich').Count | Should -Be 0
+        # abweichende stehen oben
+        $rows[0].Unterschied | Should -Be 'abweichend'
+    }
+    It 'Detailfenster: leerer Wert auf einer Seite ist nie gleich' {
+        $rows = @(Get-HUCompareRows @{ a = @{ 'x' = 'on'; 'y' = '1' }; b = @{ 'x' = ''; 'y' = '1' } } @('a', 'b'))
+        ($rows | Where-Object Einstellung -eq 'x').Unterschied | Should -Be 'abweichend'
+        ($rows | Where-Object Einstellung -eq 'y').Unterschied | Should -Be 'gleich'
+        $rows.Count | Should -Be 2
+    }
 }
 
 Describe 'Analyse: IDs je Tenant aufloesen' {
