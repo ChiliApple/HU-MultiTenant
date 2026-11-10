@@ -184,6 +184,28 @@ Describe 'App-Sicherung: Inhalt, Sichern, Wiederherstellen' {
         $o = Open-HUAppBackup -Path $r.Path -Password $Pw -AppVersion '2.5.9' -AppRoot $E.App -DataRoot $E.Dat
         ($o.Errors -join ' ') | Should -Match 'zuerst aktualisieren'
     }
+    It 'Datei waehrend der Sicherung geloescht: uebersprungen statt Abbruch, ohne Wartezeit' {
+        $src = @(Get-HUAppBackupSources -AppRoot $E.App -DataRoot $E.Dat)
+        $gone = [pscustomobject]@{ Path = (Join-Path $E.B 'weg\index.json'); Name = 'config/weg.json'; Area = $src[0].Area }
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $r = New-HUAppBackup -Sources (@($src) + $gone) -Password $Pw -Folder $E.Out -AppVersion '2.5.9' -Now (Get-Date).AddSeconds(15)
+        $sw.Stop()
+        $r.Files | Should -Be $src.Count
+        @($r.Skipped) | Should -Be @('config/weg.json')
+        $sw.Elapsed.TotalMilliseconds | Should -BeLessThan 30000
+        $o = Open-HUAppBackup -Path $r.Path -Password $Pw -AppVersion '2.5.9' -AppRoot $E.App -DataRoot $E.Dat
+        $o.Errors.Count | Should -Be 0
+        @($o.Rows).Count | Should -Be $src.Count
+    }
+    It 'Andere Lesefehler brechen weiter ab' {
+        $src = @(Get-HUAppBackupSources -AppRoot $E.App -DataRoot $E.Dat)
+        $f = Join-Path $E.B 'gesperrt.json'; Set-Content -LiteralPath $f -Value '{}'
+        $lock = [IO.File]::Open($f, 'Open', 'ReadWrite', 'None')
+        try {
+            $bad = [pscustomobject]@{ Path = $f; Name = 'config/gesperrt.json'; Area = $src[0].Area }
+            { New-HUAppBackup -Sources (@($src) + $bad) -Password $Pw -Folder $E.Out -AppVersion '2.5.9' -Now (Get-Date).AddSeconds(20) } | Should -Throw
+        } finally { $lock.Dispose() }
+    }
     It 'Falsches Kennwort: Fehler, nichts gelesen' {
         $f = @(Get-HUAppBackupList $E.Out)[0].FullName
         $o = Open-HUAppBackup -Path $f -Password 'Falsches-Kennwort' -AppVersion '2.5.9' -AppRoot $E.App -DataRoot $E.Dat

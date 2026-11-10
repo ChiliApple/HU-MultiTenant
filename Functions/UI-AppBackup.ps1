@@ -251,7 +251,7 @@ function Start-HUAppBackupNow([switch]$FromDialog, [switch]$Auto) {
             Import-Module (Join-Path $AppRoot 'Core\HU.AppBackup.psm1') -Force -DisableNameChecking
             try {
                 $r = New-HUAppBackup -Sources $Src -Password $Pw -Folder $Folder -AppVersion $Ver -Keep $Keep -Modules $Mods -Large:$Large -Extra $Extra -Progress $Prog
-                [pscustomobject]@{ __Ab = $true; Ok = $true; Path = $r.Path; Files = $r.Files; Bytes = $r.Bytes; Removed = @($r.Removed); Error = '' }
+                [pscustomobject]@{ __Ab = $true; Ok = $true; Path = $r.Path; Files = $r.Files; Bytes = $r.Bytes; Removed = @($r.Removed); Skipped = @($r.Skipped); Error = '' }
             } catch { [pscustomobject]@{ __Ab = $true; Ok = $false; Error = "$($_.Exception.Message)" } }
         } -OnDone {
             param($Result, $Errors)
@@ -264,6 +264,9 @@ function Start-HUAppBackupNow([switch]$FromDialog, [switch]$Auto) {
                 Set-HUStateValue 'appBackupLast' ((Get-Date).ToString('s'))
                 Set-HUStateValue 'appBackupResult' "ok, $($r.Files) Dateien ($mb MB)$(if ($auto) { ', automatisch' })"
                 Write-HULogOK "App-Sicherung: $(Split-Path -Leaf $r.Path) ($($r.Files) Dateien, $mb MB)$(if (@($r.Removed).Count) { " - alte entfernt: $(@($r.Removed).Count)" })"
+                # Dateien, die waehrend der Sicherung geloescht wurden (z. B. alte Tenant-Staende beim Aufraeumen)
+                $sk = @($r.Skipped)
+                if ($sk.Count) { Write-HULogInfo "App-Sicherung: $($sk.Count) Datei(en) uebersprungen, weil sie waehrend der Sicherung geloescht wurden (z. B. $($sk[0]))" }
                 if (-not $auto) { Show-HUMessage "Sicherung erstellt:`n$($r.Path)`n`n$($r.Files) Dateien, $mb MB." -Owner $(if ($script:AbDlg) { $script:AbDlg.W } else { $script:Window }) }
                 else { Show-HUToast -Title 'App-Sicherung erstellt' -Text "$($r.Files) Dateien, $mb MB - $(Split-Path -Leaf $r.Path)" -Icon Success -OnClick { Open-HUSettings -Tab 'Sicherung' } }
             } else {
@@ -321,6 +324,15 @@ function Start-HUAppBackupScheduler {
             # nach einem Fehlschlag (z. B. Netzlaufwerk weg) hoechstens einmal pro Stunde neu versuchen
             $try = $null; try { $try = [datetime]::Parse("$(Get-HUStateValue 'appBackupTry' '')", [Globalization.CultureInfo]::InvariantCulture) } catch { }
             if ($try -and ((Get-Date) - $try).TotalMinutes -lt 60) { return }
+            # laeuft gerade ein Tenant-Backup (raeumt am Ende alte Staende weg): warten und in 2 Minuten neu pruefen
+            if (Test-HUJobRunning 'Backup') {
+                if (-not $script:AbWaitBak) {
+                    $script:AbWaitBak = $true
+                    Write-HULogInfo 'App-Sicherung (automatisch): wartet, bis das Tenant-Backup fertig ist.'
+                    Invoke-HUDelayed 120 { $script:AbWaitBak = $false; & $script:AbCheck }
+                }
+                return
+            }
             Set-HUStateValue 'appBackupTry' ((Get-Date).ToString('s'))
             Start-HUAppBackupNow -Auto
         } catch { Write-HULogWarn "App-Sicherung (automatisch): $($_.Exception.Message)" }

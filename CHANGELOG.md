@@ -1,5 +1,16 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.16 (Testversion)
+
+### 💾 App-Sicherung
+- **Bricht nicht mehr wegen gelöschter Dateien ab:** Hat das Tenant-Backup während der App-Sicherung alte Stände entfernt, scheiterte die ganze Sicherung mit „Could not find a part of the path …“.
+  - Solche Dateien werden jetzt übersprungen, das Protokoll nennt ihre Anzahl.
+  - Andere Lesefehler brechen die Sicherung weiter ab.
+- **Automatik wartet auf das Tenant-Backup:** Läuft beim Start gerade das tägliche Tenant-Backup, beginnt die automatische App-Sicherung erst danach.
+
+### ✅ Qualität
+- 2 neue Prüfungen.
+
 ## v2.6.15 (Testversion)
 
 ### 🔍 Analyse › Vergleich

@@ -405,7 +405,11 @@ function Read-HUAbFileBytes([string]$Path) {
         try {
             $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
             try { $ms = New-Object IO.MemoryStream; $fs.CopyTo($ms); return , $ms.ToArray() } finally { $fs.Dispose() }
-        } catch { if ($try -ge 3) { throw }; Start-Sleep -Milliseconds 300 }
+        } catch {
+            # Datei inzwischen geloescht: Wiederholen bringt nichts (der Aufrufer entscheidet)
+            if ($try -ge 3 -or -not [IO.File]::Exists($Path)) { throw }
+            Start-Sleep -Milliseconds 300
+        }
     }
 }
 
@@ -440,7 +444,7 @@ function New-HUAppBackup {
     <#
     .SYNOPSIS
         Sicherung schreiben: ZIP (Manifest mit SHA-256) -> verschluesseln -> .tmp -> Flush -> zuruecklesen und MAC pruefen -> umbenennen -> alte aufraeumen.
-        Rueckgabe: @{ Path; Files; Bytes; Removed }.
+        Rueckgabe: @{ Path; Files; Bytes; Removed; Skipped (Namen der inzwischen geloeschten Quelldateien) }.
     #>
     param([Parameter(Mandatory)][object[]]$Sources, [Parameter(Mandatory)][object]$Password, [Parameter(Mandatory)][string]$Folder,
         [Parameter(Mandatory)][string]$AppVersion, [string]$Pc = $env:COMPUTERNAME, [int]$Keep = 10, [object[]]$Modules = @(),
@@ -456,6 +460,7 @@ function New-HUAppBackup {
     Clear-HUAbTempZips
     $zs = if ($Large) { New-Object IO.FileStream((Join-Path ([IO.Path]::GetTempPath()) ("HU-Sicherung-" + [guid]::NewGuid().ToString('N') + '.zip')), [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None, 65536, [IO.FileOptions]::DeleteOnClose) } else { New-Object IO.MemoryStream }
     $man = New-Object System.Collections.Generic.List[object]
+    $skipped = New-Object System.Collections.Generic.List[string]
     $bytes = [int64]0
     # Fortschritt fuer die Oberflaeche (synchronisierte Hashtable aus dem UI-Thread)
     $prog = { param($ph, $d) if ($null -ne $Progress) { $Progress['Phase'] = $ph; $Progress['Done'] = $d; $Progress['Total'] = $Sources.Count } }
@@ -464,7 +469,11 @@ function New-HUAppBackup {
         $zip = New-Object IO.Compression.ZipArchive($zs, [IO.Compression.ZipArchiveMode]::Create, $true)
         try {
             foreach ($s in $Sources) {
-                $data = Read-HUAbFileBytes $s.Path
+                # Datei seit dem Zusammenstellen der Liste geloescht (z. B. alter Tenant-Stand beim Aufraeumen):
+                # ueberspringen statt die ganze Sicherung abzubrechen. Andere Lesefehler brechen weiter ab.
+                $data = $null
+                try { $data = Read-HUAbFileBytes $s.Path }
+                catch { if (-not [IO.File]::Exists($s.Path)) { $skipped.Add($s.Name); continue }; throw }
                 $lw = $null; try { $lw = [IO.File]::GetLastWriteTime($s.Path) } catch { }
                 $e = $zip.CreateEntry($s.Name, [IO.Compression.CompressionLevel]::Optimal)
                 if ($lw) { try { $e.LastWriteTime = $lw } catch { } }
@@ -501,7 +510,7 @@ function New-HUAppBackup {
     } catch { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue; throw "Sicherung nach dem Schreiben nicht lesbar - verworfen: $($_.Exception.Message)" }
     Move-Item -LiteralPath $tmp -Destination $final -Force
     $removed = @(Remove-HUAppBackupOld -Folder $Folder -Keep $Keep -Pc $Pc)
-    return [pscustomobject]@{ Path = $final; Files = $man.Count; Bytes = $bytes; Removed = $removed }
+    return [pscustomobject]@{ Path = $final; Files = $man.Count; Bytes = $bytes; Removed = $removed; Skipped = $skipped.ToArray() }
 }
 
 function Get-HUAppBackupList([string]$Folder) {
