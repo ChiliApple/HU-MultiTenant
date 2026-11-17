@@ -225,13 +225,19 @@ function Get-HUSecCustomFact {
             # Konten mit aktiver Verzeichnisrolle: direkt und ueber rollenzuweisbare Gruppen (eine Ebene, keine Verschachtelung moeglich).
             # Anmeldedaten per Massenabruf (/users mit signInActivity, seitenweise) statt Einzelabfragen - signInActivity ist stark gedrosselt (Review 037 B7/B8).
             $asg = @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint '/roleManagement/directory/roleAssignments?$expand=principal' -All)
-            $via = @{}; $sps = New-Object System.Collections.Generic.List[string]
+            $via = @{}; $ext = @{}; $sps = New-Object System.Collections.Generic.List[string]
             foreach ($x in $asg) {
                 $t = "$($x.principal.'@odata.type')"; $prin = "$($x.principalId)".ToLowerInvariant()
                 if (-not $prin) { continue }
                 if ($t -like '*user') { if (-not $via.ContainsKey($prin)) { $via[$prin] = '' } }
                 elseif ($t -like '*group') {
-                    foreach ($m in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/groups/$prin/members/microsoft.graph.user?`$select=id" -All)) {
+                    # Gruppen eines Partners (z. B. AdminAgents eines Dienstleisters, Partnerzugriff) liegen im fremden Tenant: Mitglieder geben 404.
+                    # Dann die Gruppe nennen und nicht bewerten, statt die ganze Regel abzubrechen (live 17.11.2026 bei drei Tenants).
+                    $mem = $null
+                    try { $mem = @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/groups/$prin/members/microsoft.graph.user?`$select=id" -All) }
+                    catch { $code = 0; try { $code = [int]$_.Exception.Data['StatusCode'] } catch { }; if ($code -ne 404) { throw } }
+                    if ($null -eq $mem) { if (-not $ext.ContainsKey($prin)) { $ext[$prin] = "$($x.principal.displayName)" }; continue }
+                    foreach ($m in $mem) {
                         $mid = "$($m.id)".ToLowerInvariant(); if ($mid -and -not $via.ContainsKey($mid)) { $via[$mid] = "$($x.principal.displayName)" }
                     }
                 }
@@ -249,6 +255,7 @@ function Get-HUSecCustomFact {
                 }
             }
             foreach ($sp in $sps) { [pscustomobject]@{ kind = 'sp'; id = $sp } }
+            foreach ($g in $ext.Keys) { [pscustomobject]@{ kind = 'extgroup'; id = $g; name = $ext[$g] } }
         }
         'ca' {
             # v1.0 fuehrt; beta wird nur zum Abgleich der Ids gelesen. Fehlt eine Richtlinie in v1.0 (in einem Tenant beobachtet, Ursache unklar), kommt sie aus beta dazu und wird markiert. Schlaegt beta fehl, gilt nur v1.0.
@@ -768,11 +775,23 @@ function Remove-HUSecException([string]$Id) {
     Write-HUSecJson (Join-Path (Get-HUSecPath) 'exceptions.json') ([pscustomobject]@{ version = 1; items = $items })
 }
 
+# Regeln mit gleitendem Zeitraum (L01/L02, Ergebnis mit Latest): eine Ausnahme deckt nur Ereignisse bis zu ihrem Anlegen.
+# Ein neueres Ereignis hebt sie auf, sonst bliebe z. B. eine spaeter vergebene Admin-Rolle bis zum Ablauf stumm (Pruefung 2.6.17 B1).
+# Rueckgabe $true = Ausnahme deckt das Ergebnis nicht mehr.
+function Test-HUSecExceptionOutdated($Exception, $Result) {
+    if (-not $Result -or -not $Result.PSObject.Properties['Latest'] -or "$($Result.Latest)" -eq '') { return $false }
+    $lt = ConvertTo-HUSecUtc $Result.Latest
+    $cr = ConvertTo-HUSecUtc $Exception.created
+    if (-not $lt) { return $false }
+    if (-not $cr) { return $true }
+    return ($lt -gt $cr)
+}
+
 # Gueltige Ausnahme zu Ergebnis? Abgelaufen = zaehlt nicht (Abweichung bleibt)
 function Find-HUSecException($Result, [object[]]$Exceptions, [datetime]$Now = (Get-Date)) {
     foreach ($e in @($Exceptions)) {
         if ($e.ruleId -eq $Result.RuleId -and $e.tenant -eq $Result.Tenant -and $e.objectId -eq '-') {
-            if ([datetime]::Parse("$($e.validUntil)", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind) -gt $Now) { return $e }
+            if ([datetime]::Parse("$($e.validUntil)", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind) -gt $Now -and -not (Test-HUSecExceptionOutdated $e $Result)) { return $e }
         }
     }
     return $null
@@ -793,6 +812,7 @@ function Get-HUSecExceptionState {
     $r = @($Results | Where-Object { "$($_.RuleId)" -eq $rid -and "$($_.Tenant)" -eq $tk })[0]
     if ($r -and $r.Status -eq 'NichtPruefbar') { return "wirkungslos: nicht pruefbar ($($r.Reason))" }
     if ($r -and $r.Status -eq 'Info' -and $r.Reason -eq 'Aus') { return 'wirkungslos: Regel abgeschaltet' }
+    if ($r -and (Test-HUSecExceptionOutdated $Exception $r)) { return 'wirkungslos: neues Ereignis nach dem Anlegen' }
     return 'aktiv'
 }
 
@@ -1032,9 +1052,12 @@ function Test-HUSecAuditKeyAdded($Entry) {
     if ("$($Entry.activityDisplayName)" -notmatch '(?i)certificates and secrets management') { return $true }
     $kd = @(@($Entry.targetResources | Where-Object { $_ }) | ForEach-Object { @($_.modifiedProperties) } | Where-Object { $_ -and "$($_.displayName)" -eq 'KeyDescription' })[0]
     if (-not $kd) { return $true }
-    $old = ([regex]::Matches("$($kd.oldValue)", 'KeyIdentifier=')).Count
-    $new = ([regex]::Matches("$($kd.newValue)", 'KeyIdentifier=')).Count
-    return ($new -gt $old)
+    # Mengen vergleichen, nicht zaehlen: ein Austausch in einem Ereignis (einer weg, einer neu) ist auch ein neues Secret (Pruefung 2.6.17 B2)
+    $ids = { param($v) @([regex]::Matches("$v", 'KeyIdentifier=([^,\]\s"]+)') | ForEach-Object { $_.Groups[1].Value.ToLowerInvariant() }) }
+    $old = @(& $ids $kd.oldValue)
+    $new = @(& $ids $kd.newValue)
+    foreach ($k in $new) { if ($old -notcontains $k) { return $true } }
+    return $false
 }
 
 # Wert einer geaenderten Eigenschaft (Microsoft liefert JSON-Text mit Anfuehrungszeichen)
@@ -1724,7 +1747,8 @@ $script:HUSecRules = @(
             $never = @($bad | Where-Object { $_.State -eq 'never' }).Count; $unk = @($bad | Where-Object { $_.State -eq 'unknown' }).Count
             $sp = @($F.adminact | Where-Object { $_.kind -eq 'sp' }).Count
             $grp = @($r | Where-Object { $_.User.group }).Count
-            $d2 = "$($r.Count) aktive Admin-Konten (direkt und ueber Gruppen$(if ($grp) { ", $grp ueber Gruppe" }))$(if ($sp) { "; $sp Dienstprinzipal(e) mit Rolle (nicht bewertet)" })"
+            $ext = @($F.adminact | Where-Object { $_.kind -eq 'extgroup' }).Count
+            $d2 = "$($r.Count) aktive Admin-Konten (direkt und ueber Gruppen$(if ($grp) { ", $grp ueber Gruppe" }))$(if ($sp) { "; $sp Dienstprinzipal(e) mit Rolle (nicht bewertet)" })$(if ($ext) { "; $ext Gruppe(n) eines Partners mit Rolle (Mitglieder im fremden Tenant, nicht bewertet)" })"
             if ($bad.Count) { return @{ Status = 'Abweichung'; Count = $bad.Count; Detail = "$d2, $($bad.Count) ohne erfolgreiche Anmeldung seit mehr als $max Tagen$(if ($never) { " (davon $never nie angemeldet)" })$(if ($unk) { ", $unk unbekannt (nur Fehlversuche bekannt)" })" } }
             @{ Status = 'OK'; Count = 0; Detail = "$d2, alle innerhalb von $max Tagen erfolgreich angemeldet" }
         } }
@@ -2141,9 +2165,9 @@ $script:HUSecRules = @(
 
 # Kurzerklaerung je Regel (Warum wird das geprueft?) fuer das Detailfenster
 $script:HUSecWhy = @{
-    L01 = 'Ein neuer Administrator ist der haeufigste Weg, sich dauerhaft Zugang zu sichern. Gezeigt wird jede Rollenvergabe der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll, auch berechtigte. Pruefen, ob jede Vergabe gewollt war. Die Zelle bleibt 30 Tage rot und wird dann von selbst wieder gruen. Eine Ausnahme fuer gewollte Vergaben blendet auch spaetere Vergaben aus, deshalb nur kurz befristen.'
-    L02 = 'Eine neue Domaene oder ein geaenderter Verbund (Federation) kann Anmeldungen an einen fremden Dienst umleiten. Solche Aenderungen sind in Schulen selten und sollten immer bekannt sein.'
-    L03 = 'Nur Hinweis: Ein neues Secret oder Zertifikat an einer App erlaubt Zugriff im Namen dieser App, ohne Benutzer und ohne MFA. Gezaehlt werden betroffene Apps, geloeschte Secrets zaehlen nicht. Erneuerungen durch HU-MultiTenant selbst stehen in der Liste, zaehlen aber nicht. Pruefen, ob jede Aenderung bekannt ist.'
+    L01 = 'Ein neuer Administrator ist der haeufigste Weg, sich dauerhaft Zugang zu sichern. Gezeigt wird jede Rollenvergabe der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll, auch berechtigte. Pruefen, ob jede Vergabe gewollt war. Die Zelle bleibt rot, solange die Vergabe im Protokoll steht (30 Tage mit Entra ID P1, sonst 7), und wird dann von selbst wieder gruen. Eine Ausnahme gilt nur fuer die Vergaben bis zu ihrem Anlegen; jede spaetere Vergabe macht die Zelle wieder rot. Nicht erkannt werden Rechte ueber Mitgliedschaft in einer Gruppe, der eine Rolle zugewiesen ist, und neue Besitzer von Apps.'
+    L02 = 'Eine neue Domaene oder ein geaenderter Verbund (Federation) kann Anmeldungen an einen fremden Dienst umleiten. Solche Aenderungen sind in Schulen selten und sollten immer bekannt sein. Eine Ausnahme gilt nur fuer Aenderungen bis zu ihrem Anlegen; jede spaetere macht die Zelle wieder rot.'
+    L03 = 'Nur Hinweis: Ein neues Secret oder Zertifikat an einer App erlaubt Zugriff im Namen dieser App, ohne Benutzer und ohne MFA. Gezaehlt werden betroffene Apps, geloeschte Secrets zaehlen nicht, ausgetauschte schon. Erneuerungen durch HU-MultiTenant selbst stehen in der Liste, zaehlen aber nicht. Pruefen, ob jede Aenderung bekannt ist.'
     L04 = 'Nur Hinweis: Neue App-Rechte und Zustimmungen geben Apps Zugriff auf Daten im Tenant. Jede einzelne Berechtigung erzeugt einen eigenen Eintrag, gezaehlt werden deshalb betroffene Apps. Pruefen, ob jede App bekannt ist; heikle Rechte zeigt A42.'
     L05 = 'Nur Hinweis: Aenderungen an Richtlinien fuer bedingten Zugriff und an benannten Orten der letzten 30 Tage, mit Ausloeser. Hilft beim Nachvollziehen, wer wann etwas geaendert hat.'
     A01 = 'Richtlinien im Berichtsmodus schuetzen nicht. Geprueft wird nur, dass mindestens eine Richtlinie aktiv ist (Sollwert minEnabled, je Tenant aenderbar). Welche Richtlinien aktiv sein sollen, prueft diese Regel nicht.'
@@ -2432,15 +2456,18 @@ function Get-HUSecBasicIds {
 }
 
 # Fortschritt je Tenant fuer "Einfach": gleiche Zaehlung wie Get-HUSecLight, nur ueber die Grundschutz-Regeln.
-# Farbe: Rot = eine kritische Regel offen, Gelb = sonst etwas offen, Gruen = alles Gepruefte erfuellt, Grau = nichts geprueft.
+# Farbe: Rot = eine kritische Regel offen, Gelb = sonst etwas offen oder eine kritische Regel nicht pruefbar, Gruen = alles Gepruefte erfuellt, Grau = nichts geprueft.
 # Total = gepruefte + nicht pruefbare + Fehler (abgeschaltete und Handpruefungen zaehlen nicht).
 function Get-HUSecBasicLight {
     param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key, [string[]]$Ids = @())
     $set = if ($Ids.Count) { $Ids } else { @(Get-HUSecBasicIds) }
     $l = Get-HUSecLight -Results @($Results | Where-Object { $set -contains "$($_.RuleId)" }) -Key $Key
     $errors = $l.Deviations - ($l.Checked - $l.Ok); if ($errors -lt 0) { $errors = 0 }
-    $color = if ($l.Color -eq 'Grau') { 'Grau' } elseif ($l.BySev.Kritisch -gt 0) { 'Rot' } elseif ($l.Deviations -gt 0) { 'Gelb' } else { 'Gruen' }
-    return [pscustomobject]@{ Color = $color; Ok = $l.Ok; Checked = $l.Checked; Deviations = $l.Deviations; BySev = $l.BySev; NotCheckable = $l.NotCheckable; Total = ($l.Checked + $l.NotCheckable + $errors) }
+    # Nicht pruefbare kritische Regel: nie gruen, sonst saehe ein Tenant ohne Pruefung von MFA oder Notfallkonten gut aus (Pruefung 2.6.17)
+    $crit = @{}; foreach ($r in (Get-HUSecRules)) { if ("$($r.Sev)" -eq 'Kritisch') { $crit["$($r.Id)"] = $true } }
+    $critUnchecked = @($Results | Where-Object { $_.Tenant -eq $Key -and $set -contains "$($_.RuleId)" -and $_.Status -eq 'NichtPruefbar' -and $crit.ContainsKey("$($_.RuleId)") }).Count
+    $color = if ($l.Color -eq 'Grau') { 'Grau' } elseif ($l.BySev.Kritisch -gt 0) { 'Rot' } elseif ($l.Deviations -gt 0 -or $critUnchecked -gt 0) { 'Gelb' } else { 'Gruen' }
+    return [pscustomobject]@{ Color = $color; Ok = $l.Ok; Checked = $l.Checked; Deviations = $l.Deviations; BySev = $l.BySev; NotCheckable = $l.NotCheckable; Total = ($l.Checked + $l.NotCheckable + $errors); CriticalNotCheckable = $critUnchecked }
 }
 
 # Gesamtliste "Aenderungen (30 Tage)" eines Tenants: alle heiklen Eintraege mit Tenant-Spalte. Nur Anzeige, nie speichern oder protokollieren (Namen).
@@ -2705,7 +2732,7 @@ function Update-HUSecLost {
 
 Export-ModuleMember -Function @(
     'Get-HUSecRules', 'Invoke-HUSecCatalog', 'New-HUSecContext', 'Get-HUSecFact', 'Invoke-HUSecFetch',
-    'Get-HUSecExceptions', 'Add-HUSecException', 'Get-HUSecManual', 'Set-HUSecManual', 'Remove-HUSecManual', 'Get-HUSecManualResult', 'Get-HUSecManualIds', 'Test-HUSecManualRule', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException', 'Get-HUSecExceptionState', 'Get-HUSecFix', 'Get-HUSecFixData',
+    'Get-HUSecExceptions', 'Add-HUSecException', 'Get-HUSecManual', 'Set-HUSecManual', 'Remove-HUSecManual', 'Get-HUSecManualResult', 'Get-HUSecManualIds', 'Test-HUSecManualRule', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException', 'Test-HUSecExceptionOutdated', 'Get-HUSecExceptionState', 'Get-HUSecFix', 'Get-HUSecFixData',
     'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecReferenceWorse', 'Set-HUSecReferenceWorseShown', 'Get-HUSecBaselineEdit', 'Save-HUSecBaselineEdit', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport',
     'Get-HUSecBasicIds', 'Get-HUSecBasicLight', 'Get-HUSecChanges', 'Get-HUSecAuditKind', 'ConvertTo-HUSecAuditRow', 'Get-HUSecAuditRows', 'Get-HUSecAuditEval', 'ConvertTo-HUSecAuditDetail', 'ConvertFrom-HUSecAuditValue'
 )

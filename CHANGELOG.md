@@ -1,5 +1,23 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.18 (Testversion)
+
+### 🛡️ Sicherheitskatalog
+- **Ausnahmen bei L01 und L02 nur bis zum Anlegen:** Eine Ausnahme deckt nur die Ereignisse bis zu ihrem Anlegen. Jede spätere Rollenvergabe oder Domänenänderung macht die Zelle wieder rot und löst die Teams-Meldung aus.
+  - Bisher blieb eine neue Admin-Rolle bis zum Ablauf der Ausnahme stumm, bis zu 12 Monate.
+  - In der Ausnahmen-Liste steht eine solche Ausnahme danach als "wirkungslos".
+- **A27 mit Gruppen eines Partners:** Haben Gruppen eines Dienstleisters (Partnerzugriff) eine Admin-Rolle, lief A27 auf "? Technik", weil Graph deren Mitglieder nicht liefert.
+  - Solche Gruppen werden jetzt genannt und nicht bewertet, die übrigen Admin-Konten wieder geprüft.
+- **Ausgetauschte Secrets:** L03 erkennt auch ein Secret, das im selben Schritt ein altes ersetzt.
+- **Grundschutz nicht mehr grün ohne Prüfung:** Ist eine kritische Regel nicht prüfbar, ist der Balken in der Ansicht "Einfach" gelb.
+- **Texte:** Tooltip und Hinweis zu Doppel- und Rechtsklick passen jetzt zur Ansicht "Einfach". Der Knopf heißt "Aenderungen (bis 30 Tage)", weil Microsoft das Protokoll ohne Entra ID P1 nur 7 Tage aufbewahrt.
+
+### 🚧 Grenzen
+- L01 erkennt keine Rechte über Gruppen mit Rollenzuweisung und keine neuen Besitzer von Apps.
+
+### ✅ Qualität
+- 8 neue Prüfungen, künstliche Werte in den Testdaten.
+
 ## v2.6.17 (Testversion)
 
 ### 🛡️ Sicherheitskatalog

@@ -74,8 +74,8 @@ Describe 'Grundschutz-Liste (Get-HUSecBasicIds)' {
 
 Describe 'Fortschritt Einfach (Get-HUSecBasicLight)' {
     It 'ist gruen, wenn alle gepruefte Grundschutz-Regeln erfuellt sind; nicht pruefbar zaehlt nur in Total' {
-        $rows = @((Res 'V5' 'OK'), (Res 'A04' 'OK'), (Res 'A09' 'NichtPruefbar'), (Res 'A19' 'Abweichung' -Count 2))
-        $l = Get-HUSecBasicLight -Results $rows -Key 'T1' -Ids @('V5', 'A04', 'A09')
+        $rows = @((Res 'V5' 'OK'), (Res 'A04' 'OK'), (Res 'A08' 'NichtPruefbar'), (Res 'A19' 'Abweichung' -Count 2))
+        $l = Get-HUSecBasicLight -Results $rows -Key 'T1' -Ids @('V5', 'A04', 'A08')
         $l.Color | Should -Be 'Gruen'
         $l.Ok | Should -Be 2
         $l.Total | Should -Be 3
@@ -98,6 +98,14 @@ Describe 'Fortschritt Einfach (Get-HUSecBasicLight)' {
         $l.Total | Should -Be 2
         $l.Ok | Should -Be 1
         $l.Color | Should -Be 'Gelb'
+    }
+
+    It 'ist nie gruen, wenn eine kritische Regel nicht pruefbar ist (2.6.18)' {
+        $rows = @((Res 'V5' 'NichtPruefbar'), (Res 'A04' 'OK'))
+        $l = Get-HUSecBasicLight -Results $rows -Key 'T1' -Ids @('V5', 'A04')
+        $l.Color | Should -Be 'Gelb'
+        $l.CriticalNotCheckable | Should -Be 1
+        (Get-HUSecBasicLight -Results @((Res 'V5' 'NichtPruefbar' -Tenant 'T2'), (Res 'A04' 'OK')) -Key 'T1' -Ids @('V5', 'A04')).Color | Should -Be 'Gruen'
     }
 
     It 'ist grau ohne gepruefte Regel und zaehlt Ausnahmen als erfuellt' {
@@ -186,6 +194,15 @@ Describe 'Aenderungsprotokoll: Listenzeile und Auswertung' {
         Get-HUSecAuditKind (Ev 'ApplicationManagement' $act) | Should -Be 'Zugangsdaten'
     }
 
+    It 'zaehlt einen Austausch im selben Ereignis (einer weg, einer neu) als neues Secret (2.6.18)' {
+        $act = "Update application $($script:Dash) Certificates and secrets management "
+        $kd = { param($o, $n) @([pscustomobject]@{ displayName = 'KeyDescription'; oldValue = $o; newValue = $n }) }
+        $swap = Ev 'ApplicationManagement' $act -Props (& $kd '["[KeyIdentifier=aaaa-1,KeyType=Password,KeyUsage=Verify,DisplayName=alt]"]' '["[KeyIdentifier=bbbb-2,KeyType=Password,KeyUsage=Verify,DisplayName=neu]"]')
+        Get-HUSecAuditKind $swap | Should -Be 'Zugangsdaten'
+        $same = Ev 'ApplicationManagement' $act -Props (& $kd '["[KeyIdentifier=AAAA-1,KeyType=Password]"]' '["[KeyIdentifier=aaaa-1,KeyType=Password]"]')
+        Get-HUSecAuditKind $same | Should -Be ''
+    }
+
     It 'nimmt bei App-Rechten die App (Stelle 1) statt der Ressource (Stelle 0) und ergaenzt fehlende Namen' {
         $res = { param($p, $v) [pscustomobject]@{ id = 'graph'; displayName = 'Microsoft Graph'; userPrincipalName = ''; modifiedProperties = @([pscustomobject]@{ displayName = $p; newValue = "`"$v`"" }) } }
         $app = { param($id, $n) [pscustomobject]@{ id = $id; displayName = $n; userPrincipalName = ''; modifiedProperties = @() } }
@@ -202,10 +219,10 @@ Describe 'Aenderungsprotokoll: Listenzeile und Auswertung' {
     It 'nimmt den App-Namen aus den Eigenschaften der Ressource, wenn Microsoft als Namen nur die App-ID eintraegt' {
         $res = [pscustomobject]@{ id = 'graph'; displayName = 'Microsoft Graph'; userPrincipalName = ''; modifiedProperties = @(
                 [pscustomobject]@{ displayName = 'AppRole.Value'; newValue = '"Application.Read.All"' },
-                [pscustomobject]@{ displayName = 'ServicePrincipal.DisplayName'; newValue = '"HUPilot-Upload"' }) }
-        $app = [pscustomobject]@{ id = 'sp9'; displayName = '3064cc87-3760-4784-b44c-b74cf9f842a1'; userPrincipalName = ''; modifiedProperties = @() }
+                [pscustomobject]@{ displayName = 'ServicePrincipal.DisplayName'; newValue = '"Test-App Upload"' }) }
+        $app = [pscustomobject]@{ id = 'sp9'; displayName = '11111111-2222-3333-4444-555555555555'; userPrincipalName = ''; modifiedProperties = @() }
         $e = Ev 'ApplicationManagement' 'Add app role assignment to service principal'; $e.targetResources = @($res, $app)
-        (ConvertTo-HUSecAuditRow $e '').Ziel | Should -Be 'HUPilot-Upload: Application.Read.All (Microsoft Graph)'
+        (ConvertTo-HUSecAuditRow $e '').Ziel | Should -Be 'Test-App Upload: Application.Read.All (Microsoft Graph)'
         $res.modifiedProperties = @($res.modifiedProperties[0])
         $fact = [pscustomobject]@{ OwnAppId = ''; Days = 30; Rows = @($e) }
         @(Get-HUSecAuditRows $fact)[0].Ziel | Should -Be '(Name unbekannt): Application.Read.All (Microsoft Graph)'
@@ -495,5 +512,81 @@ Describe 'Detailfenster je Ereignis' {
         $o = [pscustomobject]@{ Zeit = '1'; __Detail = @('x') }
         (ConvertTo-HUQSRows @($o)).Columns | Should -Contain '__Detail'
         (ConvertTo-HUQSRows @($o) -SkipHidden).Columns | Should -Not -Contain '__Detail'
+    }
+}
+
+Describe 'Ausnahmen bei gleitendem Zeitraum (2.6.18)' {
+    BeforeEach { Remove-Item -LiteralPath (Join-Path $script:TestAppData 'HU-MultiTenant') -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'deckt nur Ereignisse bis zum Anlegen, ein spaeteres hebt sie auf' {
+        $ex = [pscustomobject]@{ id = 'e1'; ruleId = 'L01'; tenant = 'T1'; objectId = '-'; created = '2026-11-10T12:00:00.0000000Z'; validUntil = '2027-01-01T00:00:00.0000000Z' }
+        $now = [datetime]'2026-11-20'
+        $old = Res 'L01' 'Abweichung' -Count 1; $old | Add-Member -NotePropertyName Latest -NotePropertyValue '2026-11-10T08:00:00.0000000Z'
+        $new = Res 'L01' 'Abweichung' -Count 2; $new | Add-Member -NotePropertyName Latest -NotePropertyValue '2026-11-12T08:00:00.0000000Z'
+        (Find-HUSecException $old @($ex) $now).id | Should -Be 'e1'
+        Find-HUSecException $new @($ex) $now | Should -BeNullOrEmpty
+    }
+
+    It 'aendert nichts an Regeln ohne Zeitpunkt' {
+        $ex = [pscustomobject]@{ id = 'e2'; ruleId = 'A19'; tenant = 'T1'; objectId = '-'; created = '2026-11-10T12:00:00.0000000Z'; validUntil = '2027-01-01T00:00:00.0000000Z' }
+        (Find-HUSecException (Res 'A19' 'Abweichung' -Count 3) @($ex) ([datetime]'2026-11-20')).id | Should -Be 'e2'
+    }
+
+    It 'gilt auch fuer gespeicherte und wieder gelesene Ausnahmen (Datum aus JSON, PS 5.1 und 7)' {
+        $x = Add-HUSecException -RuleId 'L02' -TenantKey 'T1' -Reason 'Domaene fuer die neue Website gewollt' -ValidUntil (Get-Date).AddMonths(2) -Responsible 'Systembetreuung'
+        $saved = @(Get-HUSecExceptions)
+        $saved.Count | Should -Be 1
+        $before = Res 'L02' 'Abweichung' -Count 1; $before | Add-Member -NotePropertyName Latest -NotePropertyValue (Get-Date).ToUniversalTime().AddHours(-1).ToString('o')
+        $after = Res 'L02' 'Abweichung' -Count 2; $after | Add-Member -NotePropertyName Latest -NotePropertyValue (Get-Date).ToUniversalTime().AddHours(1).ToString('o')
+        (Find-HUSecException $before $saved).id | Should -Be $x.id
+        Find-HUSecException $after $saved | Should -BeNullOrEmpty
+        Get-HUSecExceptionState -Exception $saved[0] -Results @($after) | Should -Be 'wirkungslos: neues Ereignis nach dem Anlegen'
+        Get-HUSecExceptionState -Exception $saved[0] -Results @($before) | Should -Be 'aktiv'
+    }
+
+    It 'laesst ein neues Ereignis trotz Ausnahme im Katalog als Abweichung stehen' {
+        $global:HUSecEeps = New-Object System.Collections.Generic.List[string]
+        $global:HUSecEfx = @{
+            'subscribedSkus' = , @([pscustomobject]@{ servicePlans = @([pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) })
+            "'RoleManagement'" = @((Ev 'RoleManagement' 'Add member to role' -TargetId 'u1' -When (Get-Date).ToUniversalTime().AddHours(1).ToString('o')))
+            "'DirectoryManagement'" = @(); "'ApplicationManagement'" = @(); "'Policy'" = @()
+        }
+        [void](Add-HUSecException -RuleId 'L01' -TenantKey 'T1' -Reason 'Neue Lehrkraft als Helpdesk-Admin' -ValidUntil (Get-Date).AddMonths(1) -Responsible 'Systembetreuung')
+        $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; appId = 'OWN-APP' }) }
+        (@(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('L01'))[0]).Status | Should -Be 'Abweichung'
+        $global:HUSecEfx["'RoleManagement'"] = @((Ev 'RoleManagement' 'Add member to role' -TargetId 'u1' -When (Get-Date).ToUniversalTime().AddHours(-1).ToString('o')))
+        (@(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('L01'))[0]).Status | Should -Be 'Ausnahme'
+    }
+}
+
+Describe 'A27 mit Gruppen eines Partners (2.6.18)' {
+    It 'bewertet Partner-Gruppen nicht, statt die Regel abzubrechen' {
+        Mock -ModuleName HU.SecCatalog Invoke-HUSecFetch {
+            param($TenantKey, $Settings, $Endpoint, [switch]$All, [switch]$Beta)
+            if ($Endpoint -like '*roleAssignments*') {
+                return @([pscustomobject]@{ principalId = 'u1'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.user'; displayName = 'Admin Eins' } },
+                    [pscustomobject]@{ principalId = 'g9'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.group'; displayName = 'AdminAgents (Partner)' } })
+            }
+            if ($Endpoint -like '/groups/g9/members*') { $e = New-Object System.Exception('nicht gefunden'); $e.Data['StatusCode'] = 404; throw $e }
+            if ($Endpoint -like '/users?*') { return @([pscustomobject]@{ id = 'u1'; userPrincipalName = 'admin1@contoso.test'; accountEnabled = $true; createdDateTime = '2025-01-01T00:00:00Z'; signInActivity = [pscustomobject]@{ lastSuccessfulSignInDateTime = (Get-Date).ToUniversalTime().AddDays(-2).ToString('o') } }) }
+            if ($Endpoint -like '*subscribedSkus*') { return , @([pscustomobject]@{ servicePlans = @([pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) }) }
+            throw 'nicht vorbereitet'
+        }
+        $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; appId = 'OWN-APP' }) }
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A27'))[0]
+        $r.Status | Should -Be 'OK'
+        $r.Detail | Should -Match '1 Gruppe\(n\) eines Partners'
+    }
+
+    It 'bricht bei anderen Fehlern weiter ab (nicht pruefbar statt falsch gruen)' {
+        Mock -ModuleName HU.SecCatalog Invoke-HUSecFetch {
+            param($TenantKey, $Settings, $Endpoint, [switch]$All, [switch]$Beta)
+            if ($Endpoint -like '*roleAssignments*') { return @([pscustomobject]@{ principalId = 'g9'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.group'; displayName = 'Gruppe' } }) }
+            if ($Endpoint -like '/groups/g9/members*') { $e = New-Object System.Exception('gedrosselt'); $e.Data['StatusCode'] = 429; throw $e }
+            if ($Endpoint -like '*subscribedSkus*') { return , @([pscustomobject]@{ servicePlans = @([pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) }) }
+            throw 'nicht vorbereitet'
+        }
+        $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; appId = 'OWN-APP' }) }
+        (@(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A27'))[0]).Status | Should -Not -Be 'OK'
     }
 }

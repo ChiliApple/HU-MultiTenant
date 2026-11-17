@@ -125,7 +125,7 @@ function Update-HUSecHint {
     }
     $all = @($script:SecMatrix)
     if (Test-HUSecBasicMode) {
-        $c['lblAnaHint'].Text = "Einfach: $(@(Get-HUSecVisibleRows).Count) Grundschutz-Regeln. Der Balken zaehlt erfuellte Regeln; nicht pruefbar ist nie erfuellt. Rot = eine kritische Regel offen, gelb = sonst etwas offen. Doppelklick = So behebst du es, Rechtsklick = Details."
+        $c['lblAnaHint'].Text = "Einfach: $(@(Get-HUSecVisibleRows).Count) Grundschutz-Regeln. Der Balken zaehlt erfuellte Regeln; nicht pruefbar ist nie erfuellt. Rot = eine kritische Regel offen, gelb = sonst etwas offen oder eine kritische Regel nicht pruefbar. Doppelklick = So behebst du es, Rechtsklick = Menue mit Details."
         return
     }
     $dev = @($all | Where-Object Dev).Count
@@ -261,7 +261,7 @@ function Start-HUSecChanges {
     $gen = $script:SecChgGen
     $script:SecChg = @{ Wait = @{}; Rows = New-Object System.Collections.Generic.List[object]; Fail = New-Object System.Collections.Generic.List[string]; Keys = $keys }
     $c['btnSecChanges'].IsEnabled = $false
-    Add-HURtbLine $c['rtbAna'] "Aenderungen (30 Tage, nur lesend): $(@($keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" '#90CAF9'
+    Add-HURtbLine $c['rtbAna'] "Aenderungen (bis 30 Tage, nur lesend):$(@($keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" '#90CAF9'
     foreach ($k in $keys) {
         $script:SecChg.Wait[$k] = $true
         $ok = Start-HUJob -Name "SecChg-$gen-$k" -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; Gen = $gen } -Code {
@@ -297,12 +297,12 @@ function Complete-HUSecChanges {
     $c['btnSecChanges'].IsEnabled = $true
     $rows = @($script:SecChg.Rows.ToArray() | Sort-Object Zeit -Descending)
     foreach ($f in $script:SecChg.Fail) { Add-HURtbLine $c['rtbAna'] "Aenderungen nicht lesbar - $f" '#FFB74D' }
-    Add-HURtbLine $c['rtbAna'] "Aenderungen: $($rows.Count) Eintrag/Eintraege in 30 Tagen (Liste ohne Export, enthaelt Namen)" '#90CAF9'
+    Add-HURtbLine $c['rtbAna'] "Aenderungen: $($rows.Count) Eintrag/Eintraege in bis zu 30 Tagen, ohne Entra ID P1 nur 7 (Liste ohne Export, enthaelt Namen)" '#90CAF9'
     if (-not $rows.Count) {
-        if (-not $script:SecChg.Fail.Count) { Show-HUMessage 'Keine heiklen Aenderungen in den letzten 30 Tagen.' -Icon Info }
+        if (-not $script:SecChg.Fail.Count) { Show-HUMessage 'Keine heiklen Aenderungen im Protokoll (bis zu 30 Tage, ohne Entra ID P1 nur 7).' -Icon Info }
         return
     }
-    Show-HUQSTable -Title "Aenderungen (30 Tage): $(@($script:SecChg.Keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" -Objects $rows -FilePrefix 'Aenderungen' -NoExport `
+    Show-HUQSTable -Title "Aenderungen (bis 30 Tage):$(@($script:SecChg.Keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" -Objects $rows -FilePrefix 'Aenderungen' -NoExport `
         -OnRowDoubleClick { param($Obj, $Win) Show-HUSecAuditDetail $Obj $Win }
 }
 
@@ -805,7 +805,7 @@ function Show-HUSecExceptionDialog {
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $mt.Groups[1].Value))
     $w = $d.Window; $ctl = $d.C
     $w.Title = "Ausnahme - $($Row.RuleId)"
-    $ctl.lblHint.Text = "$($Row.RuleId) [$($Row.Sev)] $($Row.Title)`nEine Ausnahme ist befristet und mit Begruendung. Nach Ablauf gilt die Abweichung wieder."
+    $ctl.lblHint.Text = "$($Row.RuleId) [$($Row.Sev)] $($Row.Title)`nEine Ausnahme ist befristet und mit Begruendung. Nach Ablauf gilt die Abweichung wieder.$(if (@(Get-HUSecRules | Where-Object { $_.Id -eq "$($Row.RuleId)" -and $_.PSObject.Properties['Rolling'] -and $_.Rolling }).Count) { "`nBei dieser Regel deckt die Ausnahme nur die Ereignisse bis jetzt. Jedes spaetere Ereignis zaehlt wieder als Abweichung." })"
     $excs = @(Get-HUSecExceptions)
     # Tenants als Haken; vorbelegt sind die mit Abweichung oder Ausnahme, sonst der erste
     $fg = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#CCCCCC')
