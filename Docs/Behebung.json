@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "2026-11-03",
+  "stand": "2026-11-17",
   "hinweis": "Menuenamen wie in der englischen Portal-Oberflaeche und in Microsoft Learn. Massgeblich ist der verlinkte Learn-Artikel; Microsoft benennt Menues gelegentlich um.",
   "rules": {
     "A01": {
@@ -1591,6 +1591,116 @@
         }
       ],
       "checked": "2026-10-21"
+    },
+    "L01": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Monitoring & health > Audit logs",
+      "steps": [
+        "In HU-MultiTenant die Liste der Regel oeffnen (Details > Ereignisse anzeigen) oder den Knopf \"Aenderungen (30 Tage)\": Zeit, Rolle, Konto und wer die Rolle vergeben hat.",
+        "Je Eintrag klaeren, ob die Vergabe gewollt war (Auftrag, neues Personal, Dienstleister).",
+        "Unbekannte Vergabe: Entra ID > Roles & admins > die Rolle oeffnen > Assignments: das Konto entfernen, dann Kennwort des vergebenden Kontos pruefen und dessen Sitzungen widerrufen.",
+        "Zur Kontrolle im Portal: Entra ID > Monitoring & health > Audit logs, Filter \"Category\" = RoleManagement und \"Activity\" = Add member to role.",
+        "Gewollte Vergabe: nichts tun, die Zelle wird nach 30 Tagen von selbst wieder gruen."
+      ],
+      "learn": [
+        {
+          "title": "Ueberwachungsprotokoll in Microsoft Entra ID",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-audit-logs"
+        },
+        {
+          "title": "Rollenzuweisungen ansehen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/view-assignments"
+        }
+      ],
+      "checked": "2026-11-17",
+      "note": "Ohne Entra ID P1 bewahrt Microsoft das Protokoll nur 7 Tage auf, mit P1 30 Tage."
+    },
+    "L02": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Domain names",
+      "steps": [
+        "In HU-MultiTenant die Liste der Regel oeffnen: welche Domaene, welches Ereignis, wer.",
+        "Entra ID > Domain names: pruefen, ob jede Domaene bekannt ist und gebraucht wird.",
+        "Bei \"Set domain authentication\" oder \"Set federation settings on domain\": klaeren, ob ein Verbund (Federation) gewollt ist. Ein unbekannter Verbund leitet Anmeldungen an einen fremden Dienst um: sofort mit dem Schultraeger klaeren und die Domaene auf \"Managed\" zurueckstellen lassen.",
+        "Unbekannte, nicht verifizierte Domaene: entfernen (Domain names > Domaene > Delete)."
+      ],
+      "learn": [
+        {
+          "title": "Domaenen in Microsoft Entra ID verwalten",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/domains-manage"
+        },
+        {
+          "title": "Ueberwachungsprotokoll in Microsoft Entra ID",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-audit-logs"
+        }
+      ],
+      "checked": "2026-11-17",
+      "note": "Rollen: mindestens Domain Name Administrator zum Aendern."
+    },
+    "L03": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > App registrations > App > Certificates & secrets",
+      "steps": [
+        "In HU-MultiTenant die Liste der Regel oeffnen: welche App, wann, wer. Eintraege mit \"HU-MultiTenant\" sind die eigene Zertifikatserneuerung und zaehlen nicht.",
+        "Entra ID > App registrations > All applications: die App oeffnen > Certificates & secrets.",
+        "Unbekanntes Secret oder Zertifikat (Beschreibung, Ablaufdatum, Zeitpunkt passen zu keinem Auftrag): loeschen und klaeren, wer es angelegt hat.",
+        "Gewollte Erneuerung (z. B. Sync der Schulverwaltung): nichts tun, die Zelle wird nach 30 Tagen von selbst wieder gruen."
+      ],
+      "learn": [
+        {
+          "title": "Zugangsdaten einer App-Registrierung verwalten",
+          "url": "https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials"
+        },
+        {
+          "title": "Ueberwachungsprotokoll in Microsoft Entra ID",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-audit-logs"
+        }
+      ],
+      "checked": "2026-11-17",
+      "note": "Rollen: mindestens Application Administrator oder Besitzer der App."
+    },
+    "L04": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Enterprise apps > All applications > Permissions",
+      "steps": [
+        "In HU-MultiTenant die Liste der Regel oeffnen: welche App, welches Ereignis, wer. Je erteilter Berechtigung gibt es einen eigenen Eintrag.",
+        "Entra ID > Enterprise apps > All applications: die App oeffnen > Permissions, Tabs \"Admin consent\" und \"User consent\".",
+        "Unbekannte App oder unpassende Rechte: Recht widerrufen (\"...\" > \"Revoke permission\") oder die App ganz entfernen.",
+        "Zusammen mit der Regel A42 (kritische Anwendungsrechte) ansehen: dort steht, welche Rechte heikel sind."
+      ],
+      "learn": [
+        {
+          "title": "Rechte von Enterprise-Apps pruefen und widerrufen",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/manage-application-permissions"
+        },
+        {
+          "title": "Ueberwachungsprotokoll in Microsoft Entra ID",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-audit-logs"
+        }
+      ],
+      "checked": "2026-11-17",
+      "note": "Rollen: mindestens Cloud Application Administrator."
+    },
+    "L05": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Conditional Access > Policies",
+      "steps": [
+        "Nur Hinweis, keine Abweichung. In HU-MultiTenant die Liste der Regel oeffnen: welche Richtlinie oder welcher benannte Ort, wann, wer.",
+        "Unerwartete Aenderung: die Richtlinie oeffnen und mit dem gespeicherten Stand vergleichen (Analyse > Backup, Verlauf).",
+        "Eintraege mit \"HU-MultiTenant\" stammen aus \"Muster anwenden\" oder dem Tenant-Vergleich dieser App."
+      ],
+      "learn": [
+        {
+          "title": "Richtlinien fuer bedingten Zugriff",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-conditional-access-policies"
+        },
+        {
+          "title": "Ueberwachungsprotokoll in Microsoft Entra ID",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/concept-audit-logs"
+        }
+      ],
+      "checked": "2026-11-17",
+      "note": ""
     },
     "M01": {
       "portal": "",

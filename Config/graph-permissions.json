@@ -4,7 +4,7 @@
   "permissions": [
     { "name": "Organization.Read.All", "default": true, "why": "Tenant-Uebersicht, Lizenzen, Verbindungstest, Sicherheitskatalog (Lizenzen, Verzeichnissync)" },
     { "name": "User.Read.All", "default": true, "why": "Benutzer-Reports, Lizenzen, Sync-Monitor, Was bekommt ...?, Sicherheitskatalog (Gaeste, Admin-Konten, Sync-Fehler)" },
-    { "name": "AuditLog.Read.All", "default": true, "why": "MFA-Status, inaktive Benutzer (signInActivity)" },
+    { "name": "AuditLog.Read.All", "default": true, "why": "MFA-Status, inaktive Benutzer (signInActivity), Sicherheitskatalog (Anmeldungen, Aenderungen der letzten 30 Tage)" },
     { "name": "Group.Read.All", "default": true, "why": "Zielgruppen fuer Apps und Wartung, Analyse, Sicherheitskatalog (Sync-Fehler, Teams und Gruppen)" },
     { "name": "Device.Read.All", "default": true, "why": "Analyse: Was bekommt ...? fuer Geraete" },
     { "name": "DeviceManagementManagedDevices.Read.All", "default": true, "why": "Geraete-Reports, Compliance, Defender" },

@@ -1318,6 +1318,12 @@
                                 </StackPanel>
                                 <StackPanel x:Name="pnlAnaSec" Visibility="Collapsed">
                                     <WrapPanel Orientation="Horizontal">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,4">
+                                            <RadioButton x:Name="rbSecBasic" GroupName="SecView" Content="Einfach" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"
+                                                         ToolTip="Nur die Grundschutz-Regeln, darueber je Tenant ein Balken. Doppelklick auf eine Regel: So behebst du es. Welche Regeln dazugehoeren, steht in den Sollwerten (Katalog basic)."/>
+                                            <RadioButton x:Name="rbSecAll" GroupName="SecView" Content="Alle Regeln" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center"
+                                                         ToolTip="Alle Regeln des Katalogs mit Filter nach Bereich und Grad"/>
+                                        </StackPanel>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,4"/>
                                             <TextBox x:Name="txtSecFilter" Width="240" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,0,0,4" ToolTip="Text in Nummer, Bereich, Regel oder Schweregrad (mehrere Woerter: alle muessen vorkommen)"/>
@@ -1356,7 +1362,10 @@
                                                 ToolTip="Den aktuellen Pruefstand als Soll speichern. Die Meldung 'Sicherheits-Aenderung' (Reiter Teams) meldet danach jede Abweichung davon. Gespeichert werden nur Status und Zahlen."/>
                                         <Button x:Name="btnSecTable" Content="&#x1F4CA; Tabelle / Export" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
                                                 ToolTip="Die angezeigten Zeilen als Tabelle ansehen, kopieren oder exportieren"/>
+                                        <Button x:Name="btnSecChanges" Content="Aenderungen (30 Tage) ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
+                                                ToolTip="Heikle Aenderungen der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll fuer die angehakten Tenants: Admin-Rollen, Domaenen und Verbund, Secrets und Zertifikate an Apps, App-Rechte und Zustimmungen, bedingter Zugriff. Nur lesen, enthaelt Namen, deshalb ohne Export."/>
                                     </WrapPanel>
+                                    <WrapPanel x:Name="wpSecBasic" Orientation="Horizontal" Margin="0,4,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
                                 <DockPanel Margin="0,6,0,0">
                                     <Ellipse x:Name="dotAnaRun" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,0,6,0" VerticalAlignment="Top" Visibility="Collapsed" ToolTip="laeuft ..."/>

@@ -722,7 +722,7 @@ function New-HUSecDriftCardSpec {
         $nm = if ($Names.ContainsKey("$($g.Name)")) { "$($Names["$($g.Name)"])" } else { "$($g.Name)" }
         $items = @($g.Group)
         $txt = (@($items | Select-Object -First $MaxPerTenant | ForEach-Object {
-                    $w = if ($_.Kind -eq 'Anzahl') { "Anzahl $($_.WasCount)$ar$($_.IsCount)" } else { "$($_.Was)$ar$($_.Is)" }
+                    $w = if ($_.Kind -eq 'Anzahl') { "Anzahl $($_.WasCount)$ar$($_.IsCount)" } elseif ($_.Kind -eq 'Neu') { "neues Ereignis seit dem Soll-Stand, jetzt $($_.IsCount)" } else { "$($_.Was)$ar$($_.Is)" }
                     "$($_.RuleId) $($_.Title) ($w)"
                 }) -join '; ')
         if ($items.Count -gt $MaxPerTenant) { $txt += " und $($items.Count - $MaxPerTenant) weitere" }
