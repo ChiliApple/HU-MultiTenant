@@ -424,7 +424,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
       <div>
         <h4>So gehst du vor</h4>
         <ol class="steps">
-          <li><span>Reiter <span class="ui">Analyse</span> › <span class="ui">Sicherheit</span> › <span class="ui">Prüfen</span>: 73 Regeln aus den Security Baselines gegen alle Tenants, als Matrix mit Ampel je Schule – nur lesend. Für den schnellen Überblick zeigt <span class="ui">Einfach</span> nur den Grundschutz.</span></li>
+          <li><span>Reiter <span class="ui">Analyse</span> › <span class="ui">Sicherheit</span> › <span class="ui">Prüfen</span>: 74 Regeln aus den Security Baselines gegen alle Tenants, als Matrix mit Ampel je Schule – nur lesend. Für den schnellen Überblick zeigt <span class="ui">Einfach</span> nur den Grundschutz.</span></li>
           <li><span>Doppelklick auf eine Zelle zeigt die betroffenen Konten, Richtlinien oder Apps. Was bewusst anders ist, als <b>Ausnahme</b> mit Begründung und Ablaufdatum festhalten.</span></li>
           <li><span>Punkte, die Graph nicht sieht (lokales AD, Freigabelinks), als <b>Handprüfung</b> je Schule bestätigen – gilt 12 Monate.</span></li>
           <li><span><span class="ui">Soll speichern</span> – ab dann meldet Teams täglich, wenn eine Regel schlechter wird.</span></li>
@@ -484,7 +484,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
         <h4>So gehst du vor</h4>
         <ol class="steps">
           <li><span>Fertig: Reiter <span class="ui">Extensions</span>, z. B. <i>User-LicenseOverviewReport</i> (Lizenzen) oder <i>User-InactiveUsersReport</i> (inaktive Konten), Tenant wählen, <span class="ui">Starten</span> – Ergebnis als Excel-Datei.</span></li>
-          <li><span>Eigene Frage: Reiter <span class="ui">Quick Script</span>, Snippet wählen (12 Beispiele dabei) oder selbst schreiben, <span class="ui">Mehrere ▾</span> anhaken, <kbd>Strg</kbd>+<kbd>Enter</kbd>.</span></li>
+          <li><span>Eigene Frage: Reiter <span class="ui">Quick Script</span>, Snippet wählen (15 Beispiele dabei) oder selbst schreiben, <span class="ui">Mehrere ▾</span> anhaken, <kbd>Strg</kbd>+<kbd>Enter</kbd>.</span></li>
           <li><span><span class="ui">Tabelle</span>: filtern, nach CSV oder Excel exportieren – mit Spalte <i>Tenant</i>.</span></li>
         </ol>
         <div class="meta"><span>⏱ Sekunden je Tenant</span><span>Token und Graph-Funktionen sind schon da</span></div>
@@ -565,7 +565,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <h2>Häufige Fragen</h2>
   <div>
     <details><summary>Brauche ich einen Server oder eine Datenbank?</summary><p>Nein. HU-MultiTenant läuft auf deinem PC und spricht direkt mit Microsoft Graph. Einstellungen, Snippets und Protokolle liegen im Programmordner bzw. in deinem Benutzerprofil.</p></details>
-    <details><summary>Muss ich PowerShell können?</summary><p>Für Apps, Wartung, Analyse, Teams und die Extensions nicht – das läuft über Knöpfe und Listen. Für eigene Abfragen im Quick Script hilft es; die 12 Beispiel-Snippets sind ein guter Start, und Wartungsskripte schreibt auf Wunsch eine KI.</p></details>
+    <details><summary>Muss ich PowerShell können?</summary><p>Für Apps, Wartung, Analyse, Teams und die Extensions nicht – das läuft über Knöpfe und Listen. Für eigene Abfragen im Quick Script hilft es; die 15 Beispiel-Snippets sind ein guter Start, und Wartungsskripte schreibt auf Wunsch eine KI.</p></details>
     <details><summary>Kann mir eine KI Snippets und Extensions schreiben?</summary><p>Ja. Im Ordner <code>skills</code> liegen zwei fertige Anleitungen (<code>hu-snippet</code>, <code>hu-extension</code>) mit geprüften Vorlagen und einem Prüfprogramm. Ordner als Skill hinzufügen oder die <code>SKILL.md</code> in den Chat geben – dann schreibt die KI Code, der beim ersten Lauf funktioniert. Vor dem Einsatz in einer Schule trotzdem mit Probelauf in einem Test-Tenant ausprobieren. <a href="https://github.com/ChiliApple/HU-MultiTenant/blob/main/skills/README.md">Anleitung</a></p></details>
     <details><summary>Was kostet das?</summary><p>Nichts. Die Nutzung ist frei, Details stehen in der Lizenz im Repository. Für Intune und Remediations brauchst du natürlich die passenden Microsoft-Lizenzen.</p></details>
     <details><summary>Ersetzt das das Intune- oder Entra-Portal?</summary><p>Nein, es ergänzt sie. Alles, was HU-MultiTenant anlegt, siehst und änderst du weiter im Portal. Das Tool nimmt dir die Wiederholung über mehrere Tenants ab und zeigt Zusammenhänge, die im Portal verstreut sind.</p></details>
