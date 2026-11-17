@@ -289,7 +289,8 @@ Describe 'Aenderungsprotokoll im Katalog (L01-L05)' {
     It 'liefert die Gesamtliste mit Tenant-Spalte ohne Hilfsfelder' {
         $rows = @(Get-HUSecChanges -TenantKey 'T1' -Settings $script:Set)
         $rows.Count | Should -Be 4
-        ($rows[0].PSObject.Properties.Name -join ',') | Should -Be 'Zeit,Tenant,Art,Ereignis,Ziel,Von,Ergebnis'
+        # __Detail ist versteckt (Detailfenster), sichtbar bleiben nur diese Spalten
+        ($rows[0].PSObject.Properties.Name -join ',') | Should -Be 'Zeit,Tenant,Art,Ereignis,Ziel,Von,Ergebnis,__Detail'
         @($rows | Where-Object { $_.Von -eq 'HU-MultiTenant' }).Count | Should -Be 1
     }
 
@@ -374,5 +375,98 @@ Describe 'Detailliste der L-Regeln' {
         }
         $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; appId = 'x' }) }
         @(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'L05')[0].Ereignis | Should -Be 'Delete conditional access policy'
+    }
+
+    It 'liefert Details nur mit -KeepDetail (Remote FB und MCP bekommen sie nie)' {
+        $global:HUSecEeps = New-Object System.Collections.Generic.List[string]
+        $global:HUSecEfx = @{ 'subscribedSkus' = , @(); "'RoleManagement'" = @(); "'DirectoryManagement'" = @(); "'ApplicationManagement'" = @()
+            "'Policy'" = @((Ev 'Policy' 'Update conditional access policy')) }
+        $set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; appId = 'x' }) }
+        $plain = @(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'L05')
+        @($plain[0].PSObject.Properties.Name | Where-Object { $_ -like '__*' }).Count | Should -Be 0
+        $ui = @(Get-HUSecItems -TenantKey 'T1' -Settings $set -RuleId 'L05' -KeepDetail)
+        @($ui[0].__Detail).Count | Should -BeGreaterThan 3
+        @(Get-HUSecChanges -TenantKey 'T1' -Settings $set)[0].__Detail | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Detailfenster je Ereignis' {
+    It 'macht Text, JSON-Text und doppelt kodiertes JSON flach' {
+        (ConvertFrom-HUSecAuditValue '"Global Administrator"')[''] | Should -Be 'Global Administrator'
+        ((ConvertFrom-HUSecAuditValue '["a","b"]')[''] -join ', ') | Should -Be 'a, b'
+        (ConvertFrom-HUSecAuditValue 'kein json')[''] | Should -Be 'kein json'
+        @((ConvertFrom-HUSecAuditValue '').Keys).Count | Should -Be 0
+        $pol = '{"displayName":"100 - MFA","state":"enabled","conditions":{"users":{"excludeUsers":["u1","u2"]}}}'
+        $f = ConvertFrom-HUSecAuditValue (($pol | ConvertTo-Json))   # doppelt kodiert wie bei Microsoft
+        $f['state'] | Should -Be 'enabled'
+        ($f['conditions.users.excludeUsers'] -join ', ') | Should -Be 'u1, u2'
+    }
+
+    It 'laesst Texte wie Zahlen, Wahrheitswerte und Telefonnummern unveraendert (auch in PS 7)' {
+        (ConvertFrom-HUSecAuditValue '0012')[''] | Should -BeExactly '0012'
+        (ConvertFrom-HUSecAuditValue '"0012"')[''] | Should -BeExactly '0012'
+        (ConvertFrom-HUSecAuditValue 'true')[''] | Should -BeExactly 'true'
+        (ConvertFrom-HUSecAuditValue '"1e5"')[''] | Should -BeExactly '1e5'
+        @((ConvertFrom-HUSecAuditValue '["0664123456"]')[''])[0] | Should -BeExactly '0664123456'
+        (ConvertFrom-HUSecAuditValue '{"a":"2026-11-17T10:00:00"}')['a'] | Should -Match '^2026-11-17T10:00:00'
+    }
+
+    It 'zeigt Aenderungen der Gross- und Kleinschreibung und Listen je Eintrag als neu oder entfernt' {
+        $e = Ev 'ApplicationManagement' 'Update application' -Props @([pscustomobject]@{ displayName = 'DisplayName'; oldValue = '"Abc"'; newValue = '"abc"' })
+        @(ConvertTo-HUSecAuditDetail $e | Where-Object { $_.Feld -eq 'DisplayName' }).Count | Should -Be 1
+        $long = 'x' * 150
+        $old = (@(1..5 | ForEach-Object { "[KeyIdentifier=$_,DisplayName=$long]" }) | ConvertTo-Json -Compress)
+        $new = (@(1..6 | ForEach-Object { "[KeyIdentifier=$_,DisplayName=$long]" }) | ConvertTo-Json -Compress)
+        $k = Ev 'ApplicationManagement' "Update application $($script:Dash) Certificates and secrets management " -Props @([pscustomobject]@{ displayName = 'KeyDescription'; oldValue = $old; newValue = $new })
+        $rows = @(ConvertTo-HUSecAuditDetail $k | Where-Object { $_.Feld -like 'KeyDescription*' })
+        $rows.Count | Should -Be 1
+        $rows[0].Feld | Should -Be 'KeyDescription (neu)'
+        $rows[0].Nachher | Should -Match '^\[KeyIdentifier=6,'
+    }
+
+    It 'berechnet Details nur auf Anforderung (Regelauswertung und Teams-Pruefung ohne)' {
+        $fact = [pscustomobject]@{ OwnAppId = ''; Days = 30; Rows = @((Ev 'Policy' 'Update conditional access policy'), (Ev 'RoleManagement' 'Add member to role')) }
+        @(@(Get-HUSecAuditRows $fact) | Where-Object { @($_.__Detail).Count }).Count | Should -Be 0
+        $w = @(Get-HUSecAuditRows $fact @('CA') -WithDetail)
+        @($w[0].__Detail).Count | Should -BeGreaterThan 3
+    }
+
+    It 'zeigt Ausloeser mit IP, alle Bloecke und bei Aenderungen nur abweichende Einstellungen' {
+        $old = '{"displayName":"100 - MFA","state":"enabledForReportingButNotEnforced","conditions":{"users":{"excludeUsers":["u1"]}}}'
+        $new = '{"displayName":"100 - MFA","state":"enabled","conditions":{"users":{"excludeUsers":["u1"]}}}'
+        $p = @([pscustomobject]@{ displayName = 'ConditionalAccessPolicy'; oldValue = ($old | ConvertTo-Json); newValue = ($new | ConvertTo-Json) })
+        $e = Ev 'Policy' 'Update conditional access policy' -Props $p
+        $e.initiatedBy.user | Add-Member -NotePropertyName ipAddress -NotePropertyValue '192.0.2.10'
+        $e | Add-Member -NotePropertyName correlationId -NotePropertyValue 'c-1'
+        $e | Add-Member -NotePropertyName additionalDetails -NotePropertyValue @([pscustomobject]@{ key = 'User-Agent'; value = 'Test' })
+        $d = @(ConvertTo-HUSecAuditDetail $e)
+        ($d[0].PSObject.Properties.Name -join ',') | Should -Be 'Bereich,Feld,Vorher,Nachher'
+        @($d | Where-Object { $_.Feld -eq 'IP-Adresse' -and $_.Nachher -eq '192.0.2.10' }).Count | Should -Be 1
+        @($d | Where-Object { $_.Feld -eq 'Korrelations-ID' }).Count | Should -Be 1
+        @($d | Where-Object { $_.Bereich -eq 'Weitere Angaben' -and $_.Feld -eq 'User-Agent' }).Count | Should -Be 1
+        $chg = @($d | Where-Object { $_.Feld -like 'ConditionalAccessPolicy*' })
+        $chg.Count | Should -Be 1
+        $chg[0].Feld | Should -Be 'ConditionalAccessPolicy.state'
+        $chg[0].Vorher | Should -Be 'enabledForReportingButNotEnforced'
+        $chg[0].Nachher | Should -Be 'enabled'
+    }
+
+    It 'zeigt bei neu angelegten Eintraegen alle Werte, kuerzt lange Werte und begrenzt die Zeilen' {
+        $new = '{"displayName":"Neu","state":"enabled"}'
+        $e = Ev 'Policy' 'Add conditional access policy' -Props @([pscustomobject]@{ displayName = 'ConditionalAccessPolicy'; oldValue = ''; newValue = ($new | ConvertTo-Json) })
+        @(ConvertTo-HUSecAuditDetail $e | Where-Object { $_.Feld -like 'ConditionalAccessPolicy*' }).Count | Should -Be 2
+        $long = Ev 'Policy' 'Update policy' -Props @([pscustomobject]@{ displayName = 'X'; oldValue = ''; newValue = ('"' + ('a' * 900) + '"') })
+        (@(ConvertTo-HUSecAuditDetail $long -MaxLen 100 | Where-Object { $_.Feld -eq 'X' })[0].Nachher) | Should -Match '\.\.\. \(900 Zeichen\)$'
+        $many = @(ConvertTo-HUSecAuditDetail $long -MaxRows 3)
+        $many.Count | Should -Be 4
+        $many[-1].Feld | Should -Be 'gekuerzt'
+    }
+
+    It 'blendet versteckte Felder in der Tabelle nur auf Wunsch aus' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        . (Join-Path $root 'Functions\UI-QSTable.ps1')
+        $o = [pscustomobject]@{ Zeit = '1'; __Detail = @('x') }
+        (ConvertTo-HUQSRows @($o)).Columns | Should -Contain '__Detail'
+        (ConvertTo-HUQSRows @($o) -SkipHidden).Columns | Should -Not -Contain '__Detail'
     }
 }

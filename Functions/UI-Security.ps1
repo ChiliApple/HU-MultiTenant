@@ -302,7 +302,16 @@ function Complete-HUSecChanges {
         if (-not $script:SecChg.Fail.Count) { Show-HUMessage 'Keine heiklen Aenderungen in den letzten 30 Tagen.' -Icon Info }
         return
     }
-    Show-HUQSTable -Title "Aenderungen (30 Tage): $(@($script:SecChg.Keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" -Objects $rows -FilePrefix 'Aenderungen' -NoExport
+    Show-HUQSTable -Title "Aenderungen (30 Tage): $(@($script:SecChg.Keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" -Objects $rows -FilePrefix 'Aenderungen' -NoExport `
+        -OnRowDoubleClick { param($Obj, $Win) Show-HUSecAuditDetail $Obj $Win }
+}
+
+# Detailfenster eines Ereignisses (Doppelklick in einer Ereignisliste): Daten hingen schon an der Zeile, nichts wird neu geladen.
+# Nur Anzeige (Namen, IP-Adressen): kein Export, nichts ins Protokoll.
+function Show-HUSecAuditDetail($Obj, $Owner = $null) {
+    if (-not $Obj -or -not $Obj.PSObject.Properties['__Detail'] -or -not @($Obj.__Detail).Count) { Show-HUMessage 'Zu diesem Eintrag gibt es keine Details.' -Icon Info -Owner $Owner; return }
+    $t = "$($Obj.Zeit) $($Obj.Ereignis)$(if ($Obj.PSObject.Properties['Tenant'] -and "$($Obj.Tenant)") { " ($($Obj.Tenant))" })"
+    Show-HUQSTable -Title $t -Objects @($Obj.__Detail) -FilePrefix 'Ereignis' -NoExport -Owner $Owner -StateKey 'QSTableDetail'
 }
 
 # Vor dem ersten Pruefen: Regelliste schon zeigen (leere Zellen) - fuer die angehakten Tenants
@@ -387,7 +396,7 @@ function Start-HUSecItems {
     Add-HURtbLine $script:Controls['rtbAna'] "Lade $($script:SecItemsLabel): $(Get-HUAnaTenantName $Key) ($RuleId) ..." '#90CAF9'
     $started = Start-HUJob -Name "SecItems-$RuleId-$Key" -Quiet -Output $script:Controls['rtbAna'] -Vars @{ TK = $Key; RID = $RuleId } -Code {
             $rows = @(); $err = ''
-            try { $rows = @(Get-HUSecItems -TenantKey $TK -Settings $Settings -RuleId $RID) }
+            try { $rows = @(Get-HUSecItems -TenantKey $TK -Settings $Settings -RuleId $RID -KeepDetail) }
             catch { $err = "$($_.Exception.Message)"; Write-HULog -Message $err -Level 'ERROR' -Tenant $TK }
             [pscustomobject]@{ __SecItems = $true; Rows = $rows; Err = $err }
         } -OnDone {
@@ -398,7 +407,11 @@ function Start-HUSecItems {
             if ($d.Err) { Show-HUMessage "$($script:SecItemsLabel) konnten nicht gelesen werden: $($d.Err)" -Icon Warning; return }
             if (-not @($d.Rows).Count) { Show-HUMessage "Keine betroffenen $($script:SecItemsLabel)." -Icon Info; return }
             Add-HURtbLine $script:Controls['rtbAna'] "$(@($d.Rows).Count) Eintraege$(if ($script:SecItemsExport) { ' (ohne Personendaten, Speichern moeglich)' } else { ' (nur Anzeige, nicht gespeichert)' })" '#81C784'
-            Show-HUQSTable -Title $script:SecItemsTitle -Objects @($d.Rows) -FilePrefix 'Katalog-Liste' -NoExport:(-not $script:SecItemsExport)
+            # Ereignislisten (L-Regeln) haben Details je Zeile: Doppelklick oeffnet sie; andere Listen unveraendert
+            if (@($d.Rows | Where-Object { $_.PSObject.Properties['__Detail'] }).Count) {
+                Show-HUQSTable -Title $script:SecItemsTitle -Objects @($d.Rows) -FilePrefix 'Katalog-Liste' -NoExport -OnRowDoubleClick { param($Obj, $Win) Show-HUSecAuditDetail $Obj $Win }
+            }
+            else { Show-HUQSTable -Title $script:SecItemsTitle -Objects @($d.Rows) -FilePrefix 'Katalog-Liste' -NoExport:(-not $script:SecItemsExport) }
         }
     if (-not $started) { Set-HUSecBusy $false }
 }

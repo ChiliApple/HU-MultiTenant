@@ -12,6 +12,10 @@
   - Vergebene Admin-Rollen, Domänen und Verbund, neue Secrets und Zertifikate an Apps, erteilte App-Rechte und Zustimmungen, bedingter Zugriff.
   - Änderungen durch HU-MultiTenant selbst sind gekennzeichnet.
   - Die Liste enthält Namen und lässt sich nicht speichern.
+- **Details je Ereignis:** Doppelklick auf eine Zeile der Änderungsliste oder der Ereignislisten L01 bis L05.
+  - Auslöser mit IP-Adresse, jede geänderte Eigenschaft mit Vorher und Nachher, Korrelations-ID und weitere Angaben.
+  - Bei bedingtem Zugriff eine Zeile je geänderter Einstellung statt der ganzen Richtlinie.
+  - Ebenfalls nur zur Anzeige, ohne Speichern.
 - **Neue Regeln L01 bis L05:** Dieselben Daten als Regeln im Katalog, mit Liste, Anleitung und Teams-Meldung "Sicherheits-Änderung".
   - Gezählt werden betroffene Konten oder Apps, nicht einzelne Ereignisse. Gelöschte Secrets zählen nicht.
   - L01 (Admin-Rollen) und L02 (Domänen) sind Abweichungen. Die Teams-Meldung meldet dort jedes Ereignis nach dem gespeicherten Soll-Stand, auch wenn gleichzeitig alte Ereignisse herausfallen.
@@ -26,7 +30,7 @@
 - Weiterleitungen und Posteingangsregeln in Exchange stehen nicht in diesem Protokoll.
 
 ### ✅ Qualität
-- 38 neue Prüfungen.
+- 46 neue Prüfungen.
 
 ## v2.6.16 (Testversion)
 
