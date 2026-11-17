@@ -1602,7 +1602,8 @@
         "Unbekannte Vergabe: Entra ID > Roles & admins > die Rolle oeffnen > Assignments: das Konto entfernen, dann Kennwort des vergebenden Kontos pruefen und dessen Sitzungen widerrufen.",
         "Zur Kontrolle im Portal: Entra ID > Monitoring & health > Audit logs, Filter \"Category\" = RoleManagement und \"Activity\" = Add member to role.",
         "Gewollte Vergabe: nichts tun, die Zelle wird von selbst wieder gruen, sobald die Vergabe aus dem Protokoll faellt (30 Tage mit Entra ID P1, sonst 7). Eine Ausnahme deckt nur die Vergaben, die beim letzten Pruefen zu sehen waren, jede spaetere macht die Zelle wieder rot.",
-        "Nicht erkannt werden Rechte ueber Mitgliedschaft in einer Gruppe, der eine Rolle zugewiesen ist, und neue Besitzer von Apps. Diese im Portal unter Roles & admins > Rolle > Assignments und unter App registrations > App > Owners pruefen."
+        "Aufnahme in eine Gruppe mit Admin-Rolle: Groups > Gruppe > Members, das Konto entfernen, wenn es die Rolle nicht haben soll.",
+        "Nicht erkannt werden berechtigte Mitgliedschaften ueber PIM fuer Gruppen und neue Besitzer von Apps. Diese in Privileged Identity Management bei den Gruppen und unter App registrations > App > Owners pruefen."
       ],
       "learn": [
         {

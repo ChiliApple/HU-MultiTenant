@@ -128,6 +128,8 @@ $script:HUSecGuidRx = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 $script:HUSecAuditCategories = @('RoleManagement', 'DirectoryManagement', 'ApplicationManagement', 'Policy')
 $script:HUSecAuditKinds = @(
     @{ Kind = 'Rolle'; Label = 'Admin-Rolle vergeben'; Category = 'RoleManagement'; Match = '^Add (eligible |scoped )?member to role'; Skip = '(?i)activation' }
+    # nur Eintraege aus dem gezielten Abruf (Fakt audits markiert sie mit __RoleGroup), nie beliebige Gruppenaenderungen
+    @{ Kind = 'RolleGruppe'; Label = 'Admin-Rolle ueber Gruppe'; Category = 'GroupManagement'; Match = '^Add member to group$'; Skip = '' }
     @{ Kind = 'Domaene'; Label = 'Domaene oder Verbund'; Category = 'DirectoryManagement'; Match = '(?i)domain|federation'; Skip = '' }
     @{ Kind = 'Zugangsdaten'; Label = 'Zugangsdaten an App'; Category = 'ApplicationManagement'; Match = '(?i)certificates and secrets management|add service principal credentials'; Skip = '(?i)^(delete|remove)' }
     @{ Kind = 'AppRechte'; Label = 'App-Recht oder Zustimmung'; Category = 'ApplicationManagement'; Match = '(?i)^(add app role assignment to service principal|consent to application|add delegated permission grant)'; Skip = '' }
@@ -233,10 +235,17 @@ function Get-HUSecCustomFact {
                 elseif ($t -like '*group') {
                     # Gruppen eines Partners (z. B. AdminAgents eines Dienstleisters, Partnerzugriff) liegen im fremden Tenant: Mitglieder geben 404.
                     # Dann die Gruppe nennen und nicht bewerten, statt die ganze Regel abzubrechen (live 17.11.2026 bei drei Tenants).
+                    # Rollen je Partner-Gruppe sammeln (Anzeige, Pruefung 2.6.18 B4); die Gruppe nur einmal abfragen
+                    $rid = "$($x.roleDefinitionId)".ToLowerInvariant()
+                    if ($ext.ContainsKey($prin)) { if ($rid -and $ext[$prin].roles -notcontains $rid) { $ext[$prin].roles.Add($rid) }; continue }
                     $mem = $null
                     try { $mem = @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/groups/$prin/members/microsoft.graph.user?`$select=id" -All) }
                     catch { $code = 0; try { $code = [int]$_.Exception.Data['StatusCode'] } catch { }; if ($code -ne 404) { throw } }
-                    if ($null -eq $mem) { if (-not $ext.ContainsKey($prin)) { $ext[$prin] = "$($x.principal.displayName)" }; continue }
+                    if ($null -eq $mem) {
+                        $ext[$prin] = @{ name = "$($x.principal.displayName)"; roles = (New-Object System.Collections.Generic.List[string]) }
+                        if ($rid) { $ext[$prin].roles.Add($rid) }
+                        continue
+                    }
                     foreach ($m in $mem) {
                         $mid = "$($m.id)".ToLowerInvariant(); if ($mid -and -not $via.ContainsKey($mid)) { $via[$mid] = "$($x.principal.displayName)" }
                     }
@@ -255,7 +264,7 @@ function Get-HUSecCustomFact {
                 }
             }
             foreach ($sp in $sps) { [pscustomobject]@{ kind = 'sp'; id = $sp } }
-            foreach ($g in $ext.Keys) { [pscustomobject]@{ kind = 'extgroup'; id = $g; name = $ext[$g] } }
+            foreach ($g in $ext.Keys) { [pscustomobject]@{ kind = 'extgroup'; id = $g; name = $ext[$g].name; roles = @($ext[$g].roles) } }
         }
         'ca' {
             # v1.0 fuehrt; beta wird nur zum Abgleich der Ids gelesen. Fehlt eine Richtlinie in v1.0 (in einem Tenant beobachtet, Ursache unklar), kommt sie aus beta dazu und wird markiert. Schlaegt beta fehl, gilt nur v1.0.
@@ -354,6 +363,27 @@ function Get-HUSecCustomFact {
             foreach ($cat in $script:HUSecAuditCategories) {
                 foreach ($x in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/auditLogs/directoryAudits?`$filter=activityDateTime%20ge%20$since%20and%20category%20eq%20'$cat'&`$top=999" -All)) { if ($x) { $rows.Add($x) } }
             }
+            # Aufnahmen in rollenzuweisbare Gruppen sind ein ueblicher Weg zu einer Admin-Rolle (Pruefung 2.6.17 B4). Alle Gruppenaenderungen
+            # zu lesen waere in Schulen mit vielen Klassen-Teams zu viel; deshalb erst die (wenigen) rollenzuweisbaren Gruppen holen und dann
+            # gezielt nach Aufnahmen in genau diese fragen, bis zu 15 Gruppen je Abruf (Filter live geprueft 17.11.2026).
+            # Ohne solche Gruppen kein weiterer Abruf. Fehler: nur L01 wird nicht pruefbar (RoleGroupError), L02-L05 bleiben.
+            $rgN = 0; $rgErr = ''
+            try {
+                $rg = @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/groups?`$filter=isAssignableToRole%20eq%20true&`$select=id,displayName" -All | Where-Object { $_ -and "$($_.id)" })
+                $rgN = $rg.Count
+                for ($i = 0; $i -lt $rg.Count; $i += 15) {
+                    $chunk = @($rg[$i..([Math]::Min($i + 14, $rg.Count - 1))])
+                    $any = @($chunk | ForEach-Object { "t/id eq '$("$($_.id)" -replace "'", '')'" }) -join ' or '
+                    $flt = "activityDateTime ge $since and category eq 'GroupManagement' and activityDisplayName eq 'Add member to group' and targetResources/any(t:$any)"
+                    foreach ($x in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint ("/auditLogs/directoryAudits?`$filter=" + [uri]::EscapeDataString($flt) + "&`$top=999") -All)) {
+                        if ($x) { $x | Add-Member -NotePropertyName __RoleGroup -NotePropertyValue $true -Force; $rows.Add($x) }
+                    }
+                }
+            }
+            catch {
+                $code = 0; try { $code = [int]$_.Exception.Data['StatusCode'] } catch { }
+                $rgErr = $(if ($code) { "HTTP $code" } else { 'Abruf fehlgeschlagen' })
+            }
             # eigene App: deren Eintraege (Zertifikat erneuern, Muster uebertragen) werden gekennzeichnet und nicht mitgezaehlt.
             # Microsoft traegt bei Zertifikats-Ereignissen oft keine appId ein, nur servicePrincipalId und Namen (live geprueft) -
             # deshalb auch den eigenen Dienstprinzipal bestimmen (fehlt das Recht, bleibt es bei der appId).
@@ -366,7 +396,7 @@ function Get-HUSecCustomFact {
             # Aufbewahrung laut Microsoft Learn: Entra ID Free 7 Tage, P1/P2 30 Tage (Lizenz unbekannt = 30)
             # https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-reports-data-retention
             $days = if (Test-HUSecLicense $Ctx 'P1') { $script:HUSecAuditDays } else { 7 }
-            [pscustomobject]@{ Rows = $rows.ToArray(); OwnAppId = $own; OwnSpId = $ownSp; Days = $days }
+            [pscustomobject]@{ Rows = $rows.ToArray(); OwnAppId = $own; OwnSpId = $ownSp; Days = $days; RoleGroups = $rgN; RoleGroupError = $rgErr }
         }
         'dmset' {
             # Compliance-Grundeinstellungen (deviceManagement.settings): v1.0 mit $select lieferte im Test nichts - der Reihe nach versuchen
@@ -1051,6 +1081,7 @@ function Get-HUSecAuditKind($Entry) {
         if ($act -notmatch $k.Match) { continue }
         if ($k.Skip -and $act -match $k.Skip) { continue }
         if ($k.Kind -eq 'Zugangsdaten' -and -not (Test-HUSecAuditKeyAdded $Entry)) { continue }
+        if ($k.Kind -eq 'RolleGruppe' -and -not ($Entry.PSObject.Properties['__RoleGroup'] -and $Entry.__RoleGroup)) { continue }
         return $k.Kind
     }
     return ''
@@ -1107,6 +1138,12 @@ function ConvertTo-HUSecAuditRow($Entry, [string]$OwnAppId = '', [string]$OwnSpI
         # Rollenname steht bei "Add member to role" in den geaenderten Eigenschaften des Ziels
         $rn = @($tg | ForEach-Object { Get-HUSecAuditProp $_ 'Role.DisplayName' } | Where-Object { $_ })[0]
         if ($rn) { $rest = " ($rn)" }
+    }
+    elseif ($kind -eq 'RolleGruppe') {
+        # "Add member to group": Stelle 0 = aufgenommenes Konto mit Group.DisplayName in den Eigenschaften, Stelle 1 = Gruppe (live geprueft)
+        $gn = Get-HUSecAuditProp $tg[0] 'Group.DisplayName'
+        if (-not $gn -and $tg.Count -gt 1) { $gn = "$($tg[1].displayName)" }
+        $rest = " (Gruppe mit Admin-Rolle$(if ($gn) { ": $gn" }))"
     }
     $name = if (-not $main) { '' } elseif ("$($main.displayName)") { "$($main.displayName)" } else { "$($main.userPrincipalName)" }
     # bei App-Rechten steht an Stelle 1 als Name oft nur die App-ID; der echte Name steckt in den Eigenschaften der Ressource (live geprueft)
@@ -1335,6 +1372,28 @@ $script:HUSecAdminRoles = [ordered]@{
     'b1be1c3e-b65d-4f19-8427-f6fa0d97feb9' = 'Conditional Access Administrator'
     '729827e3-9c14-49f7-bb1b-9608f156bbb8' = 'Helpdesk Administrator'
     '966707d0-3269-4727-9be2-8c3a10f19b9d' = 'Password Administrator'
+}
+
+# A27: Partner-Gruppen mit ihren Rollen anzeigen (Pruefung 2.6.18 B4). Bekannte hohe Rollen mit Namen zuerst, Rest als Anzahl.
+# Rollenvorlagen-IDs laut Microsoft Learn (Microsoft Entra built-in roles); dazu Privileged Authentication Administrator.
+function Format-HUSecExtGroups([object[]]$Groups) {
+    # Reihenfolge = Gewicht: Global Admin, die beiden "Privileged"-Rollen, dann die uebrigen wichtigen Rollen
+    $known = [ordered]@{
+        '62e90394-69f5-4237-9190-012177145e10' = 'Global Administrator'
+        'e8611ab8-c189-46e8-94e1-60213ab1f814' = 'Privileged Role Administrator'
+        '7be44c8a-adaf-4e2a-84d6-ab2649e08a13' = 'Privileged Authentication Administrator'
+    }
+    foreach ($k in $script:HUSecAdminRoles.Keys) { if (-not $known.Contains($k)) { $known[$k] = $script:HUSecAdminRoles[$k] } }
+    $parts = foreach ($g in @($Groups | Where-Object { $_ })) {
+        $ids = @(@($g.roles) | ForEach-Object { "$_".ToLowerInvariant() } | Where-Object { $_ } | Select-Object -Unique)
+        $named = @($known.Keys | Where-Object { $ids -contains $_ } | ForEach-Object { $known[$_] })
+        $more = $ids.Count - $named.Count
+        $nm = ("$($g.name)" -replace '\s*@\s*\(.*$', '').Trim(); if (-not $nm) { $nm = 'Gruppe' }
+        $r = @($named | Select-Object -First 3) -join ', '
+        $rest = ($named.Count - [Math]::Min(3, $named.Count)) + $more
+        "${nm}: $(if ($r) { $r } else { "$($ids.Count) Rolle(n)" })$(if ($r -and $rest -gt 0) { " und $rest weitere" })"
+    }
+    return (@($parts) -join '; ')
 }
 
 $script:HUSecRules = @(
@@ -1757,10 +1816,12 @@ $script:HUSecRules = @(
             $never = @($bad | Where-Object { $_.State -eq 'never' }).Count; $unk = @($bad | Where-Object { $_.State -eq 'unknown' }).Count
             $sp = @($F.adminact | Where-Object { $_.kind -eq 'sp' }).Count
             $grp = @($r | Where-Object { $_.User.group }).Count
-            $ext = @($F.adminact | Where-Object { $_.kind -eq 'extgroup' }).Count
-            $d2 = "$($r.Count) aktive Admin-Konten (direkt und ueber Gruppen$(if ($grp) { ", $grp ueber Gruppe" }))$(if ($sp) { "; $sp Dienstprinzipal(e) mit Rolle (nicht bewertet)" })$(if ($ext) { "; $ext Gruppe(n) eines Partners mit Rolle (Mitglieder im fremden Tenant, nicht bewertet)" })"
-            if ($bad.Count) { return @{ Status = 'Abweichung'; Count = $bad.Count; Detail = "$d2, $($bad.Count) ohne erfolgreiche Anmeldung seit mehr als $max Tagen$(if ($never) { " (davon $never nie angemeldet)" })$(if ($unk) { ", $unk unbekannt (nur Fehlversuche bekannt)" })" } }
-            @{ Status = 'OK'; Count = 0; Detail = "$d2, alle innerhalb von $max Tagen erfolgreich angemeldet" }
+            $extG = @($F.adminact | Where-Object { $_.kind -eq 'extgroup' }); $ext = $extG.Count
+            $d2 = "$($r.Count) aktive Admin-Konten (direkt und ueber Gruppen$(if ($grp) { ", $grp ueber Gruppe" }))$(if ($sp) { "; $sp Dienstprinzipal(e) mit Rolle (nicht bewertet)" })"
+            # Partner-Gruppen am Ende, damit die Bewertung vorne steht (MCP kuerzt nach 300 Zeichen)
+            $pt = if ($ext) { ". Nicht bewertet: $ext Gruppe(n) eines Partners mit Rolle ($(Format-HUSecExtGroups $extG))" } else { '' }
+            if ($bad.Count) { return @{ Status = 'Abweichung'; Count = $bad.Count; Detail = "$d2, $($bad.Count) ohne erfolgreiche Anmeldung seit mehr als $max Tagen$(if ($never) { " (davon $never nie angemeldet)" })$(if ($unk) { ", $unk unbekannt (nur Fehlversuche bekannt)" })$pt" } }
+            @{ Status = 'OK'; Count = 0; Detail = "$d2, alle innerhalb von $max Tagen erfolgreich angemeldet$pt" }
         } }
     @{ Id = 'A28'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Kennwortschutz fuer das lokale AD ist im Tenant eingeschaltet (Modus Erzwingen)'; Facts = @('pwdset'); Min = $false
         Eval = { param($F, $B)
@@ -2150,8 +2211,16 @@ $script:HUSecRules = @(
         } }
     # Aenderungsprotokoll (Entra-Ueberwachungsprotokoll, letzte 30 Tage): gezaehlt werden betroffene Ziele, Eintraege dieser App zaehlen nicht
     @{ Id = 'L01'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine neu vergebenen Admin-Rollen (letzte 30 Tage)'; Facts = @('audits'); Min = $false; Rolling = $true; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
-        Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('Rolle') -WithDetail:([bool]$B['__keepDetail']) | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis, __Detail }
-        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('Rolle') 'Konto/Konten' } }
+        Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('Rolle', 'RolleGruppe') -WithDetail:([bool]$B['__keepDetail']) | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis, __Detail }
+        Eval = { param($F, $B)
+            # Aufnahmen in Gruppen mit Admin-Rolle nicht lesbar: nicht pruefbar statt falsch gruen
+            if ($F.audits.PSObject.Properties['RoleGroupError'] -and "$($F.audits.RoleGroupError)") {
+                return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = "Aufnahmen in Gruppen mit Admin-Rolle nicht lesbar ($($F.audits.RoleGroupError))"; Complete = $false }
+            }
+            $e = Get-HUSecAuditEval $F.audits @('Rolle', 'RolleGruppe') 'Konto/Konten'
+            if ($F.audits.PSObject.Properties['RoleGroups'] -and [int]$F.audits.RoleGroups) { $e.Detail = "$($e.Detail); $([int]$F.audits.RoleGroups) Gruppe(n) mit Admin-Rolle mitgeprueft" }
+            $e
+        } }
     @{ Id = 'L02'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine Aenderung an Domaenen oder Verbund (letzte 30 Tage)'; Facts = @('audits'); Min = $false; Rolling = $true; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
         Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('Domaene') -WithDetail:([bool]$B['__keepDetail']) | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis, __Detail }
         Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('Domaene') 'Domaene(n)' } }
@@ -2175,7 +2244,7 @@ $script:HUSecRules = @(
 
 # Kurzerklaerung je Regel (Warum wird das geprueft?) fuer das Detailfenster
 $script:HUSecWhy = @{
-    L01 = 'Ein neuer Administrator ist der haeufigste Weg, sich dauerhaft Zugang zu sichern. Gezeigt wird jede Rollenvergabe der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll, auch berechtigte. Pruefen, ob jede Vergabe gewollt war. Die Zelle bleibt rot, solange die Vergabe im Protokoll steht (30 Tage mit Entra ID P1, sonst 7), und wird dann von selbst wieder gruen. Eine Ausnahme gilt nur fuer die Vergaben, die beim letzten Pruefen zu sehen waren; jede spaetere Vergabe macht die Zelle wieder rot. Nicht erkannt werden Rechte ueber Mitgliedschaft in einer Gruppe, der eine Rolle zugewiesen ist, und neue Besitzer von Apps.'
+    L01 = 'Ein neuer Administrator ist der haeufigste Weg, sich dauerhaft Zugang zu sichern. Gezeigt wird jede Rollenvergabe der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll, auch berechtigte. Pruefen, ob jede Vergabe gewollt war. Die Zelle bleibt rot, solange die Vergabe im Protokoll steht (30 Tage mit Entra ID P1, sonst 7), und wird dann von selbst wieder gruen. Eine Ausnahme gilt nur fuer die Vergaben, die beim letzten Pruefen zu sehen waren; jede spaetere Vergabe macht die Zelle wieder rot. Mitgezaehlt werden Aufnahmen in Gruppen, denen eine Admin-Rolle zugewiesen ist (rollenzuweisbare Gruppen). Nicht erkannt werden berechtigte Mitgliedschaften ueber PIM fuer Gruppen und neue Besitzer von Apps.'
     L02 = 'Eine neue Domaene oder ein geaenderter Verbund (Federation) kann Anmeldungen an einen fremden Dienst umleiten. Solche Aenderungen sind in Schulen selten und sollten immer bekannt sein. Eine Ausnahme gilt nur fuer Aenderungen, die beim letzten Pruefen zu sehen waren; jede spaetere macht die Zelle wieder rot.'
     L03 = 'Nur Hinweis: Ein neues Secret oder Zertifikat an einer App erlaubt Zugriff im Namen dieser App, ohne Benutzer und ohne MFA. Gezaehlt werden betroffene Apps, geloeschte Secrets zaehlen nicht, ausgetauschte schon. Erneuerungen durch HU-MultiTenant selbst stehen in der Liste, zaehlen aber nicht. Pruefen, ob jede Aenderung bekannt ist.'
     L04 = 'Nur Hinweis: Neue App-Rechte und Zustimmungen geben Apps Zugriff auf Daten im Tenant. Jede einzelne Berechtigung erzeugt einen eigenen Eintrag, gezaehlt werden deshalb betroffene Apps. Pruefen, ob jede App bekannt ist; heikle Rechte zeigt A42.'

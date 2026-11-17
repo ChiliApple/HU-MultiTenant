@@ -19,6 +19,8 @@ BeforeAll {
         param($TenantKey, $Settings, $Endpoint, [switch]$All, [switch]$Beta)
         [void]$global:HUSecEeps.Add("$Endpoint")
         foreach ($k in $global:HUSecEfx.Keys) { if ($Endpoint -like "*$k*") { return $global:HUSecEfx[$k] } }
+        # Standard: keine rollenzuweisbaren Gruppen (L01 fragt sie seit 2.6.18 ab)
+        if ($Endpoint -like '*isAssignableToRole*') { return @() }
         throw 'nicht vorbereitet'
     }
 
@@ -571,13 +573,70 @@ Describe 'Ausnahmen bei gleitendem Zeitraum (2.6.18)' {
     }
 }
 
+Describe 'L01 mit Gruppen mit Admin-Rolle (2.6.18)' {
+    BeforeEach {
+        Remove-Item -LiteralPath (Join-Path $script:TestAppData 'HU-MultiTenant') -Recurse -Force -ErrorAction SilentlyContinue
+        $global:HUSecEeps = New-Object System.Collections.Generic.List[string]
+        $grpAdd = Ev 'GroupManagement' 'Add member to group' -TargetId 'u7' -TargetName 'Neue Lehrkraft' -When (Get-Date).ToUniversalTime().AddDays(-1).ToString('o') -Props @([pscustomobject]@{ displayName = 'Group.DisplayName'; newValue = '"Helpdesk-Admins"' })
+        $global:HUSecEfx = @{
+            'subscribedSkus' = , @([pscustomobject]@{ servicePlans = @([pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) })
+            "'RoleManagement'" = @(); "'DirectoryManagement'" = @(); "'ApplicationManagement'" = @(); "'Policy'" = @()
+            'isAssignableToRole' = @([pscustomobject]@{ id = 'g1'; displayName = 'Helpdesk-Admins' })
+            'GroupManagement' = @($grpAdd)
+        }
+        $script:Set = [pscustomobject]@{ tenants = @([pscustomobject]@{ key = 'T1'; appId = 'OWN-APP' }) }
+    }
+
+    It 'zaehlt eine Aufnahme in eine Gruppe mit Admin-Rolle und nennt die Gruppe' {
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $script:Set -RuleIds @('L01'))[0]
+        $r.Status | Should -Be 'Abweichung'
+        $r.Count | Should -Be 1
+        $r.Detail | Should -Match '1 Gruppe\(n\) mit Admin-Rolle mitgeprueft'
+        "$($r.Latest)" | Should -Not -BeNullOrEmpty
+        $q = @($global:HUSecEeps | Where-Object { $_ -like '*GroupManagement*' })
+        $q.Count | Should -Be 1
+        [uri]::UnescapeDataString($q[0]) | Should -Match "targetResources/any\(t:t/id eq 'g1'\)"
+        $row = @(Get-HUSecItems -TenantKey 'T1' -Settings $script:Set -RuleId 'L01')[0]
+        $row.Ziel | Should -Be 'Neue Lehrkraft (Gruppe mit Admin-Rolle: Helpdesk-Admins)'
+        $row.Art | Should -Be 'Admin-Rolle ueber Gruppe'
+    }
+
+    It 'fragt ohne solche Gruppen nicht weiter nach' {
+        $global:HUSecEfx['isAssignableToRole'] = @()
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $script:Set -RuleIds @('L01'))[0]
+        $r.Status | Should -Be 'OK'
+        @($global:HUSecEeps | Where-Object { $_ -like '*GroupManagement*' }).Count | Should -Be 0
+    }
+
+    It 'macht nur L01 nicht pruefbar, wenn die Gruppen nicht lesbar sind' {
+        Mock -ModuleName HU.SecCatalog Invoke-HUSecFetch {
+            param($TenantKey, $Settings, $Endpoint, [switch]$All, [switch]$Beta)
+            if ($Endpoint -like '*isAssignableToRole*') { $e = New-Object System.Exception('gedrosselt'); $e.Data['StatusCode'] = 429; throw $e }
+            if ($Endpoint -like '*subscribedSkus*') { return , @([pscustomobject]@{ servicePlans = @([pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) }) }
+            if ($Endpoint -like '*directoryAudits*') { return @() }
+            if ($Endpoint -like '*servicePrincipals*') { return @() }
+            throw 'nicht vorbereitet'
+        }
+        $res = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $script:Set -RuleIds @('L01', 'L02'))
+        $by = @{}; foreach ($x in $res) { $by[$x.RuleId] = $x }
+        $by['L01'].Status | Should -Be 'NichtPruefbar'
+        $by['L01'].Detail | Should -Match 'HTTP 429'
+        $by['L02'].Status | Should -Be 'OK'
+    }
+
+    It 'zaehlt Gruppenaenderungen ohne Markierung aus dem gezielten Abruf nie als Rolle' {
+        Get-HUSecAuditKind (Ev 'GroupManagement' 'Add member to group') | Should -Be ''
+    }
+}
+
 Describe 'A27 mit Gruppen eines Partners (2.6.18)' {
     It 'bewertet Partner-Gruppen nicht, statt die Regel abzubrechen' {
         Mock -ModuleName HU.SecCatalog Invoke-HUSecFetch {
             param($TenantKey, $Settings, $Endpoint, [switch]$All, [switch]$Beta)
             if ($Endpoint -like '*roleAssignments*') {
                 return @([pscustomobject]@{ principalId = 'u1'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.user'; displayName = 'Admin Eins' } },
-                    [pscustomobject]@{ principalId = 'g9'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.group'; displayName = 'AdminAgents (Partner)' } })
+                    [pscustomobject]@{ principalId = 'g9'; roleDefinitionId = 'e8611ab8-c189-46e8-94e1-60213ab1f814'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.group'; displayName = 'AdminAgents @( Firma Test , firma.test )' } },
+                    [pscustomobject]@{ principalId = 'g9'; roleDefinitionId = '88d8e3e3-8f55-4a1e-953a-9b9898b8876b'; principal = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.group'; displayName = 'AdminAgents @( Firma Test , firma.test )' } })
             }
             if ($Endpoint -like '/groups/g9/members*') { $e = New-Object System.Exception('nicht gefunden'); $e.Data['StatusCode'] = 404; throw $e }
             if ($Endpoint -like '/users?*') { return @([pscustomobject]@{ id = 'u1'; userPrincipalName = 'admin1@contoso.test'; accountEnabled = $true; createdDateTime = '2025-01-01T00:00:00Z'; signInActivity = [pscustomobject]@{ lastSuccessfulSignInDateTime = (Get-Date).ToUniversalTime().AddDays(-2).ToString('o') } }) }
@@ -588,6 +647,8 @@ Describe 'A27 mit Gruppen eines Partners (2.6.18)' {
         $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $set -RuleIds @('A27'))[0]
         $r.Status | Should -Be 'OK'
         $r.Detail | Should -Match '1 Gruppe\(n\) eines Partners'
+        $r.Detail | Should -Match 'AdminAgents: Privileged Role Administrator und 1 weitere'
+        Should -Invoke -ModuleName HU.SecCatalog Invoke-HUSecFetch -Times 1 -Exactly -ParameterFilter { $Endpoint -like '/groups/g9/members*' }
     }
 
     It 'bricht bei anderen Fehlern weiter ab (nicht pruefbar statt falsch gruen)' {

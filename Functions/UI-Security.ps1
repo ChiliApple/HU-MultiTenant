@@ -232,7 +232,8 @@ function Update-HUSecBasicBars {
                 [void]$track.Children.Add($fill)
             }
             $txt.Text = "$($l.Ok) von $($l.Total) erfuellt$(if ($l.NotCheckable) { ", $($l.NotCheckable) nicht pruefbar" })"
-            $bd.ToolTip = "Offen: $($l.Deviations) (kritisch $($l.BySev.Kritisch), hoch $($l.BySev.Hoch), mittel $($l.BySev.Mittel), niedrig $($l.BySev.Niedrig)). Nicht pruefbar ist nie erfuellt: fehlendes Recht, Lizenz oder Technik."
+            $why = if ($l.Color -eq 'Gelb' -and -not $l.Deviations -and $l.CriticalNotCheckable) { "Gelb: $($l.CriticalNotCheckable) kritische Regel(n) nicht pruefbar, offen ist nichts. " } else { '' }
+            $bd.ToolTip = "${why}Offen: $($l.Deviations) (kritisch $($l.BySev.Kritisch), hoch $($l.BySev.Hoch), mittel $($l.BySev.Mittel), niedrig $($l.BySev.Niedrig)). Nicht pruefbar: $($l.NotCheckable), davon kritisch $($l.CriticalNotCheckable); nicht pruefbar ist nie erfuellt (fehlendes Recht, Lizenz oder Technik)."
         }
         [void]$sp.Children.Add($track)
         [void]$sp.Children.Add($txt)
