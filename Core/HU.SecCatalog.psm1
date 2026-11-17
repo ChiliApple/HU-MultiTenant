@@ -117,7 +117,22 @@ $script:HUSecFacts = @{
     signfail = @{ Custom = 'signfail'; Perms = @('AuditLog.Read.All'); Lic = 'P1' }
     signok = @{ Custom = 'signok'; Perms = @('AuditLog.Read.All'); Lic = 'P1' }
     alerts = @{ Ep = "/security/alerts_v2?`$filter=status%20eq%20'new'%20or%20status%20eq%20'inProgress'&`$top=999"; All = $true; Perms = @('SecurityAlert.Read.All'); Lic = '' }
+    # Aenderungsprotokoll (L-Regeln): Entra-Ueberwachungsprotokoll der letzten 30 Tage, nur vier Kategorien (sonst tausende Eintraege)
+    audits = @{ Custom = 'audits'; Perms = @('AuditLog.Read.All'); Lic = '' }
 }
+
+# Aenderungsprotokoll: Kategorien im Entra-Ueberwachungsprotokoll und Zuordnung der Ereignisse zur Art (Muster, weil Microsoft
+# Namen mit Gedankenstrich und Leerzeichen am Ende liefert, z. B. "Update application - Certificates and secrets management ")
+$script:HUSecAuditDays = 30
+$script:HUSecGuidRx = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+$script:HUSecAuditCategories = @('RoleManagement', 'DirectoryManagement', 'ApplicationManagement', 'Policy')
+$script:HUSecAuditKinds = @(
+    @{ Kind = 'Rolle'; Label = 'Admin-Rolle vergeben'; Category = 'RoleManagement'; Match = '^Add (eligible |scoped )?member to role'; Skip = '(?i)activation' }
+    @{ Kind = 'Domaene'; Label = 'Domaene oder Verbund'; Category = 'DirectoryManagement'; Match = '(?i)domain|federation'; Skip = '' }
+    @{ Kind = 'Zugangsdaten'; Label = 'Zugangsdaten an App'; Category = 'ApplicationManagement'; Match = '(?i)certificates and secrets management|add service principal credentials'; Skip = '(?i)^(delete|remove)' }
+    @{ Kind = 'AppRechte'; Label = 'App-Recht oder Zustimmung'; Category = 'ApplicationManagement'; Match = '(?i)^(add app role assignment to service principal|consent to application|add delegated permission grant)'; Skip = '' }
+    @{ Kind = 'CA'; Label = 'Bedingter Zugriff'; Category = 'Policy'; Match = '(?i)conditional access policy|named location'; Skip = '' }
+)
 
 function New-HUSecContext {
     param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings)
@@ -324,6 +339,27 @@ function Get-HUSecCustomFact {
             $since = [datetime]::UtcNow.AddHours(-24).ToString('yyyy-MM-ddTHH:mm:ssZ', [cultureinfo]::InvariantCulture)
             $code = if ($Name -eq 'signfail') { 50126 } else { 0 }
             , @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/auditLogs/signIns?`$filter=createdDateTime%20ge%20$since%20and%20status/errorCode%20eq%20$code&`$top=1000" -All)
+        }
+        'audits' {
+            # Je Kategorie ein gefilterter Abruf (ohne Filter rund 7.700 Eintraege in 30 Tagen bei einem kleinen Tenant; Gesamtabruf lief in 429)
+            $since = [datetime]::UtcNow.AddDays(-$script:HUSecAuditDays).ToString('yyyy-MM-ddTHH:mm:ssZ', [cultureinfo]::InvariantCulture)
+            $rows = New-Object System.Collections.Generic.List[object]
+            foreach ($cat in $script:HUSecAuditCategories) {
+                foreach ($x in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/auditLogs/directoryAudits?`$filter=activityDateTime%20ge%20$since%20and%20category%20eq%20'$cat'&`$top=999" -All)) { if ($x) { $rows.Add($x) } }
+            }
+            # eigene App: deren Eintraege (Zertifikat erneuern, Muster uebertragen) werden gekennzeichnet und nicht mitgezaehlt.
+            # Microsoft traegt bei Zertifikats-Ereignissen oft keine appId ein, nur servicePrincipalId und Namen (live geprueft) -
+            # deshalb auch den eigenen Dienstprinzipal bestimmen (fehlt das Recht, bleibt es bei der appId).
+            # Bewusst nur der AUSLOESER zaehlt, nicht die eigene App als Ziel: ein fremdes Secret an dieser App muss sichtbar bleiben.
+            $own = ''; $ownSp = ''
+            try { $t = @($Ctx.Settings.tenants | Where-Object { $_.key -eq $Ctx.TenantKey })[0]; if ($t) { $own = "$($t.appId)".ToLowerInvariant() } } catch { }
+            if ($own) {
+                try { $ownSp = "$(@(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/servicePrincipals?`$filter=appId%20eq%20'$own'&`$select=id" -All)[0].id)".ToLowerInvariant() } catch { }
+            }
+            # Aufbewahrung laut Microsoft Learn: Entra ID Free 7 Tage, P1/P2 30 Tage (Lizenz unbekannt = 30)
+            # https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-reports-data-retention
+            $days = if (Test-HUSecLicense $Ctx 'P1') { $script:HUSecAuditDays } else { 7 }
+            [pscustomobject]@{ Rows = $rows.ToArray(); OwnAppId = $own; OwnSpId = $ownSp; Days = $days }
         }
         'dmset' {
             # Compliance-Grundeinstellungen (deviceManagement.settings): v1.0 mit $select lieferte im Test nichts - der Reihe nach versuchen
@@ -533,7 +569,9 @@ $script:HUSecDefaults = @{
     # Katalog-weite Einstellungen: abgeschaltete Regeln (z. B. ohne P2-Lizenz)
     # statusOnly: nur Wechsel ok <-> Abweichung melden, nicht jede Aenderung der Anzahl (Regeln mit taeglich schwankenden Zahlen)
     # silent: in der Teams-Meldung und beim Soll-Hinweis gar nicht melden (Matrix bleibt unveraendert)
-    Katalog = @{ disabled = @(); statusOnly = @('E03', 'E04', 'E16', 'K01', 'K04', 'K05', 'C03', 'C06'); silent = @() }
+    # basic: Grundschutz-Liste der Einfach-Ansicht (nur Ebene "alle Tenants")
+    Katalog = @{ disabled = @(); statusOnly = @('E03', 'E04', 'E16', 'K01', 'K04', 'K05', 'C03', 'C06'); silent = @()
+        basic = @('V5', 'A02', 'A09', 'A17', 'V1', 'A04', 'A08', 'A27', 'A15', 'A42', 'E01', 'E04', 'E07', 'E09', 'E11') }
 }
 
 # Sollwerte zum Bearbeiten im Dialog (Analyse > Sicherheit > Sollwerte): Regel, Schluessel, Art, Bedeutung
@@ -541,6 +579,7 @@ $script:HUSecBaselineInfo = @(
     @{ Rule = 'Katalog'; Key = 'disabled';      Kind = 'rules'; Text = 'Abgeschaltete Regeln (Nummern, mit Komma getrennt, z. B. A29, A30, K06): Zelle zeigt "aus", zaehlt weder in der Ampel noch im Soll-Stand. Regeln mit Mindeststandard lassen sich nicht abschalten.' }
     @{ Rule = 'Katalog'; Key = 'statusOnly';    Kind = 'rules'; Text = 'Teams-Meldung: bei diesen Regeln nur den Wechsel ok/Abweichung melden, nicht jede Aenderung der Anzahl (z. B. Defender-Alarme, Konten, Geraete). Regeln mit Mindeststandard werden immer voll gemeldet.' }
     @{ Rule = 'Katalog'; Key = 'silent';        Kind = 'rules'; Text = 'Teams-Meldung: diese Regeln gar nicht melden (Matrix und Ampel bleiben). Regeln mit Mindeststandard werden immer gemeldet.' }
+    @{ Rule = 'Katalog'; Key = 'basic';         Kind = 'rulesAny'; Text = 'Grundschutz fuer die Ansicht "Einfach" (Nummern, mit Komma getrennt). Gilt fuer alle Tenants; ein Wert je Tenant wird hier nicht verwendet.' }
     @{ Rule = 'V1';  Key = 'accounts';          Kind = 'guids'; Text = 'Notfallkonten (Objekt-IDs der Benutzer, mit Komma getrennt). Jedes muss in jeder aussperrfaehigen Richtlinie ausgenommen sein; gilt auch fuer A25 und A27.' }
     @{ Rule = 'V5';  Key = 'policies';          Kind = 'names'; Text = 'Richtlinien, die zusammen den MFA-Grundschutz bilden (Nummer am Namensanfang wie 100, 200 oder voller Name; mit Komma getrennt). Sind alle vorhanden und aktiv, gilt V5 als erfuellt - auch ohne eine einzelne Richtlinie fuer alle Benutzer.' }
     @{ Rule = 'A42'; Key = 'allowedApps';       Kind = 'names'; Text = 'Apps, deren kritische Rechte gewollt sind (am besten Objekt-ID des Dienstprinzipals - steht in der Liste; Anzeigename gilt nur, solange er eindeutig ist; mit Komma getrennt, z. B. die Sync-App der Schulverwaltung). Sie werden angezeigt, aber nicht mitgezaehlt.' }
@@ -971,6 +1010,234 @@ function Test-HUSecPlan($Skus, [string[]]$Ids = @(), [string[]]$Names = @()) {
         }
     }
     return $false
+}
+
+# Aenderungsprotokoll: Art eines Eintrags aus dem Ueberwachungsprotokoll ('' = nicht heikel)
+function Get-HUSecAuditKind($Entry) {
+    if (-not $Entry) { return '' }
+    $act = "$($Entry.activityDisplayName)".Trim()
+    foreach ($k in $script:HUSecAuditKinds) {
+        if ("$($Entry.category)" -ne $k.Category) { continue }
+        if ($act -notmatch $k.Match) { continue }
+        if ($k.Skip -and $act -match $k.Skip) { continue }
+        if ($k.Kind -eq 'Zugangsdaten' -and -not (Test-HUSecAuditKeyAdded $Entry)) { continue }
+        return $k.Kind
+    }
+    return ''
+}
+
+# "Certificates and secrets management" meldet Microsoft fuer Hinzufuegen UND Loeschen. Hinzugefuegt = im neuen Wert mehr
+# Schluessel (KeyIdentifier=) als im alten (live geprueft: rund die Haelfte der Eintraege waren Loeschungen). Ohne Angabe: zaehlen.
+function Test-HUSecAuditKeyAdded($Entry) {
+    if ("$($Entry.activityDisplayName)" -notmatch '(?i)certificates and secrets management') { return $true }
+    $kd = @(@($Entry.targetResources | Where-Object { $_ }) | ForEach-Object { @($_.modifiedProperties) } | Where-Object { $_ -and "$($_.displayName)" -eq 'KeyDescription' })[0]
+    if (-not $kd) { return $true }
+    $old = ([regex]::Matches("$($kd.oldValue)", 'KeyIdentifier=')).Count
+    $new = ([regex]::Matches("$($kd.newValue)", 'KeyIdentifier=')).Count
+    return ($new -gt $old)
+}
+
+# Wert einer geaenderten Eigenschaft (Microsoft liefert JSON-Text mit Anfuehrungszeichen)
+function Get-HUSecAuditProp($Target, [string]$Name) {
+    if (-not $Target) { return '' }
+    $p = @(@($Target.modifiedProperties) | Where-Object { $_ -and "$($_.displayName)" -eq $Name })[0]
+    if (-not $p) { return '' }
+    return "$($p.newValue)".Trim().Trim('"').Trim()
+}
+
+# Eine Listenzeile (nur Anzeige, wird nie gespeichert): Zeit lokal, Art, Ereignis, Ziel, ausgeloest von; Eigen = durch diese App
+# -WithDetail: Detailzeilen fuers Detailfenster anhaengen (nur Anzeige; kostet Zeit, deshalb nicht bei Regelauswertung und Teams-Pruefung)
+function ConvertTo-HUSecAuditRow($Entry, [string]$OwnAppId = '', [string]$OwnSpId = '', [switch]$WithDetail) {
+    $kind = Get-HUSecAuditKind $Entry
+    $label = @($script:HUSecAuditKinds | Where-Object { $_.Kind -eq $kind })[0].Label
+    $t = ConvertTo-HUSecUtc $Entry.activityDateTime
+    $by = $Entry.initiatedBy
+    $usr = if ($by -and $by.PSObject.Properties['user'] -and $by.user) { "$($by.user.userPrincipalName)" } else { '' }
+    $hasApp = [bool]($by -and $by.PSObject.Properties['app'] -and $by.app)
+    $appId = if ($hasApp) { "$($by.app.appId)".ToLowerInvariant() } else { '' }
+    $spId = if ($hasApp -and $by.app.PSObject.Properties['servicePrincipalId']) { "$($by.app.servicePrincipalId)".ToLowerInvariant() } else { '' }
+    $appName = if ($hasApp) { "$($by.app.displayName)" } else { '' }
+    # eigen = ausgeloest von dieser App ohne Benutzer; Microsoft liefert dabei mal die appId, mal nur die servicePrincipalId
+    $own = [bool](-not $usr -and (($OwnAppId -and $appId -and $appId -eq $OwnAppId.ToLowerInvariant()) -or ($OwnSpId -and $spId -and $spId -eq $OwnSpId.ToLowerInvariant())))
+    $wer = if ($own) { 'HU-MultiTenant' } elseif ($usr) { $usr } elseif ($appName) { "App: $appName" } else { 'Microsoft (System)' }
+    $tg = @($Entry.targetResources | Where-Object { $_ })
+    $act = "$($Entry.activityDisplayName)".Trim()
+    # Hauptziel: bei App-Rechten und delegierten Rechten steht an Stelle 0 die Ressource (z. B. Microsoft Graph), die App an Stelle 1
+    # (live geprueft; bei delegierten Rechten ohne Anzeigenamen - den ergaenzt Get-HUSecAuditRows aus anderen Eintraegen derselben App)
+    $main = @($tg)[0]; $res = $null; $rest = ''
+    if ($kind -eq 'AppRechte' -and $tg.Count -gt 1 -and $act -match '(?i)^add (app role assignment to service principal|delegated permission grant)') {
+        $res = $tg[0]; $main = $tg[1]
+        $perm = if ($act -match '(?i)delegated') { Get-HUSecAuditProp $res 'DelegatedPermissionGrant.Scope' } else { Get-HUSecAuditProp $res 'AppRole.Value' }
+        $rest = "$(if ($perm) { ": $perm" })$(if ("$($res.displayName)") { " ($($res.displayName))" })"
+    }
+    elseif ($kind -eq 'Rolle') {
+        # Rollenname steht bei "Add member to role" in den geaenderten Eigenschaften des Ziels
+        $rn = @($tg | ForEach-Object { Get-HUSecAuditProp $_ 'Role.DisplayName' } | Where-Object { $_ })[0]
+        if ($rn) { $rest = " ($rn)" }
+    }
+    $name = if (-not $main) { '' } elseif ("$($main.displayName)") { "$($main.displayName)" } else { "$($main.userPrincipalName)" }
+    # bei App-Rechten steht an Stelle 1 als Name oft nur die App-ID; der echte Name steckt in den Eigenschaften der Ressource (live geprueft)
+    if ($res -and ($name -match $script:HUSecGuidRx -or -not $name)) { $alt = Get-HUSecAuditProp $res 'ServicePrincipal.DisplayName'; if ($alt) { $name = $alt } }
+    if ($name -match $script:HUSecGuidRx) { $name = '' }
+    [pscustomobject]@{
+        Zeit = $(if ($t) { $t.ToLocalTime().ToString('yyyy-MM-dd HH:mm', [cultureinfo]::InvariantCulture) } else { '' })
+        Art = "$label"; Ereignis = $act; Ziel = "$name$rest"; Von = $wer
+        Ergebnis = $(if ("$($Entry.result)" -eq 'success') { 'ok' } else { "$($Entry.result)" }); Eigen = $own; Kind = $kind
+        ZielId = $(if ($main) { "$($main.id)" } else { '' }); ZielName = $name; ZielRest = $rest
+        Utc = $(if ($t) { $t.ToUniversalTime().ToString('o', [cultureinfo]::InvariantCulture) } else { '' })
+        __Detail = $(if ($WithDetail) { try { @(ConvertTo-HUSecAuditDetail $Entry) } catch { @() } } else { @() })
+    }
+}
+
+# Detail je Ereignis: Wert aus modifiedProperties flach machen. Microsoft liefert Text, JSON-Text oder doppelt kodierten
+# JSON-Text (bei bedingtem Zugriff die ganze Richtlinie, live bis rund 6.000 Zeichen) - Ergebnis: Pfad -> Text
+# Listen aus einfachen Werten bleiben Listen ([string[]]), damit die Anzeige hinzugefuegte und entfernte Eintraege einzeln zeigt.
+function Format-HUSecAuditScalar($V) {
+    if ($V -is [datetime]) {
+        # PS 7 macht aus Datumstext ein DateTime: nur echte UTC- bzw. Ortszeit umrechnen, ohne Zeitzone unveraendert lassen
+        switch ($V.Kind) { 'Utc' { return $V.ToString('yyyy-MM-ddTHH:mm:ssZ', [cultureinfo]::InvariantCulture) } 'Local' { return $V.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', [cultureinfo]::InvariantCulture) } default { return $V.ToString('yyyy-MM-ddTHH:mm:ss', [cultureinfo]::InvariantCulture) } }
+    }
+    if ($V -is [bool]) { return $(if ($V) { 'true' } else { 'false' }) }
+    if ($V -is [double] -or $V -is [decimal] -or $V -is [single]) { return $V.ToString([cultureinfo]::InvariantCulture) }
+    return "$V"
+}
+
+function Add-HUSecAuditFlat($Flat, [string]$Path, $Obj) {
+    if ($null -eq $Obj) { $Flat[$Path] = ''; return }
+    if ($Obj -is [string] -or $Obj -is [datetime] -or $Obj.GetType().IsValueType) { $Flat[$Path] = Format-HUSecAuditScalar $Obj; return }
+    if ($Obj -is [System.Collections.IEnumerable] -and -not ($Obj -is [System.Collections.IDictionary])) {
+        $items = @($Obj)
+        if (-not $items.Count) { $Flat[$Path] = ''; return }
+        if (-not @($items | Where-Object { $null -ne $_ -and -not ($_ -is [string] -or $_ -is [datetime] -or $_.GetType().IsValueType) }).Count) { $Flat[$Path] = [string[]]@($items | ForEach-Object { Format-HUSecAuditScalar $_ }); return }
+        for ($i = 0; $i -lt $items.Count; $i++) { Add-HUSecAuditFlat $Flat "$Path[$i]" $items[$i] }
+        return
+    }
+    $props = @($Obj.PSObject.Properties)
+    if (-not $props.Count) { $Flat[$Path] = ''; return }
+    foreach ($p in $props) { Add-HUSecAuditFlat $Flat $(if ($Path) { "$Path.$($p.Name)" } else { "$($p.Name)" }) $p.Value }
+}
+
+function ConvertFrom-HUSecAuditValue([string]$Value) {
+    $flat = [ordered]@{}
+    $v = "$Value".Trim()
+    if (-not $v) { return $flat }
+    $o = $null
+    # nur lesen, was nach JSON aussieht ({, [ oder "): sonst wuerden Texte wie 0012, 1e5 oder true zu Zahlen bzw. Wahrheitswerten
+    for ($n = 0; $n -lt 3; $n++) {
+        if ($v -notmatch '^[\[\{"]') { break }
+        try {
+            # PS 7 loest Listen mit einem Eintrag sonst auf; -NoEnumerate gibt es in 5.1 nicht (dort ohnehin keine Aufloesung)
+            $o = if ($PSVersionTable.PSVersion.Major -ge 7) { ConvertFrom-Json -InputObject $v -NoEnumerate -ErrorAction Stop } else { ConvertFrom-Json -InputObject $v -ErrorAction Stop }
+        }
+        catch { $o = $null; break }
+        if ($o -is [string]) { $v = $o.Trim(); $o = $null; continue }
+        break
+    }
+    if ($null -eq $o) { $flat[''] = $v; return $flat }
+    Add-HUSecAuditFlat $flat '' $o
+    return $flat
+}
+
+# Detailzeilen eines Eintrags (Bereich, Feld, Vorher, Nachher) - nur Anzeige, nie speichern oder protokollieren (Namen, IP-Adressen).
+# Bei Aenderungen nur abweichende Werte; lange Werte gekuerzt, hoechstens -MaxRows Zeilen.
+# MaxLen 1000: live waren erteilte Berechtigungen bis 639 Zeichen lang (17.11.2026); lange Listen bekommen eine Zeile je Eintrag
+function ConvertTo-HUSecAuditDetail($Entry, [int]$MaxRows = 300, [int]$MaxLen = 1000) {
+    $rows = New-Object System.Collections.Generic.List[object]
+    $cut = { param($s) $s = "$s"; if ($s.Length -gt $MaxLen) { $s.Substring(0, $MaxLen) + " ... ($($s.Length) Zeichen)" } else { $s } }
+    $add = { param($b, $f, $old, $new) if ("$old$new" -ne '') { $rows.Add([pscustomobject]@{ Bereich = "$b"; Feld = "$f"; Vorher = (& $cut $old); Nachher = (& $cut $new) }) } }
+    if (-not $Entry) { return @() }
+    $t = ConvertTo-HUSecUtc $Entry.activityDateTime
+    & $add 'Ereignis' 'Zeit' '' $(if ($t) { $t.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss', [cultureinfo]::InvariantCulture) } else { '' })
+    & $add 'Ereignis' 'Ereignis' '' "$($Entry.activityDisplayName)".Trim()
+    & $add 'Ereignis' 'Kategorie' '' "$($Entry.category)"
+    & $add 'Ereignis' 'Ergebnis' '' "$($Entry.result)$(if ("$($Entry.resultReason)") { " ($($Entry.resultReason))" })"
+    & $add 'Ereignis' 'Vorgang' '' "$($Entry.operationType)"
+    & $add 'Ereignis' 'Protokolliert von' '' "$($Entry.loggedByService)"
+    & $add 'Ereignis' 'Korrelations-ID' '' "$($Entry.correlationId)"
+    & $add 'Ereignis' 'Eintrags-ID' '' "$($Entry.id)"
+    $by = $Entry.initiatedBy
+    if ($by -and $by.PSObject.Properties['user'] -and $by.user) {
+        & $add 'Ausgeloest von' 'Konto' '' "$($by.user.userPrincipalName)"
+        & $add 'Ausgeloest von' 'Name' '' "$($by.user.displayName)"
+        if ($by.user.PSObject.Properties['ipAddress']) { & $add 'Ausgeloest von' 'IP-Adresse' '' "$($by.user.ipAddress)" }
+    }
+    if ($by -and $by.PSObject.Properties['app'] -and $by.app) {
+        & $add 'Ausgeloest von' 'App' '' "$($by.app.displayName)"
+        & $add 'Ausgeloest von' 'App-ID' '' "$($by.app.appId)"
+        if ($by.app.PSObject.Properties['servicePrincipalId']) { & $add 'Ausgeloest von' 'Dienstprinzipal-ID' '' "$($by.app.servicePrincipalId)" }
+    }
+    $n = 0
+    foreach ($tg in @($Entry.targetResources | Where-Object { $_ })) {
+        $n++
+        $b = "Ziel $n ($($tg.type))"
+        & $add $b 'Name' '' $(if ("$($tg.displayName)") { "$($tg.displayName)" } else { "$($tg.userPrincipalName)" })
+        & $add $b 'ID' '' "$($tg.id)"
+        foreach ($p in @($tg.modifiedProperties | Where-Object { $_ })) {
+            $old = ConvertFrom-HUSecAuditValue "$($p.oldValue)"; $new = ConvertFrom-HUSecAuditValue "$($p.newValue)"
+            $both = ($old.Count -and $new.Count)
+            $keys = New-Object System.Collections.Generic.List[string]
+            foreach ($k in @($old.Keys) + @($new.Keys)) { if (-not $keys.Contains("$k")) { $keys.Add("$k") } }
+            foreach ($k in $keys) {
+                $f = if ($k) { "$($p.displayName).$k" } else { "$($p.displayName)" }
+                $ov = if ($old.Contains($k)) { $old[$k] } else { '' }
+                $nv = if ($new.Contains($k)) { $new[$k] } else { '' }
+                if ($both -and ($ov -is [array] -or $nv -is [array])) {
+                    # Listen: je Eintrag neu bzw. entfernt (Gross-/Kleinschreibung zaehlt), sonst verschwindet z. B. ein neues Secret hinter der Kuerzung
+                    $oa = @(@($ov) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" }); $na = @(@($nv) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
+                    foreach ($x in $na) { if (-not ($oa -ccontains $x)) { & $add $b "$f (neu)" '' $x } }
+                    foreach ($x in $oa) { if (-not ($na -ccontains $x)) { & $add $b "$f (entfernt)" $x '' } }
+                    continue
+                }
+                $os = (@($ov) | ForEach-Object { "$_" }) -join ', '; $ns = (@($nv) | ForEach-Object { "$_" }) -join ', '
+                # neu angelegt oder geloescht mit langer Liste (live: Rollenlisten bis 5.500 Zeichen): eine Zeile je Eintrag statt Kuerzung
+                if (-not $both -and ($ov -is [array] -or $nv -is [array]) -and ("$os$ns").Length -gt $MaxLen) {
+                    $i = 0
+                    foreach ($x in @(@($ov) + @($nv) | Where-Object { "$_" -ne '' })) { $i++; if ($ov -is [array]) { & $add $b "$f [$i]" "$x" '' } else { & $add $b "$f [$i]" '' "$x" } }
+                    continue
+                }
+                if ($both -and $os -ceq $ns) { continue }
+                & $add $b $f $os $ns
+            }
+        }
+    }
+    foreach ($d in @($Entry.additionalDetails | Where-Object { $_ })) { & $add 'Weitere Angaben' "$($d.key)" '' "$($d.value)" }
+    $all = $rows.ToArray()
+    if ($all.Count -gt $MaxRows) { $all = @($all[0..($MaxRows - 1)]) + [pscustomobject]@{ Bereich = 'Hinweis'; Feld = 'gekuerzt'; Vorher = ''; Nachher = "weitere $($rows.Count - $MaxRows) Zeilen nicht angezeigt" } }
+    return $all
+}
+
+# Heikle Eintraege einer oder mehrerer Arten aus dem Fakt 'audits', neueste zuerst
+function Get-HUSecAuditRows($Fact, [string[]]$Kinds = @(), [switch]$WithDetail) {
+    if (-not $Fact) { return @() }
+    $own = "$($Fact.OwnAppId)"
+    $ownSp = if ($Fact.PSObject.Properties['OwnSpId']) { "$($Fact.OwnSpId)" } else { '' }
+    # Details nur fuer die gewuenschten Arten (Namensergaenzung braucht alle Zeilen, Details nicht)
+    $all = @(foreach ($e in @($Fact.Rows | Where-Object { $_ })) { $k = Get-HUSecAuditKind $e; if ($k) { ConvertTo-HUSecAuditRow $e $own $ownSp -WithDetail:($WithDetail -and (-not $Kinds.Count -or $Kinds -contains $k)) } })
+    # fehlende Namen (delegierte Rechte) aus anderen Eintraegen mit derselben Objekt-ID ergaenzen
+    $names = @{}
+    foreach ($r in $all) { if ($r.ZielId -and $r.ZielName -and -not $names.ContainsKey($r.ZielId)) { $names[$r.ZielId] = $r.ZielName } }
+    foreach ($r in $all) {
+        if ($r.ZielName) { continue }
+        if ($r.ZielId -and $names.ContainsKey($r.ZielId)) { $r.ZielName = $names[$r.ZielId]; $r.Ziel = "$($r.ZielName)$($r.ZielRest)" }
+        elseif ($r.ZielRest) { $r.Ziel = "(Name unbekannt)$($r.ZielRest)" }
+    }
+    $rows = @($all | Where-Object { -not $Kinds.Count -or $Kinds -contains $_.Kind })
+    return @($rows | Sort-Object Utc -Descending)
+}
+
+# Auswertung einer L-Regel: gezaehlt werden Ziele (z. B. Apps), nicht Ereignisse - je Berechtigung entsteht ein eigener Eintrag.
+# Eintraege dieser App zaehlen nicht. -Info: nur Hinweis (Status Info), sonst Abweichung ab einem Ziel.
+function Get-HUSecAuditEval($Fact, [string[]]$Kinds, [string]$What, [switch]$Info) {
+    $rows = @(Get-HUSecAuditRows $Fact $Kinds)
+    $mine = @($rows | Where-Object { -not $_.Eigen })
+    $tg = @($mine | ForEach-Object { if ($_.ZielId) { $_.ZielId } else { $_.Ziel } } | Sort-Object -Unique).Count
+    $ownN = @($rows | Where-Object { $_.Eigen }).Count
+    $d = "$($mine.Count) Ereignis(se) zu $tg $What in $($Fact.Days) Tagen$(if ($ownN) { "; $ownN durch HU-MultiTenant (nicht gezaehlt)" })"
+    # Latest: Zeitpunkt (UTC) des neuesten gezaehlten Ereignisses - fuer die Teams-Meldung "neu seit dem Soll-Stand" (keine Personendaten)
+    $latest = "$(@($mine | Where-Object { $_.Utc } | Sort-Object Utc -Descending)[0].Utc)"
+    if ($Info) { return @{ Status = 'Info'; Count = $tg; Detail = $d; Latest = $latest } }
+    if ($tg) { return @{ Status = 'Abweichung'; Count = $tg; Detail = $d; Latest = $latest } }
+    return @{ Status = 'OK'; Count = 0; Detail = $d; Latest = '' }
 }
 
 # Benannte Orte: Id -> @odata.type (countryNamedLocation / ipNamedLocation)
@@ -1847,6 +2114,23 @@ $script:HUSecRules = @(
             if ($common.Count -gt 4) { return @{ Status = 'OK'; Count = 0; Detail = "$($common.Count) Konten sind in allen $($pols.Count) Richtlinien ausgenommen - mehr als ueblich, Ausnahmen pruefen; Notfallkonten in den Sollwerten (V1 accounts) hinterlegen" } }
             @{ Status = 'OK'; Count = 0; Detail = "$($common.Count) Konto/Konten in allen $($pols.Count) Richtlinien ausgenommen - vermutlich die Notfallkonten; bitte in den Sollwerten (V1 accounts) bestaetigen" }
         } }
+    # Aenderungsprotokoll (Entra-Ueberwachungsprotokoll, letzte 30 Tage): gezaehlt werden betroffene Ziele, Eintraege dieser App zaehlen nicht
+    @{ Id = 'L01'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine neu vergebenen Admin-Rollen (letzte 30 Tage)'; Facts = @('audits'); Min = $false; Rolling = $true; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
+        Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('Rolle') -WithDetail:([bool]$B['__keepDetail']) | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis, __Detail }
+        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('Rolle') 'Konto/Konten' } }
+    @{ Id = 'L02'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine Aenderung an Domaenen oder Verbund (letzte 30 Tage)'; Facts = @('audits'); Min = $false; Rolling = $true; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
+        Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('Domaene') -WithDetail:([bool]$B['__keepDetail']) | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis, __Detail }
+        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('Domaene') 'Domaene(n)' } }
+    # L03/L04 nur Hinweis (Udo 17.11.2026): an fast jeder Schule bekommen laufend Apps Secrets und Rechte - als Abweichung dauerhaft rot
+    @{ Id = 'L03'; Area = 'Apps'; Sev = 'Niedrig'; Title = 'Neue Secrets oder Zertifikate an Apps (letzte 30 Tage, nur Hinweis)'; Facts = @('audits'); Min = $false; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
+        Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('Zugangsdaten') -WithDetail:([bool]$B['__keepDetail']) | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis, __Detail }
+        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('Zugangsdaten') 'App(s)' -Info } }
+    @{ Id = 'L04'; Area = 'Apps'; Sev = 'Niedrig'; Title = 'Neu erteilte App-Rechte oder Zustimmungen (letzte 30 Tage, nur Hinweis)'; Facts = @('audits'); Min = $false; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
+        Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('AppRechte') -WithDetail:([bool]$B['__keepDetail']) | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis, __Detail }
+        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('AppRechte') 'App(s)' -Info } }
+    @{ Id = 'L05'; Area = 'Entra'; Sev = 'Niedrig'; Title = 'Bedingter Zugriff geaendert (letzte 30 Tage, nur Hinweis)'; Facts = @('audits'); Min = $false; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
+        Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('CA') -WithDetail:([bool]$B['__keepDetail']) | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis, __Detail }
+        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('CA') 'Richtlinie(n) oder Ort(e)' -Info } }
     # Handpruefung (Baseline 2.1-2.4 und 3.2): Graph liefert diese Punkte nicht
     @{ Id = 'M01'; Area = 'Handpruefung'; Sev = 'Hoch'; Title = 'Lokales AD: Admin-Konten sind nicht delegierbar'; Facts = @(); Min = $false; Manual = $true; Eval = $script:HUSecManualEval }
     @{ Id = 'M02'; Area = 'Handpruefung'; Sev = 'Mittel'; Title = 'Lokales AD: keine Computer mit Betriebssystem ohne Support'; Facts = @(); Min = $false; Manual = $true; Eval = $script:HUSecManualEval }
@@ -1857,6 +2141,11 @@ $script:HUSecRules = @(
 
 # Kurzerklaerung je Regel (Warum wird das geprueft?) fuer das Detailfenster
 $script:HUSecWhy = @{
+    L01 = 'Ein neuer Administrator ist der haeufigste Weg, sich dauerhaft Zugang zu sichern. Gezeigt wird jede Rollenvergabe der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll, auch berechtigte. Pruefen, ob jede Vergabe gewollt war. Die Zelle bleibt 30 Tage rot und wird dann von selbst wieder gruen. Eine Ausnahme fuer gewollte Vergaben blendet auch spaetere Vergaben aus, deshalb nur kurz befristen.'
+    L02 = 'Eine neue Domaene oder ein geaenderter Verbund (Federation) kann Anmeldungen an einen fremden Dienst umleiten. Solche Aenderungen sind in Schulen selten und sollten immer bekannt sein.'
+    L03 = 'Nur Hinweis: Ein neues Secret oder Zertifikat an einer App erlaubt Zugriff im Namen dieser App, ohne Benutzer und ohne MFA. Gezaehlt werden betroffene Apps, geloeschte Secrets zaehlen nicht. Erneuerungen durch HU-MultiTenant selbst stehen in der Liste, zaehlen aber nicht. Pruefen, ob jede Aenderung bekannt ist.'
+    L04 = 'Nur Hinweis: Neue App-Rechte und Zustimmungen geben Apps Zugriff auf Daten im Tenant. Jede einzelne Berechtigung erzeugt einen eigenen Eintrag, gezaehlt werden deshalb betroffene Apps. Pruefen, ob jede App bekannt ist; heikle Rechte zeigt A42.'
+    L05 = 'Nur Hinweis: Aenderungen an Richtlinien fuer bedingten Zugriff und an benannten Orten der letzten 30 Tage, mit Ausloeser. Hilft beim Nachvollziehen, wer wann etwas geaendert hat.'
     A01 = 'Richtlinien im Berichtsmodus schuetzen nicht. Geprueft wird nur, dass mindestens eine Richtlinie aktiv ist (Sollwert minEnabled, je Tenant aenderbar). Welche Richtlinien aktiv sein sollen, prueft diese Regel nicht.'
     A04 = 'Alte Protokolle (POP, IMAP, SMTP-Basic) umgehen MFA. Eine Richtlinie sollte sie blockieren.'
     A08 = 'Zu viele Global Administratoren vergroessern die Angriffsflaeche, zu wenige gefaehrden die Erreichbarkeit. Soll: 2 bis 4.'
@@ -1978,6 +2267,8 @@ function Invoke-HUSecCatalog {
             $cmp = if ($e.ContainsKey('Complete')) { [bool]$e.Complete } else { $true }
             $rs = if ($e.ContainsKey('Reason')) { "$($e.Reason)" } else { '' }
             $res = New-HUSecResult -Rule $r -Tenant $TenantKey -Status $e.Status -Reason $rs -Count $cnt -Detail "$($e.Detail)" -Complete $cmp
+            # nur bei Regeln mit gleitendem Zeitraum: Zeitpunkt des neuesten Ereignisses (Soll-Vergleich, wird nicht gespeichert)
+            if ($e.ContainsKey('Latest')) { $res | Add-Member -NotePropertyName Latest -NotePropertyValue "$($e.Latest)" -Force }
             if ($res.Status -eq 'Abweichung') {
                 $x = Find-HUSecException $res $exc $Now
                 if ($x) { $res.Status = 'Ausnahme'; $res.ExceptionId = "$($x.id)" }
@@ -2007,7 +2298,8 @@ function Get-HUSecItemsLabel([string]$RuleId) {
 
 function Get-HUSecItems {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$RuleId, $Context = $null)
+    # -KeepDetail: verstecktes Feld __Detail (Detailfenster) behalten - nur fuer die Oberflaeche; Remote FB und MCP bekommen es nie
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, [Parameter(Mandatory)][string]$RuleId, $Context = $null, [switch]$KeepDetail)
     $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $RuleId })[0]
     if (-not $rule -or -not $rule.PSObject.Properties['Items']) { return @() }
     $ctx = if ($Context) { $Context } else { New-HUSecContext -TenantKey $TenantKey -Settings $Settings }
@@ -2020,6 +2312,7 @@ function Get-HUSecItems {
     $bl = Get-HUSecBaseline -TenantKey $TenantKey -Rules (Get-HUSecRules)
     $b = if ($bl.Values.ContainsKey($RuleId)) { @{} + $bl.Values[$RuleId] } else { @{} }
     if ($bl.Values.ContainsKey('V1')) { $b['__breakGlass'] = $bl.Values['V1'].accounts }
+    $b['__keepDetail'] = [bool]$KeepDetail
     $items = @(& $rule.Items $facts $b)
     if ($rule.PSObject.Properties['ItemsSignIn'] -and $rule.ItemsSignIn) {
         # Rollen je Konto (nur direkte, aktive Zuweisungen; keine Gruppen-/PIM-eligible-Rollen)
@@ -2077,7 +2370,9 @@ function Get-HUSecItems {
         }
     }
     $sortKey = if ($rule.PSObject.Properties['ItemsSort']) { "$($rule.ItemsSort)" } else { 'Anmeldename' }
-    return @($items | Sort-Object $sortKey | Select-Object -Property * -ExcludeProperty __Id, __ExU, __ExG)
+    $desc = [bool]($rule.PSObject.Properties['ItemsDesc'] -and $rule.ItemsDesc)
+    $drop = @('__Id', '__ExU', '__ExG'); if (-not $KeepDetail) { $drop += '__Detail' }
+    return @($items | Sort-Object $sortKey -Descending:$desc | Select-Object -Property * -ExcludeProperty $drop)
 }
 
 # ============================================================================
@@ -2125,6 +2420,39 @@ function Get-HUSecLight {
     return [pscustomobject]@{ Color = $color; Ok = $ok; Checked = $checked.Count; Deviations = $dev.Count; BySev = $by; NotCheckable = $unchecked }
 }
 
+# Grundschutz der Ansicht "Einfach": Sollwert Katalog.basic (Ebene alle Tenants), sonst Standard; unbekannte Nummern fallen weg
+function Get-HUSecBasicIds {
+    $known = @{}; foreach ($r in (Get-HUSecRules)) { $known["$($r.Id)"] = $true }
+    $ids = @($script:HUSecDefaults['Katalog'].basic)
+    try {
+        $v = (Get-HUSecBaseline -TenantKey '' -Rules (Get-HUSecRules)).Values['Katalog'].basic
+        if ($null -ne $v -and @($v).Count) { $ids = @($v) }
+    } catch { }
+    return @(@($ids) | ForEach-Object { "$_".Trim().ToUpperInvariant() } | Where-Object { $_ -and $known.ContainsKey($_) } | Select-Object -Unique)
+}
+
+# Fortschritt je Tenant fuer "Einfach": gleiche Zaehlung wie Get-HUSecLight, nur ueber die Grundschutz-Regeln.
+# Farbe: Rot = eine kritische Regel offen, Gelb = sonst etwas offen, Gruen = alles Gepruefte erfuellt, Grau = nichts geprueft.
+# Total = gepruefte + nicht pruefbare + Fehler (abgeschaltete und Handpruefungen zaehlen nicht).
+function Get-HUSecBasicLight {
+    param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key, [string[]]$Ids = @())
+    $set = if ($Ids.Count) { $Ids } else { @(Get-HUSecBasicIds) }
+    $l = Get-HUSecLight -Results @($Results | Where-Object { $set -contains "$($_.RuleId)" }) -Key $Key
+    $errors = $l.Deviations - ($l.Checked - $l.Ok); if ($errors -lt 0) { $errors = 0 }
+    $color = if ($l.Color -eq 'Grau') { 'Grau' } elseif ($l.BySev.Kritisch -gt 0) { 'Rot' } elseif ($l.Deviations -gt 0) { 'Gelb' } else { 'Gruen' }
+    return [pscustomobject]@{ Color = $color; Ok = $l.Ok; Checked = $l.Checked; Deviations = $l.Deviations; BySev = $l.BySev; NotCheckable = $l.NotCheckable; Total = ($l.Checked + $l.NotCheckable + $errors) }
+}
+
+# Gesamtliste "Aenderungen (30 Tage)" eines Tenants: alle heiklen Eintraege mit Tenant-Spalte. Nur Anzeige, nie speichern oder protokollieren (Namen).
+function Get-HUSecChanges {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TenantKey, [Parameter(Mandatory)]$Settings, $Context = $null)
+    $ctx = if ($Context) { $Context } else { New-HUSecContext -TenantKey $TenantKey -Settings $Settings }
+    $f = Get-HUSecFact -Ctx $ctx -Key 'audits'
+    if (-not $f.Ok) { throw "Ueberwachungsprotokoll nicht lesbar ($($f.Reason)): $($f.Detail)" }
+    return @(Get-HUSecAuditRows $f.Data -WithDetail | ForEach-Object { [pscustomobject]@{ Zeit = $_.Zeit; Tenant = $TenantKey; Art = $_.Art; Ereignis = $_.Ereignis; Ziel = $_.Ziel; Von = $_.Von; Ergebnis = $_.Ergebnis; __Detail = $_.__Detail } })
+}
+
 # ============================================================================
 # Verlauf (nur Status und Zahlen)
 # ============================================================================
@@ -2150,8 +2478,12 @@ function Save-HUSecSnapshot {
 # ============================================================================
 function Save-HUSecReference {
     param([Parameter(Mandatory)][object[]]$Results, [datetime]$Now = (Get-Date))
+    # latest (nur Regeln mit gleitendem Zeitraum): neuestes Ereignis zum Zeitpunkt des Pruefens - der Soll-Zeitpunkt ist der Klick auf
+    # "Soll speichern", ein Ereignis dazwischen wuerde sonst nie gemeldet. Zusaetzliches Feld, alte Soll-Dateien bleiben gueltig.
     $rows = @($Results | Where-Object { $_.RuleId -and $_.RuleId -ne '-' } | Sort-Object Tenant, RuleId | ForEach-Object {
-            [pscustomobject]@{ ruleId = $_.RuleId; tenant = $_.Tenant; status = $_.Status; reason = $_.Reason; count = $_.Count }
+            $row = [pscustomobject]@{ ruleId = $_.RuleId; tenant = $_.Tenant; status = $_.Status; reason = $_.Reason; count = $_.Count }
+            if ($_.PSObject.Properties['Latest']) { $row | Add-Member -NotePropertyName latest -NotePropertyValue "$($_.Latest)" }
+            $row
         })
     # Review 038 B7: ist der neue Stand schlechter als der bisherige Soll, wird das vermerkt (Hinweis beim Speichern und einmal in Teams)
     $old = $null; try { $old = Get-HUSecReference } catch { }
@@ -2297,6 +2629,7 @@ function Compare-HUSecReference {
     $quiet = @{}
     $q = { param($t) if (-not $quiet.ContainsKey($t)) { $quiet[$t] = Get-HUSecQuiet $t }; $quiet[$t] }
     $unchecked = 0; $hidCount = 0; $silentRules = @{}
+    $refTime = ConvertTo-HUSecUtc $Reference.time
     foreach ($r in @($Results | Where-Object { $_.RuleId -and $_.RuleId -ne '-' })) {
         if ($Keys.Count -and $Keys -notcontains $r.Tenant) { continue }
         $o = $ref["$($r.Tenant)|$($r.RuleId)"]
@@ -2305,6 +2638,21 @@ function Compare-HUSecReference {
         if ($qt.si -contains "$($r.RuleId)" -and -not $ruleOf[$r.RuleId].Min) { $silentRules["$($r.RuleId)"] = 1; continue }
         if ($r.Status -notin $checkable -or $o.status -notin $checkable) { if ($o.status -in $checkable -and $r.Status -notin $checkable -and $r.Status -ne 'Info') { $unchecked++ }; continue }
         $rule = $ruleOf[$r.RuleId]
+        # Gleitender Zeitraum (Rolling, derzeit L01 und L02): die Zahl taugt nicht (alte Ereignisse fallen heraus, neue kommen dazu). Gemeldet wird,
+        # wenn das neueste gezaehlte Ereignis nach dem Soll-Zeitpunkt liegt - als Verschlechterung, bis der Soll neu gespeichert ist.
+        if ($rule -and $rule.PSObject.Properties['Rolling'] -and $rule.Rolling) {
+            $lt = if ($r.PSObject.Properties['Latest']) { ConvertTo-HUSecUtc $r.Latest } else { $null }
+            # Schwelle: neuestes Ereignis beim Soll (leer = es gab keins, jedes ist neu); aeltere Soll-Dateien ohne Feld: Soll-Zeitpunkt
+            $hasThr = [bool]$o.PSObject.Properties['latest']
+            $thr = if ($hasThr) { ConvertTo-HUSecUtc $o.latest } else { $refTime }
+            if ($r.Status -eq 'Abweichung' -and $lt -and (($hasThr -and -not $thr) -or ($thr -and $lt -gt $thr))) {
+                $changes.Add([pscustomobject]@{
+                        Tenant = "$($r.Tenant)"; RuleId = "$($r.RuleId)"; Title = "$($r.Title)"; Sev = "$($r.Sev)"; Kind = 'Neu'; Worse = $true
+                        Was = "$($o.status)"; Is = "$($r.Status)"; WasCount = $o.count; IsCount = $r.Count
+                    })
+            }
+            continue
+        }
         $kind = $null
         if ("$($o.status)" -ne "$($r.Status)") { $kind = 'Status' }
         elseif ($r.Status -eq 'Abweichung' -and "$($o.count)" -ne "$($r.Count)") { if ($qt.so -contains "$($r.RuleId)" -and -not $ruleOf[$r.RuleId].Min) { $hidCount++ } else { $kind = 'Anzahl' } }
@@ -2358,5 +2706,6 @@ function Update-HUSecLost {
 Export-ModuleMember -Function @(
     'Get-HUSecRules', 'Invoke-HUSecCatalog', 'New-HUSecContext', 'Get-HUSecFact', 'Invoke-HUSecFetch',
     'Get-HUSecExceptions', 'Add-HUSecException', 'Get-HUSecManual', 'Set-HUSecManual', 'Remove-HUSecManual', 'Get-HUSecManualResult', 'Get-HUSecManualIds', 'Test-HUSecManualRule', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException', 'Get-HUSecExceptionState', 'Get-HUSecFix', 'Get-HUSecFixData',
-    'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecReferenceWorse', 'Set-HUSecReferenceWorseShown', 'Get-HUSecBaselineEdit', 'Save-HUSecBaselineEdit', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport'
+    'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecReferenceWorse', 'Set-HUSecReferenceWorseShown', 'Get-HUSecBaselineEdit', 'Save-HUSecBaselineEdit', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport',
+    'Get-HUSecBasicIds', 'Get-HUSecBasicLight', 'Get-HUSecChanges', 'Get-HUSecAuditKind', 'ConvertTo-HUSecAuditRow', 'Get-HUSecAuditRows', 'Get-HUSecAuditEval', 'ConvertTo-HUSecAuditDetail', 'ConvertFrom-HUSecAuditValue'
 )

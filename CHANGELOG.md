@@ -1,5 +1,48 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.17 (Testversion)
+
+### 🛡️ Sicherheitskatalog
+- **Ansicht "Einfach":** Ein Schalter über der Matrix zeigt nur den Grundschutz, 15 Regeln von MFA über Notfallkonten bis BitLocker und LAPS.
+  - Je Tenant ein Balken "x von y erfüllt" mit der Zahl der nicht prüfbaren Regeln. Nicht prüfbar zählt nie als erfüllt.
+  - Rot, sobald eine kritische Regel offen ist, gelb bei sonst offenen Regeln.
+  - Doppelklick auf eine Regel öffnet gleich "So behebst du es".
+  - Welche Regeln dazugehören, steht in den Sollwerten unter "Katalog basic". Die Ansicht wird gemerkt.
+- **Änderungen der letzten 30 Tage:** Der Knopf "Aenderungen (30 Tage)" zeigt für die angehakten Tenants heikle Einträge aus dem Entra-Überwachungsprotokoll, neueste oben, mit Auslöser.
+  - Vergebene Admin-Rollen, Domänen und Verbund, neue Secrets und Zertifikate an Apps, erteilte App-Rechte und Zustimmungen, bedingter Zugriff.
+  - Änderungen durch HU-MultiTenant selbst sind gekennzeichnet.
+  - Die Liste enthält Namen und lässt sich nicht speichern.
+- **Details je Ereignis:** Doppelklick auf eine Zeile der Änderungsliste oder der Ereignislisten L01 bis L05.
+  - Auslöser mit IP-Adresse, jede geänderte Eigenschaft mit Vorher und Nachher, Korrelations-ID und weitere Angaben.
+  - Bei bedingtem Zugriff eine Zeile je geänderter Einstellung statt der ganzen Richtlinie.
+  - Ebenfalls nur zur Anzeige, ohne Speichern.
+- **Neue Regeln L01 bis L05:** Dieselben Daten als Regeln im Katalog, mit Liste, Anleitung und Teams-Meldung "Sicherheits-Änderung".
+  - Gezählt werden betroffene Konten oder Apps, nicht einzelne Ereignisse. Gelöschte Secrets zählen nicht.
+  - L01 (Admin-Rollen) und L02 (Domänen) sind Abweichungen. Die Teams-Meldung meldet dort jedes Ereignis nach dem gespeicherten Soll-Stand, auch wenn gleichzeitig alte Ereignisse herausfallen.
+  - L03 (Secrets an Apps), L04 (App-Rechte) und L05 (bedingter Zugriff) sind nur Hinweise, weil Apps an Schulen laufend Rechte und Secrets bekommen. Sie zählen nicht in der Ampel und kommen nicht in die Teams-Meldung.
+
+### ⚠️ Nach dem Update
+- Einmal "Prüfen" und danach "Soll speichern", sonst meldet die Teams-Meldung die neuen Regeln nicht.
+- Die neuen Regeln brauchen das Recht AuditLog.Read.All, das bei der Einrichtung schon vorausgewählt ist.
+
+### 🚧 Grenzen
+- Ohne Entra ID P1 bewahrt Microsoft das Überwachungsprotokoll nur 7 Tage auf.
+- Weiterleitungen und Posteingangsregeln in Exchange stehen nicht in diesem Protokoll.
+
+### ✅ Qualität
+- 48 neue Prüfungen.
+
+## v2.6.16 (Testversion)
+
+### 💾 App-Sicherung
+- **Bricht nicht mehr wegen gelöschter Dateien ab:** Hat das Tenant-Backup während der App-Sicherung alte Stände entfernt, scheiterte die ganze Sicherung mit „Could not find a part of the path …“.
+  - Solche Dateien werden jetzt übersprungen, das Protokoll nennt ihre Anzahl.
+  - Andere Lesefehler brechen die Sicherung weiter ab.
+- **Automatik wartet auf das Tenant-Backup:** Läuft beim Start gerade das tägliche Tenant-Backup, beginnt die automatische App-Sicherung erst danach.
+
+### ✅ Qualität
+- 2 neue Prüfungen.
+
 ## v2.6.15 (Testversion)
 
 ### 🔍 Analyse › Vergleich

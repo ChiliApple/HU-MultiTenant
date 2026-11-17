@@ -35,7 +35,8 @@ function Format-HUQSCell($v) {
 }
 
 # Objekte -> flache Zeilen (geordnete Eigenschaften, alles Text) + Spaltenliste
-function ConvertTo-HUQSRows([object[]]$Objects) {
+# -SkipHidden: Felder mit "__" am Anfang (versteckte Zusatzdaten, z. B. Details je Zeile) nicht als Spalte
+function ConvertTo-HUQSRows([object[]]$Objects, [switch]$SkipHidden) {
     $cols = [System.Collections.Generic.List[string]]::new()
     $rows = foreach ($o in @($Objects)) {
         $pairs = if ($o -is [System.Collections.IDictionary]) { @($o.Keys | ForEach-Object { @{ N = "$_"; V = $o[$_] } }) }
@@ -43,6 +44,7 @@ function ConvertTo-HUQSRows([object[]]$Objects) {
         $r = [ordered]@{}
         foreach ($p in $pairs) {
             if ($p.N -like '@odata.*') { continue }
+            if ($SkipHidden -and $p.N -like '__*') { continue }
             if (-not $cols.Contains($p.N)) { $cols.Add($p.N) }
             $r[$p.N] = Format-HUQSCell $p.V
         }
@@ -64,10 +66,13 @@ function Update-HUQSTableButton {
 }
 
 # -Objects: andere Quelle (Reiter Apps/Wartung), -FilePrefix: Vorschlag fuer den Dateinamen beim Export
-function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string]$FilePrefix = 'QuickScript', [switch]$NoExport) {
+# -OnRowDoubleClick { param($Obj, $Window) }: Doppelklick auf eine Zeile liefert das Originalobjekt (mit versteckten "__"-Feldern);
+#   dann werden "__"-Felder nicht angezeigt. -Owner: Besitzerfenster (Standard Hauptfenster), -StateKey: Kuerzel fuer die gemerkte Groesse.
+function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string]$FilePrefix = 'QuickScript', [switch]$NoExport,
+    [scriptblock]$OnRowDoubleClick = $null, $Owner = $null, [string]$StateKey = 'QSTable') {
     $src = if ($null -ne $Objects) { @($Objects) } else { $script:QS_Objects.ToArray() }
     if (-not @($src).Count) { return }
-    $data = ConvertTo-HUQSRows $src
+    $data = ConvertTo-HUQSRows $src -SkipHidden:([bool]$OnRowDoubleClick)
     # DataTable mit sicheren Spaltennamen (Bindung verkraftet keine Punkte/Klammern); Kopfzeile zeigt den echten Namen
     $dt = New-Object System.Data.DataTable
     $map = [ordered]@{}
@@ -77,9 +82,14 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
         $map[$safe] = $cn
         $dc = $dt.Columns.Add($safe, [string]); $dc.Caption = "$cn"   # echter Name (u. a. fuer die globale Einfaerbung 'abweichend')
     }
+    # Index auf $src (ausserhalb von $map: nicht angezeigt, nicht gefiltert, nicht exportiert, nicht gezaehlt)
+    if ($OnRowDoubleClick) { [void]$dt.Columns.Add('__idx', [int]) }
+    $ri = 0
     foreach ($r in $data.Rows) {
         $row = $dt.NewRow()
         foreach ($safe in $map.Keys) { $row[$safe] = $r.($map[$safe]) }
+        if ($OnRowDoubleClick) { $row['__idx'] = $ri }
+        $ri++
         [void]$dt.Rows.Add($row)
     }
 
@@ -117,6 +127,7 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
     $m = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>')
     $d = New-HUWindow -XamlText ($x.Replace('<!--HU:THEME-->', $m.Groups[1].Value))
     $w = $d.Window; $c = $d.C
+    if ($Owner) { try { $w.Owner = $Owner; $w.WindowStartupLocation = 'CenterOwner' } catch { } }
     # Nur Anzeige (Listen mit Personendaten, z. B. Sicherheitskatalog): kein CSV, Excel, Kopieren, Strg+C
     if ($NoExport) {
         foreach ($n in 'btnCsv', 'btnXlsx', 'btnCopy') { $c[$n].Visibility = 'Collapsed'; $c[$n].IsEnabled = $false }
@@ -125,13 +136,31 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
         $w.Title = "$($w.Title) (nur Anzeige)"
     }
     $w.Title = "Ergebnis$(if ($Title) { " - $Title" })"
-    Restore-HUDialogState $w 'QSTable'
+    Restore-HUDialogState $w $StateKey
     $view = $dt.DefaultView
     # lange Texte umbrechen; Startbreite hoechstens 600, danach frei aufziehbar
     $wrap = New-Object System.Windows.Style([System.Windows.Controls.TextBlock])
     $wrap.Setters.Add((New-Object System.Windows.Setter([System.Windows.Controls.TextBlock]::TextWrappingProperty, [System.Windows.TextWrapping]::Wrap)))
     $c.grid.Tag = $wrap
-    $c.grid.Add_AutoGeneratingColumn({ param($s0, $e) $e.Column.Header = $map[$e.PropertyName]; $e.Column.MaxWidth = 600; if ($e.Column -is [System.Windows.Controls.DataGridTextColumn]) { $e.Column.ElementStyle = $s0.Tag } })
+    $c.grid.Add_AutoGeneratingColumn({ param($s0, $e) if ($e.PropertyName -eq '__idx') { $e.Cancel = $true; return }; $e.Column.Header = $map[$e.PropertyName]; $e.Column.MaxWidth = 600; if ($e.Column -is [System.Windows.Controls.DataGridTextColumn]) { $e.Column.ElementStyle = $s0.Tag } })
+    if ($OnRowDoubleClick) {
+        $c.grid.ToolTip = 'Doppelklick auf eine Zeile: Details'
+        $c.grid.Add_MouseDoubleClick({
+                param($s0, $e)
+                # nur linke Taste und nur auf einer Zeile (nicht Kopfzeile oder Scrollbalken); Index aus der Zeile, nicht aus der Position im Gitter
+                if ($e.ChangedButton -ne [System.Windows.Input.MouseButton]::Left) { return }
+                $dep = $e.OriginalSource
+                while ($dep -and -not ($dep -is [System.Windows.Controls.DataGridRow]) -and -not ($dep -is [System.Windows.Controls.Primitives.DataGridColumnHeader])) {
+                    $dep = if ($dep -is [System.Windows.Media.Visual] -or $dep -is [System.Windows.Media.Media3D.Visual3D]) { [System.Windows.Media.VisualTreeHelper]::GetParent($dep) }
+                    elseif ($dep -is [System.Windows.FrameworkContentElement]) { $dep.Parent } else { $null }
+                }
+                if (-not ($dep -is [System.Windows.Controls.DataGridRow])) { return }
+                $rv = $dep.Item
+                if (-not ($rv -is [System.Data.DataRowView])) { return }
+                $ix = [int]$rv['__idx']
+                if ($ix -ge 0 -and $ix -lt @($src).Count) { & $OnRowDoubleClick (@($src)[$ix]) $w }
+            })
+    }
     # Spalten nach Inhalt, aber hoechstens 600 breit (lange Listen wie 134 Rollen sonst bildschirmbreit); danach von Hand breiter ziehbar
     $c.grid.Add_Loaded({ param($s0, $e) foreach ($col in @($s0.Columns)) { $aw = [Math]::Min(600, $col.ActualWidth); if ($aw -gt 0) { $col.MaxWidth = [double]::PositiveInfinity; $col.Width = New-Object System.Windows.Controls.DataGridLength($aw) } }
         # Fenster an die Spalten anpassen (hoechstens bis zum Bildschirmrand; wenige schmale Spalten -> schmaler, mind. 700)
@@ -153,7 +182,7 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
         } catch { }
     })
     $c.grid.ItemsSource = $view
-    $updCount = { $c.txtCount.Text = "$($view.Count) von $($dt.Rows.Count) Zeilen  |  $($map.Count) Spalten" }
+    $updCount = { $c.txtCount.Text = "$($view.Count) von $($dt.Rows.Count) Zeilen  |  $($map.Count) Spalten$(if ($OnRowDoubleClick) { '  |  Doppelklick: Details' })" }
     & $updCount
     $c.txtFilter.Add_TextChanged({
         $f = $c.txtFilter.Text
@@ -210,7 +239,7 @@ function Show-HUQSTable([string]$Title = '', [object[]]$Objects = $null, [string
         try { [System.Windows.Clipboard]::SetText(($lines -join "`r`n")); $c.txtCount.Text = "$($view.Count) Zeilen kopiert" } catch { }
     })
     $c.btnClose.Add_Click({ $w.Close() })
-    $w.Add_Closing({ Save-HUDialogState $w 'QSTable' })
+    $w.Add_Closing({ Save-HUDialogState $w $StateKey })
     $w.Add_ContentRendered({ $c.txtFilter.Focus() })
     [void]$w.ShowDialog()
 }

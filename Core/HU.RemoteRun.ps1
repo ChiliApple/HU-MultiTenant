@@ -416,7 +416,7 @@ function ConvertTo-HURemoteSecFix([string]$RuleId, [string]$AppRoot) {
 function Get-HURemoteSecItems($Q, $Settings) {
     $rows = @(Get-HUSecItems -TenantKey "$($Q.Tenant)" -Settings $Settings -RuleId "$($Q.Id)")
     $rule = @(Get-HUSecRules | Where-Object { "$($_.Id)" -eq "$($Q.Id)" })[0]
-    if ($rule -and $rule.PSObject.Properties['ItemsSort'] -and "$($rule.ItemsSort)") { $rows = @($rows | Sort-Object -Property "$($rule.ItemsSort)") }
+    if ($rule -and $rule.PSObject.Properties['ItemsSort'] -and "$($rule.ItemsSort)") { $rows = @($rows | Sort-Object -Property "$($rule.ItemsSort)" -Descending:([bool]($rule.PSObject.Properties['ItemsDesc'] -and $rule.ItemsDesc))) }
     $cols = @(); if ($rows.Count) { $cols = @($rows[0].PSObject.Properties | ForEach-Object { "$($_.Name)" }) }
     $out = @($rows | Select-Object -First 1000 | ForEach-Object { $o = $_; , @($cols | ForEach-Object { $v = $o.$_; if ($null -eq $v) { '' } else { "$v" } }) })
     return [ordered]@{ label = (Get-HUSecItemsLabel "$($Q.Id)"); cols = $cols; rows = $out; total = $rows.Count }
