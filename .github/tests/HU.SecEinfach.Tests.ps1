@@ -199,6 +199,18 @@ Describe 'Aenderungsprotokoll: Listenzeile und Auswertung' {
         (Get-HUSecAuditEval $fact @('AppRechte') 'App(s)').Count | Should -Be 2
     }
 
+    It 'nimmt den App-Namen aus den Eigenschaften der Ressource, wenn Microsoft als Namen nur die App-ID eintraegt' {
+        $res = [pscustomobject]@{ id = 'graph'; displayName = 'Microsoft Graph'; userPrincipalName = ''; modifiedProperties = @(
+                [pscustomobject]@{ displayName = 'AppRole.Value'; newValue = '"Application.Read.All"' },
+                [pscustomobject]@{ displayName = 'ServicePrincipal.DisplayName'; newValue = '"HUPilot-Upload"' }) }
+        $app = [pscustomobject]@{ id = 'sp9'; displayName = '3064cc87-3760-4784-b44c-b74cf9f842a1'; userPrincipalName = ''; modifiedProperties = @() }
+        $e = Ev 'ApplicationManagement' 'Add app role assignment to service principal'; $e.targetResources = @($res, $app)
+        (ConvertTo-HUSecAuditRow $e '').Ziel | Should -Be 'HUPilot-Upload: Application.Read.All (Microsoft Graph)'
+        $res.modifiedProperties = @($res.modifiedProperties[0])
+        $fact = [pscustomobject]@{ OwnAppId = ''; Days = 30; Rows = @($e) }
+        @(Get-HUSecAuditRows $fact)[0].Ziel | Should -Be '(Name unbekannt): Application.Read.All (Microsoft Graph)'
+    }
+
     It 'liefert den Zeitpunkt des neuesten gezaehlten Ereignisses (ohne eigene)' {
         $fact = [pscustomobject]@{ OwnAppId = 'own-app'; Days = 30; Rows = @(
                 (Ev 'Policy' 'Update conditional access policy' -When '2026-11-05T08:00:00Z'),

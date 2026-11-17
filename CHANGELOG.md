@@ -26,7 +26,7 @@
 - Weiterleitungen und Posteingangsregeln in Exchange stehen nicht in diesem Protokoll.
 
 ### ✅ Qualität
-- 37 neue Prüfungen.
+- 38 neue Prüfungen.
 
 ## v2.6.16 (Testversion)
 

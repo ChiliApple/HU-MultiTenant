@@ -124,6 +124,7 @@ $script:HUSecFacts = @{
 # Aenderungsprotokoll: Kategorien im Entra-Ueberwachungsprotokoll und Zuordnung der Ereignisse zur Art (Muster, weil Microsoft
 # Namen mit Gedankenstrich und Leerzeichen am Ende liefert, z. B. "Update application - Certificates and secrets management ")
 $script:HUSecAuditDays = 30
+$script:HUSecGuidRx = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 $script:HUSecAuditCategories = @('RoleManagement', 'DirectoryManagement', 'ApplicationManagement', 'Policy')
 $script:HUSecAuditKinds = @(
     @{ Kind = 'Rolle'; Label = 'Admin-Rolle vergeben'; Category = 'RoleManagement'; Match = '^Add (eligible |scoped )?member to role'; Skip = '(?i)activation' }
@@ -1074,6 +1075,9 @@ function ConvertTo-HUSecAuditRow($Entry, [string]$OwnAppId = '', [string]$OwnSpI
         if ($rn) { $rest = " ($rn)" }
     }
     $name = if (-not $main) { '' } elseif ("$($main.displayName)") { "$($main.displayName)" } else { "$($main.userPrincipalName)" }
+    # bei App-Rechten steht an Stelle 1 als Name oft nur die App-ID; der echte Name steckt in den Eigenschaften der Ressource (live geprueft)
+    if ($res -and ($name -match $script:HUSecGuidRx -or -not $name)) { $alt = Get-HUSecAuditProp $res 'ServicePrincipal.DisplayName'; if ($alt) { $name = $alt } }
+    if ($name -match $script:HUSecGuidRx) { $name = '' }
     [pscustomobject]@{
         Zeit = $(if ($t) { $t.ToLocalTime().ToString('yyyy-MM-dd HH:mm', [cultureinfo]::InvariantCulture) } else { '' })
         Art = "$label"; Ereignis = $act; Ziel = "$name$rest"; Von = $wer
@@ -1092,7 +1096,11 @@ function Get-HUSecAuditRows($Fact, [string[]]$Kinds = @()) {
     # fehlende Namen (delegierte Rechte) aus anderen Eintraegen mit derselben Objekt-ID ergaenzen
     $names = @{}
     foreach ($r in $all) { if ($r.ZielId -and $r.ZielName -and -not $names.ContainsKey($r.ZielId)) { $names[$r.ZielId] = $r.ZielName } }
-    foreach ($r in $all) { if (-not $r.ZielName -and $r.ZielId -and $names.ContainsKey($r.ZielId)) { $r.ZielName = $names[$r.ZielId]; $r.Ziel = "$($r.ZielName)$($r.ZielRest)" } }
+    foreach ($r in $all) {
+        if ($r.ZielName) { continue }
+        if ($r.ZielId -and $names.ContainsKey($r.ZielId)) { $r.ZielName = $names[$r.ZielId]; $r.Ziel = "$($r.ZielName)$($r.ZielRest)" }
+        elseif ($r.ZielRest) { $r.Ziel = "(Name unbekannt)$($r.ZielRest)" }
+    }
     $rows = @($all | Where-Object { -not $Kinds.Count -or $Kinds -contains $_.Kind })
     return @($rows | Sort-Object Utc -Descending)
 }
