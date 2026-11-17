@@ -758,7 +758,9 @@ function Test-HUSecExceptionInput {
 
 function Add-HUSecException {
     param([Parameter(Mandatory)][string]$RuleId, [Parameter(Mandatory)][string]$TenantKey, [string]$ObjectId = '-',
-        [Parameter(Mandatory)][string]$Reason, [Parameter(Mandatory)][datetime]$ValidUntil, [Parameter(Mandatory)][string]$Responsible, [string]$Sev = 'Hoch')
+        [Parameter(Mandatory)][string]$Reason, [Parameter(Mandatory)][datetime]$ValidUntil, [Parameter(Mandatory)][string]$Responsible, [string]$Sev = 'Hoch',
+        # Regeln mit gleitendem Zeitraum: neuestes Ereignis beim letzten Pruefen ('' = keines). Fehlt der Parameter, gilt der Zeitpunkt des Anlegens.
+        [AllowEmptyString()][string]$CoversUntil)
     $err = Test-HUSecExceptionInput -Reason $Reason -ValidUntil $ValidUntil -Sev $Sev
     if ($err) { throw $err }
     $items = @(Get-HUSecExceptions | Where-Object { -not ($_.ruleId -eq $RuleId -and $_.tenant -eq $TenantKey -and $_.objectId -eq $ObjectId) })
@@ -766,6 +768,7 @@ function Add-HUSecException {
         id = [guid]::NewGuid().ToString('N').Substring(0, 8); ruleId = $RuleId; tenant = $TenantKey; objectId = $ObjectId
         reason = $Reason.Trim(); responsible = $Responsible; created = (Get-Date).ToUniversalTime().ToString('o'); validUntil = $ValidUntil.ToUniversalTime().ToString('o')
     }
+    if ($PSBoundParameters.ContainsKey('CoversUntil')) { $new | Add-Member -NotePropertyName coversUntil -NotePropertyValue "$CoversUntil" }
     Write-HUSecJson (Join-Path (Get-HUSecPath) 'exceptions.json') ([pscustomobject]@{ version = 1; items = @($items + $new) })
     return $new
 }
@@ -775,14 +778,21 @@ function Remove-HUSecException([string]$Id) {
     Write-HUSecJson (Join-Path (Get-HUSecPath) 'exceptions.json') ([pscustomobject]@{ version = 1; items = $items })
 }
 
-# Regeln mit gleitendem Zeitraum (L01/L02, Ergebnis mit Latest): eine Ausnahme deckt nur Ereignisse bis zu ihrem Anlegen.
+# Regeln mit gleitendem Zeitraum (L01/L02, Ergebnis mit Latest): eine Ausnahme deckt nur die Ereignisse, die beim letzten Pruefen zu sehen waren.
 # Ein neueres Ereignis hebt sie auf, sonst bliebe z. B. eine spaeter vergebene Admin-Rolle bis zum Ablauf stumm (Pruefung 2.6.17 B1).
 # Rueckgabe $true = Ausnahme deckt das Ergebnis nicht mehr.
 function Test-HUSecExceptionOutdated($Exception, $Result) {
     if (-not $Result -or -not $Result.PSObject.Properties['Latest'] -or "$($Result.Latest)" -eq '') { return $false }
     $lt = ConvertTo-HUSecUtc $Result.Latest
-    $cr = ConvertTo-HUSecUtc $Exception.created
     if (-not $lt) { return $false }
+    # Bezug: neuestes Ereignis beim Anlegen (coversUntil, leer = keines gesehen); aeltere Ausnahmen ohne das Feld: Zeitpunkt des Anlegens
+    if ($Exception.PSObject.Properties['coversUntil']) {
+        if ("$($Exception.coversUntil)" -eq '') { return $true }
+        $cv = ConvertTo-HUSecUtc $Exception.coversUntil
+        if (-not $cv) { return $true }
+        return ($lt -gt $cv)
+    }
+    $cr = ConvertTo-HUSecUtc $Exception.created
     if (-not $cr) { return $true }
     return ($lt -gt $cr)
 }
@@ -2165,8 +2175,8 @@ $script:HUSecRules = @(
 
 # Kurzerklaerung je Regel (Warum wird das geprueft?) fuer das Detailfenster
 $script:HUSecWhy = @{
-    L01 = 'Ein neuer Administrator ist der haeufigste Weg, sich dauerhaft Zugang zu sichern. Gezeigt wird jede Rollenvergabe der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll, auch berechtigte. Pruefen, ob jede Vergabe gewollt war. Die Zelle bleibt rot, solange die Vergabe im Protokoll steht (30 Tage mit Entra ID P1, sonst 7), und wird dann von selbst wieder gruen. Eine Ausnahme gilt nur fuer die Vergaben bis zu ihrem Anlegen; jede spaetere Vergabe macht die Zelle wieder rot. Nicht erkannt werden Rechte ueber Mitgliedschaft in einer Gruppe, der eine Rolle zugewiesen ist, und neue Besitzer von Apps.'
-    L02 = 'Eine neue Domaene oder ein geaenderter Verbund (Federation) kann Anmeldungen an einen fremden Dienst umleiten. Solche Aenderungen sind in Schulen selten und sollten immer bekannt sein. Eine Ausnahme gilt nur fuer Aenderungen bis zu ihrem Anlegen; jede spaetere macht die Zelle wieder rot.'
+    L01 = 'Ein neuer Administrator ist der haeufigste Weg, sich dauerhaft Zugang zu sichern. Gezeigt wird jede Rollenvergabe der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll, auch berechtigte. Pruefen, ob jede Vergabe gewollt war. Die Zelle bleibt rot, solange die Vergabe im Protokoll steht (30 Tage mit Entra ID P1, sonst 7), und wird dann von selbst wieder gruen. Eine Ausnahme gilt nur fuer die Vergaben, die beim letzten Pruefen zu sehen waren; jede spaetere Vergabe macht die Zelle wieder rot. Nicht erkannt werden Rechte ueber Mitgliedschaft in einer Gruppe, der eine Rolle zugewiesen ist, und neue Besitzer von Apps.'
+    L02 = 'Eine neue Domaene oder ein geaenderter Verbund (Federation) kann Anmeldungen an einen fremden Dienst umleiten. Solche Aenderungen sind in Schulen selten und sollten immer bekannt sein. Eine Ausnahme gilt nur fuer Aenderungen, die beim letzten Pruefen zu sehen waren; jede spaetere macht die Zelle wieder rot.'
     L03 = 'Nur Hinweis: Ein neues Secret oder Zertifikat an einer App erlaubt Zugriff im Namen dieser App, ohne Benutzer und ohne MFA. Gezaehlt werden betroffene Apps, geloeschte Secrets zaehlen nicht, ausgetauschte schon. Erneuerungen durch HU-MultiTenant selbst stehen in der Liste, zaehlen aber nicht. Pruefen, ob jede Aenderung bekannt ist.'
     L04 = 'Nur Hinweis: Neue App-Rechte und Zustimmungen geben Apps Zugriff auf Daten im Tenant. Jede einzelne Berechtigung erzeugt einen eigenen Eintrag, gezaehlt werden deshalb betroffene Apps. Pruefen, ob jede App bekannt ist; heikle Rechte zeigt A42.'
     L05 = 'Nur Hinweis: Aenderungen an Richtlinien fuer bedingten Zugriff und an benannten Orten der letzten 30 Tage, mit Ausloeser. Hilft beim Nachvollziehen, wer wann etwas geaendert hat.'

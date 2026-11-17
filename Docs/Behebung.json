@@ -1601,7 +1601,7 @@
         "Je Eintrag klaeren, ob die Vergabe gewollt war (Auftrag, neues Personal, Dienstleister).",
         "Unbekannte Vergabe: Entra ID > Roles & admins > die Rolle oeffnen > Assignments: das Konto entfernen, dann Kennwort des vergebenden Kontos pruefen und dessen Sitzungen widerrufen.",
         "Zur Kontrolle im Portal: Entra ID > Monitoring & health > Audit logs, Filter \"Category\" = RoleManagement und \"Activity\" = Add member to role.",
-        "Gewollte Vergabe: nichts tun, die Zelle wird von selbst wieder gruen, sobald die Vergabe aus dem Protokoll faellt (30 Tage mit Entra ID P1, sonst 7). Eine Ausnahme deckt nur die Vergaben bis zu ihrem Anlegen, jede spaetere macht die Zelle wieder rot.",
+        "Gewollte Vergabe: nichts tun, die Zelle wird von selbst wieder gruen, sobald die Vergabe aus dem Protokoll faellt (30 Tage mit Entra ID P1, sonst 7). Eine Ausnahme deckt nur die Vergaben, die beim letzten Pruefen zu sehen waren, jede spaetere macht die Zelle wieder rot.",
         "Nicht erkannt werden Rechte ueber Mitgliedschaft in einer Gruppe, der eine Rolle zugewiesen ist, und neue Besitzer von Apps. Diese im Portal unter Roles & admins > Rolle > Assignments und unter App registrations > App > Owners pruefen."
       ],
       "learn": [
@@ -1625,7 +1625,7 @@
         "Entra ID > Domain names: pruefen, ob jede Domaene bekannt ist und gebraucht wird.",
         "Bei \"Set domain authentication\" oder \"Set federation settings on domain\": klaeren, ob ein Verbund (Federation) gewollt ist. Ein unbekannter Verbund leitet Anmeldungen an einen fremden Dienst um: sofort mit dem Schultraeger klaeren und die Domaene auf \"Managed\" zurueckstellen lassen.",
         "Unbekannte, nicht verifizierte Domaene: entfernen (Domain names > Domaene > Delete).",
-        "Eine Ausnahme deckt nur die Aenderungen bis zu ihrem Anlegen, jede spaetere macht die Zelle wieder rot."
+        "Eine Ausnahme deckt nur die Aenderungen, die beim letzten Pruefen zu sehen waren, jede spaetere macht die Zelle wieder rot."
       ],
       "learn": [
         {

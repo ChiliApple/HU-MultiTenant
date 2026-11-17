@@ -3,7 +3,7 @@
 ## v2.6.18 (Testversion)
 
 ### 🛡️ Sicherheitskatalog
-- **Ausnahmen bei L01 und L02 nur bis zum Anlegen:** Eine Ausnahme deckt nur die Ereignisse bis zu ihrem Anlegen. Jede spätere Rollenvergabe oder Domänenänderung macht die Zelle wieder rot und löst die Teams-Meldung aus.
+- **Ausnahmen bei L01 und L02 nur für Bekanntes:** Eine Ausnahme deckt nur die Ereignisse, die beim letzten Prüfen zu sehen waren. Jede spätere Rollenvergabe oder Domänenänderung macht die Zelle wieder rot und löst die Teams-Meldung aus.
   - Bisher blieb eine neue Admin-Rolle bis zum Ablauf der Ausnahme stumm, bis zu 12 Monate.
   - In der Ausnahmen-Liste steht eine solche Ausnahme danach als "wirkungslos".
 - **A27 mit Gruppen eines Partners:** Haben Gruppen eines Dienstleisters (Partnerzugriff) eine Admin-Rolle, lief A27 auf "? Technik", weil Graph deren Mitglieder nicht liefert.
@@ -16,7 +16,7 @@
 - L01 erkennt keine Rechte über Gruppen mit Rollenzuweisung und keine neuen Besitzer von Apps.
 
 ### ✅ Qualität
-- 8 neue Prüfungen, künstliche Werte in den Testdaten.
+- 9 neue Prüfungen, künstliche Werte in den Testdaten.
 
 ## v2.6.17 (Testversion)
 

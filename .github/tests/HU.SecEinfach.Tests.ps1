@@ -544,6 +544,18 @@ Describe 'Ausnahmen bei gleitendem Zeitraum (2.6.18)' {
         Get-HUSecExceptionState -Exception $saved[0] -Results @($before) | Should -Be 'aktiv'
     }
 
+    It 'deckt mit CoversUntil nur das beim letzten Pruefen gesehene Ereignis, nicht spaetere vor dem Anlegen' {
+        $seen = (Get-Date).ToUniversalTime().AddHours(-3).ToString('o')
+        $x = Add-HUSecException -RuleId 'L01' -TenantKey 'T1' -Reason 'Neue Lehrkraft als Helpdesk-Admin' -ValidUntil (Get-Date).AddMonths(1) -Responsible 'Systembetreuung' -CoversUntil $seen
+        $saved = @(Get-HUSecExceptions)
+        $same = Res 'L01' 'Abweichung' -Count 1; $same | Add-Member -NotePropertyName Latest -NotePropertyValue $seen
+        $between = Res 'L01' 'Abweichung' -Count 2; $between | Add-Member -NotePropertyName Latest -NotePropertyValue (Get-Date).ToUniversalTime().AddHours(-1).ToString('o')
+        (Find-HUSecException $same $saved).id | Should -Be $x.id
+        Find-HUSecException $between $saved | Should -BeNullOrEmpty
+        [void](Add-HUSecException -RuleId 'L01' -TenantKey 'T1' -Reason 'Ausnahme ohne gesehenes Ereignis' -ValidUntil (Get-Date).AddMonths(1) -Responsible 'Systembetreuung' -CoversUntil '')
+        Find-HUSecException $same @(Get-HUSecExceptions) | Should -BeNullOrEmpty
+    }
+
     It 'laesst ein neues Ereignis trotz Ausnahme im Katalog als Abweichung stehen' {
         $global:HUSecEeps = New-Object System.Collections.Generic.List[string]
         $global:HUSecEfx = @{
