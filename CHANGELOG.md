@@ -14,8 +14,8 @@
   - Die Liste enthält Namen und lässt sich nicht speichern.
 - **Neue Regeln L01 bis L05:** Dieselben Daten als Regeln im Katalog, mit Liste, Anleitung und Teams-Meldung "Sicherheits-Änderung".
   - Gezählt werden betroffene Konten oder Apps, nicht einzelne Ereignisse. Gelöschte Secrets zählen nicht.
-  - Die Teams-Meldung meldet jedes Ereignis nach dem gespeicherten Soll-Stand, auch wenn gleichzeitig alte Ereignisse herausfallen. Das Herausfallen allein meldet sie nicht.
-  - L05 (bedingter Zugriff) ist nur ein Hinweis.
+  - L01 (Admin-Rollen) und L02 (Domänen) sind Abweichungen. Die Teams-Meldung meldet dort jedes Ereignis nach dem gespeicherten Soll-Stand, auch wenn gleichzeitig alte Ereignisse herausfallen.
+  - L03 (Secrets an Apps), L04 (App-Rechte) und L05 (bedingter Zugriff) sind nur Hinweise, weil Apps an Schulen laufend Rechte und Secrets bekommen. Sie zählen nicht in der Ampel und kommen nicht in die Teams-Meldung.
 
 ### ⚠️ Nach dem Update
 - Einmal "Prüfen" und danach "Soll speichern", sonst meldet die Teams-Meldung die neuen Regeln nicht.
@@ -26,7 +26,7 @@
 - Weiterleitungen und Posteingangsregeln in Exchange stehen nicht in diesem Protokoll.
 
 ### ✅ Qualität
-- 36 neue Prüfungen.
+- 37 neue Prüfungen.
 
 ## v2.6.16 (Testversion)
 

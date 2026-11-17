@@ -258,9 +258,9 @@ Describe 'Aenderungsprotokoll im Katalog (L01-L05)' {
         $by['L01'].Status | Should -Be 'Abweichung'
         $by['L01'].Count | Should -Be 1
         $by['L02'].Status | Should -Be 'OK'
-        $by['L03'].Status | Should -Be 'OK'
+        $by['L03'].Status | Should -Be 'Info'
         $by['L03'].Detail | Should -Match '1 durch HU-MultiTenant'
-        $by['L04'].Status | Should -Be 'OK'
+        $by['L04'].Status | Should -Be 'Info'
         $by['L05'].Status | Should -Be 'Info'
         $by['L05'].Count | Should -Be 2
         $aud = @($global:HUSecEeps | Where-Object { $_ -like '*directoryAudits*' })
@@ -303,31 +303,40 @@ Describe 'Aenderungsprotokoll im Katalog (L01-L05)' {
 Describe 'Soll-Vergleich bei gleitendem Zeitraum (Rolling)' {
     BeforeAll {
         $script:Ref = [pscustomobject]@{ time = '2026-11-01T00:00:00Z'; rows = @(
-                [pscustomobject]@{ ruleId = 'L04'; tenant = 'T1'; status = 'Abweichung'; count = 12 },
+                [pscustomobject]@{ ruleId = 'L02'; tenant = 'T1'; status = 'Abweichung'; count = 12 },
                 [pscustomobject]@{ ruleId = 'L01'; tenant = 'T1'; status = 'OK'; count = 0 },
                 [pscustomobject]@{ ruleId = 'A19'; tenant = 'T1'; status = 'Abweichung'; count = 3 }) }
         function script:ResL([string]$Id, [string]$Status, $Count, [string]$Latest) { $r = Res $Id $Status -Count $Count; $r | Add-Member -NotePropertyName Latest -NotePropertyValue $Latest; $r }
     }
 
     It 'meldet ein neues Ereignis nach dem Soll-Zeitpunkt, auch wenn die Zahl gesunken ist' {
-        $c = @((Compare-HUSecReference -Results @((ResL 'L04' 'Abweichung' 5 '2026-11-10T08:00:00.0000000Z')) -Reference $script:Ref).Changes)
+        $c = @((Compare-HUSecReference -Results @((ResL 'L02' 'Abweichung' 5 '2026-11-10T08:00:00.0000000Z')) -Reference $script:Ref).Changes)
         $c.Count | Should -Be 1
         $c[0].Kind | Should -Be 'Neu'
         $c[0].Worse | Should -BeTrue
     }
 
     It 'meldet nichts, wenn das neueste Ereignis vor dem Soll liegt, auch bei geaenderter Zahl' {
-        @((Compare-HUSecReference -Results @((ResL 'L04' 'Abweichung' 4 '2026-10-20T08:00:00.0000000Z')) -Reference $script:Ref).Changes).Count | Should -Be 0
+        @((Compare-HUSecReference -Results @((ResL 'L02' 'Abweichung' 4 '2026-10-20T08:00:00.0000000Z')) -Reference $script:Ref).Changes).Count | Should -Be 0
     }
 
     It 'meldet die erste Rollenvergabe nach einem ruhigen Soll und nichts bei Rueckkehr zu OK oder Ausnahme' {
         @((Compare-HUSecReference -Results @((ResL 'L01' 'Abweichung' 1 '2026-11-03T08:00:00.0000000Z')) -Reference $script:Ref).Changes).Count | Should -Be 1
-        @((Compare-HUSecReference -Results @((ResL 'L04' 'OK' 0 '')) -Reference $script:Ref).Changes).Count | Should -Be 0
-        @((Compare-HUSecReference -Results @((ResL 'L04' 'Ausnahme' 7 '2026-11-10T08:00:00.0000000Z')) -Reference $script:Ref).Changes).Count | Should -Be 0
+        @((Compare-HUSecReference -Results @((ResL 'L02' 'OK' 0 '')) -Reference $script:Ref).Changes).Count | Should -Be 0
+        @((Compare-HUSecReference -Results @((ResL 'L02' 'Ausnahme' 7 '2026-11-10T08:00:00.0000000Z')) -Reference $script:Ref).Changes).Count | Should -Be 0
     }
 
     It 'meldet sinkende Zahlen bei normalen Regeln weiterhin' {
         @((Compare-HUSecReference -Results @((Res 'A19' 'Abweichung' -Count 1)) -Reference $script:Ref).Changes).Count | Should -Be 1
+    }
+
+    It 'meldet die Hinweis-Regeln L03 bis L05 nie und zaehlt sie nicht in der Ampel' {
+        $ref = [pscustomobject]@{ time = '2026-11-01T00:00:00Z'; rows = @([pscustomobject]@{ ruleId = 'L04'; tenant = 'T1'; status = 'Info'; count = 3 }) }
+        @((Compare-HUSecReference -Results @((ResL 'L04' 'Info' 9 '2026-11-10T08:00:00.0000000Z')) -Reference $ref).Changes).Count | Should -Be 0
+        foreach ($id in 'L03', 'L04', 'L05') { (@(Get-HUSecRules | Where-Object { $_.Id -eq $id })[0]).Sev | Should -Be 'Niedrig' }
+        $l = Get-HUSecLight -Results @((Res 'L03' 'Info' -Count 2), (Res 'L04' 'Info' -Count 5), (Res 'L01' 'OK')) -Key 'T1'
+        $l.Deviations | Should -Be 0
+        $l.Color | Should -Be 'Gruen'
     }
 
     It 'nennt das neue Ereignis in der Teams-Karte verstaendlich' {
@@ -336,9 +345,9 @@ Describe 'Soll-Vergleich bei gleitendem Zeitraum (Rolling)' {
         $nf = & (Get-Module HU.Notify) { $script:NotifyFile }
         if (-not "$nf".StartsWith($script:TestAppData)) { throw "Teams-Ziele zeigen nicht in den Testordner ($nf) - Abbruch" }
         Import-Module (Join-Path $root 'Core\HU.TeamsJobs.psm1') -Force -DisableNameChecking
-        $cmp = Compare-HUSecReference -Results @((ResL 'L04' 'Abweichung' 5 '2026-11-10T08:00:00.0000000Z')) -Reference $script:Ref
+        $cmp = Compare-HUSecReference -Results @((ResL 'L02' 'Abweichung' 5 '2026-11-10T08:00:00.0000000Z')) -Reference $script:Ref
         $spec = New-HUSecDriftCardSpec -Compare $cmp -Names @{ T1 = 'Schule 1' }
-        ($spec.Rows | ForEach-Object { $_.Text }) -join ' ' | Should -Match 'L04 .*neues Ereignis seit dem Soll-Stand, jetzt 5'
+        ($spec.Rows | ForEach-Object { $_.Text }) -join ' ' | Should -Match 'L02 .*neues Ereignis seit dem Soll-Stand, jetzt 5'
         Remove-Module HU.TeamsJobs, HU.Notify -Force -ErrorAction SilentlyContinue
     }
 }

@@ -1644,7 +1644,7 @@
         "In HU-MultiTenant die Liste der Regel oeffnen: welche App, wann, wer. Eintraege mit \"HU-MultiTenant\" sind die eigene Zertifikatserneuerung und zaehlen nicht.",
         "Entra ID > App registrations > All applications: die App oeffnen > Certificates & secrets.",
         "Unbekanntes Secret oder Zertifikat (Beschreibung, Ablaufdatum, Zeitpunkt passen zu keinem Auftrag): loeschen und klaeren, wer es angelegt hat.",
-        "Gewollte Erneuerung (z. B. Sync der Schulverwaltung): nichts tun, die Zelle wird nach 30 Tagen von selbst wieder gruen."
+        "Gewollte Erneuerung (z. B. Sync der Schulverwaltung): nichts tun, die Regel ist nur ein Hinweis."
       ],
       "learn": [
         {

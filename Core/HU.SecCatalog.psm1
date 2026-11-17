@@ -1993,12 +1993,13 @@ $script:HUSecRules = @(
     @{ Id = 'L02'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine Aenderung an Domaenen oder Verbund (letzte 30 Tage)'; Facts = @('audits'); Min = $false; Rolling = $true; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
         Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('Domaene') | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis }
         Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('Domaene') 'Domaene(n)' } }
-    @{ Id = 'L03'; Area = 'Apps'; Sev = 'Mittel'; Title = 'Keine neuen Secrets oder Zertifikate an Apps (letzte 30 Tage)'; Facts = @('audits'); Min = $false; Rolling = $true; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
+    # L03/L04 nur Hinweis (Udo 17.11.2026): an fast jeder Schule bekommen laufend Apps Secrets und Rechte - als Abweichung dauerhaft rot
+    @{ Id = 'L03'; Area = 'Apps'; Sev = 'Niedrig'; Title = 'Neue Secrets oder Zertifikate an Apps (letzte 30 Tage, nur Hinweis)'; Facts = @('audits'); Min = $false; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
         Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('Zugangsdaten') | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis }
-        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('Zugangsdaten') 'App(s)' } }
-    @{ Id = 'L04'; Area = 'Apps'; Sev = 'Mittel'; Title = 'Keine neu erteilten App-Rechte oder Zustimmungen (letzte 30 Tage)'; Facts = @('audits'); Min = $false; Rolling = $true; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
+        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('Zugangsdaten') 'App(s)' -Info } }
+    @{ Id = 'L04'; Area = 'Apps'; Sev = 'Niedrig'; Title = 'Neu erteilte App-Rechte oder Zustimmungen (letzte 30 Tage, nur Hinweis)'; Facts = @('audits'); Min = $false; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
         Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('AppRechte') | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis }
-        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('AppRechte') 'App(s)' } }
+        Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('AppRechte') 'App(s)' -Info } }
     @{ Id = 'L05'; Area = 'Entra'; Sev = 'Niedrig'; Title = 'Bedingter Zugriff geaendert (letzte 30 Tage, nur Hinweis)'; Facts = @('audits'); Min = $false; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
         Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('CA') | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis }
         Eval = { param($F, $B) Get-HUSecAuditEval $F.audits @('CA') 'Richtlinie(n) oder Ort(e)' -Info } }
@@ -2014,8 +2015,8 @@ $script:HUSecRules = @(
 $script:HUSecWhy = @{
     L01 = 'Ein neuer Administrator ist der haeufigste Weg, sich dauerhaft Zugang zu sichern. Gezeigt wird jede Rollenvergabe der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll, auch berechtigte. Pruefen, ob jede Vergabe gewollt war. Die Zelle bleibt 30 Tage rot und wird dann von selbst wieder gruen. Eine Ausnahme fuer gewollte Vergaben blendet auch spaetere Vergaben aus, deshalb nur kurz befristen.'
     L02 = 'Eine neue Domaene oder ein geaenderter Verbund (Federation) kann Anmeldungen an einen fremden Dienst umleiten. Solche Aenderungen sind in Schulen selten und sollten immer bekannt sein.'
-    L03 = 'Ein neues Secret oder Zertifikat an einer App erlaubt Zugriff im Namen dieser App, ohne Benutzer und ohne MFA. Gezaehlt werden betroffene Apps, geloeschte Secrets zaehlen nicht. Erneuerungen durch HU-MultiTenant selbst stehen in der Liste, zaehlen aber nicht.'
-    L04 = 'Neue App-Rechte und Zustimmungen geben Apps Zugriff auf Daten im Tenant. Jede einzelne Berechtigung erzeugt einen eigenen Eintrag, gezaehlt werden deshalb betroffene Apps. Pruefen, ob jede App bekannt ist.'
+    L03 = 'Nur Hinweis: Ein neues Secret oder Zertifikat an einer App erlaubt Zugriff im Namen dieser App, ohne Benutzer und ohne MFA. Gezaehlt werden betroffene Apps, geloeschte Secrets zaehlen nicht. Erneuerungen durch HU-MultiTenant selbst stehen in der Liste, zaehlen aber nicht. Pruefen, ob jede Aenderung bekannt ist.'
+    L04 = 'Nur Hinweis: Neue App-Rechte und Zustimmungen geben Apps Zugriff auf Daten im Tenant. Jede einzelne Berechtigung erzeugt einen eigenen Eintrag, gezaehlt werden deshalb betroffene Apps. Pruefen, ob jede App bekannt ist; heikle Rechte zeigt A42.'
     L05 = 'Nur Hinweis: Aenderungen an Richtlinien fuer bedingten Zugriff und an benannten Orten der letzten 30 Tage, mit Ausloeser. Hilft beim Nachvollziehen, wer wann etwas geaendert hat.'
     A01 = 'Richtlinien im Berichtsmodus schuetzen nicht. Geprueft wird nur, dass mindestens eine Richtlinie aktiv ist (Sollwert minEnabled, je Tenant aenderbar). Welche Richtlinien aktiv sein sollen, prueft diese Regel nicht.'
     A04 = 'Alte Protokolle (POP, IMAP, SMTP-Basic) umgehen MFA. Eine Richtlinie sollte sie blockieren.'
@@ -2502,7 +2503,7 @@ function Compare-HUSecReference {
         if ($qt.si -contains "$($r.RuleId)" -and -not $ruleOf[$r.RuleId].Min) { $silentRules["$($r.RuleId)"] = 1; continue }
         if ($r.Status -notin $checkable -or $o.status -notin $checkable) { if ($o.status -in $checkable -and $r.Status -notin $checkable -and $r.Status -ne 'Info') { $unchecked++ }; continue }
         $rule = $ruleOf[$r.RuleId]
-        # Gleitender Zeitraum (L01-L04): die Zahl taugt nicht (alte Ereignisse fallen heraus, neue kommen dazu). Gemeldet wird,
+        # Gleitender Zeitraum (Rolling, derzeit L01 und L02): die Zahl taugt nicht (alte Ereignisse fallen heraus, neue kommen dazu). Gemeldet wird,
         # wenn das neueste gezaehlte Ereignis nach dem Soll-Zeitpunkt liegt - als Verschlechterung, bis der Soll neu gespeichert ist.
         if ($rule -and $rule.PSObject.Properties['Rolling'] -and $rule.Rolling) {
             $lt = if ($r.PSObject.Properties['Latest']) { ConvertTo-HUSecUtc $r.Latest } else { $null }
