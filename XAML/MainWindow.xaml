@@ -1362,8 +1362,8 @@
                                                 ToolTip="Den aktuellen Pruefstand als Soll speichern. Die Meldung 'Sicherheits-Aenderung' (Reiter Teams) meldet danach jede Abweichung davon. Gespeichert werden nur Status und Zahlen."/>
                                         <Button x:Name="btnSecTable" Content="&#x1F4CA; Tabelle / Export" Background="#5C6BC0" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
                                                 ToolTip="Die angezeigten Zeilen als Tabelle ansehen, kopieren oder exportieren"/>
-                                        <Button x:Name="btnSecChanges" Content="Aenderungen (30 Tage) ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
-                                                ToolTip="Heikle Aenderungen der letzten 30 Tage aus dem Entra-Ueberwachungsprotokoll fuer die angehakten Tenants: Admin-Rollen, Domaenen und Verbund, Secrets und Zertifikate an Apps, App-Rechte und Zustimmungen, bedingter Zugriff. Nur lesen, enthaelt Namen, deshalb ohne Export."/>
+                                        <Button x:Name="btnSecChanges" Content="Aenderungen (bis 30 Tage) ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
+                                                ToolTip="Heikle Aenderungen aus dem Entra-Ueberwachungsprotokoll fuer die angehakten Tenants, 30 Tage mit Entra ID P1, sonst 7 Tage: Admin-Rollen, Domaenen und Verbund, Secrets und Zertifikate an Apps, App-Rechte und Zustimmungen, bedingter Zugriff. Nur lesen, enthaelt Namen, deshalb ohne Export."/>
                                     </WrapPanel>
                                     <WrapPanel x:Name="wpSecBasic" Orientation="Horizontal" Margin="0,4,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
@@ -1394,7 +1394,7 @@
                         </DataGrid>
                         <DataGrid x:Name="gridSec" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single"
                                   CanUserSortColumns="True" Visibility="Collapsed" AlternationCount="2"
-                                  ToolTip="Doppelklick: je Tenant Ergebnis, Grund und Details. Rechtsklick oder F1: So behebst du es (wo im Portal, Schritte, Microsoft Learn)">
+                                  ToolTip="Doppelklick: je Tenant Ergebnis, Grund und Details (in der Ansicht Einfach: So behebst du es). Rechtsklick: Menue mit So behebst du es und Details. F1: So behebst du es (wo im Portal, Schritte, Microsoft Learn)">
                             <DataGrid.RowStyle>
                                 <Style TargetType="DataGridRow">
                                     <Style.Triggers>

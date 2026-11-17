@@ -373,7 +373,8 @@
         "Die vom Pruefer gemeldeten Admin-Konten einzeln oeffnen (Overview > Sign-ins) und klaeren, ob sie noch gebraucht werden.",
         "Nicht mehr gebraucht: Benutzer > Assigned roles > bei der Rolle \"Remove\" (bei Rolle ueber Gruppe: Benutzer aus der Gruppe entfernen), danach Konto sperren oder loeschen.",
         "Noch gebraucht: der Inhaber meldet sich einmal erfolgreich an; Fehlversuche zaehlen nicht.",
-        "Notfallkonten sind ausgenommen, sofern sie unter V1 hinterlegt sind."
+        "Notfallkonten sind ausgenommen, sofern sie unter V1 hinterlegt sind.",
+        "Gruppen eines Partners (z. B. AdminAgents oder HelpdeskAgents eines Dienstleisters) liegen im fremden Tenant und werden nicht bewertet. Ob der Partnerzugriff und seine Rollen noch gebraucht werden, mit dem Dienstleister klaeren."
       ],
       "learn": [
         {
@@ -1596,11 +1597,13 @@
       "portal": "entra",
       "path": "Entra admin center > Entra ID > Monitoring & health > Audit logs",
       "steps": [
-        "In HU-MultiTenant die Liste der Regel oeffnen (Details > Ereignisse anzeigen) oder den Knopf \"Aenderungen (30 Tage)\": Zeit, Rolle, Konto und wer die Rolle vergeben hat.",
+        "In HU-MultiTenant die Liste der Regel oeffnen (Details > Ereignisse anzeigen) oder den Knopf \"Aenderungen (bis 30 Tage)\": Zeit, Rolle, Konto und wer die Rolle vergeben hat.",
         "Je Eintrag klaeren, ob die Vergabe gewollt war (Auftrag, neues Personal, Dienstleister).",
         "Unbekannte Vergabe: Entra ID > Roles & admins > die Rolle oeffnen > Assignments: das Konto entfernen, dann Kennwort des vergebenden Kontos pruefen und dessen Sitzungen widerrufen.",
         "Zur Kontrolle im Portal: Entra ID > Monitoring & health > Audit logs, Filter \"Category\" = RoleManagement und \"Activity\" = Add member to role.",
-        "Gewollte Vergabe: nichts tun, die Zelle wird nach 30 Tagen von selbst wieder gruen."
+        "Gewollte Vergabe: nichts tun, die Zelle wird von selbst wieder gruen, sobald die Vergabe aus dem Protokoll faellt (30 Tage mit Entra ID P1, sonst 7). Eine Ausnahme deckt nur die Vergaben, die beim letzten Pruefen zu sehen waren, jede spaetere macht die Zelle wieder rot.",
+        "Aufnahme in eine Gruppe mit Admin-Rolle: Groups > Gruppe > Members, das Konto entfernen, wenn es die Rolle nicht haben soll.",
+        "Nicht erkannt werden berechtigte Mitgliedschaften ueber PIM fuer Gruppen und neue Besitzer von Apps. Diese in Privileged Identity Management bei den Gruppen und unter App registrations > App > Owners pruefen."
       ],
       "learn": [
         {
@@ -1622,7 +1625,8 @@
         "In HU-MultiTenant die Liste der Regel oeffnen: welche Domaene, welches Ereignis, wer.",
         "Entra ID > Domain names: pruefen, ob jede Domaene bekannt ist und gebraucht wird.",
         "Bei \"Set domain authentication\" oder \"Set federation settings on domain\": klaeren, ob ein Verbund (Federation) gewollt ist. Ein unbekannter Verbund leitet Anmeldungen an einen fremden Dienst um: sofort mit dem Schultraeger klaeren und die Domaene auf \"Managed\" zurueckstellen lassen.",
-        "Unbekannte, nicht verifizierte Domaene: entfernen (Domain names > Domaene > Delete)."
+        "Unbekannte, nicht verifizierte Domaene: entfernen (Domain names > Domaene > Delete).",
+        "Eine Ausnahme deckt nur die Aenderungen, die beim letzten Pruefen zu sehen waren, jede spaetere macht die Zelle wieder rot."
       ],
       "learn": [
         {
