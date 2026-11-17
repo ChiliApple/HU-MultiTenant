@@ -155,6 +155,27 @@ Describe 'Aenderungsprotokoll: Listenzeile und Auswertung' {
         $r.Art | Should -Be 'Admin-Rolle vergeben'
     }
 
+    It 'erkennt eigene Eintraege auch nur ueber die servicePrincipalId und nennt sonst den App-Namen' {
+        $e = Ev 'ApplicationManagement' 'Add service principal credentials' -User ''
+        $e.initiatedBy.app = [pscustomobject]@{ appId = $null; servicePrincipalId = 'OWN-SP'; displayName = 'HU-MultiTenant' }
+        $r = ConvertTo-HUSecAuditRow $e 'own-app' 'own-sp'
+        $r.Eigen | Should -BeTrue
+        $r2 = ConvertTo-HUSecAuditRow $e 'own-app' 'anderer-sp'
+        $r2.Eigen | Should -BeFalse
+        $r2.Von | Should -Be 'App: HU-MultiTenant'
+    }
+
+    It 'zaehlt ein fremdes Secret an der eigenen App (Benutzer als Ausloeser) nicht als eigen' {
+        $e = Ev 'ApplicationManagement' 'Add service principal credentials' -User 'jemand@contoso.test' -TargetId 'own-app-object'
+        (ConvertTo-HUSecAuditRow $e 'own-app' 'own-sp').Eigen | Should -BeFalse
+    }
+
+    It 'zaehlt PIM-Zuweisungen, aber keine PIM-Aktivierungen' {
+        Get-HUSecAuditKind (Ev 'RoleManagement' 'Add member to role in PIM completed (permanent)') | Should -Be 'Rolle'
+        Get-HUSecAuditKind (Ev 'RoleManagement' 'Add eligible member to role in PIM completed (permanent)') | Should -Be 'Rolle'
+        Get-HUSecAuditKind (Ev 'RoleManagement' 'Add member to role requested (PIM activation)') | Should -Be ''
+    }
+
     It 'zaehlt geloeschte Secrets nicht (gleicher Ereignisname wie beim Hinzufuegen)' {
         $act = "Update application $($script:Dash) Certificates and secrets management "
         $kd = { param($o, $n) @([pscustomobject]@{ displayName = 'KeyDescription'; oldValue = $o; newValue = $n }) }

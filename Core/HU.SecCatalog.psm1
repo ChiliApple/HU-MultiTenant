@@ -126,7 +126,7 @@ $script:HUSecFacts = @{
 $script:HUSecAuditDays = 30
 $script:HUSecAuditCategories = @('RoleManagement', 'DirectoryManagement', 'ApplicationManagement', 'Policy')
 $script:HUSecAuditKinds = @(
-    @{ Kind = 'Rolle'; Label = 'Admin-Rolle vergeben'; Category = 'RoleManagement'; Match = '^Add (eligible |scoped )?member to role'; Skip = '(?i)completed|activation' }
+    @{ Kind = 'Rolle'; Label = 'Admin-Rolle vergeben'; Category = 'RoleManagement'; Match = '^Add (eligible |scoped )?member to role'; Skip = '(?i)activation' }
     @{ Kind = 'Domaene'; Label = 'Domaene oder Verbund'; Category = 'DirectoryManagement'; Match = '(?i)domain|federation'; Skip = '' }
     @{ Kind = 'Zugangsdaten'; Label = 'Zugangsdaten an App'; Category = 'ApplicationManagement'; Match = '(?i)certificates and secrets management|add service principal credentials'; Skip = '(?i)^(delete|remove)' }
     @{ Kind = 'AppRechte'; Label = 'App-Recht oder Zustimmung'; Category = 'ApplicationManagement'; Match = '(?i)^(add app role assignment to service principal|consent to application|add delegated permission grant)'; Skip = '' }
@@ -346,13 +346,19 @@ function Get-HUSecCustomFact {
             foreach ($cat in $script:HUSecAuditCategories) {
                 foreach ($x in @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/auditLogs/directoryAudits?`$filter=activityDateTime%20ge%20$since%20and%20category%20eq%20'$cat'&`$top=999" -All)) { if ($x) { $rows.Add($x) } }
             }
-            # eigene App: deren Eintraege (Zertifikat erneuern, Muster uebertragen) werden gekennzeichnet und nicht mitgezaehlt
-            $own = ''
+            # eigene App: deren Eintraege (Zertifikat erneuern, Muster uebertragen) werden gekennzeichnet und nicht mitgezaehlt.
+            # Microsoft traegt bei Zertifikats-Ereignissen oft keine appId ein, nur servicePrincipalId und Namen (live geprueft) -
+            # deshalb auch den eigenen Dienstprinzipal bestimmen (fehlt das Recht, bleibt es bei der appId).
+            # Bewusst nur der AUSLOESER zaehlt, nicht die eigene App als Ziel: ein fremdes Secret an dieser App muss sichtbar bleiben.
+            $own = ''; $ownSp = ''
             try { $t = @($Ctx.Settings.tenants | Where-Object { $_.key -eq $Ctx.TenantKey })[0]; if ($t) { $own = "$($t.appId)".ToLowerInvariant() } } catch { }
+            if ($own) {
+                try { $ownSp = "$(@(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/servicePrincipals?`$filter=appId%20eq%20'$own'&`$select=id" -All)[0].id)".ToLowerInvariant() } catch { }
+            }
             # Aufbewahrung laut Microsoft Learn: Entra ID Free 7 Tage, P1/P2 30 Tage (Lizenz unbekannt = 30)
             # https://learn.microsoft.com/en-us/entra/identity/monitoring-health/reference-reports-data-retention
             $days = if (Test-HUSecLicense $Ctx 'P1') { $script:HUSecAuditDays } else { 7 }
-            [pscustomobject]@{ Rows = $rows.ToArray(); OwnAppId = $own; Days = $days }
+            [pscustomobject]@{ Rows = $rows.ToArray(); OwnAppId = $own; OwnSpId = $ownSp; Days = $days }
         }
         'dmset' {
             # Compliance-Grundeinstellungen (deviceManagement.settings): v1.0 mit $select lieferte im Test nichts - der Reihe nach versuchen
@@ -1039,15 +1045,18 @@ function Get-HUSecAuditProp($Target, [string]$Name) {
 }
 
 # Eine Listenzeile (nur Anzeige, wird nie gespeichert): Zeit lokal, Art, Ereignis, Ziel, ausgeloest von; Eigen = durch diese App
-function ConvertTo-HUSecAuditRow($Entry, [string]$OwnAppId = '') {
+function ConvertTo-HUSecAuditRow($Entry, [string]$OwnAppId = '', [string]$OwnSpId = '') {
     $kind = Get-HUSecAuditKind $Entry
     $label = @($script:HUSecAuditKinds | Where-Object { $_.Kind -eq $kind })[0].Label
     $t = ConvertTo-HUSecUtc $Entry.activityDateTime
     $by = $Entry.initiatedBy
     $usr = if ($by -and $by.PSObject.Properties['user'] -and $by.user) { "$($by.user.userPrincipalName)" } else { '' }
-    $appId = if ($by -and $by.PSObject.Properties['app'] -and $by.app) { "$($by.app.appId)".ToLowerInvariant() } else { '' }
-    $appName = if ($appId) { "$($by.app.displayName)" } else { '' }
-    $own = [bool]($OwnAppId -and $appId -and $appId -eq $OwnAppId.ToLowerInvariant() -and -not $usr)
+    $hasApp = [bool]($by -and $by.PSObject.Properties['app'] -and $by.app)
+    $appId = if ($hasApp) { "$($by.app.appId)".ToLowerInvariant() } else { '' }
+    $spId = if ($hasApp -and $by.app.PSObject.Properties['servicePrincipalId']) { "$($by.app.servicePrincipalId)".ToLowerInvariant() } else { '' }
+    $appName = if ($hasApp) { "$($by.app.displayName)" } else { '' }
+    # eigen = ausgeloest von dieser App ohne Benutzer; Microsoft liefert dabei mal die appId, mal nur die servicePrincipalId
+    $own = [bool](-not $usr -and (($OwnAppId -and $appId -and $appId -eq $OwnAppId.ToLowerInvariant()) -or ($OwnSpId -and $spId -and $spId -eq $OwnSpId.ToLowerInvariant())))
     $wer = if ($own) { 'HU-MultiTenant' } elseif ($usr) { $usr } elseif ($appName) { "App: $appName" } else { 'Microsoft (System)' }
     $tg = @($Entry.targetResources | Where-Object { $_ })
     $act = "$($Entry.activityDisplayName)".Trim()
@@ -1078,7 +1087,8 @@ function ConvertTo-HUSecAuditRow($Entry, [string]$OwnAppId = '') {
 function Get-HUSecAuditRows($Fact, [string[]]$Kinds = @()) {
     if (-not $Fact) { return @() }
     $own = "$($Fact.OwnAppId)"
-    $all = @(foreach ($e in @($Fact.Rows | Where-Object { $_ })) { if (Get-HUSecAuditKind $e) { ConvertTo-HUSecAuditRow $e $own } })
+    $ownSp = if ($Fact.PSObject.Properties['OwnSpId']) { "$($Fact.OwnSpId)" } else { '' }
+    $all = @(foreach ($e in @($Fact.Rows | Where-Object { $_ })) { if (Get-HUSecAuditKind $e) { ConvertTo-HUSecAuditRow $e $own $ownSp } })
     # fehlende Namen (delegierte Rechte) aus anderen Eintraegen mit derselben Objekt-ID ergaenzen
     $names = @{}
     foreach ($r in $all) { if ($r.ZielId -and $r.ZielName -and -not $names.ContainsKey($r.ZielId)) { $names[$r.ZielId] = $r.ZielName } }
