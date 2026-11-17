@@ -1514,6 +1514,33 @@
       "checked": "2026-10-21",
       "note": "Vollstaendige Daten erst mit Entra ID P2; mit P1 zeigt das Portal nur eine eingeschraenkte Liste."
     },
+    "K07": {
+      "portal": "entra",
+      "path": "Entra admin center > Entra ID > Monitoring & health > Sign-in logs",
+      "steps": [
+        "Entra ID > Monitoring & health > Sign-in logs: \"Add filters\" > \"User\" auf das gemeldete Konto setzen, Zeitraum auf die letzten 7 Tage; Spalten \"Status\", \"Location\", \"IP address\" und \"Application\" ansehen.",
+        "Mit dem Kontoinhaber klaeren, ob die Anmeldung von ihm stammt (Reise, eigener VPN, neues Geraet).",
+        "Nicht erklaerbar und erfolgreich oder erst nach angenommenem Kennwort gestoppt (MFA, bedingter Zugriff): Das Kennwort gilt als bekannt. Kennwort zuruecksetzen (bei Konten aus dem lokalen AD dort), danach in Entra ID > Users > Benutzer > Overview \"Revoke sessions\".",
+        "MFA des Kontos pruefen: Entra ID > Users > Benutzer > Authentication methods - unbekannte Methoden entfernen und \"Require re-register multifactor authentication\" waehlen.",
+        "Erklaerbar: in der Matrix eine befristete Ausnahme mit Begruendung eintragen. Sie deckt nur, was beim letzten Pruefen zu sehen war; ein neues Ereignis macht die Zelle wieder rot."
+      ],
+      "learn": [
+        {
+          "title": "Anmeldeprotokolle filtern",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/monitoring-health/howto-customize-filter-logs#filter-the-sign-in-logs-"
+        },
+        {
+          "title": "Risiken untersuchen (Arten der Erkennung)",
+          "url": "https://learn.microsoft.com/en-us/entra/id-protection/howto-identity-protection-investigate-risk"
+        },
+        {
+          "title": "Zugriff eines Benutzers sperren (hybrid)",
+          "url": "https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access#revoke-access-for-a-user-in-the-hybrid-environment"
+        }
+      ],
+      "checked": "2026-11-17",
+      "note": "Enthalten sind nur interaktive Anmeldungen. Risikostufe und Grund zeigt das Protokoll erst mit Entra ID P2. Ein Eintrag bleibt in der Liste, bis er aus dem Zeitraum faellt oder Microsoft den Status aendert."
+    },
     "V1": {
       "portal": "entra",
       "path": "Entra admin center > Entra ID > Conditional Access > Policies",

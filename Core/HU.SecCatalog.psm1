@@ -116,6 +116,8 @@ $script:HUSecFacts = @{
     k01grp = @{ Custom = 'k01grp'; Perms = @('Group.Read.All'); Lic = '' }
     signfail = @{ Custom = 'signfail'; Perms = @('AuditLog.Read.All'); Lic = 'P1' }
     signok = @{ Custom = 'signok'; Perms = @('AuditLog.Read.All'); Lic = 'P1' }
+    # K07: Anmeldungen mit Risikostatus atRisk aus dem Anmeldeprotokoll - anders als K06 (riskyUsers) auch mit Entra ID P1 lesbar (live geprueft)
+    signrisk = @{ Custom = 'signrisk'; Perms = @('AuditLog.Read.All'); Lic = 'P1' }
     alerts = @{ Ep = "/security/alerts_v2?`$filter=status%20eq%20'new'%20or%20status%20eq%20'inProgress'&`$top=999"; All = $true; Perms = @('SecurityAlert.Read.All'); Lic = '' }
     # Aenderungsprotokoll (L-Regeln): Entra-Ueberwachungsprotokoll der letzten 30 Tage, nur vier Kategorien (sonst tausende Eintraege)
     audits = @{ Custom = 'audits'; Perms = @('AuditLog.Read.All'); Lic = '' }
@@ -204,6 +206,47 @@ function Get-HUSecK01($F, $B, [switch]$Items) {
 }
 
 # K05: erfolgreiche Anmeldungen aus nicht erlaubten Laendern, ohne die als Sollwert ausgenommenen Konten (Objekt-IDs)
+# K07: Zeitraum in Tagen aus dem Sollwert, begrenzt auf 1 bis 30 (laenger bewahrt Entra das Anmeldeprotokoll nicht auf)
+function Get-HUSecK07Days($Value) {
+    $d = 0
+    if (-not [int]::TryParse("$Value", [ref]$d)) { $d = 7 }
+    if ($d -lt 1) { $d = 1 }
+    if ($d -gt 30) { $d = 30 }
+    return $d
+}
+
+# K07: Einstufung einer riskanten Anmeldung nach dem Fehlercode.
+#   Erfolg   = 0
+#   Gestoppt = Kennwort angenommen, Anmeldung erst danach aufgehalten: MFA verlangt (50072, 50074, 50076, 50079, 50158),
+#              bedingter Zugriff (53000 bis 53004; greift laut Microsoft erst nach dem ersten Faktor), Kennwort abgelaufen (50055),
+#              Rueckfrage "Angemeldet bleiben?" (50140, kommt erst nach der Anmeldung)
+#   Abgewehrt = alles andere (falsches Kennwort, gesperrtes Konto ...)
+# Quellen: https://learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes
+#          https://learn.microsoft.com/en-us/entra/identity/conditional-access/overview
+$script:HUSecK07Stopped = @(50055, 50072, 50074, 50076, 50079, 50140, 50158, 53000, 53001, 53002, 53003, 53004)
+function Get-HUSecK07Kind($SignIn) {
+    $c = -1
+    if (-not [int]::TryParse("$($SignIn.status.errorCode)", [ref]$c)) { return 'Abgewehrt' }
+    if ($c -eq 0) { return 'Erfolg' }
+    if ($script:HUSecK07Stopped -contains $c) { return 'Gestoppt' }
+    return 'Abgewehrt'
+}
+
+# K07: Anmeldungen je Konto zusammengefasst (Konto = userId, sonst Anmeldename). Counted = Konto zaehlt als Abweichung.
+function Get-HUSecK07($F) {
+    foreach ($g in @($F.signrisk | Where-Object { $_ } | Group-Object { if ("$($_.userId)") { "$($_.userId)".ToLowerInvariant() } else { "$($_.userPrincipalName)".ToLowerInvariant() } })) {
+        $kinds = @($g.Group | ForEach-Object { Get-HUSecK07Kind $_ })
+        $ok = @($kinds | Where-Object { $_ -eq 'Erfolg' }).Count
+        $st = @($kinds | Where-Object { $_ -eq 'Gestoppt' }).Count
+        # neuestes zaehlendes Ereignis (erfolgreich oder gestoppt) - fuer Teams-Meldung und Ausnahmen (gleitender Zeitraum);
+        # zaehlt eines ohne lesbare Zeit, gilt es als jetzt (sonst bliebe es fuer Teams-Meldung und Ausnahme unsichtbar)
+        $hot = @(for ($i = 0; $i -lt $g.Group.Count; $i++) { if ($kinds[$i] -ne 'Abgewehrt') { ConvertTo-HUSecUtc $g.Group[$i].createdDateTime } }) | Where-Object { $_ } | Sort-Object
+        $ts = @($g.Group | ForEach-Object { ConvertTo-HUSecUtc $_.createdDateTime } | Where-Object { $_ } | Sort-Object)
+        [pscustomobject]@{ First = $g.Group[0]; Rows = @($g.Group); Total = $g.Count; Ok = $ok; Stopped = $st; Blocked = ($g.Count - $ok - $st)
+            Counted = [bool]($ok + $st); Latest = $(if (@($hot).Count) { @($hot)[-1] } elseif ($ok + $st) { [datetime]::UtcNow } else { $null }); Times = $ts }
+    }
+}
+
 function Get-HUSecK05($F, $B) {
     $ok = @(@($B.countries) | ForEach-Object { "$_".ToUpperInvariant() })
     $skip = @(@($B.accounts) | ForEach-Object { "$_".ToLowerInvariant() })
@@ -355,6 +398,16 @@ function Get-HUSecCustomFact {
             $since = [datetime]::UtcNow.AddHours(-24).ToString('yyyy-MM-ddTHH:mm:ssZ', [cultureinfo]::InvariantCulture)
             $code = if ($Name -eq 'signfail') { 50126 } else { 0 }
             , @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/auditLogs/signIns?`$filter=createdDateTime%20ge%20$since%20and%20status/errorCode%20eq%20$code&`$top=1000" -All)
+        }
+        'signrisk' {
+            # K07: Anmeldeprotokoll, nur Anmeldungen mit Risikostatus atRisk oder confirmedCompromised (Filter mit or live geprueft). Stufe und Grund (riskLevel..., riskDetail) liefert Graph ohne P2 als
+            # "hidden", die Erkennungsart (riskEventTypes_v2) kommt auch mit P1. Enthalten sind nur interaktive Anmeldungen.
+            # Zeitraum = Sollwert K07 days (1 bis 30, Standard 7): 30 Tage dauerten live 25 bis 45 Sekunden je Tenant, 7 Tage rund 8.
+            # Quelle: https://learn.microsoft.com/en-us/graph/api/resources/signin?view=graph-rest-1.0
+            $bl = Get-HUSecBaseline -TenantKey $Ctx.TenantKey -Rules (Get-HUSecRules)
+            $days = Get-HUSecK07Days $bl.Values['K07'].days
+            $since = [datetime]::UtcNow.AddDays(-$days).ToString('yyyy-MM-ddTHH:mm:ssZ', [cultureinfo]::InvariantCulture)
+            , @(Invoke-HUSecFetch -TenantKey $Ctx.TenantKey -Settings $Ctx.Settings -Endpoint "/auditLogs/signIns?`$filter=createdDateTime%20ge%20$since%20and%20(riskState%20eq%20'atRisk'%20or%20riskState%20eq%20'confirmedCompromised')&`$top=1000" -All)
         }
         'audits' {
             # Je Kategorie ein gefilterter Abruf (ohne Filter rund 7.700 Eintraege in 30 Tagen bei einem kleinen Tenant; Gesamtabruf lief in 429)
@@ -601,7 +654,8 @@ $script:HUSecDefaults = @{
     K03 = @{ maxPercent = 95 }
     K04 = @{ maxFailed = 20 }
     K05 = @{ countries = @('AT', 'DE'); accounts = @() }
-    V5  = @{ policies = @() }
+    K07 = @{ days = 7 }
+    V5 = @{ policies = @() }
     A42 = @{ allowedApps = @() }
     # Katalog-weite Einstellungen: abgeschaltete Regeln (z. B. ohne P2-Lizenz)
     # statusOnly: nur Wechsel ok <-> Abweichung melden, nicht jede Aenderung der Anzahl (Regeln mit taeglich schwankenden Zahlen)
@@ -642,6 +696,7 @@ $script:HUSecBaselineInfo = @(
     @{ Rule = 'K04'; Key = 'maxFailed';         Kind = 'int';   Text = 'Ab so vielen falschen Kennwoertern je Konto in 24 Stunden melden.' }
     @{ Rule = 'K05'; Key = 'countries';         Kind = 'codes'; Text = 'Erlaubte Laender fuer Anmeldungen (Laendercodes, mit Komma getrennt, z. B. AT, DE).' }
     @{ Rule = 'K05'; Key = 'accounts';          Kind = 'guids'; Text = 'Konten, deren Anmeldungen aus dem Ausland nicht zaehlen (Objekt-IDs, z. B. Admin mit VPN).' }
+    @{ Rule = 'K07'; Key = 'days';              Kind = 'int';   Text = 'Riskante Anmeldungen der letzten so vielen Tage pruefen (1 bis 30; mehr Tage machen das Pruefen langsamer).' }
 )
 
 function ConvertTo-HUSecBaselineText($Value) {
@@ -808,7 +863,7 @@ function Remove-HUSecException([string]$Id) {
     Write-HUSecJson (Join-Path (Get-HUSecPath) 'exceptions.json') ([pscustomobject]@{ version = 1; items = $items })
 }
 
-# Regeln mit gleitendem Zeitraum (L01/L02, Ergebnis mit Latest): eine Ausnahme deckt nur die Ereignisse, die beim letzten Pruefen zu sehen waren.
+# Regeln mit gleitendem Zeitraum (L01, L02, K07; Ergebnis mit Latest): eine Ausnahme deckt nur die Ereignisse, die beim letzten Pruefen zu sehen waren.
 # Ein neueres Ereignis hebt sie auf, sonst bliebe z. B. eine spaeter vergebene Admin-Rolle bis zum Ablauf stumm (Pruefung 2.6.17 B1).
 # Rueckgabe $true = Ausnahme deckt das Ergebnis nicht mehr.
 function Test-HUSecExceptionOutdated($Exception, $Result) {
@@ -1769,7 +1824,7 @@ $script:HUSecRules = @(
             $d = "$($all.Count) erfolgreiche Anmeldung(en) in 24 Stunden, $($out.Count) aus anderen Laendern als $($ok -join ', ') ($acc Konto/Konten$(if ($out.Count) { ": $(@($out | ForEach-Object { "$($_.location.countryOrRegion)" } | Sort-Object -Unique) -join ', ')" }))$(if ($skip) { "; $skip Konto/Konten ausgenommen (Sollwert)" })"
             if ($out.Count) { @{ Status = 'Abweichung'; Count = $acc; Detail = $d } } else { @{ Status = 'OK'; Count = 0; Detail = $d } }
         } }
-    @{ Id = 'K06'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine gefaehrdeten Benutzer (ID Protection)'; Facts = @('riskyu'); Min = $false; ItemsLabel = 'Benutzer'; ItemsSort = 'Benutzer'
+    @{ Id = 'K06'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine gefaehrdeten Benutzer (ID Protection, nur mit Entra ID P2)'; Facts = @('riskyu'); Min = $false; ItemsLabel = 'Benutzer'; ItemsSort = 'Benutzer'
         Items = { param($F, $B)
             foreach ($u in @($F.riskyu | Where-Object { $_ })) {
                 $t = ConvertTo-HUSecUtc $u.riskLastUpdatedDateTime
@@ -1781,6 +1836,31 @@ $script:HUSecRules = @(
             $hm = @($all | Where-Object { "$($_.riskLevel)" -in 'high', 'medium' }).Count
             if ($all.Count) { @{ Status = 'Abweichung'; Count = $all.Count; Detail = "$($all.Count) gefaehrdete(r) Benutzer, davon $hm mit Risiko hoch oder mittel (Risikostufe 'hidden' oder 'none' = ohne P2 nicht sichtbar)" } }
             else { @{ Status = 'OK'; Count = 0; Detail = 'keine gefaehrdeten Benutzer' } }
+        } }
+    @{ Id = 'K07'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine riskanten Anmeldungen mit angenommenem Kennwort (erfolgreich oder erst danach gestoppt; Anmeldeprotokoll)'; Facts = @('signrisk'); Min = $false; Rolling = $true; RollingCount = $true; ItemsLabel = 'Konten'; ItemsSort = 'Letzte'; ItemsDesc = $true
+        Items = { param($F, $B)
+            foreach ($k in @(Get-HUSecK07 $F)) {
+                $f = $k.First
+                [pscustomobject]@{ Konto = "$($f.userPrincipalName)"; Name = "$($f.userDisplayName)"; Anmeldungen = $k.Total; Erfolgreich = $k.Ok; Gestoppt = $k.Stopped; Abgewehrt = $k.Blocked
+                    Erkennung = (@($k.Rows | ForEach-Object { @($_.riskEventTypes_v2) } | Where-Object { "$_" } | Sort-Object -Unique) -join ', ')
+                    Laender = (@($k.Rows | ForEach-Object { "$($_.location.countryOrRegion)" } | Where-Object { $_ } | Sort-Object -Unique) -join ', ')
+                    Apps = (@($k.Rows | ForEach-Object { "$($_.appDisplayName)" } | Where-Object { $_ } | Sort-Object -Unique) -join ', ')
+                    Adressen = (@($k.Rows | ForEach-Object { "$($_.ipAddress)" } | Where-Object { $_ } | Sort-Object -Unique) -join ', ')
+                    Erste = $(if ($k.Times.Count) { $k.Times[0].ToLocalTime().ToString('yyyy-MM-dd HH:mm', [cultureinfo]::InvariantCulture) } else { '' })
+                    Letzte = $(if ($k.Times.Count) { $k.Times[-1].ToLocalTime().ToString('yyyy-MM-dd HH:mm', [cultureinfo]::InvariantCulture) } else { '' })
+                    Bewertung = $(if ($k.Ok) { 'abweichend: erfolgreich angemeldet' } elseif ($k.Stopped) { 'abweichend: Kennwort angenommen, erst danach gestoppt' } else { '' }) }
+            }
+        }
+        Eval = { param($F, $B)
+            $days = Get-HUSecK07Days $B.days
+            $acc = @(Get-HUSecK07 $F)
+            $hit = @($acc | Where-Object { $_.Counted })
+            $n = 0; $ok = 0; $st = 0; foreach ($a in $acc) { $n += $a.Total; $ok += $a.Ok; $st += $a.Stopped }
+            $d = "$n riskante Anmeldung(en) bei $($acc.Count) Konto/Konten in $days Tag(en): $ok erfolgreich, $st nach angenommenem Kennwort gestoppt (MFA, bedingter Zugriff ...), $($n - $ok - $st) abgewehrt; $($hit.Count) Konto/Konten zaehlen (Risikostufe ohne Entra ID P2 nicht sichtbar)"
+            # Latest: neuestes zaehlendes Ereignis (UTC) - Teams meldet nur Neues seit dem Soll-Stand, eine Ausnahme deckt nur bereits Gesehenes
+            $lt = @($hit | ForEach-Object { $_.Latest } | Where-Object { $_ } | Sort-Object)
+            $latest = if ($lt.Count) { $lt[-1].ToString('o', [cultureinfo]::InvariantCulture) } else { '' }
+            if ($hit.Count) { @{ Status = 'Abweichung'; Count = $hit.Count; Detail = $d; Latest = $latest } } else { @{ Status = 'OK'; Count = 0; Detail = $d; Latest = '' } }
         } }
     @{ Id = 'A25'; Area = 'Entra'; Sev = 'Mittel'; Title = 'Normale Benutzer sind von den Microsoft-Adminportalen ausgesperrt (Conditional Access)'; Facts = @('ca'); Min = $false; ItemsLabel = 'Richtlinien'; ItemsSort = 'Richtlinie'
         Items = { param($F, $B)
@@ -2275,7 +2355,8 @@ $script:HUSecWhy = @{
     K03 = 'Sind Lizenzen aufgebraucht, bekommen neue Schueler oder Lehrkraefte keine Office-Apps oder kein Postfach. Gemeldet wird je Lizenzart ab 95 % Belegung (Sollwert K03 maxPercent) oder wenn mehr belegt als vorhanden ist.'
     K04 = 'Viele falsche Kennwoerter fuer ein Konto in kurzer Zeit deuten auf einen Rateangriff hin (Kennwort-Spray). Gezaehlt werden Anmeldungen mit Fehler 50126 (falscher Benutzername oder falsches Kennwort) der letzten 24 Stunden, ab 20 je Konto (Sollwert K04 maxFailed). Braucht Entra ID P1.'
     K05 = 'Erfolgreiche Anmeldungen aus Laendern, in denen niemand arbeitet, sind oft uebernommene Konten - oder Ausnahmen vom Geoblock (A24). Gezaehlt werden die letzten 24 Stunden; erlaubt sind die Laender im Sollwert K05 countries (Standard AT, DE). Konten mit eigenem VPN lassen sich ueber den Sollwert K05 accounts (Objekt-IDs) ausnehmen; eine Ausnahme wuerde die ganze Regel ausblenden. Die Liste fasst je Konto, Land und Ort zusammen. Bei grossen Tenants kann das Lesen etwas dauern. Braucht Entra ID P1.'
-    K06 = 'Gefaehrdete Benutzer laut Entra ID Protection (z. B. Kennwort in einem Datenleck gefunden, Anmeldung von verdaechtiger Adresse). Im Portal sieht man mit P1 eine eingeschraenkte Liste; ueber Graph gibt es die Daten nur mit Entra ID P2 (mit P1 verweigert Graph den Abruf) - ohne P2 steht hier "? Lizenz". Mit P2 braucht es das Recht IdentityRiskyUser.Read.All. Behebung: Kennwort zuruecksetzen lassen, danach im Portal "Risiko verwerfen".'
+    K06 = 'Gefaehrdete Benutzer laut Entra ID Protection (z. B. Kennwort in einem Datenleck gefunden, Anmeldung von verdaechtiger Adresse). Im Portal sieht man mit P1 eine eingeschraenkte Liste; ueber Graph gibt es die Daten nur mit Entra ID P2 (mit P1 verweigert Graph den Abruf) - ohne P2 steht hier "? Lizenz", dann hilft K07 (riskante Anmeldungen aus dem Anmeldeprotokoll, geht mit P1). Mit P2 braucht es das Recht IdentityRiskyUser.Read.All. Behebung: Kennwort zuruecksetzen lassen, danach im Portal "Risiko verwerfen".'
+    K07 = 'Anmeldungen, die Microsoft als riskant einstuft (z. B. anonyme oder als boesartig bekannte Adresse, Kennwort-Spray, unmoegliche Reise), aus dem Anmeldeprotokoll. Das geht anders als K06 auch mit Entra ID P1: Der Risikostatus und die Art der Erkennung sind lesbar, nur Risikostufe und Grund bleiben ohne P2 verborgen. Ein Konto zaehlt, wenn eine riskante Anmeldung erfolgreich war oder das Kennwort angenommen und die Anmeldung erst danach gestoppt wurde (MFA verlangt, bedingter Zugriff, abgelaufenes Kennwort, Rueckfrage "Angemeldet bleiben?") - das Kennwort ist dann vermutlich bekannt. Als kompromittiert bestaetigte Anmeldungen zaehlen mit. Reine Fehlversuche (falsches Kennwort, gesperrtes Konto) stehen nur in der Liste. Geprueft werden die letzten 7 Tage (Sollwert K07 days, 1 bis 30) und nur interaktive Anmeldungen. Die Teams-Meldung nennt nur Neues seit dem Soll-Stand (neuere Anmeldung oder mehr Konten); eine Ausnahme deckt nur, was beim letzten Pruefen zu sehen war. Manche Erkennungen rechnet Microsoft erst nachtraeglich - eine aeltere Anmeldung kann also spaeter dazukommen; eine bestehende Ausnahme deckt sie mit. Behebung: Kennwort zuruecksetzen, Sitzungen widerrufen, MFA pruefen.'
     E05 = 'Standard bei Microsoft: Geraete ohne zugewiesene Compliance-Richtlinie gelten als konform. Mit bedingtem Zugriff "konformes Geraet" kommt so jedes nicht erfasste Geraet durch. Empfohlen: als nicht konform markieren (Intune > Endpoint-Sicherheit > Geraetekompatibilitaet > Einstellungen).'
     E06 = 'Ohne Mindestversion gelten auch alte, nicht mehr unterstuetzte Windows-Staende als konform. Die Zelle nennt die gesetzte Version, damit die Tenants vergleichbar sind.'
     E07 = 'Ohne Update-Ring entscheidet jedes Geraet selbst, wann es Sicherheitsupdates installiert. Qualitaetsupdates (monatliche Sicherheitsupdates) sollen hoechstens 7 Tage zurueckgestellt sein (Sollwert E07 maxQualityDays). Gezaehlt werden Update-Ringe (Windows Update for Business) mit Zuweisung.'
@@ -2751,7 +2832,7 @@ function Compare-HUSecReference {
         if ($qt.si -contains "$($r.RuleId)" -and -not $ruleOf[$r.RuleId].Min) { $silentRules["$($r.RuleId)"] = 1; continue }
         if ($r.Status -notin $checkable -or $o.status -notin $checkable) { if ($o.status -in $checkable -and $r.Status -notin $checkable -and $r.Status -ne 'Info') { $unchecked++ }; continue }
         $rule = $ruleOf[$r.RuleId]
-        # Gleitender Zeitraum (Rolling, derzeit L01 und L02): die Zahl taugt nicht (alte Ereignisse fallen heraus, neue kommen dazu). Gemeldet wird,
+        # Gleitender Zeitraum (Rolling, derzeit L01, L02 und K07): die Zahl taugt nicht (alte Ereignisse fallen heraus, neue kommen dazu). Gemeldet wird,
         # wenn das neueste gezaehlte Ereignis nach dem Soll-Zeitpunkt liegt - als Verschlechterung, bis der Soll neu gespeichert ist.
         if ($rule -and $rule.PSObject.Properties['Rolling'] -and $rule.Rolling) {
             $lt = if ($r.PSObject.Properties['Latest']) { ConvertTo-HUSecUtc $r.Latest } else { $null }
@@ -2761,6 +2842,14 @@ function Compare-HUSecReference {
             if ($r.Status -eq 'Abweichung' -and $lt -and (($hasThr -and -not $thr) -or ($thr -and $lt -gt $thr))) {
                 $changes.Add([pscustomobject]@{
                         Tenant = "$($r.Tenant)"; RuleId = "$($r.RuleId)"; Title = "$($r.Title)"; Sev = "$($r.Sev)"; Kind = 'Neu'; Worse = $true
+                        Was = "$($o.status)"; Is = "$($r.Status)"; WasCount = $o.count; IsCount = $r.Count
+                    })
+            }
+            # RollingCount (K07): Microsoft stuft manche Anmeldungen erst nachtraeglich als riskant ein; ihr Zeitpunkt liegt dann vor dem
+            # Soll-Stand. Deshalb zusaetzlich melden, wenn die Zahl der zaehlenden Konten ueber dem Soll liegt.
+            elseif ($r.Status -eq 'Abweichung' -and "$($o.status)" -eq 'Abweichung' -and $rule.PSObject.Properties['RollingCount'] -and $rule.RollingCount -and [int]"0$($r.Count)" -gt [int]"0$($o.count)") {
+                $changes.Add([pscustomobject]@{
+                        Tenant = "$($r.Tenant)"; RuleId = "$($r.RuleId)"; Title = "$($r.Title)"; Sev = "$($r.Sev)"; Kind = 'Anzahl'; Worse = $true
                         Was = "$($o.status)"; Is = "$($r.Status)"; WasCount = $o.count; IsCount = $r.Count
                     })
             }

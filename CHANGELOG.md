@@ -1,5 +1,32 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.19 (Testversion)
+
+### 🛡️ Sicherheitskatalog
+- **Neue Regel K07, riskante Anmeldungen auch mit Entra ID P1:** Liest aus dem Anmeldeprotokoll die Anmeldungen, die Microsoft als riskant einstuft. Anders als K06 braucht das kein P2.
+  - Rot wird ein Konto, wenn eine riskante Anmeldung erfolgreich war oder das Kennwort angenommen und die Anmeldung erst danach gestoppt wurde, z. B. durch MFA oder bedingten Zugriff. Das Kennwort ist dann vermutlich bekannt.
+  - Reine Fehlversuche (falsches Kennwort, gesperrtes Konto) stehen nur in der Liste.
+  - Die Liste zeigt je Konto Anzahl, Länder, Adressen, Apps und die Art der Erkennung, z. B. Kennwort-Spray oder bösartige Adresse.
+  - Geprüft werden die letzten 7 Tage, über den Sollwert "K07 days" auf 1 bis 30 Tage stellbar. Mehr Tage machen das Prüfen langsamer.
+  - Die Teams-Meldung nennt nur Neues seit dem Soll-Stand: eine neuere Anmeldung oder mehr betroffene Konten. Eine Ausnahme deckt nur, was beim letzten Prüfen zu sehen war.
+- **K06 nennt die Lizenz:** Der Titel sagt jetzt, dass die Regel nur mit Entra ID P2 prüfbar ist, und verweist ohne P2 auf K07.
+
+### ⚡ Quick Script
+- **Neues Beispiel "Riskante Anmeldungen":** Dieselbe Abfrage als Snippet mit Zeitraum, Risikostatus und Filter auf einen Benutzer.
+  - Ansicht je Benutzer oder je Anmeldung, Ausgabe als Tabelle mit Export.
+  - Vorhandene Installationen holen es in der Snippet-Verwaltung über den Knopf "Beispiele ...".
+
+### ⚠️ Nach dem Update
+- Einmal "Prüfen" und danach "Soll speichern", damit K07 im Soll-Stand steht.
+- Keine neuen Rechte: K07 nutzt `AuditLog.Read.All`.
+
+### 🚧 Grenzen
+- K07 sieht nur interaktive Anmeldungen. Risikostufe und Grund bleiben ohne Entra ID P2 verborgen.
+- Manche Erkennungen rechnet Microsoft erst nachträglich. Eine ältere Anmeldung kann deshalb später dazukommen; eine bestehende Ausnahme deckt sie mit.
+
+### ✅ Qualität
+- 6 neue Prüfungen, künstliche Werte in den Testdaten.
+
 ## v2.6.18 (Testversion)
 
 ### 🛡️ Sicherheitskatalog

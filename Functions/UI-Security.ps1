@@ -716,7 +716,7 @@ function Show-HUSecExceptions {
             <Button x:Name="btnClose" Content="Schliessen" Width="100" Background="#555555" Style="{StaticResource DarkButton}" IsCancel="True" IsDefault="True"/>
         </StackPanel>
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"
-                   Text="Ausnahmen sind befristet und mit Begruendung. Nach Ablauf zaehlt die Abweichung wieder. Zum Anwenden danach erneut Pruefen klicken. 'wirkungslos' (orange): die Regel ist abgeschaltet oder beim letzten Pruefen nicht pruefbar, bei L01/L02 auch nach einem neuen Ereignis - die Ausnahme kann entfernt werden; fuer nie pruefbare Regeln besser in den Sollwerten unter Katalog disabled abschalten."/>
+                   Text="Ausnahmen sind befristet und mit Begruendung. Nach Ablauf zaehlt die Abweichung wieder. Zum Anwenden danach erneut Pruefen klicken. 'wirkungslos' (orange): die Regel ist abgeschaltet oder beim letzten Pruefen nicht pruefbar, bei L01, L02 und K07 auch nach einem neuen Ereignis - die Ausnahme kann entfernt werden; fuer nie pruefbare Regeln besser in den Sollwerten unter Katalog disabled abschalten."/>
         <DataGrid x:Name="gridEx" Style="{StaticResource DarkDataGrid}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Regel" Binding="{Binding Regel}" Width="Auto" MinWidth="60"/>

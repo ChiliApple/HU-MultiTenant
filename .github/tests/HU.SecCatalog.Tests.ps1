@@ -1215,6 +1215,99 @@ Describe 'K06 gefaehrdete Benutzer' {
     }
 }
 
+Describe 'K07 riskante Anmeldungen aus dem Anmeldeprotokoll' {
+    AfterAll { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
+    BeforeEach {
+        Base
+        Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue
+        function script:Sig($user, $code, $time, $land = 'AT', $types = @()) {
+            [pscustomobject]@{ userId = $user; userPrincipalName = "$user@x"; userDisplayName = "Name $user"; appDisplayName = 'Portal'; ipAddress = '192.0.2.1'; createdDateTime = $time
+                riskState = 'atRisk'; riskLevelDuringSignIn = 'hidden'; riskEventTypes_v2 = $types; status = [pscustomobject]@{ errorCode = $code }; location = [pscustomobject]@{ countryOrRegion = $land } }
+        }
+    }
+    It 'nur abgewehrte Versuche: OK, Konto steht trotzdem in der Liste' {
+        $global:HUSecFx['and%20(riskState'] = @((Sig 'u1' 50126 '2026-10-20T10:00:00Z' 'US' @('passwordSpray')), (Sig 'u1' 50053 '2026-10-20T11:00:00Z' 'US'))
+        $r = Run 'K07'; $r.Status | Should -Be 'OK'; $r.Count | Should -Be 0; $r.Detail | Should -Match '2 riskante Anmeldung\(en\) bei 1 Konto'
+        "$($r.Latest)" | Should -Be ''
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'K07')
+        $it.Count | Should -Be 1; $it[0].Abgewehrt | Should -Be 2; $it[0].Bewertung | Should -Be ''; $it[0].Erkennung | Should -Be 'passwordSpray'
+        $global:HUSecEp | Should -Match "createdDateTime%20ge%20.+riskState%20eq%20'atRisk'"
+    }
+    It 'erfolgreich oder nach angenommenem Kennwort gestoppt: Abweichung je Konto' {
+        $global:HUSecFx['and%20(riskState'] = @(
+            (Sig 'u1' 0 '2026-10-20T10:00:00Z' 'MX' @('unlikelyTravel')), (Sig 'u1' 50126 '2026-10-22T10:00:00Z'),
+            (Sig 'u2' 53003 '2026-10-21T08:00:00Z' 'KR'), (Sig 'u2' 50074 '2026-10-21T09:00:00Z' 'KR'),
+            (Sig 'u3' 50126 '2026-10-23T12:00:00Z'))
+        $r = Run 'K07'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 2
+        $r.Detail | Should -Match '5 riskante Anmeldung\(en\) bei 3 Konto/Konten in 7 Tag\(en\): 1 erfolgreich, 2 nach angenommenem Kennwort gestoppt \(MFA, bedingter Zugriff \.\.\.\), 2 abgewehrt; 2 Konto/Konten zaehlen'
+        # Latest = neuestes ZAEHLENDES Ereignis (u2 09:00), nicht der spaetere Fehlversuch von u1 oder u3
+        ([datetimeoffset]::Parse("$($r.Latest)", [cultureinfo]::InvariantCulture)).UtcDateTime | Should -Be ([datetime]::new(2026, 10, 21, 9, 0, 0, [DateTimeKind]::Utc))
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'K07')
+        $it.Count | Should -Be 3
+        ($it | Where-Object { $_.Konto -eq 'u1@x' }).Bewertung | Should -Be 'abweichend: erfolgreich angemeldet'
+        ($it | Where-Object { $_.Konto -eq 'u2@x' }).Bewertung | Should -Match 'gestoppt'
+        ($it | Where-Object { $_.Konto -eq 'u2@x' }).Gestoppt | Should -Be 2
+        ($it | Where-Object { $_.Konto -eq 'u3@x' }).Bewertung | Should -Be ''
+        Test-HUSecItemsExport 'K07' | Should -BeFalse
+    }
+    It 'leeres Protokoll ist OK, ohne P1 Lizenz, fehlendes Recht, Fehler nie OK' {
+        $global:HUSecFx['and%20(riskState'] = @()
+        (Run 'K07').Status | Should -Be 'OK'
+        $global:HUSecFx['and%20(riskState'] = Fail 500
+        $r = Run 'K07'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Technisch'
+        $global:HUSecFx['and%20(riskState'] = Fail 403
+        (Run 'K07').Reason | Should -Be 'Recht'
+        $global:HUSecFx['subscribedSkus'] = Skus @('EXCHANGE_S_STANDARD')
+        $r = Run 'K07'; $r.Status | Should -Be 'NichtPruefbar'; $r.Reason | Should -Be 'Lizenz'
+    }
+    It 'Zeitraum: Standard 7 Tage, Sollwert K07 days, begrenzt auf 1 bis 30' {
+        InModuleScope HU.SecCatalog { Get-HUSecK07Days 7 | Should -Be 7; Get-HUSecK07Days 99 | Should -Be 30; Get-HUSecK07Days 0 | Should -Be 1; Get-HUSecK07Days 'x' | Should -Be 7; Get-HUSecK07Days $null | Should -Be 7 }
+        $global:HUSecFx['and%20(riskState'] = @()
+        [void](Run 'K07')
+        $m = [regex]::Match("$global:HUSecEp", 'createdDateTime%20ge%20([0-9T:\-]+Z)'); $m.Success | Should -BeTrue
+        $age = ([datetime]::UtcNow - [datetimeoffset]::Parse($m.Groups[1].Value, [cultureinfo]::InvariantCulture).UtcDateTime).TotalDays
+        $age | Should -BeGreaterThan 6.9; $age | Should -BeLessThan 7.1
+        @(Save-HUSecBaselineEdit -Scope '' -Values @{ 'K07.days' = '30' }).Count | Should -Be 0
+        $r = Run 'K07'; $r.Detail | Should -Match 'in 30 Tag'
+        $m = [regex]::Match("$global:HUSecEp", 'createdDateTime%20ge%20([0-9T:\-]+Z)')
+        $age = ([datetime]::UtcNow - [datetimeoffset]::Parse($m.Groups[1].Value, [cultureinfo]::InvariantCulture).UtcDateTime).TotalDays
+        $age | Should -BeGreaterThan 29.9; $age | Should -BeLessThan 30.1
+    }
+    It 'gleitender Zeitraum: gemeldet wird nur ein neueres zaehlendes Ereignis' {
+        (InModuleScope HU.SecCatalog { @(Get-HUSecRules | Where-Object { $_.Id -eq 'K07' })[0].Rolling }) | Should -BeTrue
+        $global:HUSecFx['and%20(riskState'] = @((Sig 'u1' 0 '2026-10-20T10:00:00Z'))
+        $r1 = Run 'K07'
+        $ref = [pscustomobject]@{ time = '2026-10-21T00:00:00Z'; rows = @([pscustomobject]@{ tenant = 'T1'; ruleId = 'K07'; status = 'Abweichung'; count = 1; latest = "$($r1.Latest)" }) }
+        @((Compare-HUSecReference -Results @($r1) -Reference $ref).Changes).Count | Should -Be 0
+        # ein weiterer reiner Fehlversuch aendert nichts, eine neue erfolgreiche Anmeldung eines zweiten Kontos wird gemeldet
+        $global:HUSecFx['and%20(riskState'] = @((Sig 'u1' 0 '2026-10-20T10:00:00Z'), (Sig 'u1' 50126 '2026-10-25T10:00:00Z'))
+        @((Compare-HUSecReference -Results @(Run 'K07') -Reference $ref).Changes).Count | Should -Be 0
+        $global:HUSecFx['and%20(riskState'] = @((Sig 'u1' 0 '2026-10-20T10:00:00Z'), (Sig 'u2' 0 '2026-10-26T10:00:00Z'))
+        $c = @((Compare-HUSecReference -Results @(Run 'K07') -Reference $ref).Changes)
+        $c.Count | Should -Be 1; $c[0].Worse | Should -BeTrue; $c[0].Kind | Should -Be 'Neu'
+        # nachtraeglich als riskant eingestufte AELTERE Anmeldung eines weiteren Kontos: Zeitpunkt vor dem Soll, aber mehr Konten -> gemeldet
+        $global:HUSecFx['and%20(riskState'] = @((Sig 'u1' 0 '2026-10-20T10:00:00Z'), (Sig 'u3' 0 '2026-10-19T10:00:00Z'))
+        $c = @((Compare-HUSecReference -Results @(Run 'K07') -Reference $ref).Changes)
+        $c.Count | Should -Be 1; $c[0].Kind | Should -Be 'Anzahl'; $c[0].Worse | Should -BeTrue
+        # weniger Konten (aeltere fallen aus dem Zeitraum) ist keine Meldung
+        $ref2 = [pscustomobject]@{ time = '2026-10-21T00:00:00Z'; rows = @([pscustomobject]@{ tenant = 'T1'; ruleId = 'K07'; status = 'Abweichung'; count = 3; latest = "$($r1.Latest)" }) }
+        $global:HUSecFx['and%20(riskState'] = @((Sig 'u1' 0 '2026-10-20T10:00:00Z'))
+        @((Compare-HUSecReference -Results @(Run 'K07') -Reference $ref2).Changes).Count | Should -Be 0
+    }
+    It 'Kennwort angenommen zaehlt auch bei Rueckfrage und abgelaufenem Kennwort; fehlende Felder brechen nichts' {
+        $global:HUSecFx['and%20(riskState'] = @((Sig 'u1' 50140 '2026-10-20T10:00:00Z' 'EG'), (Sig 'u2' 50055 '2026-10-20T11:00:00Z'), (Sig 'u3' 50053 '2026-10-20T12:00:00Z'),
+            [pscustomobject]@{ userId = ''; userPrincipalName = 'ohne@x'; createdDateTime = ''; status = [pscustomobject]@{ errorCode = 0 }; location = $null; riskEventTypes_v2 = $null },
+            [pscustomobject]@{ userId = 'u5'; userPrincipalName = 'u5@x'; createdDateTime = '2026-10-20T13:00:00Z'; status = $null })
+        $r = Run 'K07'; $r.Status | Should -Be 'Abweichung'; $r.Count | Should -Be 3
+        # zaehlendes Ereignis ohne Zeit gilt als jetzt, damit Teams-Meldung und Ausnahme es sehen
+        ([datetime]::UtcNow - [datetimeoffset]::Parse("$($r.Latest)", [cultureinfo]::InvariantCulture).UtcDateTime).TotalMinutes | Should -BeLessThan 5
+        $it = @(Get-HUSecItems -TenantKey 'T1' -Settings ([pscustomobject]@{}) -RuleId 'K07'); $it.Count | Should -Be 5
+        ($it | Where-Object { $_.Konto -eq 'u1@x' }).Gestoppt | Should -Be 1
+        ($it | Where-Object { $_.Konto -eq 'u5@x' }).Abgewehrt | Should -Be 1
+        $global:HUSecEp | Should -Match "riskState%20eq%20'confirmedCompromised'"
+    }
+}
+
 Describe 'Konten, Lizenzen und Anmeldungen (K01 bis K05)' {
     AfterAll { Remove-Item -LiteralPath (Join-Path (Get-HUSecPath) 'baseline.json') -Force -ErrorAction SilentlyContinue }
     BeforeEach {
