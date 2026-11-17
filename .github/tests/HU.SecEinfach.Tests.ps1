@@ -624,6 +624,46 @@ Describe 'L01 mit Gruppen mit Admin-Rolle (2.6.18)' {
         $by['L02'].Status | Should -Be 'OK'
     }
 
+    It 'laesst eine direkte Rollenvergabe rot, auch wenn die Gruppen nicht lesbar sind, und meldet fehlendes Recht als Recht' {
+        $when = (Get-Date).ToUniversalTime().AddHours(-2).ToString('o')
+        $global:HUSecRoleEv = @((Ev 'RoleManagement' 'Add member to role' -TargetId 'u1' -When $when))
+        $global:HUSecGrpCode = 429
+        Mock -ModuleName HU.SecCatalog Invoke-HUSecFetch {
+            param($TenantKey, $Settings, $Endpoint, [switch]$All, [switch]$Beta)
+            if ($Endpoint -like '*isAssignableToRole*') { $e = New-Object System.Exception('x'); $e.Data['StatusCode'] = $global:HUSecGrpCode; throw $e }
+            if ($Endpoint -like '*subscribedSkus*') { return , @([pscustomobject]@{ servicePlans = @([pscustomobject]@{ servicePlanName = 'AAD_PREMIUM'; provisioningStatus = 'Success' }) }) }
+            if ($Endpoint -like "*'RoleManagement'*") { return $global:HUSecRoleEv }
+            if ($Endpoint -like '*directoryAudits*' -or $Endpoint -like '*servicePrincipals*') { return @() }
+            throw 'nicht vorbereitet'
+        }
+        $r = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $script:Set -RuleIds @('L01'))[0]
+        $r.Status | Should -Be 'Abweichung'
+        $r.Complete | Should -BeFalse
+        $r.Detail | Should -Match 'nicht lesbar \(HTTP 429\)'
+        "$($r.Latest)" | Should -Not -BeNullOrEmpty
+        $rows = @(Get-HUSecChanges -TenantKey 'T1' -Settings $script:Set)
+        @($rows | Where-Object { $_.Art -eq 'Hinweis' }).Count | Should -Be 1
+        $global:HUSecRoleEv = @(); $global:HUSecGrpCode = 403
+        $n = @(Invoke-HUSecCatalog -TenantKey 'T1' -Settings $script:Set -RuleIds @('L01'))[0]
+        $n.Status | Should -Be 'NichtPruefbar'
+        $n.Reason | Should -Be 'Recht'
+        Remove-Variable -Name HUSecRoleEv, HUSecGrpCode -Scope Global -ErrorAction SilentlyContinue
+    }
+
+    It 'fragt bei 16 Gruppen in zwei Abrufen und liest die echte Form (Stelle 1 = Gruppe)' {
+        $global:HUSecEfx['isAssignableToRole'] = @(1..16 | ForEach-Object { [pscustomobject]@{ id = "g$_"; displayName = "Gruppe $_" } })
+        $e = Ev 'GroupManagement' 'Add member to group' -TargetId 'u8' -TargetName 'Konto Acht' -When (Get-Date).ToUniversalTime().AddDays(-1).ToString('o')
+        $e.targetResources = @($e.targetResources[0], [pscustomobject]@{ id = 'g16'; displayName = 'Gruppe 16'; type = 'Group'; modifiedProperties = @() })
+        $global:HUSecEfx['GroupManagement'] = @($e)
+        [void](Invoke-HUSecCatalog -TenantKey 'T1' -Settings $script:Set -RuleIds @('L01'))
+        $q = @($global:HUSecEeps | Where-Object { $_ -like '*GroupManagement*' } | ForEach-Object { [uri]::UnescapeDataString($_) })
+        $q.Count | Should -Be 2
+        $q[0] | Should -Match "t/id eq 'g15'\)"
+        $q[1] | Should -Match "any\(t:t/id eq 'g16'\)"
+        $row = @(Get-HUSecItems -TenantKey 'T1' -Settings $script:Set -RuleId 'L01')[0]
+        $row.Ziel | Should -Be 'Konto Acht (Gruppe mit Admin-Rolle: Gruppe 16)'
+    }
+
     It 'zaehlt Gruppenaenderungen ohne Markierung aus dem gezielten Abruf nie als Rolle' {
         Get-HUSecAuditKind (Ev 'GroupManagement' 'Add member to group') | Should -Be ''
     }
@@ -649,6 +689,13 @@ Describe 'A27 mit Gruppen eines Partners (2.6.18)' {
         $r.Detail | Should -Match '1 Gruppe\(n\) eines Partners'
         $r.Detail | Should -Match 'AdminAgents: Privileged Role Administrator und 1 weitere'
         Should -Invoke -ModuleName HU.SecCatalog Invoke-HUSecFetch -Times 1 -Exactly -ParameterFilter { $Endpoint -like '/groups/g9/members*' }
+    }
+
+    It 'nennt Partner-Gruppen ohne bekannte Rolle mit der Anzahl und kuerzt lange Rollenlisten' {
+        $m = InModuleScope HU.SecCatalog { Format-HUSecExtGroups @([pscustomobject]@{ name = 'Gruppe X @( Firma , firma.test )'; roles = @('aaaa', 'bbbb') }) }
+        $m | Should -Be 'Gruppe X: 2 Rolle(n)'
+        $l = InModuleScope HU.SecCatalog { Format-HUSecExtGroups @([pscustomobject]@{ name = 'AdminAgents'; roles = @('fe930be7-5e62-47db-91af-98c3a49a38b1', '62e90394-69f5-4237-9190-012177145e10', '7be44c8a-adaf-4e2a-84d6-ab2649e08a13', '729827e3-9c14-49f7-bb1b-9608f156bbb8', 'cccc') }) }
+        $l | Should -Be 'AdminAgents: Global Administrator, Privileged Authentication Administrator, User Administrator und 2 weitere'
     }
 
     It 'bricht bei anderen Fehlern weiter ab (nicht pruefbar statt falsch gruen)' {

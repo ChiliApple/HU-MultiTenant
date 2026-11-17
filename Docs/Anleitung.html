@@ -426,7 +426,7 @@ powershell -NoProfile -File skills\hu-extension\tools\Test-HUExtension.ps1 -Path
     <tr><td>C06</td><td>Teams</td><td>Hoch</td><td>Gäste in Teams und M365-Gruppen (Liste je Gast und Gruppe, am Handy mit PIN)</td><td><code>Group.Read.All</code>, <code>User.Read.All</code></td></tr>
     <tr><td>K04</td><td>Entra</td><td>Hoch</td><td>Keine Häufung falscher Kennwörter je Konto in 24 Stunden (Sollwert, ab 20)</td><td><code>AuditLog.Read.All</code> · Entra ID P1</td></tr>
     <tr><td>K06</td><td>Entra</td><td>Hoch</td><td>Keine gefährdeten Benutzer (ID Protection; über Graph nur mit Entra ID P2, sonst „? Lizenz“)</td><td><code>IdentityRiskyUser.Read.All</code> · Entra ID P2</td></tr>
-    <tr><td>L01</td><td>Entra</td><td>Hoch</td><td>Keine neu vergebenen Admin-Rollen in den letzten 30 Tagen, auch über Gruppen mit Admin-Rolle (gezählt werden Konten)</td><td><code>AuditLog.Read.All</code></td></tr>
+    <tr><td>L01</td><td>Entra</td><td>Hoch</td><td>Keine neu vergebenen Admin-Rollen in den letzten 30 Tagen, auch über Gruppen mit Admin-Rolle (gezählt werden Konten)</td><td><code>AuditLog.Read.All</code> · <code>Group.Read.All</code></td></tr>
     <tr><td>L02</td><td>Entra</td><td>Hoch</td><td>Keine Änderung an Domänen oder Verbund in den letzten 30 Tagen</td><td><code>AuditLog.Read.All</code></td></tr>
     <tr><td>L03</td><td>Apps</td><td>Niedrig</td><td>Neue Secrets oder Zertifikate an Apps in den letzten 30 Tagen (nur Hinweis; gezählt werden Apps, Erneuerungen durch HU-MultiTenant zählen nicht)</td><td><code>AuditLog.Read.All</code></td></tr>
     <tr><td>L04</td><td>Apps</td><td>Niedrig</td><td>Neu erteilte App-Rechte oder Zustimmungen in den letzten 30 Tagen (nur Hinweis; gezählt werden Apps)</td><td><code>AuditLog.Read.All</code></td></tr>

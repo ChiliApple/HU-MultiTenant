@@ -2213,11 +2213,13 @@ $script:HUSecRules = @(
     @{ Id = 'L01'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine neu vergebenen Admin-Rollen (letzte 30 Tage)'; Facts = @('audits'); Min = $false; Rolling = $true; ItemsLabel = 'Ereignisse'; ItemsSort = 'Zeit'; ItemsDesc = $true
         Items = { param($F, $B) Get-HUSecAuditRows $F.audits @('Rolle', 'RolleGruppe') -WithDetail:([bool]$B['__keepDetail']) | Select-Object Zeit, Art, Ereignis, Ziel, Von, Ergebnis, __Detail }
         Eval = { param($F, $B)
-            # Aufnahmen in Gruppen mit Admin-Rolle nicht lesbar: nicht pruefbar statt falsch gruen
-            if ($F.audits.PSObject.Properties['RoleGroupError'] -and "$($F.audits.RoleGroupError)") {
-                return @{ Status = 'NichtPruefbar'; Reason = 'Technisch'; Detail = "Aufnahmen in Gruppen mit Admin-Rolle nicht lesbar ($($F.audits.RoleGroupError))"; Complete = $false }
-            }
             $e = Get-HUSecAuditEval $F.audits @('Rolle', 'RolleGruppe') 'Konto/Konten'
+            # Aufnahmen in Gruppen mit Admin-Rolle nicht lesbar: Gefundenes bleibt rot (mit Zeitpunkt fuer Teams), sonst nicht pruefbar statt falsch gruen
+            if ($F.audits.PSObject.Properties['RoleGroupError'] -and "$($F.audits.RoleGroupError)") {
+                $err = "$($F.audits.RoleGroupError)"
+                if ($e.Status -eq 'Abweichung') { $e.Detail = "$($e.Detail); Aufnahmen in Gruppen mit Admin-Rolle nicht lesbar ($err)"; $e.Complete = $false; return $e }
+                return @{ Status = 'NichtPruefbar'; Reason = $(if ($err -match 'HTTP 40[13]') { 'Recht' } else { 'Technisch' }); Detail = "Aufnahmen in Gruppen mit Admin-Rolle nicht lesbar ($err$(if ($err -match 'HTTP 40[13]') { ', Recht Group.Read.All' }))"; Complete = $false }
+            }
             if ($F.audits.PSObject.Properties['RoleGroups'] -and [int]$F.audits.RoleGroups) { $e.Detail = "$($e.Detail); $([int]$F.audits.RoleGroups) Gruppe(n) mit Admin-Rolle mitgeprueft" }
             $e
         } }
@@ -2556,7 +2558,12 @@ function Get-HUSecChanges {
     $ctx = if ($Context) { $Context } else { New-HUSecContext -TenantKey $TenantKey -Settings $Settings }
     $f = Get-HUSecFact -Ctx $ctx -Key 'audits'
     if (-not $f.Ok) { throw "Ueberwachungsprotokoll nicht lesbar ($($f.Reason)): $($f.Detail)" }
-    return @(Get-HUSecAuditRows $f.Data -WithDetail | ForEach-Object { [pscustomobject]@{ Zeit = $_.Zeit; Tenant = $TenantKey; Art = $_.Art; Ereignis = $_.Ereignis; Ziel = $_.Ziel; Von = $_.Von; Ergebnis = $_.Ergebnis; __Detail = $_.__Detail } })
+    $out = @(Get-HUSecAuditRows $f.Data -WithDetail | ForEach-Object { [pscustomobject]@{ Zeit = $_.Zeit; Tenant = $TenantKey; Art = $_.Art; Ereignis = $_.Ereignis; Ziel = $_.Ziel; Von = $_.Von; Ergebnis = $_.Ergebnis; __Detail = $_.__Detail } })
+    # Aufnahmen in Gruppen mit Admin-Rolle nicht lesbar: als Hinweiszeile zeigen, damit die Luecke in der Liste auffaellt
+    if ($f.Data.PSObject.Properties['RoleGroupError'] -and "$($f.Data.RoleGroupError)") {
+        $out += [pscustomobject]@{ Zeit = ''; Tenant = $TenantKey; Art = 'Hinweis'; Ereignis = "Aufnahmen in Gruppen mit Admin-Rolle nicht lesbar ($($f.Data.RoleGroupError)), Liste unvollstaendig"; Ziel = ''; Von = ''; Ergebnis = ''; __Detail = @() }
+    }
+    return $out
 }
 
 # ============================================================================

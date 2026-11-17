@@ -10,7 +10,7 @@
   - Solche Gruppen werden jetzt genannt und nicht bewertet, die übrigen Admin-Konten wieder geprüft.
 - **L01 sieht Rollen über Gruppen:** Wer in eine Gruppe aufgenommen wird, der eine Admin-Rolle zugewiesen ist, zählt jetzt wie eine direkte Rollenvergabe. Die Liste nennt die Gruppe.
   - Gibt es keine solche Gruppe, bleibt es bei den bisherigen Abfragen.
-  - Ist die Abfrage nicht möglich, zeigt L01 "nicht prüfbar" statt eines falschen grünen Hakens.
+  - Ist die Abfrage nicht möglich, bleibt eine gefundene Rollenvergabe rot, sonst zeigt L01 "nicht prüfbar" statt eines falschen grünen Hakens. Die Änderungsliste nennt die Lücke in einer Hinweiszeile.
 - **A27 nennt die Rollen der Partner-Gruppen:** z. B. Privileged Role Administrator, damit ein weitreichender Partnerzugriff auf einen Blick auffällt.
 - **Ausgetauschte Secrets:** L03 erkennt auch ein Secret, das im selben Schritt ein altes ersetzt.
 - **Grundschutz nicht mehr grün ohne Prüfung:** Ist eine kritische Regel nicht prüfbar, ist der Balken in der Ansicht "Einfach" gelb. Der Tooltip des Balkens nennt den Grund.
@@ -23,7 +23,7 @@
 - L01 erkennt keine berechtigten Mitgliedschaften über PIM für Gruppen und keine neuen Besitzer von Apps.
 
 ### ✅ Qualität
-- 13 neue Prüfungen, künstliche Werte in den Testdaten.
+- 16 neue Prüfungen, künstliche Werte in den Testdaten.
 
 ## v2.6.17 (Testversion)
 
