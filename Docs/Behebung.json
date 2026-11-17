@@ -374,7 +374,7 @@
         "Nicht mehr gebraucht: Benutzer > Assigned roles > bei der Rolle \"Remove\" (bei Rolle ueber Gruppe: Benutzer aus der Gruppe entfernen), danach Konto sperren oder loeschen.",
         "Noch gebraucht: der Inhaber meldet sich einmal erfolgreich an; Fehlversuche zaehlen nicht.",
         "Notfallkonten sind ausgenommen, sofern sie unter V1 hinterlegt sind.",
-        "Gruppen eines Partners (z. B. AdminAgents oder HelpdeskAgents eines Dienstleisters) liegen im fremden Tenant und werden nicht bewertet. Ob der Partnerzugriff noch gebraucht wird: Microsoft 365 admin center > Settings > Partner relationships."
+        "Gruppen eines Partners (z. B. AdminAgents oder HelpdeskAgents eines Dienstleisters) liegen im fremden Tenant und werden nicht bewertet. Ob der Partnerzugriff und seine Rollen noch gebraucht werden, mit dem Dienstleister klaeren."
       ],
       "learn": [
         {
@@ -1597,7 +1597,7 @@
       "portal": "entra",
       "path": "Entra admin center > Entra ID > Monitoring & health > Audit logs",
       "steps": [
-        "In HU-MultiTenant die Liste der Regel oeffnen (Details > Ereignisse anzeigen) oder den Knopf \"Aenderungen (30 Tage)\": Zeit, Rolle, Konto und wer die Rolle vergeben hat.",
+        "In HU-MultiTenant die Liste der Regel oeffnen (Details > Ereignisse anzeigen) oder den Knopf \"Aenderungen (bis 30 Tage)\": Zeit, Rolle, Konto und wer die Rolle vergeben hat.",
         "Je Eintrag klaeren, ob die Vergabe gewollt war (Auftrag, neues Personal, Dienstleister).",
         "Unbekannte Vergabe: Entra ID > Roles & admins > die Rolle oeffnen > Assignments: das Konto entfernen, dann Kennwort des vergebenden Kontos pruefen und dessen Sitzungen widerrufen.",
         "Zur Kontrolle im Portal: Entra ID > Monitoring & health > Audit logs, Filter \"Category\" = RoleManagement und \"Activity\" = Add member to role.",

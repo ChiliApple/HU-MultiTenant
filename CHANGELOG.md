@@ -12,6 +12,9 @@
 - **Grundschutz nicht mehr grün ohne Prüfung:** Ist eine kritische Regel nicht prüfbar, ist der Balken in der Ansicht "Einfach" gelb.
 - **Texte:** Tooltip und Hinweis zu Doppel- und Rechtsklick passen jetzt zur Ansicht "Einfach". Der Knopf heißt "Aenderungen (bis 30 Tage)", weil Microsoft das Protokoll ohne Entra ID P1 nur 7 Tage aufbewahrt.
 
+### ⚠️ Nach dem Update
+- Einmal "Prüfen" und danach "Soll speichern". A27 ist bei Tenants mit Partner-Gruppen wieder prüfbar, die Teams-Meldung meldet das sonst als Verschlechterung.
+
 ### 🚧 Grenzen
 - L01 erkennt keine Rechte über Gruppen mit Rollenzuweisung und keine neuen Besitzer von Apps.
 
