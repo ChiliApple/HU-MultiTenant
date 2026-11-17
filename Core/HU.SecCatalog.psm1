@@ -1140,7 +1140,8 @@ function ConvertFrom-HUSecAuditValue([string]$Value) {
 
 # Detailzeilen eines Eintrags (Bereich, Feld, Vorher, Nachher) - nur Anzeige, nie speichern oder protokollieren (Namen, IP-Adressen).
 # Bei Aenderungen nur abweichende Werte; lange Werte gekuerzt, hoechstens -MaxRows Zeilen.
-function ConvertTo-HUSecAuditDetail($Entry, [int]$MaxRows = 300, [int]$MaxLen = 400) {
+# MaxLen 1000: live waren erteilte Berechtigungen bis 639 Zeichen lang (17.11.2026); lange Listen bekommen eine Zeile je Eintrag
+function ConvertTo-HUSecAuditDetail($Entry, [int]$MaxRows = 300, [int]$MaxLen = 1000) {
     $rows = New-Object System.Collections.Generic.List[object]
     $cut = { param($s) $s = "$s"; if ($s.Length -gt $MaxLen) { $s.Substring(0, $MaxLen) + " ... ($($s.Length) Zeichen)" } else { $s } }
     $add = { param($b, $f, $old, $new) if ("$old$new" -ne '') { $rows.Add([pscustomobject]@{ Bereich = "$b"; Feld = "$f"; Vorher = (& $cut $old); Nachher = (& $cut $new) }) } }
@@ -1188,6 +1189,12 @@ function ConvertTo-HUSecAuditDetail($Entry, [int]$MaxRows = 300, [int]$MaxLen = 
                     continue
                 }
                 $os = (@($ov) | ForEach-Object { "$_" }) -join ', '; $ns = (@($nv) | ForEach-Object { "$_" }) -join ', '
+                # neu angelegt oder geloescht mit langer Liste (live: Rollenlisten bis 5.500 Zeichen): eine Zeile je Eintrag statt Kuerzung
+                if (-not $both -and ($ov -is [array] -or $nv -is [array]) -and ("$os$ns").Length -gt $MaxLen) {
+                    $i = 0
+                    foreach ($x in @(@($ov) + @($nv) | Where-Object { "$_" -ne '' })) { $i++; if ($ov -is [array]) { & $add $b "$f [$i]" "$x" '' } else { & $add $b "$f [$i]" '' "$x" } }
+                    continue
+                }
                 if ($both -and $os -ceq $ns) { continue }
                 & $add $b $f $os $ns
             }
@@ -2471,8 +2478,12 @@ function Save-HUSecSnapshot {
 # ============================================================================
 function Save-HUSecReference {
     param([Parameter(Mandatory)][object[]]$Results, [datetime]$Now = (Get-Date))
+    # latest (nur Regeln mit gleitendem Zeitraum): neuestes Ereignis zum Zeitpunkt des Pruefens - der Soll-Zeitpunkt ist der Klick auf
+    # "Soll speichern", ein Ereignis dazwischen wuerde sonst nie gemeldet. Zusaetzliches Feld, alte Soll-Dateien bleiben gueltig.
     $rows = @($Results | Where-Object { $_.RuleId -and $_.RuleId -ne '-' } | Sort-Object Tenant, RuleId | ForEach-Object {
-            [pscustomobject]@{ ruleId = $_.RuleId; tenant = $_.Tenant; status = $_.Status; reason = $_.Reason; count = $_.Count }
+            $row = [pscustomobject]@{ ruleId = $_.RuleId; tenant = $_.Tenant; status = $_.Status; reason = $_.Reason; count = $_.Count }
+            if ($_.PSObject.Properties['Latest']) { $row | Add-Member -NotePropertyName latest -NotePropertyValue "$($_.Latest)" }
+            $row
         })
     # Review 038 B7: ist der neue Stand schlechter als der bisherige Soll, wird das vermerkt (Hinweis beim Speichern und einmal in Teams)
     $old = $null; try { $old = Get-HUSecReference } catch { }
@@ -2631,7 +2642,10 @@ function Compare-HUSecReference {
         # wenn das neueste gezaehlte Ereignis nach dem Soll-Zeitpunkt liegt - als Verschlechterung, bis der Soll neu gespeichert ist.
         if ($rule -and $rule.PSObject.Properties['Rolling'] -and $rule.Rolling) {
             $lt = if ($r.PSObject.Properties['Latest']) { ConvertTo-HUSecUtc $r.Latest } else { $null }
-            if ($r.Status -eq 'Abweichung' -and $lt -and $refTime -and $lt -gt $refTime) {
+            # Schwelle: neuestes Ereignis beim Soll (leer = es gab keins, jedes ist neu); aeltere Soll-Dateien ohne Feld: Soll-Zeitpunkt
+            $hasThr = [bool]$o.PSObject.Properties['latest']
+            $thr = if ($hasThr) { ConvertTo-HUSecUtc $o.latest } else { $refTime }
+            if ($r.Status -eq 'Abweichung' -and $lt -and (($hasThr -and -not $thr) -or ($thr -and $lt -gt $thr))) {
                 $changes.Add([pscustomobject]@{
                         Tenant = "$($r.Tenant)"; RuleId = "$($r.RuleId)"; Title = "$($r.Title)"; Sev = "$($r.Sev)"; Kind = 'Neu'; Worse = $true
                         Was = "$($o.status)"; Is = "$($r.Status)"; WasCount = $o.count; IsCount = $r.Count

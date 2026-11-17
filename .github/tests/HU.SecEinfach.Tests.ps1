@@ -339,6 +339,27 @@ Describe 'Soll-Vergleich bei gleitendem Zeitraum (Rolling)' {
         @((Compare-HUSecReference -Results @((ResL 'L02' 'Ausnahme' 7 '2026-11-10T08:00:00.0000000Z')) -Reference $script:Ref).Changes).Count | Should -Be 0
     }
 
+    It 'meldet ein Ereignis zwischen Pruefen und Soll speichern (Schwelle = neuestes Ereignis im Soll)' {
+        $ref = [pscustomobject]@{ time = '2026-11-15T00:00:00Z'; rows = @([pscustomobject]@{ ruleId = 'L02'; tenant = 'T1'; status = 'Abweichung'; count = 1; latest = '2026-11-10T00:00:00.0000000Z' }) }
+        @((Compare-HUSecReference -Results @((ResL 'L02' 'Abweichung' 2 '2026-11-12T08:00:00.0000000Z')) -Reference $ref).Changes).Count | Should -Be 1
+        @((Compare-HUSecReference -Results @((ResL 'L02' 'Abweichung' 1 '2026-11-10T00:00:00.0000000Z')) -Reference $ref).Changes).Count | Should -Be 0
+        $quiet = [pscustomobject]@{ time = '2026-11-15T00:00:00Z'; rows = @([pscustomobject]@{ ruleId = 'L01'; tenant = 'T1'; status = 'OK'; count = 0; latest = '' }) }
+        @((Compare-HUSecReference -Results @((ResL 'L01' 'Abweichung' 1 '2026-11-14T08:00:00.0000000Z')) -Reference $quiet).Changes).Count | Should -Be 1
+    }
+
+    It 'speichert im Soll das neueste Ereignis nur fuer Regeln mit Zeitpunkt' {
+        $f = Save-HUSecReference -Results @((ResL 'L01' 'OK' 0 ''), (ResL 'L02' 'Abweichung' 1 '2026-11-10T00:00:00.0000000Z'), (Res 'A19' 'OK'))
+        $j = Get-Content -LiteralPath $f -Raw | ConvertFrom-Json
+        $byId = @{}; foreach ($x in $j.rows) { $byId["$($x.ruleId)"] = $x }
+        [bool]$byId['L01'].PSObject.Properties['latest'] | Should -BeTrue
+        "$($byId['L01'].latest)" | Should -Be ''
+        # PS 7 liest den Zeittext als Datum zurueck, 5.1 als Text - beides muss dasselbe UTC-Datum ergeben
+        ([datetime]$byId['L02'].latest).ToUniversalTime().ToString('yyyy-MM-dd HH:mm') | Should -Be '2026-11-10 00:00'
+        $cmp = Compare-HUSecReference -Results @((ResL 'L02' 'Abweichung' 2 '2026-11-12T08:00:00.0000000Z')) -Reference (Get-HUSecReference)
+        @($cmp.Changes).Count | Should -Be 1
+        [bool]$byId['A19'].PSObject.Properties['latest'] | Should -BeFalse
+    }
+
     It 'meldet sinkende Zahlen bei normalen Regeln weiterhin' {
         @((Compare-HUSecReference -Results @((Res 'A19' 'Abweichung' -Count 1)) -Reference $script:Ref).Changes).Count | Should -Be 1
     }
@@ -457,6 +478,12 @@ Describe 'Detailfenster je Ereignis' {
         @(ConvertTo-HUSecAuditDetail $e | Where-Object { $_.Feld -like 'ConditionalAccessPolicy*' }).Count | Should -Be 2
         $long = Ev 'Policy' 'Update policy' -Props @([pscustomobject]@{ displayName = 'X'; oldValue = ''; newValue = ('"' + ('a' * 900) + '"') })
         (@(ConvertTo-HUSecAuditDetail $long -MaxLen 100 | Where-Object { $_.Feld -eq 'X' })[0].Nachher) | Should -Match '\.\.\. \(900 Zeichen\)$'
+        $roles = (@(1..30 | ForEach-Object { [guid]::NewGuid().ToString() }) | ConvertTo-Json -Compress)
+        $add = Ev 'Policy' 'Add conditional access policy' -Props @([pscustomobject]@{ displayName = 'excludeRoles'; oldValue = ''; newValue = $roles })
+        $lr = @(ConvertTo-HUSecAuditDetail $add -MaxLen 200 | Where-Object { $_.Feld -like 'excludeRoles*' })
+        $lr.Count | Should -Be 30
+        $lr[0].Feld | Should -Be 'excludeRoles [1]'
+        @($lr | Where-Object { $_.Nachher -match 'Zeichen\)$' }).Count | Should -Be 0
         $many = @(ConvertTo-HUSecAuditDetail $long -MaxRows 3)
         $many.Count | Should -Be 4
         $many[-1].Feld | Should -Be 'gekuerzt'
