@@ -10,7 +10,7 @@
   - Gilt für alle Reiter, Fenster und Meldungen, auch für die Reiter der Zusatzmodule.
 - **Knopf in der Titelleiste:** Das Symbol Sonne/Mond schaltet schnell zwischen Dunkel und Hell um.
 - **Wirkt nach einem Neustart:** Die App fragt nach und startet selbst neu.
-- **Farbtabellen als Dateien:** Dunkel und Hell liegen im Ordner Themes. Das ist die Grundlage für eigene Farbschemata; wählbar sind sie in dieser Version noch nicht.
+- **Farbtabellen als Dateien:** Die mitgelieferten Schemata Dunkel und Hell liegen als Dateien im Ordner Themes. Eine weitere gültige Datei in diesem Ordner erscheint in der Auswahl. Ein eigener, updatefester Ordner für eigene Farbschemata und eine Anleitung dazu folgen später.
   - Fehlt die Datei des Farbschemas oder ist sie fehlerhaft, startet die App dunkel und schreibt einen Hinweis ins Protokoll.
 
 ### 🛡️ Sicherheitskatalog
@@ -27,7 +27,7 @@
 - Einzelne Stellen können in Hell noch schlecht lesbar sein.
 
 ### ✅ Qualität
-- TESTZAHL neue Prüfungen.
+- 149 neue Prüfungen.
 
 ## v2.6.19 (Testversion)
 

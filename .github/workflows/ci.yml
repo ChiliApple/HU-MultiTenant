@@ -55,6 +55,26 @@ jobs:
           "Starttest: $r"
           if ($r -notmatch '^OK') { throw "Starttest fehlgeschlagen: $r" }
           "### Starttest: $r" | Add-Content $env:GITHUB_STEP_SUMMARY
+      - name: Starttest im hellen Farbschema
+        shell: powershell
+        timeout-minutes: 5
+        run: |
+          $f = Join-Path $env:RUNNER_TEMP 'smoke-hell.txt'
+          # gleiche Test-Konfiguration wie im Starttest davor (hier erneut geschrieben, damit der Schritt nicht vom ersten abhaengt)
+          $s = Get-Content .\Config\settings.example.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $s.tenants[0].tenantId = '11111111-1111-1111-1111-111111111111'; $s.tenants[0].appId = '22222222-2222-2222-2222-222222222222'
+          $s.tenants[1].tenantId = '33333333-3333-3333-3333-333333333333'; $s.tenants[1].appId = '44444444-4444-4444-4444-444444444444'
+          $s | ConvertTo-Json -Depth 10 | Set-Content .\Config\settings.json -Encoding UTF8
+          '{ "snippets": [ { "name": "Geraet [Test]", "code": "Write-Host ok", "created": "2026-01-01 10:00:00" }, { "name": "Zwei", "code": "1+1", "created": "2026-01-02 10:00:00" } ] }' | Set-Content .\Config\quick-snippets.json -Encoding UTF8
+          # Main.ps1 wertet HUMT_SMOKE_THEME bei -SmokeTest aus und nimmt dann den Schritt Hell in die Schritte auf
+          $env:HUMT_SMOKE_THEME = 'light'
+          $p = Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$((Resolve-Path .\Main.ps1).Path)`"",'-ShowConsole','-SmokeTest',"`"$f`"" -PassThru -Wait
+          if (-not (Test-Path $f)) { throw "Starttest hell: kein Ergebnis (Exitcode $($p.ExitCode))" }
+          $r = Get-Content $f -Raw
+          "Starttest hell: $r"
+          if ($r -notmatch '^OK') { throw "Starttest hell fehlgeschlagen: $r" }
+          if ($r -notmatch 'Schritte=(.*,)?Hell(,|\s*$)') { throw "Starttest hell: Schritt Hell fehlt in: $r" }
+          "### Starttest hell: $r" | Add-Content $env:GITHUB_STEP_SUMMARY
       - name: Protokoll bei Fehler
         if: failure()
         shell: powershell
@@ -96,6 +116,28 @@ jobs:
           "Starttest PS7: $r"
           "### Starttest PowerShell 7: $r" | Add-Content $env:GITHUB_STEP_SUMMARY
           if ($r -notmatch '^OK') { throw "Starttest PS7 fehlgeschlagen: $r" }
+      - name: Starttest im hellen Farbschema (pwsh)
+        if: always()
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $f = Join-Path $env:RUNNER_TEMP 'smoke7-hell.txt'
+          # gleiche Test-Konfiguration wie im Starttest davor (hier erneut geschrieben, damit der Schritt nicht vom ersten abhaengt)
+          $s = Get-Content .\Config\settings.example.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $s.tenants[0].tenantId = '11111111-1111-1111-1111-111111111111'; $s.tenants[0].appId = '22222222-2222-2222-2222-222222222222'
+          $s.tenants[1].tenantId = '33333333-3333-3333-3333-333333333333'; $s.tenants[1].appId = '44444444-4444-4444-4444-444444444444'
+          $s | ConvertTo-Json -Depth 10 | Set-Content .\Config\settings.json -Encoding UTF8
+          '{ "snippets": [ { "name": "Geraet [Test]", "code": "Write-Host ok", "created": "2026-01-01 10:00:00" } ] }' | Set-Content .\Config\quick-snippets.json -Encoding UTF8
+          # Main.ps1 wertet HUMT_SMOKE_THEME bei -SmokeTest aus und nimmt dann den Schritt Hell in die Schritte auf
+          $env:HUMT_SMOKE_THEME = 'light'
+          # WPF braucht STA
+          $p = Start-Process pwsh.exe -ArgumentList '-NoProfile','-STA','-ExecutionPolicy','Bypass','-File',"`"$((Resolve-Path .\Main.ps1).Path)`"",'-ShowConsole','-SmokeTest',"`"$f`"" -PassThru -Wait
+          if (-not (Test-Path $f)) { throw "Starttest PS7 hell: kein Ergebnis (Exitcode $($p.ExitCode))" }
+          $r = Get-Content $f -Raw
+          "Starttest PS7 hell: $r"
+          "### Starttest PowerShell 7 hell: $r" | Add-Content $env:GITHUB_STEP_SUMMARY
+          if ($r -notmatch '^OK') { throw "Starttest PS7 hell fehlgeschlagen: $r" }
+          if ($r -notmatch 'Schritte=(.*,)?Hell(,|\s*$)') { throw "Starttest PS7 hell: Schritt Hell fehlt in: $r" }
       - name: Protokoll bei Fehler
         if: failure()
         shell: pwsh

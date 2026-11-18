@@ -135,7 +135,7 @@ function Update-HUSecHint {
     # Teil-Lauf: welcher Umfang zuletzt lief (bei vollstaendigem Lauf leer, Text wie bisher)
     $note = Get-HUSecRunNote -Full $script:SecFull -ScopeText $script:SecScopeText -Stamp $script:SecStamp
     if (Test-HUSecBasicMode) {
-        $c['lblAnaHint'].Text = "${note}Einfach:$(@(Get-HUSecVisibleRows).Count) Grundschutz-Regeln. Der Balken zaehlt erfuellte Regeln; nicht pruefbar ist nie erfuellt. Rot = eine kritische Regel offen, gelb = sonst etwas offen oder eine kritische Regel nicht pruefbar. Doppelklick = So behebst du es, Rechtsklick = Menue mit Details."
+        $c['lblAnaHint'].Text = "${note}Einfach: $(@(Get-HUSecVisibleRows).Count) Grundschutz-Regeln. Der Balken zaehlt erfuellte Regeln; nicht pruefbar ist nie erfuellt. Rot = eine kritische Regel offen, gelb = sonst etwas offen oder eine kritische Regel nicht pruefbar. Doppelklick = So behebst du es, Rechtsklick = Menue mit Details."
         return
     }
     $dev = @($all | Where-Object Dev).Count
@@ -202,7 +202,7 @@ function Update-HUSecGrid {
             if ($rows -and $part) { $rows = @(@($rows) | Where-Object { $selIds -contains "$($_.RuleId)" }) }
             if ($had -and -not @($rows).Count) { $f["T$i"] = '-'; $f["Lc$i"] = $col['Grau'] }
             elseif ($rows -and $basic) { $l = Get-HUSecBasicLight -Results @($rows) -Key $keys[$i] -Ids $basicIds -Partial:(-not $script:SecFull); $f["T$i"] = "$($l.Ok) von $($l.Total)"; $f["Lc$i"] = $col[$l.Color]; $nr = $l.NotRun }
-            elseif ($rows) { $l = Get-HUSecLight -Results @($rows) -Key $keys[$i]; $f["T$i"] = "$($l.Ok) von $($l.Checked)"; $f["Lc$i"] = $col[$l.Color]; $nr = $(if ($script:SecFull) { 0 } else { @(Get-HUSecNotRunIds -Results @($rows) -Key $keys[$i] -Ids $selIds).Count }) }
+            elseif ($rows) { $l = Get-HUSecLight -Results @($rows) -Key $keys[$i] -Partial:(-not $script:SecFull) -Ids $selIds; $f["T$i"] = "$($l.Ok) von $($l.Checked)"; $f["Lc$i"] = $col[$l.Color]; $nr = $l.NotRun }
             else { $f["T$i"] = '...'; $f["Lc$i"] = $col['Grau'] }
             # Teil-Lauf: ausgelassene Regeln zaehlen nie als erfuellt; die Zahl steht im Text und im Tooltip
             if ($nr) { $f["T$i"] = "$($f["T$i"]), $nr $(Get-HUSecNotRunText)" }

@@ -261,6 +261,87 @@ Describe 'Grundschutz-Balken: "nicht geprueft" zaehlt wie "nicht pruefbar"' {
     }
 }
 
+Describe 'Ampel im Teil-Lauf: Get-HUSecLight -Partial (Funktion wird ausgefuehrt)' {
+    BeforeAll {
+        $script:Hand = @(Get-HUSecManualIds)
+        $script:Auto = @($script:AllIds | Where-Object { $script:Hand -notcontains $_ })
+    }
+
+    It 'die Testdaten passen: K07 ist automatisch geprueft, es gibt mindestens 12 weitere Regeln' {
+        $script:Auto | Should -Contain 'K07'
+        @($script:Auto | Where-Object { $_ -ne 'K07' }).Count | Should -BeGreaterOrEqual 12
+    }
+
+    It 'erster Teil-Lauf nur K07, K07 OK: nicht gruen, sondern gelb; die uebrigen Regeln sind "nicht geprueft"' {
+        $l = Get-HUSecLight -Results @(Res 'K07') -Key 'T1' -Partial
+        $l.Color | Should -Be 'Gelb'
+        $l.Ok | Should -Be 1
+        $l.Checked | Should -Be 1
+        $l.NotRun | Should -Be ($script:Auto.Count - 1)
+    }
+
+    It 'Teil-Lauf, nichts erfuellt oder abgewichen geprueft (nur K07 nicht pruefbar): grau' {
+        $l = Get-HUSecLight -Results @(Res 'K07' 'NichtPruefbar') -Key 'T1' -Partial
+        $l.Color | Should -Be 'Grau'
+        $l.Ok | Should -Be 0
+    }
+
+    It 'Teil-Lauf mit einem Fehler: gelb wie bisher (Rot erst ab 10 nicht erfuellten Regeln)' {
+        $l = Get-HUSecLight -Results @(Res 'K07' 'Fehler' 'T1' 'Abruf') -Key 'T1' -Partial
+        $l.Color | Should -Be 'Gelb'
+        $l.Deviations | Should -Be 1
+    }
+
+    It 'Teil-Lauf mit 10 Abweichungen: rot wie bisher' {
+        $res = @(Rows @($script:Auto | Select-Object -First 10) 'T1' 'Abweichung')
+        $l = Get-HUSecLight -Results $res -Key 'T1' -Partial
+        $l.Color | Should -Be 'Rot'
+        $l.Deviations | Should -Be 10
+        # derselbe Befund ohne den Schalter
+        (Get-HUSecLight -Results $res -Key 'T1').Color | Should -Be 'Rot'
+    }
+
+    It 'Teil-Lauf, in dem jede Regel ein Ergebnis hat (frueherer Stand der Sitzung): gruen, nichts offen' {
+        $l = Get-HUSecLight -Results @(Rows $script:Auto) -Key 'T1' -Partial
+        $l.Color | Should -Be 'Gruen'
+        $l.NotRun | Should -Be 0
+    }
+
+    It 'voller Lauf (ohne -Partial) unveraendert: K07 OK allein ist gruen, NotRun 0' {
+        $l = Get-HUSecLight -Results @(Res 'K07') -Key 'T1'
+        $l.Color | Should -Be 'Gruen'
+        $l.Ok | Should -Be 1
+        $l.NotRun | Should -Be 0
+    }
+
+    It '-Ids begrenzt die Regeln, die als "nicht geprueft" zaehlen (Auswahl der Oberflaeche)' {
+        $other = @($script:Auto | Where-Object { $_ -ne 'K07' })[0]
+        $a = Get-HUSecLight -Results @(Res 'K07') -Key 'T1' -Partial -Ids @('K07')
+        $a.Color | Should -Be 'Gruen'
+        $a.NotRun | Should -Be 0
+        $b = Get-HUSecLight -Results @(Res 'K07') -Key 'T1' -Partial -Ids @('K07', $other)
+        $b.Color | Should -Be 'Gelb'
+        $b.NotRun | Should -Be 1
+        $e = Get-HUSecLight -Results @(Res 'K07') -Key 'T1' -Partial -Ids @()
+        $e.NotRun | Should -Be 0
+    }
+
+    It 'andere Tenants zaehlen nicht mit' {
+        $l = Get-HUSecLight -Results @(@(Res 'K07' 'OK' 'T2') + @(Rows $script:Auto 'T1')) -Key 'T1' -Partial
+        $l.Color | Should -Be 'Gruen'
+    }
+
+    It 'die Ampelzeile der Oberflaeche ruft Get-HUSecLight mit -Partial und der Auswahl auf und nimmt NotRun daraus' {
+        $script:Sec | Should -Match 'Get-HUSecLight -Results @\(\$rows\) -Key \$keys\[\$i\] -Partial:\(-not \$script:SecFull\) -Ids \$selIds'
+        $script:Sec | Should -Match '\$nr = \$l\.NotRun'
+    }
+
+    It 'Hinweiszeile "Einfach": Leerzeichen nach dem Doppelpunkt (H1)' {
+        $script:Sec | Should -Match 'Einfach: \$\(@\(Get-HUSecVisibleRows\)\.Count\) Grundschutz-Regeln'
+        $script:Sec | Should -Not -Match 'Einfach:\$\('
+    }
+}
+
 Describe 'Ausnahmen: wirkungslos richtet sich nach dem letzten Pruefen' {
     BeforeAll {
         $script:Exc = [pscustomobject]@{ id = 'e1'; ruleId = 'K07'; tenant = 'T1'; validUntil = (Get-Date).AddDays(30).ToString('o'); objectId = '-'; created = (Get-Date).ToString('o') }
@@ -307,7 +388,7 @@ Describe 'Oberflaeche, Lauf und andere Aufrufer des Katalogs' {
         $script:Sec | Should -Match "Set-HUStateValue 'secScope'"
     }
 
-    It 'die taegliche Teams-Pruefung und die Fernbedienung starten den Katalog selbst und immer mit allen Regeln' {
+    It 'die taegliche Teams-Pruefung prueft alles, die Fernbedienung nach ihrer eigenen Auswahl; beide unabhaengig vom Umfang der Oberflaeche' {
         $teams = [IO.File]::ReadAllText((Join-Path $script:Root 'Core\HU.TeamsJobs.psm1'), [Text.Encoding]::UTF8)
         $m = [regex]::Match($teams, 'Invoke-HUSecCatalog -TenantKey \$k -Settings \$Settings[^\r\n]{0,10}')
         $m.Success | Should -BeTrue

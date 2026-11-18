@@ -176,16 +176,65 @@ Describe 'Einstellung aufloesen: Initialize-HUTheme' {
         $script:LogLines[0] | Should -Match '^WARN '
         (Get-HUThemeInfo).Warning | Should -Not -BeNullOrEmpty
     }
-    It 'fehlende Schema-Datei (Programmordner ohne Themes): dark, eine Warnzeile, kein Fehler' {
+    It 'fehlende Schema-Datei (Programmordner ohne Themes), Einstellung light: dark, eine Warnzeile, kein Fehler' {
         $r = Join-Path $script:Tmp ([guid]::NewGuid().ToString('N'))
         [void](New-Item -ItemType Directory -Path $r -Force)
-        foreach ($s in 'light', 'dark', 'system') {
+        foreach ($s in 'light', 'lila') {
             $script:LogLines.Clear()
             { Initialize-HUTheme -Setting $s -AppRoot $r } | Should -Not -Throw
             Get-HUTheme | Should -BeExactly 'dark'
             Test-HULightTheme | Should -BeFalse
             $script:LogLines.Count | Should -Be 1 -Because $s
+            $script:LogLines[0] | Should -Match '^WARN '
         }
+        # "Wie Windows" mit hellem Windows sucht light.json: auch das ist eine Warnung
+        Mock Get-HUWindowsAppTheme { 'light' }
+        $script:LogLines.Clear()
+        { Initialize-HUTheme -Setting 'system' -AppRoot $r } | Should -Not -Throw
+        Test-HULightTheme | Should -BeFalse
+        $script:LogLines.Count | Should -Be 1
+    }
+    It 'dark ist eingebaut: ohne dark.json (Ordner fehlt oder leer) still gueltig, keine Warnung, keine Tabellen' {
+        $leer = New-TempRoot
+        $ohne = Join-Path $script:Tmp ([guid]::NewGuid().ToString('N'))
+        [void](New-Item -ItemType Directory -Path $ohne -Force)
+        foreach ($r in $leer, $ohne) {
+            $script:LogLines.Clear()
+            Initialize-HUTheme -Setting 'dark' -AppRoot $r
+            Get-HUTheme | Should -BeExactly 'dark'
+            Test-HULightTheme | Should -BeFalse
+            $i = Get-HUThemeInfo
+            $i.Setting | Should -BeExactly 'dark'; $i.Id | Should -BeExactly 'dark'; $i.Name | Should -Be 'Dunkel'; $i.IsLight | Should -BeFalse
+            $i.Warning | Should -BeNullOrEmpty
+            $script:LogLines.Count | Should -Be 0
+            ConvertTo-HUThemeColor '#1E1E1E' 'Bg' | Should -Be '#1E1E1E'
+        }
+        # "Wie Windows" mit dunklem Windows: ebenfalls still
+        Mock Get-HUWindowsAppTheme { 'dark' }
+        $script:LogLines.Clear()
+        Initialize-HUTheme -Setting 'system' -AppRoot $leer
+        Get-HUTheme | Should -BeExactly 'dark'
+        $script:LogLines.Count | Should -Be 0
+    }
+    It 'eine kaputte dark.json warnt weiter (nur die fehlende Datei ist still)' {
+        $r = New-TempRoot
+        [IO.File]::WriteAllText((Join-Path $r 'Themes\dark.json'), '{ kaputt', (New-Object System.Text.UTF8Encoding($true)))
+        Initialize-HUTheme -Setting 'dark' -AppRoot $r
+        Get-HUTheme | Should -BeExactly 'dark'
+        $script:LogLines.Count | Should -Be 1
+        $script:LogLines[0] | Should -Match '^WARN '
+    }
+    It 'eine vorhandene gueltige dark.json hat Vorrang vor dem eingebauten Grundschema' {
+        $r = New-TempRoot
+        $t = New-ValidTheme; $t.id = 'dark'; $t.name = 'Dunkel (Datei)'; $t.kind = 'dark'
+        [void](Write-ThemeFile (Join-Path $r 'Themes') 'dark' $t)
+        $script:LogLines.Clear()
+        Initialize-HUTheme -Setting 'dark' -AppRoot $r
+        $i = Get-HUThemeInfo
+        $i.Name | Should -Be 'Dunkel (Datei)'
+        $i.File | Should -BeLike '*Themes?dark.json'
+        $script:LogLines.Count | Should -Be 0
+        (Get-HUThemeList -AppRoot $r | Where-Object Id -eq 'dark').Name | Should -Be 'Dunkel (Datei)'
     }
     It 'kaputte Schema-Datei: dark, eine Warnzeile, Einstellung bleibt' {
         $r = New-TempRoot
@@ -471,8 +520,24 @@ Describe 'Theme-Liste' {
         $ids = @(Get-HUThemeList -AppRoot $r | ForEach-Object Id)
         ($ids -join ',') | Should -Be 'dark,light,zzz'
     }
-    It 'ohne Themes-Ordner: leere Liste, kein Fehler' {
-        @(Get-HUThemeList -AppRoot (Join-Path $script:Tmp 'gibt-es-nicht')).Count | Should -Be 0
+    It 'ohne Themes-Ordner: nur das eingebaute Dunkel, kein Fehler' {
+        $l = @(Get-HUThemeList -AppRoot (Join-Path $script:Tmp 'gibt-es-nicht'))
+        $l.Count | Should -Be 1
+        $l[0].Id | Should -BeExactly 'dark'; $l[0].Name | Should -Be 'Dunkel'; $l[0].Kind | Should -BeExactly 'dark'
+    }
+    It 'fehlt dark.json, steht Dunkel trotzdem zuerst in der Liste, light und eigene folgen' {
+        $r = New-TempRoot
+        [void](Copy-Item (Join-Path $script:Root 'Themes\light.json') (Join-Path $r 'Themes'))
+        $t = New-ValidTheme; $t.id = 'zzz'
+        [void](Write-ThemeFile (Join-Path $r 'Themes') 'zzz' $t)
+        $l = @(Get-HUThemeList -AppRoot $r)
+        ($l.Id -join ',') | Should -Be 'dark,light,zzz'
+        $l[0].Name | Should -Be 'Dunkel'
+    }
+    It 'eine kaputte dark.json: Dunkel steht trotzdem in der Liste' {
+        $r = New-TempRoot
+        [IO.File]::WriteAllText((Join-Path $r 'Themes\dark.json'), 'x', (New-Object System.Text.UTF8Encoding($true)))
+        @(Get-HUThemeList -AppRoot $r | ForEach-Object Id) | Should -Contain 'dark'
     }
 }
 
@@ -573,19 +638,20 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         . (Join-Path $script:Root 'Functions\UI-Settings.ps1')
         $script:Calls = New-Object System.Collections.ArrayList
         $script:Window = $null
-        $script:Answer = $true; $script:Discard = $true; $script:JobRunning = $false; $script:SaveOk = $true
-        function Confirm-HU { param([string]$Text, [string]$Title = 'HU-MultiTenant', [switch]$Warning, $Owner = $null) [void]$script:Calls.Add("Confirm:$Title"); return $script:Answer }
-        function Confirm-HUQSDiscard { param([string]$Action = 'fortfahren') return $script:Discard }
+        $script:Answer = $true; $script:Discard = $true; $script:JobRunning = $false; $script:SaveOk = $true; $script:SaveThrows = $false; $script:DiscardThrows = $false
+        function Confirm-HU { param([string]$Text, [string]$Title = 'HU-MultiTenant', [switch]$Warning, $Owner = $null) [void]$script:Calls.Add("Confirm:$Title"); $script:LastConfirm = $Text; return $script:Answer }
+        function Confirm-HUQSDiscard { param([string]$Action = 'fortfahren') if ($script:DiscardThrows) { throw 'Test-Ausnahme' }; return $script:Discard }
         function Test-HUJobRunning { param([string]$Name) return $script:JobRunning }
         function Show-HUMessage { param([string]$Text, [string]$Title = 'HU-MultiTenant', $Icon = 'Info', $Owner = $null) [void]$script:Calls.Add('Message') }
-        function Save-HUSettings { [void]$script:Calls.Add('Save'); return $script:SaveOk }
+        function Save-HUSettings { [void]$script:Calls.Add('Save'); if ($script:SaveThrows) { throw 'Test-Ausnahme' }; return $script:SaveOk }
         function Restart-HUApp { [void]$script:Calls.Add('Restart') }
         function Write-HULogOK { param($Message) }
     }
     BeforeEach {
-        $script:Calls.Clear()
-        $script:Answer = $true; $script:Discard = $true; $script:JobRunning = $false; $script:SaveOk = $true
-        $script:IsRunning = $false
+        $script:Calls.Clear(); $script:LogLines.Clear()
+        $script:Answer = $true; $script:Discard = $true; $script:JobRunning = $false; $script:SaveOk = $true; $script:SaveThrows = $false; $script:DiscardThrows = $false
+        $script:IsRunning = $false; $script:LastConfirm = ''
+        $script:HUJobs = @{}; $script:MA = $null; $script:TSU = $null
         $script:Settings = [pscustomobject]@{ ui = [pscustomobject]@{ theme = 'dark' } }
     }
     AfterAll { Use-Theme 'dark' }
@@ -626,10 +692,27 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $script:SaveOk = $false
         Switch-HUThemeQuick
         ($script:Calls -join ',') | Should -Be 'Confirm:Farbschema,Save,Message'
+        # der neue Wert bleibt nicht im Speicher stehen
+        $script:Settings.ui.theme | Should -BeExactly 'dark'
+    }
+    It 'Speichern wirft einen Fehler: Hinweis, kein Neustart, alter Wert zurueck' {
+        Use-Theme 'dark'
+        $script:SaveThrows = $true
+        Switch-HUThemeQuick
+        ($script:Calls -join ',') | Should -Be 'Confirm:Farbschema,Save,Message'
+        $script:Settings.ui.theme | Should -BeExactly 'dark'
+    }
+    It 'Speichern schlaegt fehl, Einstellung war vorher gar nicht gesetzt: Eintrag ist danach wieder weg' {
+        Use-Theme 'dark'
+        $script:Settings = [pscustomobject]@{ ui = [pscustomobject]@{} }
+        $script:SaveOk = $false
+        Switch-HUThemeQuick
+        $script:Settings.ui.PSObject.Properties['theme'] | Should -BeNullOrEmpty
+        $script:Calls | Should -Not -Contain 'Restart'
     }
     It 'laufender Auftrag und Nein: nichts gespeichert, kein Neustart' {
         Use-Theme 'dark'
-        $script:JobRunning = $true
+        $script:JobRunning = $true; $script:HUJobs = @{ Apps = @{ Done = $false } }
         # erste Rueckfrage (Umstellen) Ja, zweite (Auftrag laeuft noch) Nein: die Funktion gilt nur in diesem Test
         $script:AskCount = 0
         function Confirm-HU { param([string]$Text, [string]$Title = 'HU-MultiTenant', [switch]$Warning, $Owner = $null) $script:AskCount++; [void]$script:Calls.Add("Confirm:$Title"); return ($script:AskCount -le 1) }
@@ -647,6 +730,53 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         Test-HURestartAllowed | Should -BeFalse
         $script:Answer = $true
         Test-HURestartAllowed | Should -BeTrue
+    }
+    It 'Test-HURestartAllowed: ein laufender fremder Auftrag (hier MaRun) fragt nach, Nein bricht ab, Ja erlaubt; der Name steht in der Rueckfrage' {
+        $script:JobRunning = $true; $script:HUJobs = @{ MaRun = @{ Done = $false } }
+        $script:Answer = $false
+        Test-HURestartAllowed | Should -BeFalse
+        $script:LastConfirm | Should -Match 'MaRun'
+        $script:Answer = $true
+        Test-HURestartAllowed | Should -BeTrue
+        @($script:Calls).Count | Should -Be 2
+    }
+    It 'Test-HURestartAllowed: beendete Auftraege fragen nicht nach, mehrere werden alle genannt' {
+        $script:JobRunning = $false; $script:HUJobs = @{ Fertig = @{ Done = $true }; Alt = @{ Done = $true } }
+        Test-HURestartAllowed | Should -BeTrue
+        @($script:Calls).Count | Should -Be 0
+        $script:JobRunning = $true; $script:HUJobs = @{ BakRestore = 1; IntAct = 1; 'Sec-3-x' = 1 }
+        $script:Answer = $false
+        Test-HURestartAllowed | Should -BeFalse
+        $script:LastConfirm | Should -Match 'BakRestore'
+        $script:LastConfirm | Should -Match 'IntAct'
+        $script:LastConfirm | Should -Match 'Sec-3-x'
+    }
+    It 'Test-HURestartAllowed: laufendes Anwenden eines Musters verhindert den Neustart ohne Rueckfrage, nur eine Meldung' {
+        $script:MA = @{ Running = $true }
+        Test-HURestartAllowed | Should -BeFalse
+        ($script:Calls -join ',') | Should -Be 'Message'
+        $script:MA = @{ Running = $false }
+        Test-HURestartAllowed | Should -BeTrue
+    }
+    It 'Test-HURestartAllowed: laufende Tenant-Einrichtung (Phase Work) verhindert den Neustart, Idle und Login nicht' {
+        $script:TSU = @{ Phase = 'Work' }
+        Test-HURestartAllowed | Should -BeFalse
+        ($script:Calls -join ',') | Should -Be 'Message'
+        $script:Calls.Clear()
+        foreach ($p in 'Idle', 'Login') { $script:TSU = @{ Phase = $p }; Test-HURestartAllowed | Should -BeTrue }
+        @($script:Calls).Count | Should -Be 0
+    }
+    It 'Test-HURestartAllowed: ohne Auftragsverwaltung, Muster und Einrichtung (Variablen fehlen, StrictMode) kein Fehler, Neustart erlaubt' {
+        Remove-Variable -Name HUJobs, MA, TSU -Scope Script -ErrorAction SilentlyContinue
+        { Test-HURestartAllowed } | Should -Not -Throw
+        Test-HURestartAllowed | Should -BeTrue
+        $script:LogLines.Count | Should -Be 0
+    }
+    It 'Test-HURestartAllowed: eine Ausnahme in der Pruefung ergibt $false (kein Neustart) und eine Protokollzeile' {
+        $script:DiscardThrows = $true
+        Test-HURestartAllowed | Should -BeFalse
+        @($script:LogLines | Where-Object { $_ -match '^WARN .*Neustart nicht freigegeben' }).Count | Should -Be 1
+        $script:Calls | Should -Not -Contain 'Restart'
     }
 }
 

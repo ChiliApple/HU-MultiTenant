@@ -2596,7 +2596,10 @@ function Get-HUSecCoverage {
 
 # Ampel je Tenant: Rot = ab 10 nicht erfuellte Regeln (Abweichung oder Fehler), Gelb = 1 bis 9, Gruen = keine, Grau = nichts geprueft
 function Get-HUSecLight {
-    param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key)
+    # -Partial (Teil-Lauf): Regeln ohne Ergebnis in dieser Sitzung (-Ids begrenzt sie auf diese Regeln, sonst alle) sind "nicht geprueft" (NotRun).
+    # Solange welche fehlen, ist die Ampel nie gruen: aus Gruen wird Gelb; ist gar nichts geprueft, bleibt es Grau. Rot und Gelb aus echten Befunden
+    # bleiben. Ohne den Schalter (vollstaendiger Lauf, Fernbedienung) unveraendert.
+    param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key, [switch]$Partial, [string[]]$Ids = $null)
     $sevOf = @{}; foreach ($r in (Get-HUSecRules)) { $sevOf[$r.Id] = "$($r.Sev)" }
     $hand = @(Get-HUSecManualIds)
     $mine = @($Results | Where-Object { $_.Tenant -eq $Key -and $_.RuleId -ne '-' -and $hand -notcontains "$($_.RuleId)" })
@@ -2608,7 +2611,14 @@ function Get-HUSecLight {
     $unchecked = @($mine | Where-Object { $_.Status -eq 'NichtPruefbar' }).Count
     $color = if (-not $mine.Count -or (-not $checked.Count -and -not $dev.Count)) { 'Grau' }
     elseif ($dev.Count -ge 10) { 'Rot' } elseif ($dev.Count -gt 0) { 'Gelb' } else { 'Gruen' }
-    return [pscustomobject]@{ Color = $color; Ok = $ok; Checked = $checked.Count; Deviations = $dev.Count; BySev = $by; NotCheckable = $unchecked }
+    $notRun = 0
+    if ($Partial) {
+        $nrArgs = @{ Results = $Results; Key = $Key }
+        if ($null -ne $Ids) { $nrArgs['Ids'] = $Ids }
+        $notRun = @(Get-HUSecNotRunIds @nrArgs).Count
+        if ($color -eq 'Gruen' -and $notRun -gt 0) { $color = 'Gelb' }
+    }
+    return [pscustomobject]@{ Color = $color; Ok = $ok; Checked = $checked.Count; Deviations = $dev.Count; BySev = $by; NotCheckable = $unchecked; NotRun = $notRun }
 }
 
 # Grundschutz der Ansicht "Einfach": Sollwert Katalog.basic (Ebene alle Tenants), sonst Standard; unbekannte Nummern fallen weg
@@ -2644,7 +2654,7 @@ function Get-HUSecBasicLight {
 # ============================================================================
 # Pruefumfang (Auswahl in Analyse > Sicherheit) und Teil-Laeufe
 # Alles hier ist reine Logik ohne Fenster: Umfang aufloesen, Ergebnisse zusammenfuehren, "nicht geprueft", Sperre von "Soll speichern".
-# Die taegliche Teams-Pruefung (HU.TeamsJobs) und die Fernbedienung rufen Invoke-HUSecCatalog selbst auf und pruefen immer alles.
+# Die taegliche Teams-Pruefung (HU.TeamsJobs) prueft immer alles, die Fernbedienung nach ihrer eigenen Auswahl am Handy (-RuleIds, wenn weniger gewaehlt ist); beide unabhaengig vom Umfang der Oberflaeche.
 # ============================================================================
 # Ein weiterer Umfang ist EINE Zeile: Id, Text, Tip (Tooltip) und entweder Include (nur diese Regeln) oder Exclude (alle ausser diesen).
 # Beides leer = keine Einschraenkung. Die Regelnummern muessen im Katalog stehen (Test in HU.SecScope.Tests.ps1).

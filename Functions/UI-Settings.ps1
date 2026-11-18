@@ -43,18 +43,48 @@ function New-HUSettingsFile([string]$Path) {
     Write-HUJsonFile -Path $Path -Object $s -Depth 10
 }
 
-# Neustart nur, wenn nichts Laufendes verloren geht: dieselben Rueckfragen wie beim normalen Schliessen (Main.ps1, Closing).
-# Restart-HUApp ueberspringt diese Pruefungen selbst (SkipCloseChecks), deshalb vorher hier. $false = Benutzer hat abgebrochen.
+# Namen aller noch laufenden Hintergrundauftraege der Auftragsverwaltung (UI-Jobs.ps1, $script:HUJobs). Generisch ueber alle Eintraege,
+# damit neue Auftraege ohne Anpassung hier erfasst sind. Fehlt die Auftragsverwaltung (Variable nicht da, StrictMode), ist die Liste leer.
+function Get-HURunningJobNames {
+    $jobs = Get-Variable -Name HUJobs -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    $names = New-Object System.Collections.Generic.List[string]
+    if ($jobs -is [System.Collections.IDictionary]) {
+        foreach ($k in @($jobs.Keys)) { if (Test-HUJobRunning "$k") { $names.Add("$k") } }
+    }
+    return @($names.ToArray() | Sort-Object)
+}
+
+# Neustart nur, wenn nichts Laufendes verloren geht. Restart-HUApp ueberspringt die Pruefungen des normalen Schliessens selbst
+# (SkipCloseChecks), deshalb hier: Muster anwenden und Tenant-Einrichtung verhindern den Neustart (Meldung), danach Rueckfragen zu
+# Extension, ungespeichertem Snippet und allen laufenden Hintergrundauftraegen. $false = kein Neustart (Benutzer hat abgebrochen,
+# etwas laeuft oder die Pruefung selbst ist fehlgeschlagen: im Zweifel kein Neustart). Der Closing-Handler in Main.ps1 ist davon unabhaengig.
 function Test-HURestartAllowed {
     try {
+        $ma = Get-Variable -Name MA -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+        if ($ma -is [System.Collections.IDictionary] -and $ma.Contains('Running') -and [bool]$ma['Running']) {
+            Show-HUMessage "Es wird gerade ein Muster angewendet.`n`nBitte zuerst abwarten, bis es fertig ist (oder abbrechen und das Ende abwarten). Danach kannst du neu starten." -Icon Warning
+            return $false
+        }
+        $tsu = Get-Variable -Name TSU -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+        if ($tsu -is [System.Collections.IDictionary] -and $tsu.Contains('Phase') -and "$($tsu['Phase'])" -eq 'Work') {
+            Show-HUMessage "Die Tenant-Einrichtung läuft gerade.`n`nBitte zuerst abwarten, bis sie fertig ist (bei einem Fehler wird Angelegtes wieder entfernt). Danach kannst du neu starten." -Icon Warning
+            return $false
+        }
         $run = $false
         try { $run = [bool](Get-Variable -Name IsRunning -Scope Script -ValueOnly -ErrorAction SilentlyContinue) } catch { }
         if ($run -and -not (Confirm-HU 'Eine Extension laeuft noch. Trotzdem neu starten?' -Warning)) { return $false }
         if (-not (Confirm-HUQSDiscard 'neu starten')) { return $false }
-        if ((Test-HUJobRunning 'Apps') -or (Test-HUJobRunning 'Rem')) {
-            if (-not (Confirm-HU 'Ein Upload/Auftrag in Apps oder Wartung laeuft noch und wird abgebrochen. Trotzdem neu starten?' -Warning)) { return $false }
+        $jobs = @(Get-HURunningJobNames)
+        if ($jobs.Count) {
+            $list = (@($jobs | Select-Object -First 5)) -join ', '
+            if ($jobs.Count -gt 5) { $list += " und $($jobs.Count - 5) weitere" }
+            if (-not (Confirm-HU "Es laufen noch Hintergrundaufträge ($list). Sie werden beim Neustart abgebrochen. Trotzdem neu starten?" -Warning)) { return $false }
         }
-    } catch { }
+    } catch {
+        $msg = "$($_.Exception.Message)"
+        try { if (Get-Command Write-HULog -ErrorAction SilentlyContinue) { Write-HULog -Message "Neustart nicht freigegeben, Pruefung fehlgeschlagen: $msg" -Level 'WARN' } } catch { }
+        return $false
+    }
     return $true
 }
 
@@ -65,10 +95,15 @@ function Switch-HUThemeQuick {
     $txt = $(if ($new -eq 'light') { 'Hell' } else { 'Dunkel' })
     if (-not (Confirm-HU "Farbschema auf $txt umstellen?`n`nHU-MultiTenant startet dafür neu." 'Farbschema' -Owner $script:Window)) { return }
     if (-not (Test-HURestartAllowed)) { return }
+    # Scheitert das Speichern, bleibt der neue Wert nicht im Speicher stehen: alten Wert merken und im Fehlerfall zuruecksetzen
+    $had = $false; $old = $null
+    $restore = { try { if ($had) { Set-HUProp $script:Settings.ui 'theme' $old } else { [void]$script:Settings.ui.PSObject.Properties.Remove('theme') } } catch { } }
     try {
+        $had = [bool]$script:Settings.ui.PSObject.Properties['theme']
+        if ($had) { $old = $script:Settings.ui.theme }
         Set-HUProp $script:Settings.ui 'theme' $new
-        if (-not (Save-HUSettings)) { Show-HUMessage 'settings.json konnte nicht gespeichert werden (Protokoll).' -Icon Error -Owner $script:Window; return }
-    } catch { Show-HUMessage "Farbschema nicht gespeichert:`n$($_.Exception.Message)" -Icon Error -Owner $script:Window; return }
+        if (-not (Save-HUSettings)) { & $restore; Show-HUMessage 'settings.json konnte nicht gespeichert werden (Protokoll).' -Icon Error -Owner $script:Window; return }
+    } catch { & $restore; Show-HUMessage "Farbschema nicht gespeichert:`n$($_.Exception.Message)" -Icon Error -Owner $script:Window; return }
     Write-HULogOK "Farbschema: $new"
     Restart-HUApp
 }

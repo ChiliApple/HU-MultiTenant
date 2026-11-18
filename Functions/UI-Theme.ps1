@@ -180,7 +180,7 @@ function Get-HUWindowsAppTheme {
     Programmordner mit Themes\ (sonst $script:AppRoot).
 .NOTES
     Einstellung (Get-HUThemeInfo.Setting) und wirksames Schema (Get-HUThemeInfo.Id) werden getrennt gemerkt.
-    Fehlt die Datei oder ist sie ungueltig: Schema dark, eine Warnzeile im Protokoll.
+    Fehlt die Datei oder ist sie ungueltig: Schema dark, eine Warnzeile im Protokoll. Ausnahme: dark ist eingebaut, ohne Datei gilt es still.
 #>
 function Initialize-HUTheme([string]$Setting = '', [string]$AppRoot = '') {
     # Grundzustand: Dunkel ohne Tabellen
@@ -204,23 +204,29 @@ function Initialize-HUTheme([string]$Setting = '', [string]$AppRoot = '') {
         $script:HUThemeSetting = $want
 
         $th = $null
+        $builtin = $false
         if (-not $problem) {
             $why = 'Datei nicht gefunden'
+            $seenFile = $false
             foreach ($dir in @(Get-HUThemeFolders $root)) {
                 $path = Join-Path $dir "$eff.json"
                 if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+                $seenFile = $true
                 $th = Read-HUThemeFile $path
                 if ($th) { break }
                 $why = $script:HUThemeReadError
             }
-            if (-not $th) { $problem = "Farbschema '$eff' nicht geladen ($why)" }
+            # dark ist das eingebaute Grundschema: ohne Datei still gueltig (der Grundzustand oben, keine Tabellen). Eine vorhandene,
+            # aber kaputte dark.json warnt weiter; light und alle anderen Namen ohne Datei ebenfalls (Rueckfall auf dunkel).
+            if (-not $th -and $eff -ceq 'dark' -and -not $seenFile) { $builtin = $true }
+            elseif (-not $th) { $problem = "Farbschema '$eff' nicht geladen ($why)" }
         }
         if ($th) {
             $script:HUThemeId = $th.Id; $script:HUThemeName = $th.Name; $script:HUThemeKind = $th.Kind
             $script:HUThemeFile = $th.File; $script:HUThemeSchemaVersion = $th.SchemaVersion
             $script:HUThemeMaps = $th.Roles; $script:HUThemeLog = $th.Log; $script:HUThemeKeep = @($th.Keep)
             foreach ($rk in $th.Roles.Keys) { if ($th.Roles[$rk].Count) { $script:HUThemeActive = $true } }
-        } else {
+        } elseif (-not $builtin) {
             Write-HUThemeWarning "$problem - es gilt das dunkle Farbschema."
         }
     } catch {
@@ -263,6 +269,7 @@ function Get-HUThemeLogColors {
 <#
 .SYNOPSIS
     Alle gueltigen Schema-Dateien aus Themes\*.json (Id, Name, Kind, File). dark und light zuerst, der Rest nach Id.
+    Dunkel (dark) steht immer drin, auch ohne Datei (File leer); eine vorhandene gueltige dark.json hat Vorrang.
 #>
 function Get-HUThemeList([string]$AppRoot = '') {
     $seen = @{}
@@ -276,6 +283,7 @@ function Get-HUThemeList([string]$AppRoot = '') {
             [void]$items.Add([pscustomobject]@{ Id = $t.Id; Name = $t.Name; Kind = $t.Kind; File = $t.File })
         }
     }
+    if (-not $seen.ContainsKey('dark')) { [void]$items.Add([pscustomobject]@{ Id = 'dark'; Name = 'Dunkel'; Kind = 'dark'; File = '' }) }
     $order = { switch ($_.Id) { 'dark' { '0' } 'light' { '1' } default { "2$($_.Id)" } } }
     return @($items.ToArray() | Sort-Object -Property @{ Expression = $order })
 }
