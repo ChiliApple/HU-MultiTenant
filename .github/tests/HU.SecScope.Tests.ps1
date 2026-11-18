@@ -329,6 +329,10 @@ Describe 'Ampel im Teil-Lauf: Get-HUSecLight -Partial (Funktion wird ausgefuehrt
     It 'andere Tenants zaehlen nicht mit' {
         $l = Get-HUSecLight -Results @(@(Res 'K07' 'OK' 'T2') + @(Rows $script:Auto 'T1')) -Key 'T1' -Partial
         $l.Color | Should -Be 'Gruen'
+        # Gegenprobe: T1 hat nur K07, alle anderen Ergebnisse gehoeren T2 und duerfen T1 nicht gruen machen
+        $m = Get-HUSecLight -Results @(@(Res 'K07' 'OK' 'T1') + @(Rows $script:Auto 'T2')) -Key 'T1' -Partial
+        $m.Color | Should -Be 'Gelb'
+        $m.NotRun | Should -BeGreaterThan 0
     }
 
     It 'die Ampelzeile der Oberflaeche ruft Get-HUSecLight mit -Partial und der Auswahl auf und nimmt NotRun daraus' {

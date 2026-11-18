@@ -83,6 +83,8 @@ function Test-HURestartAllowed {
     } catch {
         $msg = "$($_.Exception.Message)"
         try { if (Get-Command Write-HULog -ErrorAction SilentlyContinue) { Write-HULog -Message "Neustart nicht freigegeben, Pruefung fehlgeschlagen: $msg" -Level 'WARN' } } catch { }
+        # nicht still ablehnen: der Benutzer hat gerade Ja gesagt und saehe sonst nichts
+        try { Show-HUMessage "Der Neustart ist gerade nicht möglich (Einzelheiten im Protokoll)." -Icon Warning } catch { }
         return $false
     }
     return $true

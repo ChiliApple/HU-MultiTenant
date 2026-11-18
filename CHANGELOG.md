@@ -11,7 +11,7 @@
 - **Knopf in der Titelleiste:** Das Symbol Sonne/Mond schaltet schnell zwischen Dunkel und Hell um.
 - **Wirkt nach einem Neustart:** Die App fragt nach und startet selbst neu.
 - **Farbtabellen als Dateien:** Die mitgelieferten Schemata Dunkel und Hell liegen als Dateien im Ordner Themes. Eine weitere gültige Datei in diesem Ordner erscheint in der Auswahl. Ein eigener, updatefester Ordner für eigene Farbschemata und eine Anleitung dazu folgen später.
-  - Fehlt die Datei des Farbschemas oder ist sie fehlerhaft, startet die App dunkel und schreibt einen Hinweis ins Protokoll.
+  - Fehlt die Datei des Farbschemas Hell oder ist eine Datei fehlerhaft, startet die App dunkel und schreibt einen Hinweis ins Protokoll. Dunkel braucht keine Datei.
 
 ### 🛡️ Sicherheitskatalog
 - **Prüfumfang wählbar:** Neue Auswahl "Umfang" neben "Prüfen": Alles, Ohne riskante Anmeldungen oder Nur riskante Anmeldungen.
