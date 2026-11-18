@@ -708,3 +708,104 @@ Describe 'Farben am Schema vorbei: keine direkten Pinsel, keine neuen festen Far
         $over | Should -BeNullOrEmpty -Because "neue feste Farben brauchen eine Rolle (Get-HUBrush '#...' 'Fg' | 'Bg' | 'Border' | 'Btn' | 'BtnFg' | 'Status'): $($over -join '; ')"
     }
 }
+
+Describe 'Modus-Umschalter (Set-HUToggleLook) und Auswahlflaeche im hellen Schema' {
+    BeforeAll {
+        $script:Window = $null; $script:AppIcon = $null
+        . (Join-Path $script:Root 'Functions\UI-Common.ps1')
+        $script:FgProp = [System.Windows.Controls.Control]::ForegroundProperty
+        function New-ToggleButton { return [System.Windows.Controls.Button]::new() }
+        function Test-FgUnset($b) { return [object]::ReferenceEquals($b.ReadLocalValue($script:FgProp), [System.Windows.DependencyProperty]::UnsetValue) }
+    }
+    AfterAll { Use-Theme 'dark' }
+
+    It 'dunkel: Hintergrund exakt der alte Wert (aktiv und inaktiv), Schrift nicht lokal gesetzt' {
+        Use-Theme 'dark'
+        $b = New-ToggleButton
+        Set-HUToggleLook $b $true
+        $b.Background.Color.ToString() | Should -Be '#FF1976D2'
+        Test-FgUnset $b | Should -BeTrue
+        Set-HUToggleLook $b $false
+        $b.Background.Color.ToString() | Should -Be '#FF3E3E42'
+        Test-FgUnset $b | Should -BeTrue
+        Set-HUToggleLook $b $false '#1976D2' '#00695C'
+        $b.Background.Color.ToString() | Should -Be '#FF00695C'
+        Test-FgUnset $b | Should -BeTrue
+    }
+    It 'hell: aktiv = weisse Schrift auf ActiveColor' {
+        Use-Theme 'light'
+        $b = New-ToggleButton
+        Set-HUToggleLook $b $true
+        $b.Background.Color.ToString() | Should -Be '#FF1976D2'
+        $b.Foreground.Color.ToString() | Should -Be '#FFFFFFFF'
+        Set-HUToggleLook $b $true '#2E7D32'
+        $b.Background.Color.ToString() | Should -Be '#FF2E7D32'
+        $b.Foreground.Color.ToString() | Should -Be '#FFFFFFFF'
+    }
+    It 'hell: inaktiv = helle Feldflaeche und kein lokaler Schriftwert (auch nach aktiv)' {
+        Use-Theme 'light'
+        $b = New-ToggleButton
+        Set-HUToggleLook $b $true
+        Test-FgUnset $b | Should -BeFalse
+        Set-HUToggleLook $b $false
+        $b.Background.Color.ToString() | Should -Be (ConvertTo-HUThemeColor '#3E3E42' 'Bg').Replace('#', '#FF')
+        $b.Background.Color.ToString() | Should -Be '#FFFFFDF9'
+        Test-FgUnset $b | Should -BeTrue
+    }
+    It 'hell: inaktiv mit kraeftiger Farbe (#00695C bleibt) bekommt weisse Schrift' {
+        Use-Theme 'light'
+        $b = New-ToggleButton
+        Set-HUToggleLook $b $false '#1976D2' '#00695C'
+        $b.Background.Color.ToString() | Should -Be '#FF00695C'
+        $b.Foreground.Color.ToString() | Should -Be '#FFFFFFFF'
+        Set-HUToggleLook $b $true '#1976D2' '#00695C'
+        $b.Background.Color.ToString() | Should -Be '#FF1976D2'
+    }
+    It 'ohne Knopf kein Fehler' {
+        Use-Theme 'light'
+        { Set-HUToggleLook $null $true } | Should -Not -Throw
+    }
+    It 'kein Aufrufer setzt Hintergrund oder Schrift eines Modus-Umschalters (btn...Mode...) mehr direkt' {
+        $files = @(Get-ChildItem (Join-Path $script:Root 'Functions') -Filter *.ps1) + @(Get-ChildItem (Join-Path $script:Root 'Modules\Autopilot') -File -Filter *.ps1)
+        $bad = New-Object System.Collections.ArrayList
+        foreach ($f in $files) {
+            if ($f.Name -eq 'UI-Common.ps1') { continue }   # Set-HUToggleLook selbst
+            $lines = [IO.File]::ReadAllLines($f.FullName, [Text.Encoding]::UTF8)
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -match "\['btn\w*Mode\w*'\]\.(Background|Foreground)\s*=") { [void]$bad.Add("$($f.Name):$($i + 1)") }
+            }
+        }
+        $bad | Should -BeNullOrEmpty -Because "Modus-Umschalter ueber Set-HUToggleLook setzen: $($bad -join ', ')"
+    }
+    It 'alle bekannten Umschalter laufen ueber Set-HUToggleLook' {
+        $expect = @{
+            'UI-Analyse.ps1'     = @('btnAnaModeAsg', 'btnAnaModeCmp', 'btnAnaModeBak', 'btnAnaModeSec')
+            'UI-IntuneApps.ps1'  = @('btnAppModeLib', 'btnAppModeInt', 'btnAppModeUpd')
+            'UI-IntuneRem.ps1'   = @('btnRemModeLib', 'btnRemModeInt')
+            'UI-WinUpdates.ps1'  = @('btnRemModeWu')
+        }
+        foreach ($k in $expect.Keys) {
+            $t = [IO.File]::ReadAllText((Join-Path (Join-Path $script:Root 'Functions') $k), [Text.Encoding]::UTF8)
+            foreach ($n in $expect[$k]) { $t | Should -Match ("Set-HUToggleLook \`$c\['" + $n + "'\]") -Because "$k $n" }
+        }
+    }
+    It 'hell: Auswahl in Listen (#094771, Rolle Bg) ist ein helles Blau mit gut lesbarer dunkler Schrift' {
+        Use-Theme 'light'
+        $sel = ConvertTo-HUThemeColor '#094771' 'Bg'
+        $sel | Should -Be '#BFD6F0'
+        $sel | Should -Not -Be (ConvertTo-HUThemeColor '#2A2D2E' 'Bg') -Because 'Auswahl muss sich vom Hover unterscheiden'
+        function Get-RelLum([string]$h) {
+            $v = foreach ($i in 1, 3, 5) { $x = [Convert]::ToInt32($h.Substring($i, 2), 16) / 255.0; if ($x -le 0.03928) { $x / 12.92 } else { [math]::Pow(($x + 0.055) / 1.055, 2.4) } }
+            return 0.2126 * $v[0] + 0.7152 * $v[1] + 0.0722 * $v[2]
+        }
+        $fg = ConvertTo-HUThemeColor '#CCCCCC' 'Fg'
+        $l1 = Get-RelLum $sel; $l2 = Get-RelLum $fg
+        $ratio = ([math]::Max($l1, $l2) + 0.05) / ([math]::Min($l1, $l2) + 0.05)
+        $ratio | Should -BeGreaterThan 7
+    }
+    It 'hell: Rolle Auto bleibt bei #3D6FB0 (Theme.xaml: Auswahlflaeche ohne Fokus mit weisser Schrift, White bleibt in Auto weiss)' {
+        Use-Theme 'light'
+        ConvertTo-HUThemeColor '#094771' 'Auto' | Should -Be '#3D6FB0'
+        ConvertTo-HUThemeColor 'White' 'Auto' | Should -Be 'White'
+    }
+}

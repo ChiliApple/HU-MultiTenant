@@ -72,10 +72,10 @@ function Set-HUAnaMode([string]$Mode) {
     $c['gridCmp'].Visibility = $c['pnlAnaCmp'].Visibility
     $c['gridBak'].Visibility = $c['pnlAnaBak'].Visibility
     $c['gridSec'].Visibility = $c['pnlAnaSec'].Visibility
-    $c['btnAnaModeAsg'].Background = Get-HUBrush $(if ($Mode -eq 'asg') { '#1976D2' } else { '#3E3E42' }) 'Btn'
-    $c['btnAnaModeCmp'].Background = Get-HUBrush $(if ($Mode -eq 'cmp') { '#1976D2' } else { '#3E3E42' }) 'Btn'
-    $c['btnAnaModeBak'].Background = Get-HUBrush $(if ($Mode -eq 'bak') { '#1976D2' } else { '#3E3E42' }) 'Btn'
-    $c['btnAnaModeSec'].Background = Get-HUBrush $(if ($Mode -eq 'sec') { '#1976D2' } else { '#3E3E42' }) 'Btn'
+    Set-HUToggleLook $c['btnAnaModeAsg'] ($Mode -eq 'asg')
+    Set-HUToggleLook $c['btnAnaModeCmp'] ($Mode -eq 'cmp')
+    Set-HUToggleLook $c['btnAnaModeBak'] ($Mode -eq 'bak')
+    Set-HUToggleLook $c['btnAnaModeSec'] ($Mode -eq 'sec')
     Set-HUStateValue 'anaMode' $Mode
     if ($Mode -eq 'bak') { Update-HUBakView }
     if ($Mode -eq 'sec') { try { Show-HUSecPreview } catch { } }

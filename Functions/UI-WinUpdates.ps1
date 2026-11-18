@@ -26,7 +26,7 @@ function Show-HUWuMode([bool]$On) {
     $c = $script:Controls
     $c['pnlWuLeft'].Visibility = $(if ($On) { 'Visible' } else { 'Collapsed' })
     $c['pnlWuRight'].Visibility = $c['pnlWuLeft'].Visibility
-    $c['btnRemModeWu'].Background = Get-HUBrush $(if ($On) { '#1976D2' } else { '#3E3E42' }) 'Btn'
+    Set-HUToggleLook $c['btnRemModeWu'] $On
     if ($On) {
         if (-not $c['spWuTenants'].Children.Count) { Update-HUWuTenantChecks }
         # sofort lesen; Stand aelter als 15 Minuten wird beim Oeffnen erneuert

@@ -15,6 +15,54 @@ function Get-HUBrush([string]$Color, [string]$Role = 'Auto') {
     try { return $script:BrushConv.ConvertFromString($Color) } catch { return [System.Windows.Media.Brushes]::White }
 }
 
+<#
+.SYNOPSIS
+    Aussehen eines Modus-Umschalters (Knopf mit Stil ToolButton) setzen: aktiv oder inaktiv.
+.DESCRIPTION
+    Dunkel: setzt nur den Hintergrund (aktiv ActiveColor, inaktiv IdleColor, je mit Rolle Btn), die Schrift bleibt unangetastet.
+    Hell: aktiv = kraeftige Flaeche ActiveColor mit weisser Schrift. Inaktiv = helle Feldflaeche (IdleColor mit Rolle Bg) und die
+    Schrift wird zurueckgesetzt (ClearValue), damit wieder die dunkle Schrift des Stils gilt. Bleibt IdleColor im hellen Schema
+    unveraendert (kraeftige Farbe wie '#00695C'), bekommt der inaktive Knopf weisse Schrift.
+    Grund: Der Stil ToolButton hat helle Schrift, die im hellen Schema dunkel wird; auf Blau oder Mittelgrau war sie schlecht lesbar.
+.PARAMETER Button
+    Der Knopf (System.Windows.Controls.Button). $null wird ignoriert.
+.PARAMETER Active
+    $true = aktiver Modus.
+.PARAMETER ActiveColor
+    Farbe des aktiven Knopfs, Standard '#1976D2'.
+.PARAMETER IdleColor
+    Farbe des inaktiven Knopfs im dunklen Schema, Standard '#3E3E42'.
+.EXAMPLE
+    Set-HUToggleLook $c['btnAnaModeAsg'] ($Mode -eq 'asg')
+.NOTES
+    Teil der Schnittstelle fuer Module: Name und Parameter stabil halten.
+#>
+function Set-HUToggleLook {
+    param(
+        $Button,
+        [bool]$Active,
+        [string]$ActiveColor = '#1976D2',
+        [string]$IdleColor = '#3E3E42'
+    )
+    if (-not $Button) { return }
+    $light = $false
+    try { $light = [bool](Test-HULightTheme) } catch { $light = $false }
+    if (-not $light) {
+        $Button.Background = Get-HUBrush $(if ($Active) { $ActiveColor } else { $IdleColor }) 'Btn'
+        return
+    }
+    if ($Active) {
+        $Button.Background = Get-HUBrush $ActiveColor 'Btn'
+        $Button.Foreground = Get-HUBrush '#FFFFFF' 'Btn'
+        return
+    }
+    $Button.Background = Get-HUBrush $IdleColor 'Bg'
+    $conv = $IdleColor
+    try { $conv = ConvertTo-HUThemeColor $IdleColor 'Bg' } catch { }
+    if ($conv -ieq $IdleColor) { $Button.Foreground = Get-HUBrush '#FFFFFF' 'Btn' }
+    else { $Button.ClearValue([System.Windows.Controls.Control]::ForegroundProperty) }
+}
+
 # XAML-Datei aus XAML\ lesen und das Theme (XAML\Theme.xaml) an der Markierung <!--HU:THEME--> einsetzen.
 function Get-HUXaml([string]$Name) {
     $dir = Join-Path $script:AppRoot 'XAML'
