@@ -54,40 +54,104 @@ function Get-HURunningJobNames {
     return @($names.ToArray() | Sort-Object)
 }
 
-# Neustart nur, wenn nichts Laufendes verloren geht. Restart-HUApp ueberspringt die Pruefungen des normalen Schliessens selbst
-# (SkipCloseChecks), deshalb hier: Muster anwenden und Tenant-Einrichtung verhindern den Neustart (Meldung), danach Rueckfragen zu
-# Extension, ungespeichertem Snippet und allen laufenden Hintergrundauftraegen. $false = kein Neustart (Benutzer hat abgebrochen,
-# etwas laeuft oder die Pruefung selbst ist fehlgeschlagen: im Zweifel kein Neustart). Der Closing-Handler in Main.ps1 ist davon unabhaengig.
-function Test-HURestartAllowed {
-    try {
-        $ma = Get-Variable -Name MA -Scope Script -ValueOnly -ErrorAction SilentlyContinue
-        if ($ma -is [System.Collections.IDictionary] -and $ma.Contains('Running') -and [bool]$ma['Running']) {
-            Show-HUMessage "Es wird gerade ein Muster angewendet.`n`nBitte zuerst abwarten, bis es fertig ist (oder abbrechen und das Ende abwarten). Danach kannst du neu starten." -Icon Warning
-            return $false
+# Anwendertexte der Hintergrundauftraege fuer die Rueckfrage beim Beenden und Neustart (Start-HUJob -Name ...).
+# EINE Stelle: ein neuer Auftrag braucht hier nur eine Zeile. Ein Schluessel mit '*' am Ende gilt fuer alle Namen mit diesem Anfang
+# (Namen mit Laufnummer und Tenant, z. B. Sec-3-key). Namen, die hier fehlen (auch die von Zusatzmodulen), erscheinen unveraendert.
+# Mit -Quiet gestartete Auftraege werden NICHT ausgenommen: Quiet sagt nur, dass kein "fertig"-Strich ins Protokoll kommt, nicht dass
+# der Auftrag nur liest (AppBackup schreibt und startet mit -Quiet).
+$script:HUJobLabels = @{
+    'Apps'              = 'Apps (Verteilung oder Status)'
+    'Rem'               = 'Wartung'
+    'MaRun'             = 'Muster anwenden'
+    'MaUndo'            = 'Muster rückgängig machen'
+    'EntraRestoreWrite' = 'Zurückschreiben'
+    'BakRestore'        = 'Wiederherstellen'
+    'Backup'            = 'Tenant-Backup'
+    'AppBackup'         = 'App-Sicherung'
+    'TransferWrite'     = 'Übertragen'
+    'TransferUndo'      = 'Übertragung rückgängig machen'
+    'Sec-*'             = 'Sicherheitskatalog'
+    'SecChg-*'          = 'Sicherheitskatalog'
+    'SecItems-*'        = 'Sicherheitskatalog'
+    'AP-*'              = 'Autopilot'
+}
+
+# Lesbarer Text zu einem internen Auftragsnamen (genauer Name vor Anfang, sonst der Name selbst)
+function Get-HUJobLabel([string]$Name) {
+    $map = Get-Variable -Name HUJobLabels -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    if ($map -is [System.Collections.IDictionary]) {
+        if ($map.Contains($Name)) { return "$($map[$Name])" }
+        foreach ($k in @($map.Keys | Where-Object { "$_".EndsWith('*') } | Sort-Object { "$_".Length } -Descending)) {
+            if ($Name.StartsWith("$k".TrimEnd('*'), [StringComparison]::OrdinalIgnoreCase)) { return "$($map[$k])" }
         }
+    }
+    return $Name
+}
+
+# Gemeinsame Pruefung vor dem Beenden und vor einem Neustart, damit beide dasselbe fragen. $Action: 'beenden' oder 'neu starten'.
+# $true = weitermachen. Beim Neustart (Restart-HUApp ueberspringt die Pruefungen des normalen Schliessens selbst, SkipCloseChecks):
+# Muster anwenden und Tenant-Einrichtung verhindern ihn mit einer Meldung, danach Rueckfragen zu Extension, ungespeichertem Snippet
+# und laufenden Hintergrundauftraegen; scheitert die Pruefung selbst, gibt es im Zweifel keinen Neustart ($false). Beim Beenden verbietet
+# nichts hart (die App muss sich immer beenden lassen): Muster anwenden und Tenant-Einrichtung bekommen eine Warn-Rueckfrage, und
+# scheitert die Pruefung selbst, wird nur eine Protokollzeile geschrieben und das Beenden erlaubt. Der Closing-Handler in Main.ps1 ruft sie
+# auf, solange SkipCloseChecks nicht gesetzt ist.
+function Test-HUCloseAllowed {
+    param([ValidateSet('beenden', 'neu starten')][string]$Action = 'beenden')
+    $restart = ($Action -eq 'neu starten')
+    try {
+        $maRunning = $false
+        $ma = Get-Variable -Name MA -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+        if ($ma -is [System.Collections.IDictionary] -and $ma.Contains('Running') -and [bool]$ma['Running']) { $maRunning = $true }
+        $tsuWork = $false
         $tsu = Get-Variable -Name TSU -Scope Script -ValueOnly -ErrorAction SilentlyContinue
-        if ($tsu -is [System.Collections.IDictionary] -and $tsu.Contains('Phase') -and "$($tsu['Phase'])" -eq 'Work') {
-            Show-HUMessage "Die Tenant-Einrichtung läuft gerade.`n`nBitte zuerst abwarten, bis sie fertig ist (bei einem Fehler wird Angelegtes wieder entfernt). Danach kannst du neu starten." -Icon Warning
-            return $false
+        if ($tsu -is [System.Collections.IDictionary] -and $tsu.Contains('Phase') -and "$($tsu['Phase'])" -eq 'Work') { $tsuWork = $true }
+        if ($restart) {
+            if ($maRunning) {
+                [void](Show-HUMessage "Es wird gerade ein Muster angewendet.`n`nBitte zuerst abwarten, bis es fertig ist (oder abbrechen und das Ende abwarten). Danach kannst du neu starten." -Icon Warning)
+                return $false
+            }
+            if ($tsuWork) {
+                [void](Show-HUMessage "Die Tenant-Einrichtung läuft gerade.`n`nBitte zuerst abwarten, bis sie fertig ist (bei einem Fehler wird Angelegtes wieder entfernt). Danach kannst du neu starten." -Icon Warning)
+                return $false
+            }
         }
         $run = $false
         try { $run = [bool](Get-Variable -Name IsRunning -Scope Script -ValueOnly -ErrorAction SilentlyContinue) } catch { }
-        if ($run -and -not (Confirm-HU 'Eine Extension laeuft noch. Trotzdem neu starten?' -Warning)) { return $false }
-        if (-not (Confirm-HUQSDiscard 'neu starten')) { return $false }
+        if ($run -and -not (Confirm-HU "Eine Extension laeuft noch. Trotzdem ${Action}?" -Warning)) { return $false }
+        if (-not (Confirm-HUQSDiscard $Action)) { return $false }
+        if (-not $restart) {
+            if ($maRunning -and -not (Confirm-HU "Es wird gerade ein Muster angewendet.`n`nBeim Beenden bleibt der Tenant in einem Zwischenstand: ein Teil der Änderungen ist schon angewendet, der Rest fehlt. Trotzdem beenden?" -Warning)) { return $false }
+            if ($tsuWork -and -not (Confirm-HU "Die Tenant-Einrichtung läuft gerade.`n`nBeim Beenden kann sie unvollständig bleiben und das bis dahin Angelegte wird nicht mehr aufgeräumt. Trotzdem beenden?" -Warning)) { return $false }
+        }
         $jobs = @(Get-HURunningJobNames)
+        # das laufende Muster-Anwenden ist oben schon ausdruecklich gewarnt worden: nicht zweimal fragen
+        if ($maRunning) { $jobs = @($jobs | Where-Object { $_ -ne 'MaRun' }) }
         if ($jobs.Count) {
-            $list = (@($jobs | Select-Object -First 5)) -join ', '
-            if ($jobs.Count -gt 5) { $list += " und $($jobs.Count - 5) weitere" }
-            if (-not (Confirm-HU "Es laufen noch Hintergrundaufträge ($list). Sie werden beim Neustart abgebrochen. Trotzdem neu starten?" -Warning)) { return $false }
+            $labels = @($jobs | ForEach-Object { Get-HUJobLabel $_ } | Select-Object -Unique)
+            $list = (@($labels | Select-Object -First 5)) -join ', '
+            if ($labels.Count -gt 5) { $list += " und $($labels.Count - 5) weitere" }
+            $when = $(if ($restart) { 'Neustart' } else { 'Beenden' })
+            if (-not (Confirm-HU "Es laufen noch Hintergrundaufträge ($list). Sie werden beim $when abgebrochen. Trotzdem ${Action}?" -Warning)) { return $false }
         }
     } catch {
         $msg = "$($_.Exception.Message)"
-        try { if (Get-Command Write-HULog -ErrorAction SilentlyContinue) { Write-HULog -Message "Neustart nicht freigegeben, Pruefung fehlgeschlagen: $msg" -Level 'WARN' } } catch { }
-        # nicht still ablehnen: der Benutzer hat gerade Ja gesagt und saehe sonst nichts
-        try { Show-HUMessage "Der Neustart ist gerade nicht möglich (Einzelheiten im Protokoll)." -Icon Warning } catch { }
-        return $false
+        if ($restart) {
+            try { if (Get-Command Write-HULog -ErrorAction SilentlyContinue) { Write-HULog -Message "Neustart nicht freigegeben, Pruefung fehlgeschlagen: $msg" -Level 'WARN' } } catch { }
+            # nicht still ablehnen: der Benutzer hat gerade Ja gesagt und saehe sonst nichts
+            try { [void](Show-HUMessage "Der Neustart ist gerade nicht möglich (Einzelheiten im Protokoll)." -Icon Warning) } catch { }
+            return $false
+        }
+        # Beenden: die App muss sich immer schliessen lassen, nur protokollieren
+        try { if (Get-Command Write-HULog -ErrorAction SilentlyContinue) { Write-HULog -Message "Beenden: Pruefung der laufenden Auftraege fehlgeschlagen, es wird trotzdem beendet: $msg" -Level 'WARN' } } catch { }
+        return $true
     }
     return $true
+}
+
+# Neustart nur, wenn nichts Laufendes verloren geht: dieselbe Pruefung wie beim Beenden (Test-HUCloseAllowed), aber Muster anwenden und
+# Tenant-Einrichtung verhindern ihn hart, und bei einem Fehler in der Pruefung gibt es im Zweifel keinen Neustart.
+function Test-HURestartAllowed {
+    return [bool](Test-HUCloseAllowed -Action 'neu starten')
 }
 
 # Knopf im Kopf: Farbschema zwischen Hell und Dunkel umschalten (aus "Wie Windows" heraus auf das Gegenteil des gerade wirksamen),
@@ -95,7 +159,11 @@ function Test-HURestartAllowed {
 function Switch-HUThemeQuick {
     $new = $(if (Test-HULightTheme) { 'dark' } else { 'light' })
     $txt = $(if ($new -eq 'light') { 'Hell' } else { 'Dunkel' })
-    if (-not (Confirm-HU "Farbschema auf $txt umstellen?`n`nHU-MultiTenant startet dafür neu." 'Farbschema' -Owner $script:Window)) { return }
+    # Ist "Wie Windows" eingestellt, wird es durch den Knopf fest auf Hell bzw. Dunkel gestellt: das vorher sagen
+    $sys = $false
+    try { $sys = ("$($script:Settings.ui.theme)" -eq 'system') } catch { }
+    $note = $(if ($sys) { "`n`n""Wie Windows"" wird dabei ausgeschaltet. Wieder einschalten unter Einstellungen > Allgemein." } else { '' })
+    if (-not (Confirm-HU "Farbschema auf $txt umstellen?`n`nHU-MultiTenant startet dafür neu.$note" 'Farbschema' -Owner $script:Window)) { return }
     if (-not (Test-HURestartAllowed)) { return }
     # Scheitert das Speichern, bleibt der neue Wert nicht im Speicher stehen: alten Wert merken und im Fehlerfall zuruecksetzen
     $had = $false; $old = $null

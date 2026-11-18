@@ -62,6 +62,15 @@ function Get-HUSupportInfo {
     return $lines.ToArray()
 }
 
+# Ordnername einer Testinstallation im Support-ZIP: Name der App, sonst die ersten (hoechstens) 8 Zeichen des Ordnernamens.
+# Ungueltige Dateinamenzeichen werden ersetzt. Ein kuerzerer Ordnername darf nicht werfen.
+function Get-HUSandboxZipLabel([string]$FolderName, $App = $null) {
+    $bad = '[\\/:*?"<>|]'
+    if ($App) { return ("$($App.Name)" -replace $bad, '_') }
+    $n = "$FolderName"
+    return ($n.Substring(0, [Math]::Min(8, $n.Length)) -replace $bad, '_')
+}
+
 # Ordner mit den Supportdateien bauen und zippen; liefert den ZIP-Pfad
 function New-HUSupportZip {
     param([string]$Description = '', [hashtable]$Include = @{}, [switch]$NoAnonymize)
@@ -100,7 +109,7 @@ function New-HUSupportZip {
         $sb = Join-Path (Join-Path $env:LOCALAPPDATA 'HU-MultiTenant') 'Sandbox'
         foreach ($d in @(Get-ChildItem -LiteralPath $sb -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3)) {
             $app = Get-HUAppById $d.Name
-            $label = if ($app) { ($app.Name -replace '[\\/:*?"<>|]', '_') } else { $d.Name.Substring(0, 8) }
+            $label = Get-HUSandboxZipLabel $d.Name $app
             foreach ($f in @(Get-ChildItem -LiteralPath $d.FullName -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.json', '.log', '.txt' -and $_.Length -lt 5MB })) {
                 try { & $put ("Testinstallation\$label\" + $f.FullName.Substring($d.FullName.Length + 1)) (& $tail $f.FullName) } catch { }
             }

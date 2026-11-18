@@ -1,8 +1,10 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.6.20 (Testversion)
+## v2.6.20 (Stable, 18.11.2026)
 
-### 🎨 Oberfläche
+Stable-Release der Testversionen 2.6.14 bis 2.6.19 – „Sicherheitskatalog im Alltag und helles Farbschema“. Alle Punkte im Detail stehen in den Abschnitten darunter.
+
+### 🎨 Oberfläche und Bedienung
 - **Farbschema Dunkel, Hell oder "Wie Windows":** Auswahl unter Einstellungen > Allgemein > Farbschema.
   - Dunkel bleibt der Standard und sieht aus wie bisher. Nach dem Update bleibt es bei Dunkel, bis umgestellt wird.
   - Hell ist warm getönt, nicht reinweiß.
@@ -12,6 +14,10 @@
 - **Wirkt nach einem Neustart:** Die App fragt nach und startet selbst neu.
 - **Farbtabellen als Dateien:** Die mitgelieferten Schemata Dunkel und Hell liegen als Dateien im Ordner Themes. Eine weitere gültige Datei in diesem Ordner erscheint in der Auswahl. Ein eigener, updatefester Ordner für eigene Farbschemata und eine Anleitung dazu folgen später.
   - Fehlt die Datei des Farbschemas Hell oder ist eine Datei fehlerhaft, startet die App dunkel und schreibt einen Hinweis ins Protokoll. Dunkel braucht keine Datei.
+- **Beenden fragt bei allen laufenden Aufträgen nach:** Läuft im Hintergrund noch etwas, z. B. Muster anwenden, Zurückschreiben, Wiederherstellen, App-Sicherung oder der Sicherheitskatalog, nennt die App es in einer Rückfrage. Bisher wurden manche Aufträge beim Beenden ohne Frage abgebrochen.
+  - Läuft gerade ein Muster oder die Tenant-Einrichtung, warnt die App zusätzlich vor dem Zwischenstand. Beenden lässt sich immer.
+  - Beim Neustart, z. B. nach dem Umstellen des Farbschemas, stellt die App dieselben Fragen. Mit laufendem Muster oder laufender Tenant-Einrichtung startet sie nicht neu.
+- **Support anfragen mit Testinstallationen:** Das Support-Paket brach ab, wenn ein Ordner der Testinstallationen einen sehr kurzen Namen hatte. Es entsteht jetzt auch dann.
 
 ### 🛡️ Sicherheitskatalog
 - **Prüfumfang wählbar:** Neue Auswahl "Umfang" neben "Prüfen": Alles, Ohne riskante Anmeldungen oder Nur riskante Anmeldungen.
@@ -20,14 +26,57 @@
   - Ein Teil-Lauf schreibt keinen Verlauf. "Soll speichern" geht nur nach einem vollständigen Lauf.
   - Im Grundschutz-Balken zählt "nicht geprüft" nie als erfüllt.
   - Die tägliche Teams-Prüfung prüft weiter alles.
+- **Ansicht "Einfach":** Ein Schalter über der Matrix zeigt nur den Grundschutz, 15 Regeln von MFA über Notfallkonten bis BitLocker und LAPS.
+  - Je Tenant ein Balken "x von y erfüllt" mit der Zahl der nicht prüfbaren Regeln. Nicht prüfbar zählt nie als erfüllt.
+  - Rot, sobald eine kritische Regel offen ist, gelb bei sonst offenen Regeln und gelb, wenn eine kritische Regel nicht prüfbar ist. Der Tooltip des Balkens nennt den Grund.
+  - Doppelklick auf eine Regel öffnet gleich "So behebst du es". Welche Regeln dazugehören, steht in den Sollwerten unter "Katalog basic".
+- **Änderungen der letzten 30 Tage:** Der Knopf "Aenderungen (bis 30 Tage)" zeigt für die angehakten Tenants heikle Einträge aus dem Entra-Überwachungsprotokoll, neueste oben, mit Auslöser.
+  - Vergebene Admin-Rollen, Domänen und Verbund, neue Secrets und Zertifikate an Apps, erteilte App-Rechte und Zustimmungen, bedingter Zugriff. Änderungen durch HU-MultiTenant selbst sind gekennzeichnet.
+  - Doppelklick auf eine Zeile zeigt die Details: Auslöser mit IP-Adresse, jede geänderte Eigenschaft mit Vorher und Nachher. Die Listen enthalten Namen und lassen sich nicht speichern.
+- **Neue Regeln L01 bis L05:** Dieselben Daten als Regeln im Katalog, mit Liste, Anleitung und Teams-Meldung "Sicherheits-Änderung". Gezählt werden betroffene Konten oder Apps, nicht einzelne Ereignisse.
+  - L01 (Admin-Rollen) und L02 (Domänen) sind Abweichungen und lösen die Teams-Meldung aus. L01 sieht auch Rollen, die über eine Gruppe vergeben werden.
+  - Eine Ausnahme deckt nur, was beim letzten Prüfen zu sehen war. Jede spätere Rollenvergabe oder Domänenänderung macht die Zelle wieder rot.
+  - L03 (Secrets an Apps), L04 (App-Rechte) und L05 (bedingter Zugriff) sind nur Hinweise und zählen nicht in der Ampel. L03 erkennt auch ein Secret, das im selben Schritt ein altes ersetzt.
+- **Neue Regel K07, riskante Anmeldungen auch mit Entra ID P1:** Liest aus dem Anmeldeprotokoll die Anmeldungen, die Microsoft als riskant einstuft. Anders als K06 braucht das kein P2.
+  - Rot wird ein Konto, wenn eine riskante Anmeldung erfolgreich war oder das Kennwort angenommen und die Anmeldung erst danach gestoppt wurde. Reine Fehlversuche stehen nur in der Liste.
+  - Geprüft werden die letzten 7 Tage, über den Sollwert "K07 days" auf 1 bis 30 Tage stellbar. Der Titel von K06 sagt jetzt, dass die Regel nur mit Entra ID P2 prüfbar ist.
+- **A27 mit Gruppen eines Partners:** Haben Gruppen eines Dienstleisters eine Admin-Rolle, werden sie genannt, mit ihren Rollen, und nicht bewertet. Die übrigen Admin-Konten werden weiter geprüft.
+
+### ⚡ Quick Script
+- **Neues Beispiel "Riskante Anmeldungen":** Dieselbe Abfrage als Snippet mit Zeitraum, Risikostatus und Filter auf einen Benutzer. Vorhandene Installationen holen es in der Snippet-Verwaltung über den Knopf "Beispiele ...".
+
+### 🛠️ Wartung
+- **Spalte "Reparatur" stimmt wieder:** Sie zeigt "ja", wenn das Skript ein Reparaturskript hat, sonst "nein (nur pruefen)". Bei Skripten von Microsoft bleibt sie leer.
+  - "In andere Tenants kopieren" übernimmt die Zuweisungen dadurch wieder mit Reparatur.
+- **Lupe neben dem Gruppenfeld:** Sie war nach dem Start ausgegraut und öffnete keine Suche. Jetzt geht sie auf, sobald ein Skript gewählt ist.
+
+### 📦 Apps verteilen
+- **Lupe neben dem Gruppenfeld:** blieb unter Umständen ausgegraut, jetzt wie bei der Wartung behoben.
+
+### 🔍 Analyse (Vergleich)
+- **Detailfenster zeigt jede Einstellung nur einmal:** Bei Einstellungskatalog-Einträgen erschien jede abweichende Einstellung zweimal. Jetzt eine Zeile je Einstellung.
+- **Nur auf einer Seite gesetzt heißt abweichend:** Fehlt eine Einstellung in einem Tenant, steht dort "(nicht gesetzt)" und die Zeile gilt als abweichend.
+
+### 💾 App-Sicherung
+- **Bricht nicht mehr wegen gelöschter Dateien ab:** Hat das Tenant-Backup während der App-Sicherung alte Stände entfernt, scheiterte die ganze Sicherung. Solche Dateien werden übersprungen, das Protokoll nennt ihre Anzahl.
+- **Automatik wartet auf das Tenant-Backup:** Läuft beim Start gerade das tägliche Tenant-Backup, beginnt die automatische App-Sicherung erst danach.
+
+### ⚠️ Nach dem Update
+- Einmal "Prüfen" und danach "Soll speichern", sonst meldet die Teams-Meldung die neuen Regeln nicht und A27 bei Tenants mit Partner-Gruppen als Verschlechterung.
+- Die neuen Regeln brauchen das Recht AuditLog.Read.All, das bei der Einrichtung schon vorausgewählt ist. Für K07 kommen keine weiteren Rechte dazu.
 
 ### 🚧 Grenzen
 - Startbildschirm, Handy-Fernbedienung, Excel-Berichte und Teams-Karten bleiben unverändert und damit dunkel.
 - "Wie Windows" wird nur beim Start gelesen. Ändert sich der App-Modus von Windows später, gilt das erst nach dem nächsten Start.
 - Einzelne Stellen können in Hell noch schlecht lesbar sein.
+- Die Oberfläche schreibt Umlaute in vielen älteren Texten noch als ae/oe/ue, neue Texte haben schon Umlaute. Die Umstellung aller Texte kommt in den nächsten Versionen.
+- Ohne Entra ID P1 bewahrt Microsoft das Überwachungsprotokoll nur 7 Tage auf. Weiterleitungen und Posteingangsregeln in Exchange stehen nicht in diesem Protokoll.
+- L01 erkennt keine berechtigten Mitgliedschaften über PIM für Gruppen und keine neuen Besitzer von Apps.
+- K07 sieht nur interaktive Anmeldungen. Risikostufe und Grund bleiben ohne Entra ID P2 verborgen.
+- Manche Erkennungen rechnet Microsoft erst nachträglich. Eine ältere Anmeldung kann deshalb später dazukommen.
 
 ### ✅ Qualität
-- 149 neue Prüfungen.
+- 1303 automatische Tests, alle bestanden unter Windows PowerShell 5.1 und PowerShell 7.
 
 ## v2.6.19 (Testversion)
 
@@ -150,7 +199,7 @@
 ### ✅ Qualität
 - 5 neue Prüfungen.
 
-## v2.6.13 (Stable, Entwurf)
+## v2.6.13 (Stable, 03.11.2026)
 
 Stable-Release der Testversionen 2.6.6 bis 2.6.12 – „WIN-Updates im Alltag, Rechte und PowerShell 7“. Alle Punkte im Detail stehen in den Abschnitten darunter.
 

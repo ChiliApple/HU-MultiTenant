@@ -376,6 +376,64 @@ Describe 'Farbschema hell: Farben und XAML umsetzen' {
     It 'Kommentare bleiben unveraendert' {
         ConvertTo-HUThemeXaml '<Grid><!-- Background="#1E1E1E" --></Grid>' | Should -Be '<Grid><!-- Background="#1E1E1E" --></Grid>'
     }
+    # --- Anfuehrungszeichen: Attributwerte in "..." und in '...' ---
+    It "einfache Anfuehrungszeichen bei Attributen werden umgesetzt, das Anfuehrungszeichen bleibt" {
+        ConvertTo-HUThemeXaml "<Border Background='#232323' BorderBrush='#3E3E42'/>" | Should -BeExactly "<Border Background='#EDE9E2' BorderBrush='#CFC8BA'/>"
+        ConvertTo-HUThemeXaml "<Button Background='#555555' Foreground='White'/>" | Should -BeExactly "<Button Background='#6B655A' Foreground='White'/>"
+        ConvertTo-HUThemeXaml "<Button Background='#3E3E42' Foreground='#CCCCCC'/>" | Should -BeExactly "<Button Background='#FFFDF9' Foreground='#2E2A24'/>"
+        ConvertTo-HUThemeXaml "<TextBlock Foreground='White'/>" | Should -BeExactly "<TextBlock Foreground='#1F1C18'/>"
+    }
+    It "einfache Anfuehrungszeichen bei Setter Property und Value, TargetType und TargetName" {
+        $x = "<Style TargetType='Button'><Setter Property='Background' Value='#555555'/><Setter Property='Foreground' Value='White'/><Setter TargetName='tb' Property='Background' Value='#3E3E42'/></Style>"
+        $h = ConvertTo-HUThemeXaml $x
+        $h | Should -BeExactly "<Style TargetType='Button'><Setter Property='Background' Value='#6B655A'/><Setter Property='Foreground' Value='White'/><Setter TargetName='tb' Property='Background' Value='#FFFDF9'/></Style>"
+        ConvertTo-HUThemeXaml "<Style TargetType='{x:Type Button}'><Setter Property='Background' Value='#555555'/></Style>" | Should -BeExactly "<Style TargetType='{x:Type Button}'><Setter Property='Background' Value='#6B655A'/></Style>"
+    }
+    It "gemischte Anfuehrungszeichen in einem Tag, Wert mit dem jeweils anderen Anfuehrungszeichen im Text" {
+        ConvertTo-HUThemeXaml "<Border Background='#232323' BorderBrush=`"#3E3E42`"/>" | Should -BeExactly "<Border Background='#EDE9E2' BorderBrush=`"#CFC8BA`"/>"
+        ConvertTo-HUThemeXaml "<TextBlock Text=`"it's`" Foreground='#CCCCCC'/>" | Should -BeExactly "<TextBlock Text=`"it's`" Foreground='#2E2A24'/>"
+        ConvertTo-HUThemeXaml "<TextBlock Text='say `"hi`"' Foreground=`"#CCCCCC`"/>" | Should -BeExactly "<TextBlock Text='say `"hi`"' Foreground=`"#2E2A24`"/>"
+        ConvertTo-HUThemeXaml "<Button Content='ok' Foreground='#CCCCCC' Background=`"#3E3E42`"/>" | Should -BeExactly "<Button Content='ok' Foreground='#2E2A24' Background=`"#FFFDF9`"/>"
+        # Farbtext in einem anderen Attribut wird nicht angefasst
+        ConvertTo-HUThemeXaml "<TextBlock Text='Background=`"#232323`"'/>" | Should -BeExactly "<TextBlock Text='Background=`"#232323`"'/>"
+    }
+    It 'im dunklen Schema kommt auch ein Text mit einfachen Anfuehrungszeichen unveraendert (dasselbe Objekt) zurueck' {
+        Use-Theme 'dark'
+        try {
+            $x = "<Border Background='#232323'/>"
+            [object]::ReferenceEquals((ConvertTo-HUThemeXaml $x), $x) | Should -BeTrue
+        } finally { Use-Theme 'light' }
+    }
+    # --- Property-Element-Syntax und Setter.Value ---
+    It 'Property-Element Background, BorderBrush, Foreground: die Farbe bekommt die Rolle der Eigenschaft statt Auto' {
+        # #555555: Bg #E3DED5, Border #BFB8AA, Auto #857D70; #FFFFFF: Fg #1F1C18, in Auto ohne Eintrag
+        ConvertTo-HUThemeXaml '<Border><Border.Background><SolidColorBrush Color="#555555"/></Border.Background></Border>' | Should -BeExactly '<Border><Border.Background><SolidColorBrush Color="#E3DED5"/></Border.Background></Border>'
+        ConvertTo-HUThemeXaml '<Border><Border.BorderBrush><SolidColorBrush Color="#555555"/></Border.BorderBrush></Border>' | Should -BeExactly '<Border><Border.BorderBrush><SolidColorBrush Color="#BFB8AA"/></Border.BorderBrush></Border>'
+        ConvertTo-HUThemeXaml '<TextBlock><TextBlock.Foreground><SolidColorBrush Color="#FFFFFF"/></TextBlock.Foreground></TextBlock>' | Should -BeExactly '<TextBlock><TextBlock.Foreground><SolidColorBrush Color="#1F1C18"/></TextBlock.Foreground></TextBlock>'
+        ConvertTo-HUThemeXaml '<Path><Path.Stroke><SolidColorBrush Color="#555555"/></Path.Stroke></Path>' | Should -BeExactly '<Path><Path.Stroke><SolidColorBrush Color="#BFB8AA"/></Path.Stroke></Path>'
+        ConvertTo-HUThemeXaml '<Path><Path.Fill><SolidColorBrush Color="#555555"/></Path.Fill></Path>' | Should -BeExactly '<Path><Path.Fill><SolidColorBrush Color="#857D70"/></Path.Fill></Path>'   # Fill hat keine eigene Rolle: Auto
+    }
+    It 'Property-Element mit Verlauf: GradientStop Color gilt als die Rolle der Eigenschaft' {
+        $x = '<Border><Border.Background><LinearGradientBrush><GradientStop Color="#555555" Offset="0"/><GradientStop Color="#232323" Offset="1"/></LinearGradientBrush></Border.Background></Border>'
+        ConvertTo-HUThemeXaml $x | Should -BeExactly '<Border><Border.Background><LinearGradientBrush><GradientStop Color="#E3DED5" Offset="0"/><GradientStop Color="#EDE9E2" Offset="1"/></LinearGradientBrush></Border.Background></Border>'
+    }
+    It 'Setter.Value mit Pinsel: die Rolle kommt aus Property des umschliessenden Setters, im Knopf-Style als Btn' {
+        ConvertTo-HUThemeXaml '<Style TargetType="Border"><Setter Property="Background"><Setter.Value><SolidColorBrush Color="#555555"/></Setter.Value></Setter></Style>' | Should -BeExactly '<Style TargetType="Border"><Setter Property="Background"><Setter.Value><SolidColorBrush Color="#E3DED5"/></Setter.Value></Setter></Style>'
+        ConvertTo-HUThemeXaml '<Style TargetType="Button"><Setter Property="Background"><Setter.Value><SolidColorBrush Color="#555555"/></Setter.Value></Setter></Style>' | Should -BeExactly '<Style TargetType="Button"><Setter Property="Background"><Setter.Value><SolidColorBrush Color="#6B655A"/></Setter.Value></Setter></Style>'
+        ConvertTo-HUThemeXaml "<Style TargetType='Border'><Setter Property='BorderBrush'><Setter.Value><SolidColorBrush Color='#555555'/></Setter.Value></Setter></Style>" | Should -BeExactly "<Style TargetType='Border'><Setter Property='BorderBrush'><Setter.Value><SolidColorBrush Color='#BFB8AA'/></Setter.Value></Setter></Style>"
+    }
+    It 'Property-Element in einer Knopf-Vorlage: Button.Background und Border.Background im Button-Style gelten als Knopffläche (Btn)' {
+        ConvertTo-HUThemeXaml '<Button><Button.Background><SolidColorBrush Color="#555555"/></Button.Background></Button>' | Should -BeExactly '<Button><Button.Background><SolidColorBrush Color="#6B655A"/></Button.Background></Button>'
+        $x = '<Style TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border><Border.Background><SolidColorBrush Color="#555555"/></Border.Background></Border></ControlTemplate></Setter.Value></Setter></Style>'
+        ConvertTo-HUThemeXaml $x | Should -BeExactly $x.Replace('#555555', '#6B655A')
+    }
+    It 'ohne Rahmen bleibt Color bei Auto, auch nach einem geschlossenen Property-Element und bei anderen Property-Elementen' {
+        ConvertTo-HUThemeXaml '<SolidColorBrush x:Key="K" Color="#555555"/>' | Should -BeExactly '<SolidColorBrush x:Key="K" Color="#857D70"/>'
+        ConvertTo-HUThemeXaml '<Window.Resources><SolidColorBrush x:Key="K" Color="#555555"/></Window.Resources>' | Should -BeExactly '<Window.Resources><SolidColorBrush x:Key="K" Color="#857D70"/></Window.Resources>'
+        ConvertTo-HUThemeXaml '<Border><Border.Background><SolidColorBrush Color="#555555"/></Border.Background><SolidColorBrush Color="#555555"/></Border>' | Should -BeExactly '<Border><Border.Background><SolidColorBrush Color="#E3DED5"/></Border.Background><SolidColorBrush Color="#857D70"/></Border>'
+        ConvertTo-HUThemeXaml '<Border><Border.Effect><DropShadowEffect Color="#555555"/></Border.Effect></Border>' | Should -BeExactly '<Border><Border.Effect><DropShadowEffect Color="#857D70"/></Border.Effect></Border>'
+        ConvertTo-HUThemeXaml '<Setter Property="Template"><Setter.Value><ControlTemplate><Border.Effect><DropShadowEffect Color="#555555"/></Border.Effect></ControlTemplate></Setter.Value></Setter>' | Should -Match 'Color="#857D70"'
+    }
     It 'Theme-Teil wird zwischengespeichert und gleich umgesetzt wie ohne Zwischenspeicher' {
         $x = Get-TestXaml (Join-Path $script:Root 'XAML\SettingsWindow.xaml')
         $a = ConvertTo-HUThemeXaml $x
@@ -630,6 +688,7 @@ Describe 'Einbindung: Pinsel, Fenster, Einstellung, Protokollfarben, Main' {
     It 'Switch-HUThemeQuick und Test-HURestartAllowed sind vorhanden' {
         Get-Command Switch-HUThemeQuick -ErrorAction Stop | Should -Not -BeNullOrEmpty
         Get-Command Test-HURestartAllowed -ErrorAction Stop | Should -Not -BeNullOrEmpty
+        Get-Command Test-HUCloseAllowed -ErrorAction Stop | Should -Not -BeNullOrEmpty
     }
 }
 
@@ -639,7 +698,7 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $script:Calls = New-Object System.Collections.ArrayList
         $script:Window = $null
         $script:Answer = $true; $script:Discard = $true; $script:JobRunning = $false; $script:SaveOk = $true; $script:SaveThrows = $false; $script:DiscardThrows = $false
-        function Confirm-HU { param([string]$Text, [string]$Title = 'HU-MultiTenant', [switch]$Warning, $Owner = $null) [void]$script:Calls.Add("Confirm:$Title"); $script:LastConfirm = $Text; return $script:Answer }
+        function Confirm-HU { param([string]$Text, [string]$Title = 'HU-MultiTenant', [switch]$Warning, $Owner = $null) [void]$script:Calls.Add("Confirm:$Title"); $script:LastConfirm = $Text; $script:LastWarning = [bool]$Warning; return $script:Answer }
         function Confirm-HUQSDiscard { param([string]$Action = 'fortfahren') if ($script:DiscardThrows) { throw 'Test-Ausnahme' }; return $script:Discard }
         function Test-HUJobRunning { param([string]$Name) return $script:JobRunning }
         function Show-HUMessage { param([string]$Text, [string]$Title = 'HU-MultiTenant', $Icon = 'Info', $Owner = $null) [void]$script:Calls.Add('Message') }
@@ -650,7 +709,7 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
     BeforeEach {
         $script:Calls.Clear(); $script:LogLines.Clear()
         $script:Answer = $true; $script:Discard = $true; $script:JobRunning = $false; $script:SaveOk = $true; $script:SaveThrows = $false; $script:DiscardThrows = $false
-        $script:IsRunning = $false; $script:LastConfirm = ''
+        $script:IsRunning = $false; $script:LastConfirm = ''; $script:LastWarning = $false
         $script:HUJobs = @{}; $script:MA = $null; $script:TSU = $null
         $script:Settings = [pscustomobject]@{ ui = [pscustomobject]@{ theme = 'dark' } }
     }
@@ -667,6 +726,22 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         Switch-HUThemeQuick
         $script:Settings.ui.theme | Should -BeExactly 'light'
         ($script:Calls -join ',') | Should -Be 'Confirm:Farbschema,Save,Restart'
+    }
+    It 'Rueckfrage nennt bei "Wie Windows" (system), dass es ausgeschaltet wird; bei dark und light kein Zusatz' {
+        $script:Settings.ui.theme = 'system'
+        Mock Get-HUWindowsAppTheme { 'light' }
+        Use-Theme 'system'
+        Switch-HUThemeQuick
+        $script:LastConfirm | Should -BeLike 'Farbschema auf Dunkel umstellen?*'
+        $script:LastConfirm | Should -Match '"Wie Windows" wird dabei ausgeschaltet\. Wieder einschalten unter Einstellungen > Allgemein\.'
+        $script:Settings.ui.theme | Should -BeExactly 'dark'
+        foreach ($t in 'dark', 'light') {
+            $script:Settings.ui.theme = $t; $script:LastConfirm = ''
+            Use-Theme $t
+            Switch-HUThemeQuick
+            $script:LastConfirm | Should -Match 'startet dafür neu\.$'
+            $script:LastConfirm | Should -Not -Match 'Wie Windows'
+        }
     }
     It 'wie Windows (gerade hell) -> dark, (gerade dunkel) -> light' {
         $script:Settings.ui.theme = 'system'
@@ -731,11 +806,13 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $script:Answer = $true
         Test-HURestartAllowed | Should -BeTrue
     }
-    It 'Test-HURestartAllowed: ein laufender fremder Auftrag (hier MaRun) fragt nach, Nein bricht ab, Ja erlaubt; der Name steht in der Rueckfrage' {
+    It 'Test-HURestartAllowed: ein laufender fremder Auftrag (hier MaRun) fragt nach, Nein bricht ab, Ja erlaubt; der lesbare Name steht in der Rueckfrage' {
         $script:JobRunning = $true; $script:HUJobs = @{ MaRun = @{ Done = $false } }
         $script:Answer = $false
         Test-HURestartAllowed | Should -BeFalse
-        $script:LastConfirm | Should -Match 'MaRun'
+        $script:LastConfirm | Should -Match 'Muster anwenden'
+        $script:LastConfirm | Should -Not -Match 'MaRun'
+        $script:LastConfirm | Should -Match 'beim Neustart abgebrochen'
         $script:Answer = $true
         Test-HURestartAllowed | Should -BeTrue
         @($script:Calls).Count | Should -Be 2
@@ -747,9 +824,10 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $script:JobRunning = $true; $script:HUJobs = @{ BakRestore = 1; IntAct = 1; 'Sec-3-x' = 1 }
         $script:Answer = $false
         Test-HURestartAllowed | Should -BeFalse
-        $script:LastConfirm | Should -Match 'BakRestore'
+        $script:LastConfirm | Should -Match 'Wiederherstellen'
         $script:LastConfirm | Should -Match 'IntAct'
-        $script:LastConfirm | Should -Match 'Sec-3-x'
+        $script:LastConfirm | Should -Match 'Sicherheitskatalog'
+        $script:LastConfirm | Should -Not -Match 'BakRestore|Sec-3-x'
     }
     It 'Test-HURestartAllowed: laufendes Anwenden eines Musters verhindert den Neustart ohne Rueckfrage, nur eine Meldung' {
         $script:MA = @{ Running = $true }
@@ -777,6 +855,173 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         Test-HURestartAllowed | Should -BeFalse
         @($script:LogLines | Where-Object { $_ -match '^WARN .*Neustart nicht freigegeben' }).Count | Should -Be 1
         $script:Calls | Should -Not -Contain 'Restart'
+    }
+
+    # --- Test-HUCloseAllowed: gemeinsame Pruefung fuer Beenden und Neustart ---
+    It 'Schliessen: ein laufender fremder Auftrag fragt genau einmal, nennt ihn lesbar und warnt' {
+        $script:JobRunning = $true; $script:HUJobs = @{ BakRestore = 1 }
+        $script:Answer = $false
+        Test-HUCloseAllowed 'beenden' | Should -BeFalse
+        @($script:Calls).Count | Should -Be 1
+        $script:LastConfirm | Should -Be 'Es laufen noch Hintergrundaufträge (Wiederherstellen). Sie werden beim Beenden abgebrochen. Trotzdem beenden?'
+        $script:LastWarning | Should -BeTrue
+        $script:Answer = $true
+        Test-HUCloseAllowed 'beenden' | Should -BeTrue
+    }
+    It 'Schliessen: beendete Auftraege fragen nicht, ohne Laufendes keine Rueckfrage' {
+        $script:JobRunning = $false; $script:HUJobs = @{ Fertig = @{ Done = $true }; BakRestore = @{ Done = $true } }
+        Test-HUCloseAllowed 'beenden' | Should -BeTrue
+        Test-HUCloseAllowed | Should -BeTrue
+        @($script:Calls).Count | Should -Be 0
+    }
+    It 'Schliessen: gleiche Anwendertexte werden nur einmal genannt, unbekannte Namen (Zusatzmodule) bleiben unveraendert, mehr als 5 werden gekuerzt' {
+        $script:JobRunning = $true; $script:HUJobs = @{ 'Sec-1-a' = 1; 'Sec-1-b' = 1; 'SecChg-2-a' = 1; 'ZusatzJob' = 1; 'AP-Laden' = 1 }
+        $script:Answer = $false
+        Test-HUCloseAllowed 'beenden' | Should -BeFalse
+        ([regex]::Matches($script:LastConfirm, 'Sicherheitskatalog')).Count | Should -Be 1
+        $script:LastConfirm | Should -Match 'ZusatzJob'
+        $script:LastConfirm | Should -Match 'Autopilot'
+        $script:HUJobs = @{ Apps = 1; Rem = 1; MaRun = 1; BakRestore = 1; AppBackup = 1; Z1 = 1; Z2 = 1 }
+        Test-HUCloseAllowed 'beenden' | Should -BeFalse
+        $script:LastConfirm | Should -Match 'und 2 weitere'
+    }
+    It 'Zuordnung der Auftragsnamen: genauer Name vor Anfang, Gross-/Kleinschreibung egal, unbekannt unveraendert' {
+        Get-HUJobLabel 'Apps' | Should -Be $script:HUJobLabels['Apps']
+        Get-HUJobLabel 'Rem' | Should -Be 'Wartung'
+        Get-HUJobLabel 'Sec-12-key' | Should -Be 'Sicherheitskatalog'
+        Get-HUJobLabel 'sec-12-key' | Should -Be 'Sicherheitskatalog'
+        Get-HUJobLabel 'Secret-Job' | Should -Be 'Secret-Job'
+        Get-HUJobLabel 'Unbekannt' | Should -Be 'Unbekannt'
+        $keep = $script:HUJobLabels
+        Remove-Variable -Name HUJobLabels -Scope Script
+        try { Get-HUJobLabel 'Apps' | Should -Be 'Apps' } finally { $script:HUJobLabels = $keep }
+    }
+    It 'Zuordnung: jeder genaue Name kommt wirklich als Start-HUJob -Name im Code vor' {
+        $code = ((Get-ChildItem (Join-Path $script:Root 'Functions') -Filter *.ps1) + (Get-ChildItem (Join-Path $script:Root 'Modules\Autopilot') -File -Filter *.ps1) | ForEach-Object { [IO.File]::ReadAllText($_.FullName, [Text.Encoding]::UTF8) }) -join "`n"
+        $missing = @($script:HUJobLabels.Keys | Where-Object {
+                $k = "$_"
+                if ($k.EndsWith('*')) { $pre = $k.TrimEnd('*'); -not ($code.Contains("Start-HUJob -Name `"$pre") -or $code.Contains("Start-HUJob -Name '$pre")) }
+                else { -not $code.Contains("Start-HUJob -Name '$k'") }
+            })
+        $missing | Should -BeNullOrEmpty
+    }
+    It 'Schliessen: laufendes Muster-Anwenden wird nicht verboten, aber mit Warnung gefragt (Nein bricht ab); der Auftrag MaRun wird nicht zusaetzlich genannt' {
+        $script:MA = @{ Running = $true }
+        $script:JobRunning = $true; $script:HUJobs = @{ MaRun = 1 }
+        $script:Answer = $false
+        Test-HUCloseAllowed 'beenden' | Should -BeFalse
+        @($script:Calls).Count | Should -Be 1
+        $script:LastConfirm | Should -Match 'Muster angewendet'
+        $script:LastConfirm | Should -Match 'Zwischenstand'
+        $script:LastConfirm | Should -Match 'Trotzdem beenden\?'
+        $script:LastWarning | Should -BeTrue
+        $script:Calls.Clear()
+        $script:Answer = $true
+        Test-HUCloseAllowed 'beenden' | Should -BeTrue
+        @($script:Calls).Count | Should -Be 1    # nur die Warnung, keine zweite Rueckfrage zu MaRun
+        $script:Calls | Should -Not -Contain 'Message'
+    }
+    It 'Schliessen: ein weiterer Auftrag neben dem laufenden Muster-Anwenden fragt zusaetzlich einmal' {
+        $script:MA = @{ Running = $true }
+        $script:JobRunning = $true; $script:HUJobs = @{ MaRun = 1; BakRestore = 1 }
+        Test-HUCloseAllowed 'beenden' | Should -BeTrue
+        @($script:Calls).Count | Should -Be 2
+        $script:LastConfirm | Should -Match 'Wiederherstellen'
+        $script:LastConfirm | Should -Not -Match 'Muster anwenden'
+    }
+    It 'Neustart bei laufendem Muster-Anwenden: Meldung, kein Neustart, keine Rueckfrage' {
+        $script:MA = @{ Running = $true }
+        Test-HUCloseAllowed 'neu starten' | Should -BeFalse
+        ($script:Calls -join ',') | Should -Be 'Message'
+    }
+    It 'Schliessen: laufende Tenant-Einrichtung (Phase Work) fragt mit Warnung, Idle und Login nicht; Neustart lehnt mit Meldung ab' {
+        $script:TSU = @{ Phase = 'Work' }
+        $script:Answer = $false
+        Test-HUCloseAllowed 'beenden' | Should -BeFalse
+        @($script:Calls).Count | Should -Be 1
+        $script:LastConfirm | Should -Match 'Tenant-Einrichtung'
+        $script:LastWarning | Should -BeTrue
+        $script:Calls.Clear(); $script:Answer = $true
+        Test-HUCloseAllowed 'beenden' | Should -BeTrue
+        $script:Calls.Clear()
+        Test-HUCloseAllowed 'neu starten' | Should -BeFalse
+        ($script:Calls -join ',') | Should -Be 'Message'
+        $script:Calls.Clear()
+        foreach ($ph in 'Idle', 'Login') { $script:TSU = @{ Phase = $ph }; Test-HUCloseAllowed 'beenden' | Should -BeTrue }
+        @($script:Calls).Count | Should -Be 0
+    }
+    It 'Schliessen: laufende Extension und ungespeichertes Snippet fragen wie bisher' {
+        $script:IsRunning = $true; $script:Answer = $false
+        Test-HUCloseAllowed 'beenden' | Should -BeFalse
+        $script:LastConfirm | Should -Be 'Eine Extension laeuft noch. Trotzdem beenden?'
+        $script:IsRunning = $false; $script:Discard = $false
+        Test-HUCloseAllowed 'beenden' | Should -BeFalse
+        $script:Discard = $true
+        Test-HUCloseAllowed 'beenden' | Should -BeTrue
+    }
+    It 'Schliessen: eine Ausnahme in der Pruefung erlaubt das Beenden ($true), schreibt eine Protokollzeile und zeigt keine Meldung; der Neustart bleibt verboten' {
+        $script:DiscardThrows = $true
+        Test-HUCloseAllowed 'beenden' | Should -BeTrue
+        @($script:LogLines | Where-Object { $_ -match '^WARN Beenden: Pruefung .*Test-Ausnahme' }).Count | Should -Be 1
+        $script:Calls | Should -Not -Contain 'Message'
+        $script:LogLines.Clear()
+        Test-HUCloseAllowed 'neu starten' | Should -BeFalse
+        @($script:LogLines | Where-Object { $_ -match '^WARN .*Neustart nicht freigegeben' }).Count | Should -Be 1
+        $script:Calls | Should -Contain 'Message'
+    }
+    It 'Schliessen: ohne Auftragsverwaltung, Muster, Einrichtung und IsRunning (Variablen fehlen, StrictMode) kein Fehler' {
+        Remove-Variable -Name HUJobs, MA, TSU, IsRunning -Scope Script -ErrorAction SilentlyContinue
+        { Test-HUCloseAllowed 'beenden' } | Should -Not -Throw
+        Test-HUCloseAllowed 'beenden' | Should -BeTrue
+        $script:LogLines.Count | Should -Be 0
+        @($script:Calls).Count | Should -Be 0
+    }
+    It 'Test-HURestartAllowed ruft die gemeinsame Funktion auf (Quelltext), der Closing-Handler in Main.ps1 ebenfalls und fragt nicht mehr einzeln nach Apps/Rem' {
+        $ui = [IO.File]::ReadAllText((Join-Path $script:Root 'Functions\UI-Settings.ps1'), [Text.Encoding]::UTF8)
+        $fn = [regex]::Match($ui, '(?s)function Test-HURestartAllowed \{.*?\r?\n\}').Value
+        $fn | Should -Match "Test-HUCloseAllowed -Action 'neu starten'"
+        $main = [IO.File]::ReadAllText((Join-Path $script:Root 'Main.ps1'), [Text.Encoding]::UTF8)
+        $h = [regex]::Match($main, '(?s)Window\.Add_Closing\(\{.*?\r?\n\}\)').Value
+        $h | Should -Not -BeNullOrEmpty
+        $h | Should -Match "if \(-not \`$script:SkipCloseChecks\) \{"
+        $h | Should -Match "-not \(Test-HUCloseAllowed 'beenden'\)\) \{ \`$e\.Cancel = \`$true; return \}"
+        $h | Should -Not -Match "Test-HUJobRunning|Confirm-HUQSDiscard|'Apps'|'Rem'"
+        # der uebrige Teil des Handlers (Fensterzustand, Tenants trennen, Aufraeumen) bleibt
+        $h | Should -Match 'Save-HUWindowState'
+        $h | Should -Match 'Close-AsyncPool'
+    }
+}
+
+Describe 'Windows-App-Modus: Get-HUWindowsAppTheme (Registry-Zugriff gemockt)' {
+    It 'Wert 1 = light, ausgelesen wird AppsUseLightTheme unter ...\Themes\Personalize' {
+        Mock Get-ItemProperty { [pscustomobject]@{ AppsUseLightTheme = 1 } }
+        Get-HUWindowsAppTheme | Should -BeExactly 'light'
+        Should -Invoke Get-ItemProperty -Times 1 -Exactly -ParameterFilter { $LiteralPath -like 'HKCU:*\Themes\Personalize' -and $Name -eq 'AppsUseLightTheme' }
+    }
+    It 'Wert 0 = dark' {
+        Mock Get-ItemProperty { [pscustomobject]@{ AppsUseLightTheme = 0 } }
+        Get-HUWindowsAppTheme | Should -BeExactly 'dark'
+    }
+    It 'Wert fehlt = dark' {
+        Mock Get-ItemProperty { [pscustomobject]@{ Anderes = 1 } }
+        Get-HUWindowsAppTheme | Should -BeExactly 'dark'
+        Mock Get-ItemProperty { [pscustomobject]@{ AppsUseLightTheme = $null } }
+        Get-HUWindowsAppTheme | Should -BeExactly 'dark'
+    }
+    It 'Schluessel fehlt (Get-ItemProperty liefert nichts) = dark' {
+        Mock Get-ItemProperty { $null }
+        Get-HUWindowsAppTheme | Should -BeExactly 'dark'
+    }
+    It 'Zugriff wirft (Schluessel nicht vorhanden, keine Rechte) = dark' {
+        Mock Get-ItemProperty { throw 'Der Pfad existiert nicht' }
+        { Get-HUWindowsAppTheme } | Should -Not -Throw
+        Get-HUWindowsAppTheme | Should -BeExactly 'dark'
+    }
+    It 'unerwartete Werte (2, Text) gelten als dark' {
+        Mock Get-ItemProperty { [pscustomobject]@{ AppsUseLightTheme = 2 } }
+        Get-HUWindowsAppTheme | Should -BeExactly 'dark'
+        Mock Get-ItemProperty { [pscustomobject]@{ AppsUseLightTheme = 'hell' } }
+        Get-HUWindowsAppTheme | Should -BeExactly 'dark'
     }
 }
 

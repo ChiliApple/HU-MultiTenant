@@ -603,11 +603,8 @@ $script:Window.Add_ContentRendered({
 $script:Window.Add_Closing({
     param($s, $e)
     if (-not $script:SkipCloseChecks) {
-        if ($script:IsRunning -and -not (Confirm-HU 'Eine Extension laeuft noch. Trotzdem beenden?' -Warning)) { $e.Cancel = $true; return }
-        if (-not (Confirm-HUQSDiscard 'beenden')) { $e.Cancel = $true; return }
-        if ((Test-HUJobRunning 'Apps') -or (Test-HUJobRunning 'Rem')) {
-            if (-not (Confirm-HU 'Ein Upload/Auftrag in Apps oder Wartung laeuft noch und wird abgebrochen. Trotzdem beenden?' -Warning)) { $e.Cancel = $true; return }
-        }
+        # gemeinsame Pruefung mit dem Neustart (UI-Settings.ps1): Extension, ungespeichertes Snippet, laufendes Muster-Anwenden und Tenant-Einrichtung, alle Hintergrundauftraege
+        if (-not (Test-HUCloseAllowed 'beenden')) { $e.Cancel = $true; return }
     }
     # 2.5.9: nach dem Wiederherstellen nichts aus dem Speicher zurueckschreiben (Fensterzustand, Apps, Wartung) - sonst waere der wiederhergestellte Stand weg
     if (-not $script:AbRestored) { Save-HUWindowState }

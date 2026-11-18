@@ -366,9 +366,12 @@ function ConvertTo-HUThemeXaml([string]$Xaml) {
 }
 
 # Kern der XAML-Umsetzung (ohne Zwischenspeicher)
+# Attributwerte in "..." und in '...' werden umgesetzt (das urspruengliche Anfuehrungszeichen bleibt). Farben in Property-Element-Syntax
+# (<Border.Background><SolidColorBrush Color="#..."/>) und in <Setter.Value> bekommen die Rolle der Eigenschaft statt Auto; ohne
+# solchen Rahmen bleibt Color= bei Auto.
 function ConvertTo-HUThemeXamlCore([string]$Xaml) {
     $tagRx = [regex]'<!--[\s\S]*?-->|<(/?)([A-Za-z_][\w:.]*)((?:"[^"]*"|''[^'']*''|[^''">])*?)(/?)>'
-    $attRx = [regex]'(\s)([\w:.]+)(\s*=\s*)"([^"]*)"'
+    $attRx = [regex]'(\s)([\w:.]+)(\s*=\s*)(?:"([^"]*)"|''([^'']*)'')'
     $sb = New-Object System.Text.StringBuilder ($Xaml.Length + 256)
     $stack = New-Object System.Collections.ArrayList
     $pos = 0
@@ -381,37 +384,53 @@ function ConvertTo-HUThemeXamlCore([string]$Xaml) {
             [void]$sb.Append($m.Value); continue
         }
         $attrs = $m.Groups[3].Value
-        $tt = ''; $mt = [regex]::Match($attrs, 'TargetType\s*=\s*"(?:\{x:Type\s+)?([\w:]+)\}?"'); if ($mt.Success) { $tt = $mt.Groups[1].Value }
+        $tt = ''; $mt = [regex]::Match($attrs, 'TargetType\s*=\s*["''](?:\{x:Type\s+)?([\w:]+)\}?["'']'); if ($mt.Success) { $tt = $mt.Groups[1].Value }
         $btnHere = ($name -eq 'Button' -or $tt -match '(^|:)Button$')
         $btnAnc = $btnHere; if (-not $btnAnc) { foreach ($s in $stack) { if ($s.B) { $btnAnc = $true; break } } }
-        if ($attrs -match '#[0-9A-Fa-f]{6}|"White"') {
-            $isSetter = ($name -eq 'Setter')
-            $setRole = ''
+        $isSetter = ($name -eq 'Setter')
+        $setRole = ''
+        $frameRole = ''     # Rolle, die dieses Tag seinen Kindern als Rahmen mitgibt (Property-Element oder Setter.Value)
+        if ($isSetter) {
+            $prop = ''; $mp = [regex]::Match($attrs, '\sProperty\s*=\s*(?:"([^"]*)"|''([^'']*)'')'); if ($mp.Success) { $prop = "$($mp.Groups[1].Value)$($mp.Groups[2].Value)" }
+            $hasTarget = $attrs -match '\sTargetName\s*='
+            # Knopf-Style: Standard DarkButton hat weisse Schrift
+            $setRole = Get-HUThemeRole $prop ($btnAnc -and -not $hasTarget) $true
+        } elseif ($name -eq 'Setter.Value') {
+            for ($i = $stack.Count - 1; $i -ge 0; $i--) { if ($stack[$i].N -eq 'Setter') { $frameRole = $stack[$i].SR; break } }
+        } elseif ($name.Contains('.')) {
+            $dot = $name.LastIndexOf('.')
+            $owner = $name.Substring(0, $dot)
+            $frameRole = Get-HUThemeRole $name.Substring($dot + 1) ($btnAnc -or $owner -eq 'Button' -or $owner -match ':Button$') $true
+        }
+        if ($attrs -match '#[0-9A-Fa-f]{6}|["'']White["'']') {
             $wT = $true
-            if ($isSetter) {
-                $prop = ''; $mp = [regex]::Match($attrs, '\sProperty\s*=\s*"([^"]*)"'); if ($mp.Success) { $prop = $mp.Groups[1].Value }
-                $hasTarget = $attrs -match '\sTargetName\s*='
-                # Knopf-Style: Standard DarkButton hat weisse Schrift
-                $setRole = Get-HUThemeRole $prop ($btnAnc -and -not $hasTarget) $true
-            } else {
-                $mf = [regex]::Match($attrs, '\sForeground\s*=\s*"([^"]*)"')
-                if ($mf.Success -and $mf.Groups[1].Value -notmatch '^(White|#(FF)?FFFFFF)$') { $wT = $false }
+            if (-not $isSetter) {
+                $mf = [regex]::Match($attrs, '\sForeground\s*=\s*(?:"([^"]*)"|''([^'']*)'')')
+                if ($mf.Success -and "$($mf.Groups[1].Value)$($mf.Groups[2].Value)" -notmatch '^(White|#(FF)?FFFFFF)$') { $wT = $false }
             }
+            $inFrame = ''
+            if (-not $isSetter) { for ($i = $stack.Count - 1; $i -ge 0; $i--) { if ($stack[$i].R) { $inFrame = $stack[$i].R; break } } }
             $ab = New-Object System.Text.StringBuilder
             $ap = 0
             foreach ($a in $attRx.Matches($attrs)) {
                 [void]$ab.Append($attrs, $ap, $a.Index - $ap); $ap = $a.Index + $a.Length
-                $an = $a.Groups[2].Value; $av = $a.Groups[4].Value
+                $an = $a.Groups[2].Value
+                $q = $(if ($a.Groups[4].Success) { '"' } else { "'" })
+                $av = "$($a.Groups[4].Value)$($a.Groups[5].Value)"
                 if ($isSetter) { if ($an -eq 'Value') { $av = ConvertTo-HUThemeColor $av $setRole } }
-                else { $av = ConvertTo-HUThemeColor $av (Get-HUThemeRole $an $btnAnc $wT) }
-                [void]$ab.Append($a.Groups[1].Value).Append($an).Append($a.Groups[3].Value).Append('"').Append($av).Append('"')
+                else {
+                    $role = Get-HUThemeRole $an $btnAnc $wT
+                    if ($an -eq 'Color' -and $inFrame) { $role = $inFrame }
+                    $av = ConvertTo-HUThemeColor $av $role
+                }
+                [void]$ab.Append($a.Groups[1].Value).Append($an).Append($a.Groups[3].Value).Append($q).Append($av).Append($q)
             }
             [void]$ab.Append($attrs, $ap, $attrs.Length - $ap)
             $attrs = $ab.ToString()
         }
         $self = ($m.Groups[4].Value -eq '/')
         [void]$sb.Append('<').Append($name).Append($attrs).Append($(if ($self) { '/>' } else { '>' }))
-        if (-not $self) { [void]$stack.Add(@{ N = $name; B = $btnHere }) }
+        if (-not $self) { [void]$stack.Add(@{ N = $name; B = $btnHere; SR = $setRole; R = $frameRole }) }
     }
     [void]$sb.Append($Xaml, $pos, $Xaml.Length - $pos)
     return $sb.ToString()
