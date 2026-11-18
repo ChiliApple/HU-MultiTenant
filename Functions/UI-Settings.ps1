@@ -29,7 +29,7 @@ function Initialize-HUSettingsDefaults($S) {
         credentials = @{ tokenCacheTTL = 3000; credentialNamePrefix = 'HU-' }
         logging     = @{ file = './Logs/HU-MultiTenant_{date}.log'; logLevel = 'Info'; retentionDays = 30 }
         reporting   = @{ outputPath = './Reports'; autoVersioning = $true; defaultFormat = 'xlsx' }
-        ui          = @{ maxLogLines = 500; startTab = 'QuickScript'; secretWarnDays = 30; checkSecretsOnStart = $true; checkUpdatesOnStart = $true }
+        ui          = @{ maxLogLines = 500; startTab = 'QuickScript'; secretWarnDays = 30; checkSecretsOnStart = $true; checkUpdatesOnStart = $true; theme = 'dark' }
         extensions  = @{ allowAutoLoad = $true; searchPaths = @('./Extensions'); disabled = @() }
     }
     foreach ($sec in $d.Keys) { foreach ($k in $d[$sec].Keys) { if (-not $S.$sec.PSObject.Properties[$k]) { Set-HUProp $S.$sec $k $d[$sec][$k] } } }
@@ -41,6 +41,173 @@ function New-HUSettingsFile([string]$Path) {
     $s = [pscustomobject]@{ tenants = @() }
     $s = Initialize-HUSettingsDefaults $s
     Write-HUJsonFile -Path $Path -Object $s -Depth 10
+}
+
+# Namen aller noch laufenden Hintergrundauftraege der Auftragsverwaltung (UI-Jobs.ps1, $script:HUJobs). Generisch ueber alle Eintraege,
+# damit neue Auftraege ohne Anpassung hier erfasst sind. Fehlt die Auftragsverwaltung (Variable nicht da, StrictMode), ist die Liste leer.
+function Get-HURunningJobNames {
+    $jobs = Get-Variable -Name HUJobs -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    $names = New-Object System.Collections.Generic.List[string]
+    if ($jobs -is [System.Collections.IDictionary]) {
+        foreach ($k in @($jobs.Keys)) { if (Test-HUJobRunning "$k") { $names.Add("$k") } }
+    }
+    return @($names.ToArray() | Sort-Object)
+}
+
+# Anwendertexte der Hintergrundauftraege fuer die Rueckfrage beim Beenden und Neustart (Start-HUJob -Name ...).
+# EINE Stelle: ein neuer Auftrag braucht hier nur eine Zeile. Ein Schluessel mit '*' am Ende gilt fuer alle Namen mit diesem Anfang
+# (Namen mit Laufnummer und Tenant, z. B. Sec-3-key). Namen, die hier fehlen (auch die von Zusatzmodulen), erscheinen unveraendert.
+# Mit -Quiet gestartete Auftraege werden NICHT ausgenommen: Quiet sagt nur, dass kein "fertig"-Strich ins Protokoll kommt, nicht dass
+# der Auftrag nur liest (AppBackup schreibt und startet mit -Quiet).
+$script:HUJobLabels = @{
+    'Apps'              = 'Apps (Verteilung oder Status)'
+    'Rem'               = 'Wartung'
+    'MaRun'             = 'Muster anwenden'
+    'MaUndo'            = 'Muster rückgängig machen'
+    'EntraRestoreWrite' = 'Zurückschreiben'
+    'BakRestore'        = 'Wiederherstellen'
+    'Backup'            = 'Tenant-Backup'
+    'AppBackup'         = 'App-Sicherung'
+    'TransferWrite'     = 'Übertragen'
+    'TransferUndo'      = 'Übertragung rückgängig machen'
+    'TransferPlan'      = 'Übertragen (Vorschau)'
+    'EntraRestorePlan'  = 'Zurückschreiben (Vorschau)'
+    'MaPlan'            = 'Muster anwenden (Vorschau)'
+    'MaRights'          = 'Muster anwenden (Rechte)'
+    'MaWaitRights'      = 'Muster anwenden (Rechte)'
+    'MuSave'            = 'Muster speichern'
+    'MuDetail'          = 'Muster (Details)'
+    'MuTemplates'       = 'Muster (Vorlagen laden)'
+    'UndoCheck'         = 'Rückgängig prüfen'
+    'BakAudit'          = 'Backup und Verlauf'
+    'BakMuster'         = 'Backup und Verlauf'
+    'AppBackupOpen'     = 'App-Sicherung öffnen'
+    'AppUpd'            = 'App-Updates'
+    'AppUpdGet'         = 'App-Update laden'
+    'AppCats'           = 'App-Kategorien laden'
+    'AppCatNew'         = 'App-Kategorie anlegen'
+    'AppCatDel'         = 'App-Kategorie löschen'
+    'AppSandbox'        = 'Apps (Testinstallation)'
+    'IntAct'            = 'Apps in Intune (Aktion)'
+    'IntLoad'           = 'Apps in Intune laden'
+    'IntDetail-*'       = 'Apps in Intune (Details)'
+    'RemTest'           = 'Wartung (Test)'
+    'RintAct'           = 'Wartung in Intune (Aktion)'
+    'RintLoad'          = 'Wartung in Intune laden'
+    'RintDetail-*'      = 'Wartung in Intune (Details)'
+    'WuAct'             = 'WIN-Updates (Aktion)'
+    'WuLoad'            = 'WIN-Updates laden'
+    'TeamsJob'          = 'Teams-Meldung'
+    'Ana-*'             = 'Analyse'
+    'Cmp-*'             = 'Tenant-Vergleich'
+    'CmpDetail'         = 'Tenant-Vergleich (Details)'
+    'CmpMap'            = 'Tenant-Vergleich'
+    'Sec-*'             = 'Sicherheitskatalog'
+    'SecChg-*'          = 'Sicherheitskatalog'
+    'SecItems-*'        = 'Sicherheitskatalog'
+    'AP-*'              = 'Autopilot'
+}
+
+# Lesbarer Text zu einem internen Auftragsnamen (genauer Name vor Anfang, sonst der Name selbst)
+function Get-HUJobLabel([string]$Name) {
+    $map = Get-Variable -Name HUJobLabels -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    if ($map -is [System.Collections.IDictionary]) {
+        if ($map.Contains($Name)) { return "$($map[$Name])" }
+        foreach ($k in @($map.Keys | Where-Object { "$_".EndsWith('*') } | Sort-Object { "$_".Length } -Descending)) {
+            if ($Name.StartsWith("$k".TrimEnd('*'), [StringComparison]::OrdinalIgnoreCase)) { return "$($map[$k])" }
+        }
+    }
+    return $Name
+}
+
+# Gemeinsame Pruefung vor dem Beenden und vor einem Neustart, damit beide dasselbe fragen. $Action: 'beenden' oder 'neu starten'.
+# $true = weitermachen. Beim Neustart (Restart-HUApp ueberspringt die Pruefungen des normalen Schliessens selbst, SkipCloseChecks):
+# Muster anwenden und Tenant-Einrichtung verhindern ihn mit einer Meldung, danach Rueckfragen zu Extension, ungespeichertem Snippet
+# und laufenden Hintergrundauftraegen; scheitert die Pruefung selbst, gibt es im Zweifel keinen Neustart ($false). Beim Beenden verbietet
+# nichts hart (die App muss sich immer beenden lassen): Muster anwenden und Tenant-Einrichtung bekommen eine Warn-Rueckfrage, und
+# scheitert die Pruefung selbst, wird nur eine Protokollzeile geschrieben und das Beenden erlaubt. Der Closing-Handler in Main.ps1 ruft sie
+# auf, solange SkipCloseChecks nicht gesetzt ist.
+function Test-HUCloseAllowed {
+    param([ValidateSet('beenden', 'neu starten')][string]$Action = 'beenden')
+    $restart = ($Action -eq 'neu starten')
+    try {
+        $maRunning = $false
+        $ma = Get-Variable -Name MA -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+        if ($ma -is [System.Collections.IDictionary] -and $ma.Contains('Running') -and [bool]$ma['Running']) { $maRunning = $true }
+        $tsuWork = $false
+        $tsu = Get-Variable -Name TSU -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+        if ($tsu -is [System.Collections.IDictionary] -and $tsu.Contains('Phase') -and "$($tsu['Phase'])" -eq 'Work') { $tsuWork = $true }
+        if ($restart) {
+            if ($maRunning) {
+                [void](Show-HUMessage "Es wird gerade ein Muster angewendet.`n`nBitte zuerst abwarten, bis es fertig ist (oder abbrechen und das Ende abwarten). Danach kannst du neu starten." -Icon Warning)
+                return $false
+            }
+            if ($tsuWork) {
+                [void](Show-HUMessage "Die Tenant-Einrichtung läuft gerade.`n`nBitte zuerst abwarten, bis sie fertig ist (bei einem Fehler wird Angelegtes wieder entfernt). Danach kannst du neu starten." -Icon Warning)
+                return $false
+            }
+        }
+        $run = $false
+        try { $run = [bool](Get-Variable -Name IsRunning -Scope Script -ValueOnly -ErrorAction SilentlyContinue) } catch { }
+        if ($run -and -not (Confirm-HU "Eine Extension laeuft noch. Trotzdem ${Action}?" -Warning)) { return $false }
+        if (-not (Confirm-HUQSDiscard $Action)) { return $false }
+        if (-not $restart) {
+            if ($maRunning -and -not (Confirm-HU "Es wird gerade ein Muster angewendet.`n`nBeim Beenden bleibt der Tenant in einem Zwischenstand: ein Teil der Änderungen ist schon angewendet, der Rest fehlt. Trotzdem beenden?" -Warning)) { return $false }
+            if ($tsuWork -and -not (Confirm-HU "Die Tenant-Einrichtung läuft gerade.`n`nBeim Beenden kann sie unvollständig bleiben und das bis dahin Angelegte wird nicht mehr aufgeräumt. Trotzdem beenden?" -Warning)) { return $false }
+        }
+        $jobs = @(Get-HURunningJobNames)
+        # das laufende Muster-Anwenden ist oben schon ausdruecklich gewarnt worden: nicht zweimal fragen
+        if ($maRunning) { $jobs = @($jobs | Where-Object { $_ -ne 'MaRun' }) }
+        if ($jobs.Count) {
+            $labels = @($jobs | ForEach-Object { Get-HUJobLabel $_ } | Select-Object -Unique)
+            $list = (@($labels | Select-Object -First 5)) -join ', '
+            if ($labels.Count -gt 5) { $list += " und $($labels.Count - 5) weitere" }
+            $when = $(if ($restart) { 'Neustart' } else { 'Beenden' })
+            if (-not (Confirm-HU "Es laufen noch Hintergrundaufträge ($list). Sie werden beim $when abgebrochen. Trotzdem ${Action}?" -Warning)) { return $false }
+        }
+    } catch {
+        $msg = "$($_.Exception.Message)"
+        if ($restart) {
+            try { if (Get-Command Write-HULog -ErrorAction SilentlyContinue) { Write-HULog -Message "Neustart nicht freigegeben, Pruefung fehlgeschlagen: $msg" -Level 'WARN' } } catch { }
+            # nicht still ablehnen: der Benutzer hat gerade Ja gesagt und saehe sonst nichts
+            try { [void](Show-HUMessage "Der Neustart ist gerade nicht möglich (Einzelheiten im Protokoll)." -Icon Warning) } catch { }
+            return $false
+        }
+        # Beenden: die App muss sich immer schliessen lassen, nur protokollieren
+        try { if (Get-Command Write-HULog -ErrorAction SilentlyContinue) { Write-HULog -Message "Beenden: Pruefung der laufenden Auftraege fehlgeschlagen, es wird trotzdem beendet: $msg" -Level 'WARN' } } catch { }
+        return $true
+    }
+    return $true
+}
+
+# Neustart nur, wenn nichts Laufendes verloren geht: dieselbe Pruefung wie beim Beenden (Test-HUCloseAllowed), aber Muster anwenden und
+# Tenant-Einrichtung verhindern ihn hart, und bei einem Fehler in der Pruefung gibt es im Zweifel keinen Neustart.
+function Test-HURestartAllowed {
+    return [bool](Test-HUCloseAllowed -Action 'neu starten')
+}
+
+# Knopf im Kopf: Farbschema zwischen Hell und Dunkel umschalten (aus "Wie Windows" heraus auf das Gegenteil des gerade wirksamen),
+# in settings.json speichern und neu starten.
+function Switch-HUThemeQuick {
+    $new = $(if (Test-HULightTheme) { 'dark' } else { 'light' })
+    $txt = $(if ($new -eq 'light') { 'Hell' } else { 'Dunkel' })
+    # Ist "Wie Windows" eingestellt, wird es durch den Knopf fest auf Hell bzw. Dunkel gestellt: das vorher sagen
+    $sys = $false
+    try { $sys = ("$($script:Settings.ui.theme)" -eq 'system') } catch { }
+    $note = $(if ($sys) { "`n`n""Wie Windows"" wird dabei ausgeschaltet. Wieder einschalten unter Einstellungen > Allgemein." } else { '' })
+    if (-not (Confirm-HU "Farbschema auf $txt umstellen?`n`nHU-MultiTenant startet dafür neu.$note" 'Farbschema' -Owner $script:Window)) { return }
+    if (-not (Test-HURestartAllowed)) { return }
+    # Scheitert das Speichern, bleibt der neue Wert nicht im Speicher stehen: alten Wert merken und im Fehlerfall zuruecksetzen
+    $had = $false; $old = $null
+    $restore = { try { if ($had) { Set-HUProp $script:Settings.ui 'theme' $old } else { [void]$script:Settings.ui.PSObject.Properties.Remove('theme') } } catch { } }
+    try {
+        $had = [bool]$script:Settings.ui.PSObject.Properties['theme']
+        if ($had) { $old = $script:Settings.ui.theme }
+        Set-HUProp $script:Settings.ui 'theme' $new
+        if (-not (Save-HUSettings)) { & $restore; Show-HUMessage 'settings.json konnte nicht gespeichert werden (Protokoll).' -Icon Error -Owner $script:Window; return }
+    } catch { & $restore; Show-HUMessage "Farbschema nicht gespeichert:`n$($_.Exception.Message)" -Icon Error -Owner $script:Window; return }
+    Write-HULogOK "Farbschema: $new"
+    Restart-HUApp
 }
 
 function Test-HUGuid([string]$Value) { return ($Value -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') }
@@ -63,7 +230,7 @@ function Show-HUSettingsDialog {
     $w = $d.Window; $c = $d.C
     Restore-HUDialogState $w 'SettingsWindow'
     $S = $script:Settings
-    $st = @{ Saved = $false; SetupDone = $false; Tenants = [System.Collections.Generic.List[object]]::new(); Cur = -1; Busy = $false }
+    $st = @{ Saved = $false; SetupDone = $false; Tenants = [System.Collections.Generic.List[object]]::new(); Cur = -1; Busy = $false; ThemeChanged = $false; ThemeText = '' }
     foreach ($t in @($S.tenants)) { $st.Tenants.Add(($t | ConvertTo-Json -Depth 6 | ConvertFrom-Json)) }
 
     # ---------------- Allgemein ----------------
@@ -73,6 +240,18 @@ function Show-HUSettingsDialog {
         if ($cmb.Items.Count) { $cmb.SelectedIndex = 0 }
     }
     & $selTag $c.cmbStartTab (Get-HUProp $S.ui 'startTab' 'QuickScript')
+    # Farbschema: Dateien aus Themes\ plus "Wie Windows"; wirkt nach dem Neustart
+    $themeOld = 'dark'
+    try {
+        foreach ($th in @(Get-HUThemeList)) {
+            $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = "$($th.Name)"; $it.Tag = "$($th.Id)"; [void]$c.cmbTheme.Items.Add($it)
+        }
+    } catch { }
+    $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = 'Wie Windows'; $it.Tag = 'system'; [void]$c.cmbTheme.Items.Add($it)
+    $themeRaw = Get-HUProp $S.ui 'theme' 'dark'
+    $themeCur = "$themeRaw".Trim().ToLowerInvariant()
+    & $selTag $c.cmbTheme $themeCur
+    if ($c.cmbTheme.SelectedItem) { $themeOld = "$($c.cmbTheme.SelectedItem.Tag)" }
     $c.chkSplashAnim.IsChecked = [bool](Get-HUProp $S.ui 'splashAnimation' $true)
     foreach ($p in @(80, 90, 100, 110, 120, 130, 140, 150)) {
         $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = "$p %"; $it.Tag = "$($p / 100)"; [void]$c.cmbScale.Items.Add($it)
@@ -200,7 +379,7 @@ function Show-HUSettingsDialog {
                 [pscustomobject]@{
                     Title = "$(if ((Get-HUProp $t 'isPrimary' $false) -eq $true) { [char]0x2605 + ' ' })$(Get-HUProp $t 'displayName' '(ohne Namen)')"
                     Sub = "$(Get-HUProp $t 'key' '')  $(Get-HUProp $t 'domain' '')"
-                    Secret = $sl[0]; SecretColor = $sl[1]; Index = $i
+                    Secret = $sl[0]; SecretColor = (ConvertTo-HUThemeColor $sl[1] 'Fg'); Index = $i
                 }
             }
             $c.lstTenants.ItemsSource = @($items)
@@ -254,7 +433,7 @@ function Show-HUSettingsDialog {
             $c.tExpires.Text = $(if ($e) { try { ([datetime]::Parse($e, [Globalization.CultureInfo]::InvariantCulture)).ToString('dd.MM.yyyy') } catch { $e } } else { '' })
             $c.tProtected.Text = (@(Get-HUProp $t 'protectedAppIds' @()) -join ', ')
             $c.tTestResult.Text = ''
-            if ($on) { $sl = & $secretLine $t; $c.tSecretState.Text = $sl[0]; $c.tSecretState.Foreground = Get-HUBrush $sl[1] } else { $c.tSecretState.Text = '' }
+            if ($on) { $sl = & $secretLine $t; $c.tSecretState.Text = $sl[0]; $c.tSecretState.Foreground = Get-HUBrush $sl[1] 'Fg' } else { $c.tSecretState.Text = '' }
             # Zertifikat statt Secret: passende Knoepfe zeigen
             $isCert = ($on -and (Test-HUTenantCertAuth $t))
             foreach ($b in @($c.btnSecretSet, $c.btnSecretDelete)) { $b.Visibility = $(if ($isCert) { 'Collapsed' } else { 'Visible' }) }
@@ -371,14 +550,14 @@ function Show-HUSettingsDialog {
         if (-not $saved -or -not (Test-HUTenantCertAuth $saved)) { Show-HUMessage 'Zuerst speichern (der Tenant ist noch nicht in settings.json).' -Icon Warning -Owner $w; return }
         if (-not (Confirm-HU -Warning "Zertifikat fuer '$($t.displayName)' jetzt erneuern?`n`nNeues Zertifikat (12 Monate) an der App eintragen, testen, altes entfernen. Dauert bis zu 2 Minuten." -Owner $w)) { return }
         $c.btnCertRenew.IsEnabled = $false
-        $c.tTestResult.Text = 'Erneuere Zertifikat ... (Ergebnis auch im Protokoll)'; $c.tTestResult.Foreground = Get-HUBrush '#90CAF9'
+        $c.tTestResult.Text = 'Erneuere Zertifikat ... (Ergebnis auch im Protokoll)'; $c.tTestResult.Foreground = Get-HUBrush '#90CAF9' 'Fg'
         $started = Start-HUCertRenew "$($t.key)" -Done {
             param($k, $ok, $txt)
             try {
                 $c.btnCertRenew.IsEnabled = $true
                 $src = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $k })[0]
                 foreach ($x in $st.Tenants) { if ("$($x.key)" -eq $k -and $src) { Set-HUProp $x 'certThumbprint' "$($src.certThumbprint)" } }
-                $c.tTestResult.Text = $txt; $c.tTestResult.Foreground = Get-HUBrush $(if ($ok) { '#8BC34A' } else { '#F44336' })
+                $c.tTestResult.Text = $txt; $c.tTestResult.Foreground = Get-HUBrush $(if ($ok) { '#8BC34A' } else { '#F44336' }) 'Fg'
                 & $refreshList $st.Cur
             } catch { }
         }
@@ -404,13 +583,13 @@ function Show-HUSettingsDialog {
         if ($st.Cur -lt 0) { return }
         & $formToTenant
         $t = $st.Tenants[$st.Cur]
-        if (-not (Test-HUGuid "$($t.tenantId)") -or -not (Test-HUGuid "$($t.appId)")) { $c.tTestResult.Text = 'Tenant-ID und Anwendungs-ID muessen GUIDs sein.'; $c.tTestResult.Foreground = Get-HUBrush '#FF9800'; return }
+        if (-not (Test-HUGuid "$($t.tenantId)") -or -not (Test-HUGuid "$($t.appId)")) { $c.tTestResult.Text = 'Tenant-ID und Anwendungs-ID muessen GUIDs sein.'; $c.tTestResult.Foreground = Get-HUBrush '#FF9800' 'Fg'; return }
         $tmp = [pscustomobject]@{ tenants = @($t); credentials = $S.credentials }
         $w.Cursor = [System.Windows.Input.Cursors]::Wait
         try {
             $tok = $null
             try { $tok = Get-GraphToken -TenantKey "$($t.key)" -Settings $tmp -ForceRefresh -ErrorAction Stop } catch { $c.tTestResult.Text = "Anmeldung fehlgeschlagen: $($_.Exception.Message)" }
-            if (-not $tok) { if (-not $c.tTestResult.Text) { $c.tTestResult.Text = 'Anmeldung fehlgeschlagen - Secret fehlt oder ist falsch/abgelaufen.' }; $c.tTestResult.Foreground = Get-HUBrush '#F44336'; return }
+            if (-not $tok) { if (-not $c.tTestResult.Text) { $c.tTestResult.Text = 'Anmeldung fehlgeschlagen - Secret fehlt oder ist falsch/abgelaufen.' }; $c.tTestResult.Foreground = Get-HUBrush '#F44336' 'Fg'; return }
             $perms = @(Get-TokenPermissions -Token $tok)
             $x = Get-AppSecretExpiry -TenantKey "$($t.key)" -Settings $tmp -Token $tok
             Set-HUSecretCacheEntry "$($t.key)" $x
@@ -419,9 +598,9 @@ function Show-HUSettingsDialog {
             elseif ($x.Status -eq 'NoPermission') { $txt += " Ablaufdatum nicht lesbar: Application.Read.All fehlt - Datum manuell eintragen oder Berechtigung erteilen." }
             else { $txt += " Ablaufdatum: $($x.Error)" }
             $c.tTestResult.Text = $txt
-            $c.tTestResult.Foreground = Get-HUBrush '#8BC34A'
+            $c.tTestResult.Foreground = Get-HUBrush '#8BC34A' 'Fg'
             & $refreshList $st.Cur
-            $sl = & $secretLine $t; $c.tSecretState.Text = $sl[0]; $c.tSecretState.Foreground = Get-HUBrush $sl[1]
+            $sl = & $secretLine $t; $c.tSecretState.Text = $sl[0]; $c.tSecretState.Foreground = Get-HUBrush $sl[1] 'Fg'
         } finally { $w.Cursor = $null; try { Clear-TokenCache -TenantKey "$($t.key)" } catch { } }
     })
     $c.btnCheckAllSecrets.Add_Click({
@@ -484,6 +663,11 @@ function Show-HUSettingsDialog {
         Set-HUProp $S 'tenants' @($st.Tenants.ToArray())
         Set-HUProp $S.ui 'startTab' "$($c.cmbStartTab.SelectedItem.Tag)"
         Set-HUProp $S.ui 'splashAnimation' ([bool]$c.chkSplashAnim.IsChecked)
+        $themeNew = $(if ($c.cmbTheme.SelectedItem) { "$($c.cmbTheme.SelectedItem.Tag)" } else { $themeOld })
+        # bei jedem Speichern neu entscheiden (auch nach einem fehlgeschlagenen Versuch): unveraendert = Rohwert aus der Datei bleibt
+        $st.ThemeChanged = ($themeNew -ne $themeOld)
+        $st.ThemeText = $(if ($st.ThemeChanged) { "$($c.cmbTheme.SelectedItem.Content)" } else { '' })
+        Set-HUProp $S.ui 'theme' $(if ($st.ThemeChanged) { $themeNew } else { $themeRaw })
         try { if ($c.cmbPsHost.SelectedItem) { Set-HUPsHostSetting "$($c.cmbPsHost.SelectedItem.Tag)" } } catch { Write-HULogWarn "PowerShell beim Start nicht gespeichert: $($_.Exception.Message)" }
         Set-HUProp $S.ui 'secretWarnDays' $wd
         Set-HUProp $S.ui 'checkSecretsOnStart' ([bool]$c.chkSecretCheckStart.IsChecked)
@@ -533,5 +717,9 @@ function Show-HUSettingsDialog {
     switch ($Tab) { 'Tenants' { $c.tabSettings.SelectedItem = $c.tabTenants } 'Update' { $c.tabSettings.SelectedItem = $c.tabUpdate } 'Sicherung' { $c.tabSettings.SelectedItem = $c.tabAppBackup } default { } }
     $c.txtSettingsInfo.Text = "Programmordner: $($script:AppRoot)"
     [void]$w.ShowDialog()
+    # ein geaendertes Farbschema wirkt erst nach dem Neustart
+    if ($st.Saved -and $st.ThemeChanged) {
+        if ((Confirm-HU "Das Farbschema '$($st.ThemeText)' wirkt nach dem Neustart.`n`nJetzt neu starten?" 'Farbschema' -Owner $script:Window) -and (Test-HURestartAllowed)) { Restart-HUApp; return $false }
+    }
     return ($st.Saved -or $st.SetupDone)
 }

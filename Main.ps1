@@ -199,10 +199,10 @@ foreach ($mod in @('HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Extensi
 $modPath = Join-Path $script:AppRoot 'Core\HU.Excel.psm1'
 if (Test-Path -LiteralPath $modPath) { try { Import-Module $modPath -Force -DisableNameChecking -ErrorAction Stop } catch { Write-Warning "HU.Excel: $($_.Exception.Message)" } }
 
-$uiFiles = @('Core-Async', 'Core-Update', 'Core-Addons', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
+$uiFiles = @('Core-Async', 'Core-Update', 'Core-Addons', 'UI-Theme', 'UI-Common', 'UI-State', 'UI-Tenants', 'UI-Snippets', 'UI-QSParams', 'UI-QSTable', 'UI-QSHistory', 'UI-QuickScript',
              'UI-Extensions', 'UI-Permissions', 'UI-TenantSetup', 'UI-SecretSetup', 'UI-Shell', 'UI-Splash', 'UI-Settings', 'UI-Update', 'UI-Jobs', 'UI-GroupPicker', 'UI-Apps', 'UI-IntuneApps', 'UI-Maint', 'UI-IntuneRem', 'UI-Recipes', 'UI-WinUpdates', 'UI-RemSandbox', 'UI-RemParams', 'UI-Support', 'UI-Lock', 'UI-Analyse', 'UI-Muster', 'UI-MusterApply', 'UI-MusterExchange', 'UI-AppBackup', 'UI-EntraRestore', 'UI-Security', 'UI-AppUpdates', 'UI-Teams', 'UI-Remote', 'UI-Addons')
 # ohne Oberflaeche nur das Noetige (Einstellungen lesen/ergaenzen)
-if ($Headless) { $uiFiles = @('UI-Common', 'UI-Settings') }
+if ($Headless) { $uiFiles = @('UI-Theme', 'UI-Common', 'UI-Settings') }
 foreach ($f in $uiFiles) {
     $fp = Join-Path $script:AppRoot "Functions\$f.ps1"
     if (-not (Test-Path -LiteralPath $fp)) { Show-HUFatal "Datei fehlt: $fp`n`nPull.ps1 ausfuehren, um die Dateien zu laden." }
@@ -222,6 +222,13 @@ if (-not (Test-Path -LiteralPath $settingsPath)) {
 $script:Settings = Import-TenantSettings -SettingsPath $settingsPath
 if (-not $script:Settings) { Show-HUFatal "settings.json nicht lesbar:`n$settingsPath`n`nSicherung: settings.json.bak" 3 }
 $script:Settings = Initialize-HUSettingsDefaults $script:Settings
+# Farbschema (Einstellung ui.theme: dark | light | system), wirkt ab dem ersten Fenster. Fehler duerfen den Start nie verhindern (Functions\UI-Theme.ps1).
+try {
+    $__ts = "$($script:Settings.ui.theme)"
+    if ($SmokeTest -and "$env:HUMT_SMOKE_THEME" -eq 'light') { $__ts = 'light' }   # Starttest im hellen Schema (CI)
+    Initialize-HUTheme -Setting $__ts -AppRoot $script:AppRoot
+} catch { try { Write-HULogWarn "Farbschema: $($_.Exception.Message)" } catch { } }
+Remove-Variable __ts -ErrorAction SilentlyContinue
 if (-not @($script:Settings.tenants).Count) { $script:FirstRun = $true }
 
 # ============================================================================
@@ -283,6 +290,15 @@ if (-not [System.IO.Path]::IsPathRooted($logFile)) { $logFile = Join-Path $scrip
 $minLevel = "$($script:Settings.logging.logLevel)".ToUpper()
 if ($minLevel -notin 'DEBUG', 'INFO', 'OK', 'WARN', 'ERROR') { $minLevel = 'INFO' }
 Initialize-Logging -LogFilePath $logFile -RichTextBox $script:Controls['rtbLog'] -MinLevel $minLevel -MaxGuiLines ([int]$script:Settings.ui.maxLogLines)
+# Protokollfarben des Farbschemas (Feld "log"); im dunklen Schema aendert sich nichts. Eine Warnung vom Laden des Schemas hier nachholen
+# (Initialize-Logging hat den Puffer eben geleert).
+try {
+    $__lc = Get-HUThemeLogColors
+    if ($__lc) { Set-HULogColors $__lc }
+    $__ti = Get-HUThemeInfo
+    if ($__ti.Warning) { Write-HULogWarn "$($__ti.Warning)" }
+} catch { }
+Remove-Variable __lc, __ti -ErrorAction SilentlyContinue
 # Tagesprotokolle aelter als logging.retentionDays (Standard 30) beim Start loeschen (Review 030 B72/D7)
 try {
     $keep = 30; try { if ([int]$script:Settings.logging.retentionDays -gt 0) { $keep = [int]$script:Settings.logging.retentionDays } } catch { }
@@ -311,7 +327,7 @@ function Update-VersionDisplay {
     elseif ($cfg -and "$($cfg.Channel)" -eq 'Test') { $txt = 'Kanal Test'; $col = '#FFA726' }
     $t = $script:Controls['txtVersion']
     $t.Text = "v$($script:Version)  |  $txt"
-    $t.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($col)
+    $t.Foreground = Get-HUBrush $col 'Fg'
     $t.ToolTip = $(if ($cfg -and $cfg.UseBranch) { "Updates kommen direkt aus dem Repo (Branch $($cfg.Branch)), ohne freigegebene Version" } elseif ($txt -eq 'Kanal Test') { 'Updates: auch Testversionen (Vorab-Releases). Umstellen unter Einstellungen > Update.' } else { 'Updates: nur freigegebene Versionen. Umstellen unter Einstellungen > Update.' })
     $script:Window.Title = "HU-MultiTenant v$($script:Version)"
 }
@@ -347,6 +363,12 @@ foreach ($__a in @(Get-HUAddonStartList)) {
 Remove-Variable __a -ErrorAction SilentlyContinue
 $script:Controls['btnSettings'].Add_Click({ Open-HUSettings })
 $script:Controls['btnSupport'].Add_Click({ Show-HUSupport })
+# Farbschema mit einem Klick: Sonne im dunklen Schema (wechselt auf Hell), Mond im hellen (wechselt auf Dunkel)
+if ($script:Controls['btnTheme']) {
+    $script:Controls['btnTheme'].Content = $(if (Test-HULightTheme) { [char]::ConvertFromUtf32(0x1F319) } else { [string][char]0x2600 })
+    $script:Controls['btnTheme'].ToolTip = $(if (Test-HULightTheme) { 'Auf dunkles Farbschema umschalten (HU-MultiTenant startet dafür neu)' } else { 'Auf helles Farbschema umschalten (HU-MultiTenant startet dafür neu)' })
+    $script:Controls['btnTheme'].Add_Click({ Switch-HUThemeQuick })
+}
 $script:Controls['btnRemote'].Add_Click({ Show-HURemoteDialog })
 $script:Controls['btnPanic'].Add_Click({ Invoke-HUPanic })
 # Reiterwechsel (nur das TabControl selbst, nicht Listen/Auswahlfelder darin): Extension-Liste ein-/ausblenden
@@ -426,6 +448,7 @@ $script:Window.Add_ContentRendered({
                 return
             }
             $steps = @()
+            if (Test-HULightTheme) { $steps += 'Hell' }   # Starttest im hellen Schema (HUMT_SMOKE_THEME=light)
             try {
                 # Dialoge oeffnen; ein zweiter Timer schliesst das jeweils offene Fenster nach kurzer Zeit
                 $script:SmokeCloser = [System.Windows.Threading.DispatcherTimer]::new()
@@ -579,13 +602,25 @@ $script:Window.Add_ContentRendered({
 
 $script:Window.Add_Closing({
     param($s, $e)
-    if (-not $script:SkipCloseChecks) {
-        if ($script:IsRunning -and -not (Confirm-HU 'Eine Extension laeuft noch. Trotzdem beenden?' -Warning)) { $e.Cancel = $true; return }
-        if (-not (Confirm-HUQSDiscard 'beenden')) { $e.Cancel = $true; return }
-        if ((Test-HUJobRunning 'Apps') -or (Test-HUJobRunning 'Rem')) {
-            if (-not (Confirm-HU 'Ein Upload/Auftrag in Apps oder Wartung laeuft noch und wird abgebrochen. Trotzdem beenden?' -Warning)) { $e.Cancel = $true; return }
+    # aus der Sperre heraus (Sperrfenster offen) ohne Rueckfragen: sonst liesse sich die Sperre ueber "Nein" ohne PIN aufheben
+    if (-not $script:SkipCloseChecks -and -not $script:LockActive) {
+        # gemeinsame Pruefung mit dem Neustart (UI-Settings.ps1): Extension, ungespeichertes Snippet, laufendes Muster-Anwenden und Tenant-Einrichtung, alle Hintergrundauftraege
+        # solange die Rueckfragen offen sind, oeffnet die Sperre kein Fenster (UI-Lock.ps1: CloseChecking, LockDue)
+        $script:CloseChecking = $true
+        $closeOk = $false
+        try { $closeOk = Test-HUCloseAllowed 'beenden' } finally { $script:CloseChecking = $false }
+        # Hat waehrend der offenen Rueckfrage die Sperre zugeschlagen und wurde dort "beenden" gewaehlt, wird beendet, auch wenn die
+        # Rueckfrage danach mit "Nein" beantwortet wird (der Inhalt bleibt verborgen, entsperrt wird nur mit PIN oder Windows Hello)
+        $lockExit = $false; try { $lockExit = [bool](Get-Variable -Name LockExitPending -Scope Script -ValueOnly -ErrorAction SilentlyContinue) } catch { }
+        if (-not $closeOk -and -not $lockExit) {
+            $e.Cancel = $true
+            # war waehrend der Rueckfrage die Sperre faellig, bleibt der Inhalt verborgen und das Sperrfenster erscheint jetzt
+            try { Start-HULockAfterClose } catch { }
+            return
         }
     }
+    # ab hier wird beendet: Sperr-Zeitgeber anhalten und ein offenes Sperrfenster mit schliessen (sonst bleibt der Prozess haengen)
+    try { Close-HULockDialog } catch { }
     # 2.5.9: nach dem Wiederherstellen nichts aus dem Speicher zurueckschreiben (Fensterzustand, Apps, Wartung) - sonst waere der wiederhergestellte Stand weg
     if (-not $script:AbRestored) { Save-HUWindowState }
     try { Close-HUToasts } catch { }

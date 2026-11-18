@@ -271,7 +271,7 @@ function Show-HUMusterApply {
     $S.StepLbl = @(foreach ($n in $names) { $t = New-Object System.Windows.Controls.TextBlock; $t.Text = $n; $t.Margin = '0,0,18,0'; $t.FontSize = 12; [void]$c.pnlSteps.Children.Add($t); $t })
     $S.TenantChecks = @(foreach ($t in @($script:Settings.tenants | Where-Object { $_ -and "$($_.key)" })) {
             $ch = New-Object System.Windows.Controls.CheckBox; try { $ch.Style = $w.FindResource('DarkCheckBox') } catch { }
-            $ch.Content = (Get-HUAnaTenantName "$($t.key)"); $ch.Tag = "$($t.key)"; $ch.Margin = '0,2,18,2'; $ch.Foreground = Get-HUBrush '#E0E0E0'
+            $ch.Content = (Get-HUAnaTenantName "$($t.key)"); $ch.Tag = "$($t.key)"; $ch.Margin = '0,2,18,2'; $ch.Foreground = Get-HUBrush '#E0E0E0' 'Fg'
             $ch.Add_Checked({ & $script:MA.Upd }); $ch.Add_Unchecked({ & $script:MA.Upd })
             [void]$c.pnlTenants.Children.Add($ch); $ch })
     $S.Queue = @(); $S.QIndex = 0
@@ -284,13 +284,13 @@ function Show-HUMusterApply {
         foreach ($i in 1..5) { $c["pg$i"].Visibility = 'Collapsed' }
         $c["pg$([Math]::Min($n, 5))"].Visibility = 'Visible'
         for ($i = 0; $i -lt $S.StepLbl.Count; $i++) {
-            $S.StepLbl[$i].Foreground = Get-HUBrush $(if ($i + 1 -lt $n) { '#81C784' } elseif ($i + 1 -eq $n) { '#E0E0E0' } else { '#666666' })
+            $S.StepLbl[$i].Foreground = Get-HUBrush $(if ($i + 1 -lt $n) { '#81C784' } elseif ($i + 1 -eq $n) { '#E0E0E0' } else { '#666666' }) 'Fg'
             $S.StepLbl[$i].FontWeight = $(if ($i + 1 -eq $n) { 'SemiBold' } else { 'Normal' })
         }
         $c.btnBack.Visibility = $(if ($n -in 2, 3, 4) { 'Visible' } else { 'Collapsed' })
         $c.btnNext.Visibility = $(if ($n -le 4) { 'Visible' } else { 'Collapsed' })
         $c.btnNext.Content = $(if ($n -eq 4) { "$([char]0x2192) Anwenden" } else { "Weiter $([char]0x2192)" })
-        $c.btnNext.Background = Get-HUBrush $(if ($n -eq 4) { '#A65A28' } else { '#1976D2' })
+        $c.btnNext.Background = Get-HUBrush $(if ($n -eq 4) { '#A65A28' } else { '#1976D2' }) 'Btn'
         & $S.Upd
     }
     $S.Upd = {
@@ -345,7 +345,7 @@ function Show-HUMusterApply {
                 $S2.RightsOk = -not $S2.Missing.Count
                 $S2.Bg = $r.Bg
                 $S2.C.lblBg.Text = "Notfallkonten: $($r.Bg.Text)$(if (-not $S2.NeedBg) { ' (fuer diese Pakete nicht noetig)' })"
-                $S2.C.lblBg.Foreground = Get-HUBrush $(if ($r.Bg.Ok) { '#81C784' } elseif (-not $S2.NeedBg) { '#AAAAAA' } else { '#EF5350' })
+                $S2.C.lblBg.Foreground = Get-HUBrush $(if ($r.Bg.Ok) { '#81C784' } elseif (-not $S2.NeedBg) { '#AAAAAA' } else { '#EF5350' }) 'Fg'
                 $S2.C.btnGrant.IsEnabled = [bool]$S2.Missing.Count
                 & $S2.Upd
             })
@@ -406,13 +406,13 @@ function Show-HUMusterApply {
         $S = $script:MA; $c = $S.C; $w = $S.W
         $c.pnlMap.Children.Clear()
         $sl = $S.Slots
-        $addTb = { param([string]$t, [string]$col = '#CCCCCC', [switch]$Bold) $b = New-Object System.Windows.Controls.TextBlock; $b.Text = $t; $b.Foreground = Get-HUBrush $col; $b.FontSize = 12; $b.TextWrapping = 'Wrap'; $b.Margin = '0,6,0,2'; if ($Bold) { $b.FontWeight = 'SemiBold' }; [void]$c.pnlMap.Children.Add($b) }
+        $addTb = { param([string]$t, [string]$col = '#CCCCCC', [switch]$Bold) $b = New-Object System.Windows.Controls.TextBlock; $b.Text = $t; $b.Foreground = Get-HUBrush $col 'Fg'; $b.FontSize = 12; $b.TextWrapping = 'Wrap'; $b.Margin = '0,6,0,2'; if ($Bold) { $b.FontWeight = 'SemiBold' }; [void]$c.pnlMap.Children.Add($b) }
         if (-not @($sl.Slots).Count -and -not @($sl.Countries).Count) { & $addTb 'Keine Zuordnung noetig - die gewaehlten Pakete verweisen auf keine Gruppen und keine waehlbaren Laender.'; return }
         if (@($sl.Slots).Count) {
             & $addTb 'Gruppen: je Platz eine Gruppe im Ziel waehlen (gleichnamige sind vorgewaehlt, leer = nicht zuweisen). Gilt fuer alle Richtlinien mit diesem Platz.' -Bold
             foreach ($slot in @($sl.Slots)) {
                 $sp = New-Object System.Windows.Controls.StackPanel; $sp.Orientation = 'Horizontal'; $sp.Margin = '0,3,0,3'
-                $tb = New-Object System.Windows.Controls.TextBlock; $tb.Text = "$(if ($slot.Feld -eq 'includeGroups') { 'Gilt fuer' } else { 'Ausgenommen' }) '$($slot.Slot)'"; $tb.Foreground = Get-HUBrush '#90CAF9'; $tb.FontSize = 12; $tb.MinWidth = 280; $tb.VerticalAlignment = 'Center'
+                $tb = New-Object System.Windows.Controls.TextBlock; $tb.Text = "$(if ($slot.Feld -eq 'includeGroups') { 'Gilt fuer' } else { 'Ausgenommen' }) '$($slot.Slot)'"; $tb.Foreground = Get-HUBrush '#90CAF9' 'Fg'; $tb.FontSize = 12; $tb.MinWidth = 280; $tb.VerticalAlignment = 'Center'
                 $tb.ToolTip = "Verwendet in: $(@($slot.Used) -join ', ')"
                 $cb = New-Object System.Windows.Controls.ComboBox; try { $cb.Style = $w.FindResource('DarkComboBox') } catch { }
                 $cb.MinWidth = 340; $cb.FontSize = 12; $cb.IsTextSearchEnabled = $true
@@ -431,7 +431,7 @@ function Show-HUMusterApply {
             & $addTb "Erlaubte Laender fuer '$(@($sl.Countries)[0].Ort)' (fest dabei bleibt, was das Paket vorgibt):" -Bold
             foreach ($k in @($sl.Countries)) {
                 $ch = New-Object System.Windows.Controls.CheckBox; try { $ch.Style = $w.FindResource('DarkCheckBox') } catch { }
-                $ch.Content = "$($k.Text)"; $ch.Foreground = Get-HUBrush '#90CAF9'; $ch.Margin = '0,2,0,2'; $ch.Tag = $k.Code
+                $ch.Content = "$($k.Text)"; $ch.Foreground = Get-HUBrush '#90CAF9' 'Fg'; $ch.Margin = '0,2,0,2'; $ch.Tag = $k.Code
                 $ch.IsChecked = $(if ($S.Countries.ContainsKey($k.Code)) { [bool]$S.Countries[$k.Code] } else { [bool]$k.Value })
                 $S.Countries[$k.Code] = [bool]$ch.IsChecked
                 $ch.Add_Checked({ $script:MA.Countries["$($this.Tag)"] = $true }); $ch.Add_Unchecked({ $script:MA.Countries["$($this.Tag)"] = $false })
@@ -549,7 +549,7 @@ function Show-HUMusterApply {
                 $S2.RunFile = $(if ($r) { $r.RunFile } else { '' })
                 $ok = @($S2.Prog.Lines | Where-Object { $_.Ergebnis -eq 'ok' }).Count
                 $S2.C.lblT5.Text = "Ergebnis: $ok von $($S2.Prog.Total) angewendet$(if ($r) { " ($($r.State))" }). Conditional Access steht auf 'Nur Bericht' - nach der Pruefung im Anmeldeprotokoll im Portal einschalten; Intune ohne Zuweisungen.`n$(if ($S2.QIndex -lt @($S2.Queue).Count - 1) { 'Die erteilten Rechte bleiben bis zum letzten Tenant und werden dann fuer alle gesammelt zurueckgegeben.' } elseif (@(& $S2.OpenRights).Count) { "Jetzt die erteilten Rechte zurueckgeben (Knopf unten, $(@(& $S2.OpenRights).Count) Tenant(s) auf einmal)." } else { 'Es sind keine erteilten Rechte offen.' })"
-                for ($i = 0; $i -lt $S2.StepLbl.Count; $i++) { $S2.StepLbl[$i].Foreground = Get-HUBrush $(if ($i -lt 5) { '#81C784' } else { '#E0E0E0' }) }
+                for ($i = 0; $i -lt $S2.StepLbl.Count; $i++) { $S2.StepLbl[$i].Foreground = Get-HUBrush $(if ($i -lt 5) { '#81C784' } else { '#E0E0E0' }) 'Fg' }
                 $S2.C.pnlDone.Visibility = 'Visible'
                 $S2.C.btnUndo.IsEnabled = [bool]$S2.RunFile
                 & $S2.UpdRevoke

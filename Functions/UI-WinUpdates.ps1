@@ -26,7 +26,7 @@ function Show-HUWuMode([bool]$On) {
     $c = $script:Controls
     $c['pnlWuLeft'].Visibility = $(if ($On) { 'Visible' } else { 'Collapsed' })
     $c['pnlWuRight'].Visibility = $c['pnlWuLeft'].Visibility
-    $c['btnRemModeWu'].Background = Get-HUBrush $(if ($On) { '#1976D2' } else { '#3E3E42' })
+    Set-HUToggleLook $c['btnRemModeWu'] $On
     if ($On) {
         if (-not $c['spWuTenants'].Children.Count) { Update-HUWuTenantChecks }
         # sofort lesen; Stand aelter als 15 Minuten wird beim Oeffnen erneuert
@@ -44,7 +44,7 @@ function Update-HUWuTenantChecks {
     foreach ($t in @($script:Settings.tenants)) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"; $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $cb.FontSize = 11
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
         $cb.IsChecked = ($saved -contains "$($t.key)")
         $cb.Add_Checked({ if (-not $script:TenantToggleBusy) { Save-HUWuTenants } })
@@ -188,7 +188,7 @@ function Update-HUWuView {
             $col = switch ($s.Ampel) { 'rot' { '#EF5350' } 'gelb' { '#FFB74D' } 'gruen' { '#81C784' } default { '#AAAAAA' } }
             $warn = @(@($i.Policies) | Where-Object { $_.Hinweis } | ForEach-Object { "$($_.Name): $($_.Hinweis)" })
             $drv = @(@($i.PSObject.Properties['Drivers'] | ForEach-Object { $_.Value }) | Where-Object { $_ -and $_.Status -eq 'pruefen' -and [int]$_.Geraete -gt 0 -and "$($_.Datum)" -ge (Get-Date).AddMonths(-12).ToString('yyyy-MM-dd') }).Count
-            [pscustomobject]@{ Tenant = $i.Tenant; Title = "$($names[$i.Tenant])"; Color = $col
+            [pscustomobject]@{ Tenant = $i.Tenant; Title = "$($names[$i.Tenant])"; Color = (ConvertTo-HUThemeColor $col 'Fg')
                 Sub = "$($s.Text)$(if ($s.Haupt) { "; $($s.Haupt)" })$(if ($drv) { "; $drv Treiber (12 Monate) zu pruefen" })$(if ($i.PSObject.Properties['DevicesFailed'] -and $i.DevicesFailed) { ' | GERAETE NICHT LESBAR - Zahlen fehlen' } elseif (@($i.Errors).Count) { ' | nicht alles lesbar' })"
                 Tip = (@("$($s.Text)") + @($i.Errors) + $warn) -join "`n" }
         })
@@ -403,7 +403,7 @@ function Register-HUWinUpdateHandlers {
             elseif ($null -ne $ps) { $col = $(if ($ps -like 'veraltet*') { '#EF9A9A' } elseif ($ps -like '1 Update*') { '#FFCC80' } elseif ($ps -eq 'unbekannt') { '#AAAAAA' } else { '#E0E0E0' }) }
             elseif ($hi) { $col = '#FFCC80' }
             elseif ($tr -and "$(Get-HUWuCell $o 'Status')" -match 'pruefen') { $col = '#FFCC80' }
-            $e.Row.Foreground = Get-HUBrush $col
+            $e.Row.Foreground = Get-HUBrush $col 'Fg'
         })
 }
 
@@ -422,10 +422,10 @@ function Show-HUWuDetail {
     $c['txtWuDetTitle'].Text = "$($g.Art): $($g.Name)"
     $c['txtWuDetInfo'].Text = "in $(@($g.Items).Count) Tenant(s): $($g.Tenants). Aenderungen gelten fuer alle genannten Tenants."
     # 074 B6: verschiedene Werte je Tenant - angezeigt wird der erste; gesendet wird je Tenant nur, was sich dort aendert
-    $c['txtWuDetInfo'].Foreground = Get-HUBrush '#AAAAAA'
+    $c['txtWuDetInfo'].Foreground = Get-HUBrush '#AAAAAA' 'Fg'
     if ("$($g.Einstellung)" -like 'je Tenant verschieden*') {
         $c['txtWuDetInfo'].Text += " ACHTUNG: Die Tenants haben unterschiedliche Werte - angezeigt sind die von $((Get-HUWuTenantNames)[@($g.Items)[0].Tenant]). Beim Speichern wird je Tenant nur geaendert, was vom Eingetragenen abweicht."
-        $c['txtWuDetInfo'].Foreground = Get-HUBrush '#FFB74D'
+        $c['txtWuDetInfo'].Foreground = Get-HUBrush '#FFB74D' 'Fg'
     }
     # Zuweisungen nach Ziel-Text zusammenfassen; je Tenant der eigene Schluessel (Gruppen-IDs sind je Tenant verschieden)
     $m = [ordered]@{}
@@ -476,7 +476,7 @@ function Show-HUWuDetail {
         default {
             $t = New-Object System.Windows.Controls.TextBlock
             $t.Text = $(if ($g.Art -eq 'Expedite') { 'Expedite hat nur das Update und den Neustart - nach dem Ausrollen wieder entfernen (Microsoft-Empfehlung).' } else { 'Diese Art wird hier nur angezeigt.' })
-            $t.Foreground = Get-HUBrush '#AAAAAA'; $t.TextWrapping = 'Wrap'
+            $t.Foreground = Get-HUBrush '#AAAAAA' 'Fg'; $t.TextWrapping = 'Wrap'
             [void]$p.Children.Add($t)
         }
     }
@@ -495,7 +495,7 @@ function Add-HUWuField([string]$Key, [string]$Label, [string]$Value, [int]$Width
     $sp = New-Object System.Windows.Controls.StackPanel
     $sp.Orientation = 'Horizontal'; $sp.Margin = [System.Windows.Thickness]::new(0, 2, 14, 4)
     $l = New-Object System.Windows.Controls.TextBlock
-    $l.Text = $Label; $l.Foreground = Get-HUBrush '#BBBBBB'; $l.FontSize = 11; $l.VerticalAlignment = 'Center'; $l.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
+    $l.Text = $Label; $l.Foreground = Get-HUBrush '#BBBBBB' 'Fg'; $l.FontSize = 11; $l.VerticalAlignment = 'Center'; $l.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
     $t = New-Object System.Windows.Controls.TextBox
     $t.Style = $script:Window.FindResource('DarkTextBox'); $t.Width = $Width; $t.Text = $Value
     [System.Windows.Automation.AutomationProperties]::SetName($t, $Label)   # 074 B19: Screenreader
@@ -509,7 +509,7 @@ function Add-HUWuCombo([string]$Key, [string]$Label, [string[]]$Items, [string]$
     $sp = New-Object System.Windows.Controls.StackPanel
     $sp.Orientation = 'Horizontal'; $sp.Margin = [System.Windows.Thickness]::new(0, 2, 14, 4)
     $l = New-Object System.Windows.Controls.TextBlock
-    $l.Text = $Label; $l.Foreground = Get-HUBrush '#BBBBBB'; $l.FontSize = 11; $l.VerticalAlignment = 'Center'; $l.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
+    $l.Text = $Label; $l.Foreground = Get-HUBrush '#BBBBBB' 'Fg'; $l.FontSize = 11; $l.VerticalAlignment = 'Center'; $l.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
     $cb = New-Object System.Windows.Controls.ComboBox
     $cb.Style = $script:Window.FindResource('DarkComboBox'); $cb.Width = $Width
     [System.Windows.Automation.AutomationProperties]::SetName($cb, $Label)   # 074 B19: Screenreader

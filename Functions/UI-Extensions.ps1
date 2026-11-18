@@ -84,12 +84,12 @@ function Show-ExtensionDetails {
     $extRuntime = if ($Extension.Runtime) { $Extension.Runtime } else { 'PS5' }
     if ($extRuntime -eq 'PS7') {
         $rtBadge.Text = 'PS7'
-        $rtBadge.Background = Get-HUBrush ('#4CAF50')
+        $rtBadge.Background = Get-HUBrush ('#4CAF50') 'Btn'
         $rtBadge.Visibility = [System.Windows.Visibility]::Visible
     }
     elseif ($extRuntime -eq 'PS5|PS7') {
         $rtBadge.Text = 'PS5|PS7'
-        $rtBadge.Background = Get-HUBrush ('#2196F3')
+        $rtBadge.Background = Get-HUBrush ('#2196F3') 'Btn'
         $rtBadge.Visibility = [System.Windows.Visibility]::Visible
     }
     else {
@@ -101,7 +101,7 @@ function Show-ExtensionDetails {
     $extMode = if ($Extension.Mode) { $Extension.Mode } else { 'ReadOnly' }
     if ($extMode -eq 'ReadWrite') {
         $modeBadge.Text = 'READ/WRITE'
-        $modeBadge.Background = Get-HUBrush ('#E6820E')
+        $modeBadge.Background = Get-HUBrush ('#E6820E') 'Btn'
         $modeBadge.Visibility = [System.Windows.Visibility]::Visible
     }
     else {
@@ -142,7 +142,7 @@ function Show-ExtensionDetails {
 
             $label = New-Object System.Windows.Controls.TextBlock
             $label.Text = "$($cp.Label):"
-            $label.Foreground = Get-HUBrush ('#CCCCCC')
+            $label.Foreground = Get-HUBrush ('#CCCCCC') 'Fg'
             $label.FontSize = 10
             $label.Width = 140
             $label.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
@@ -153,7 +153,7 @@ function Show-ExtensionDetails {
                 'bool' {
                     $chk = New-Object System.Windows.Controls.CheckBox
                     $chk.IsChecked = ($cp.Default -eq '$true' -or $cp.Default -eq 'true')
-                    $chk.Foreground = Get-HUBrush ('#CCCCCC')
+                    $chk.Foreground = Get-HUBrush ('#CCCCCC') 'Fg'
                     $chk.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
                     $row.Children.Add($chk) | Out-Null
                     $script:CustomParamControls[$cp.Name] = @{ Control = $chk; Type = 'bool' }
@@ -172,9 +172,9 @@ function Show-ExtensionDetails {
                 default {
                     # string, int — TextBox
                     $txt = New-Object System.Windows.Controls.TextBox
-                    $txt.Background = Get-HUBrush ('#3E3E42')
-                    $txt.Foreground = Get-HUBrush ('#CCCCCC')
-                    $txt.BorderBrush = Get-HUBrush ('#555555')
+                    $txt.Background = Get-HUBrush ('#3E3E42') 'Bg'
+                    $txt.Foreground = Get-HUBrush ('#CCCCCC') 'Fg'
+                    $txt.BorderBrush = Get-HUBrush ('#555555') 'Border'
                     $txt.FontSize = 10
                     $txt.Padding = [System.Windows.Thickness]::new(4, 2, 4, 2)
                     $txt.Text = $cp.Default
@@ -548,10 +548,10 @@ function Register-HUExtensionHandlers {
                             $paragraph = New-Object System.Windows.Documents.Paragraph
                             $run = New-Object System.Windows.Documents.Run($line)
                             try {
-                                $run.Foreground = Get-HUBrush ($color)
+                                $run.Foreground = Get-HUBrush ($color) 'Fg'
                             }
                             catch {
-                                $run.Foreground = [System.Windows.Media.Brushes]::White
+                                $run.Foreground = (Get-HUBrush '#FFFFFF' 'Fg')
                             }
                             $paragraph.Inlines.Add($run)
                             $paragraph.Margin = [System.Windows.Thickness]::new(0)
@@ -596,8 +596,8 @@ function Register-HUExtensionHandlers {
                             }
                             $paragraph = New-Object System.Windows.Documents.Paragraph
                             $run = New-Object System.Windows.Documents.Run($line)
-                            try { $run.Foreground = Get-HUBrush ($color) }
-                            catch { $run.Foreground = [System.Windows.Media.Brushes]::White }
+                            try { $run.Foreground = Get-HUBrush ($color) 'Fg' }
+                            catch { $run.Foreground = (Get-HUBrush '#FFFFFF' 'Fg') }
                             $paragraph.Inlines.Add($run)
                             $paragraph.Margin = [System.Windows.Thickness]::new(0)
                             $paragraph.FontFamily = [System.Windows.Media.FontFamily]::new('Consolas')
@@ -734,8 +734,8 @@ function Register-HUExtensionHandlers {
         $script:Controls['txtExtSearch'].Text = ''
         Write-HULogOK "Extensions neu geladen: $($script:ExtensionItems.Count)"
     })
-    $script:Controls['btnReloadExt'].Add_MouseEnter({ $script:Controls['btnReloadExt'].Foreground = Get-HUBrush ('#4CAF50') })
-    $script:Controls['btnReloadExt'].Add_MouseLeave({ $script:Controls['btnReloadExt'].Foreground = Get-HUBrush ('#858585') })
+    $script:Controls['btnReloadExt'].Add_MouseEnter({ $script:Controls['btnReloadExt'].Foreground = Get-HUBrush ('#4CAF50') 'Fg' })
+    $script:Controls['btnReloadExt'].Add_MouseLeave({ $script:Controls['btnReloadExt'].Foreground = Get-HUBrush ('#858585') 'Fg' })
 
     # --- Berechtigungs-Assistent ---
     $script:Controls['btnSetupGuide'].Add_Click({

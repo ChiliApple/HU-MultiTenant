@@ -100,7 +100,7 @@ function Update-HURemTenantChecks {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"
         $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'
         $cb.Margin = [System.Windows.Thickness]::new(0, 2, 14, 2)
         [void]$sp.Children.Add($cb)
     }

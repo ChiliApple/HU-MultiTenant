@@ -135,7 +135,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Funktionsübersicht <span class="ver">v2.6.0</span>
+      HU-MultiTenant · Funktionsübersicht <span class="ver">v2.6.20</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -331,7 +331,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     </article>
 
     <article class="cat" id="betrieb" style="--c: var(--teal)">
-      <div class="cat-head"><span class="chip">⚙ Einstellungen</span><h3>Betrieb und Update</h3><span class="count">5 Punkte</span></div>
+      <div class="cat-head"><span class="chip">⚙ Einstellungen</span><h3>Betrieb und Update</h3><span class="count">6 Punkte</span></div>
       <div class="cat-body">
         <ul>
           <li>Update-Knopf: Kanal Stabil oder Test, jede Datei per SHA-256, nur signierte Releases</li>
@@ -339,14 +339,16 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
           <li>Desktop-Verknüpfung und Startmenü mit eigenem Symbol</li>
           <li>Protokolle, Support-Paket anonymisiert</li>
           <li>Anleitung im Programm mit <kbd>F1</kbd>, Oberfläche skalierbar</li>
+          <li>Farbschema Dunkel, Hell oder wie Windows, Umschalter in der Titelleiste, wirkt nach einem Neustart <span class="new">neu</span></li>
         </ul>
+        <figure class="shot"><a href="screenshot-farbschema-hell.png"><img src="screenshot-farbschema-hell.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Docs/screenshot-farbschema-hell.png'" alt="Einstellungen, Allgemein: Auswahl Farbschema" loading="lazy"></a><figcaption>Einstellungen &gt; Allgemein: Auswahl Farbschema, hier mit Hell</figcaption></figure>
       </div>
     </article>
     </div>
 
     <div class="col">
     <article class="cat" id="wartung" style="--c: var(--green)">
-      <div class="cat-head"><span class="chip">🛠 Wartung</span><h3>Wartung (Remediations)</h3><span class="count">16 Punkte</span></div>
+      <div class="cat-head"><span class="chip">🛠 Wartung</span><h3>Wartung (Remediations)</h3><span class="count">13 Punkte</span></div>
       <div class="cat-body">
         <ul>
           <li>Prüf- und Reparaturskript, fünf fertige Beispiele</li>
@@ -387,7 +389,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
     </article>
 
     <article class="cat" id="analyse" style="--c: var(--mauve)">
-      <div class="cat-head"><span class="chip">🔍 Analyse</span><h3>Analyse</h3><span class="count">13 Punkte</span></div>
+      <div class="cat-head"><span class="chip">🔍 Analyse</span><h3>Analyse</h3><span class="count">26 Punkte</span></div>
       <div class="cat-body">
         <div class="group"><h4>Was bekommt …?</h4>
           <ul>
@@ -428,6 +430,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
             <li>74 Regeln aus den Security Baselines, rein lesend, alle Tenants in einer Matrix</li>
             <li>Ansicht "Einfach": nur der Grundschutz (15 Regeln), je Tenant ein Balken "x von y erfüllt", Doppelklick führt zur Anleitung <span class="new">neu</span></li>
             <li>Änderungen der letzten 30 Tage aus dem Entra-Überwachungsprotokoll: Admin-Rollen, Domänen, Secrets an Apps, App-Rechte, bedingter Zugriff, mit Auslöser <span class="new">neu</span></li>
+            <li>Prüfumfang wählbar: alles, ohne oder nur die riskanten Anmeldungen (K07, am langsamsten); ausgelassene Regeln zeigen den letzten Stand <span class="new">neu</span></li>
             <li>Schweregrad, Bereich und Abweichungen filtern; Details und betroffene Konten per Doppelklick</li>
             <li>Befristete Ausnahmen mit Begründung; Tabelle und Export</li>
             <li>Handprüfungen für Baseline-Punkte ohne Graph (lokales AD, Ablauf von Freigabelinks): je Tenant bestätigen, gilt 12 Monate <span class="new">neu</span></li>
@@ -459,7 +462,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 </section>
 
 <footer>
-  <span>Stand 27.10.2026 · Version 2.6.0</span>
+  <span>Stand 18.11.2026 · Version 2.6.20</span>
   <a href="Einstieg.html">Einstieg</a>
   <a href="Anleitung.html">Anleitung</a>
   <a href="https://github.com/ChiliApple/HU-MultiTenant">Projekt auf GitHub</a>

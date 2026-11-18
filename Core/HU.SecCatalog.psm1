@@ -2567,12 +2567,17 @@ function Get-HUSecItems {
 $script:HUSecSevRank = @{ 'Kritisch' = 0; 'Hoch' = 1; 'Mittel' = 2; 'Niedrig' = 3 }
 
 function Get-HUSecMatrix {
-    param([object[]]$Results = @(), [string[]]$Keys = @())
+    # -MarkNotRun: Regeln ohne Ergebnis bekommen eine Zelle mit eigenem Status NichtGeprueft (Teil-Lauf), sonst bleibt die Zelle leer.
+    # Die Platzhalter zaehlen weder als Abweichung noch fuer "Nur Unterschiede"; sie stehen nie in den Ergebnissen (Soll, Verlauf, Ausnahmen).
+    param([object[]]$Results = @(), [string[]]$Keys = @(), [switch]$MarkNotRun)
     $rows = New-Object System.Collections.Generic.List[object]
     foreach ($r in (Get-HUSecRules)) {
         $cells = @{}
-        foreach ($k in $Keys) { $cells[$k] = @($Results | Where-Object { $_.RuleId -eq $r.Id -and $_.Tenant -eq $k }) | Select-Object -First 1 }
-        $got = @($Keys | Where-Object { $cells[$_] })
+        foreach ($k in $Keys) {
+            $cells[$k] = @($Results | Where-Object { $_.RuleId -eq $r.Id -and $_.Tenant -eq $k }) | Select-Object -First 1
+            if ($MarkNotRun -and -not $cells[$k]) { $cells[$k] = New-HUSecNotRunCell -Rule $r -Tenant $k }
+        }
+        $got = @($Keys | Where-Object { $cells[$_] -and "$($cells[$_].Status)" -ne 'NichtGeprueft' })
         $sig = @($got | ForEach-Object { "$($cells[$_].Status)/$($cells[$_].Reason)" } | Sort-Object -Unique)
         $dev = [bool](@($got | Where-Object { $cells[$_].Status -in 'Abweichung', 'Fehler' }).Count)
         $rows.Add([pscustomobject]@{ RuleId = $r.Id; Area = $r.Area; Title = $r.Title; Sev = $r.Sev; Cells = $cells; Dev = $dev; Diff = ($sig.Count -gt 1) })
@@ -2591,7 +2596,10 @@ function Get-HUSecCoverage {
 
 # Ampel je Tenant: Rot = ab 10 nicht erfuellte Regeln (Abweichung oder Fehler), Gelb = 1 bis 9, Gruen = keine, Grau = nichts geprueft
 function Get-HUSecLight {
-    param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key)
+    # -Partial (Teil-Lauf): Regeln ohne Ergebnis in dieser Sitzung (-Ids begrenzt sie auf diese Regeln, sonst alle) sind "nicht geprueft" (NotRun).
+    # Solange welche fehlen, ist die Ampel nie gruen: aus Gruen wird Gelb; ist gar nichts geprueft, bleibt es Grau. Rot und Gelb aus echten Befunden
+    # bleiben. Ohne den Schalter (vollstaendiger Lauf, Fernbedienung) unveraendert.
+    param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key, [switch]$Partial, [string[]]$Ids = $null)
     $sevOf = @{}; foreach ($r in (Get-HUSecRules)) { $sevOf[$r.Id] = "$($r.Sev)" }
     $hand = @(Get-HUSecManualIds)
     $mine = @($Results | Where-Object { $_.Tenant -eq $Key -and $_.RuleId -ne '-' -and $hand -notcontains "$($_.RuleId)" })
@@ -2603,7 +2611,14 @@ function Get-HUSecLight {
     $unchecked = @($mine | Where-Object { $_.Status -eq 'NichtPruefbar' }).Count
     $color = if (-not $mine.Count -or (-not $checked.Count -and -not $dev.Count)) { 'Grau' }
     elseif ($dev.Count -ge 10) { 'Rot' } elseif ($dev.Count -gt 0) { 'Gelb' } else { 'Gruen' }
-    return [pscustomobject]@{ Color = $color; Ok = $ok; Checked = $checked.Count; Deviations = $dev.Count; BySev = $by; NotCheckable = $unchecked }
+    $notRun = 0
+    if ($Partial) {
+        $nrArgs = @{ Results = $Results; Key = $Key }
+        if ($null -ne $Ids) { $nrArgs['Ids'] = $Ids }
+        $notRun = @(Get-HUSecNotRunIds @nrArgs).Count
+        if ($color -eq 'Gruen' -and $notRun -gt 0) { $color = 'Gelb' }
+    }
+    return [pscustomobject]@{ Color = $color; Ok = $ok; Checked = $checked.Count; Deviations = $dev.Count; BySev = $by; NotCheckable = $unchecked; NotRun = $notRun }
 }
 
 # Grundschutz der Ansicht "Einfach": Sollwert Katalog.basic (Ebene alle Tenants), sonst Standard; unbekannte Nummern fallen weg
@@ -2621,15 +2636,163 @@ function Get-HUSecBasicIds {
 # Farbe: Rot = eine kritische Regel offen, Gelb = sonst etwas offen oder eine kritische Regel nicht pruefbar, Gruen = alles Gepruefte erfuellt, Grau = nichts geprueft.
 # Total = gepruefte + nicht pruefbare + Fehler (abgeschaltete und Handpruefungen zaehlen nicht).
 function Get-HUSecBasicLight {
-    param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key, [string[]]$Ids = @())
+    # -Partial (Teil-Lauf): Grundschutz-Regeln ohne Ergebnis in dieser Sitzung zaehlen wie "nicht pruefbar": nie erfuellt, in Total enthalten,
+    # eine kritische davon macht den Balken gelb (NotRun, CriticalNotRun). Ohne den Schalter unveraendert.
+    param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key, [string[]]$Ids = @(), [switch]$Partial)
     $set = if ($Ids.Count) { $Ids } else { @(Get-HUSecBasicIds) }
     $l = Get-HUSecLight -Results @($Results | Where-Object { $set -contains "$($_.RuleId)" }) -Key $Key
     $errors = $l.Deviations - ($l.Checked - $l.Ok); if ($errors -lt 0) { $errors = 0 }
     # Nicht pruefbare kritische Regel: nie gruen, sonst saehe ein Tenant ohne Pruefung von MFA oder Notfallkonten gut aus (Pruefung 2.6.17)
     $crit = @{}; foreach ($r in (Get-HUSecRules)) { if ("$($r.Sev)" -eq 'Kritisch') { $crit["$($r.Id)"] = $true } }
     $critUnchecked = @($Results | Where-Object { $_.Tenant -eq $Key -and $set -contains "$($_.RuleId)" -and $_.Status -eq 'NichtPruefbar' -and $crit.ContainsKey("$($_.RuleId)") }).Count
-    $color = if ($l.Color -eq 'Grau') { 'Grau' } elseif ($l.BySev.Kritisch -gt 0) { 'Rot' } elseif ($l.Deviations -gt 0 -or $critUnchecked -gt 0) { 'Gelb' } else { 'Gruen' }
-    return [pscustomobject]@{ Color = $color; Ok = $l.Ok; Checked = $l.Checked; Deviations = $l.Deviations; BySev = $l.BySev; NotCheckable = $l.NotCheckable; Total = ($l.Checked + $l.NotCheckable + $errors); CriticalNotCheckable = $critUnchecked }
+    $notRun = @(); if ($Partial) { $notRun = @(Get-HUSecNotRunIds -Results $Results -Key $Key -Ids $set) }
+    $critNotRun = @($notRun | Where-Object { $crit.ContainsKey("$_") }).Count
+    $color = if ($l.Color -eq 'Grau') { 'Grau' } elseif ($l.BySev.Kritisch -gt 0) { 'Rot' } elseif ($l.Deviations -gt 0 -or $critUnchecked -gt 0 -or $critNotRun -gt 0) { 'Gelb' } else { 'Gruen' }
+    return [pscustomobject]@{ Color = $color; Ok = $l.Ok; Checked = $l.Checked; Deviations = $l.Deviations; BySev = $l.BySev; NotCheckable = $l.NotCheckable; Total = ($l.Checked + $l.NotCheckable + $errors + $notRun.Count); CriticalNotCheckable = $critUnchecked; NotRun = $notRun.Count; CriticalNotRun = $critNotRun }
+}
+
+# ============================================================================
+# Pruefumfang (Auswahl in Analyse > Sicherheit) und Teil-Laeufe
+# Alles hier ist reine Logik ohne Fenster: Umfang aufloesen, Ergebnisse zusammenfuehren, "nicht geprueft", Sperre von "Soll speichern".
+# Die taegliche Teams-Pruefung (HU.TeamsJobs) prueft immer alles, die Fernbedienung nach ihrer eigenen Auswahl am Handy (-RuleIds, wenn weniger gewaehlt ist); beide unabhaengig vom Umfang der Oberflaeche.
+# ============================================================================
+# Ein weiterer Umfang ist EINE Zeile: Id, Text, Tip (Tooltip) und entweder Include (nur diese Regeln) oder Exclude (alle ausser diesen).
+# Beides leer = keine Einschraenkung. Die Regelnummern muessen im Katalog stehen (Test in HU.SecScope.Tests.ps1).
+$script:HUSecScopes = @(
+    @{ Id = 'all'; Text = 'Alles'; Tip = "Alle Regeln pr$([char]0xFC)fen. Dauert am l$([char]0xE4)ngsten, weil K07 (riskante Anmeldungen) das Anmeldeprotokoll liest."; Include = @(); Exclude = @() }
+    @{ Id = 'noRisk'; Text = 'Ohne riskante Anmeldungen'; Tip = "Alle Regeln au$([char]0xDF)er K07 (riskante Anmeldungen aus dem Anmeldeprotokoll): deutlich schneller. K07 zeigt danach den $([char]0xE4)lteren Stand dieser Sitzung oder `"nicht gepr$([char]0xFC)ft`"."; Include = @(); Exclude = @('K07') }
+    @{ Id = 'onlyRisk'; Text = 'Nur riskante Anmeldungen'; Tip = "Nur K07 (riskante Anmeldungen aus dem Anmeldeprotokoll) pr$([char]0xFC)fen. Alle anderen Regeln behalten den $([char]0xE4)lteren Stand dieser Sitzung oder zeigen `"nicht gepr$([char]0xFC)ft`"."; Include = @('K07'); Exclude = @() }
+)
+
+# Liste fuer die Oberflaeche: Id, Text, Tip, Full ($true = keine Einschraenkung, vollstaendiger Lauf)
+function Get-HUSecScopes {
+    return @($script:HUSecScopes | ForEach-Object {
+            [pscustomobject]@{ Id = "$($_.Id)"; Text = "$($_.Text)"; Tip = "$($_.Tip)"; Full = (-not @($_.Include).Count -and -not @($_.Exclude).Count) }
+        })
+}
+
+# Regelnummern eines Umfangs fuer Invoke-HUSecCatalog -RuleIds. Leer ($null) = keine Einschraenkung (alle Regeln).
+# Unbekannte oder leere Kennung = all. Include wird nie gefiltert: eine falsche Nummer macht den Umfang nicht still zu "alles".
+function Resolve-HUSecScope {
+    [CmdletBinding()]
+    param([string]$Id = 'all')
+    $s = @($script:HUSecScopes | Where-Object { "$($_.Id)" -eq "$Id" })[0]
+    # Keine Einschraenkung: nichts ausgeben (auch kein $null), damit @(Resolve-HUSecScope ...) leer ist
+    if (-not $s) { return }
+    $inc = @($s.Include | Where-Object { $_ }); $exc = @($s.Exclude | Where-Object { $_ })
+    if ($inc.Count) { return [string[]]$inc }
+    if ($exc.Count) { return [string[]]@(Get-HUSecRules | ForEach-Object { "$($_.Id)" } | Where-Object { $exc -notcontains $_ }) }
+}
+
+# Plan eines Laufs: Id (unbekannt = all), Text, RuleIds (leer bei Full), Full, SaveHistory (nur nach vollstaendigem Lauf ein Eintrag im Verlauf)
+function Get-HUSecRunPlan {
+    [CmdletBinding()]
+    param([string]$ScopeId = 'all')
+    $list = @(Get-HUSecScopes)
+    $s = @($list | Where-Object { $_.Id -eq "$ScopeId" })[0]
+    if (-not $s) { $s = @($list | Where-Object { $_.Id -eq 'all' })[0] }
+    $ids = @(Resolve-HUSecScope -Id $s.Id)
+    $full = ($ids.Count -eq 0)
+    return [pscustomobject]@{ Id = $s.Id; Text = $s.Text; RuleIds = [string[]]$ids; Full = $full; SaveHistory = $full }
+}
+
+function Get-HUSecNotRunText { return "nicht gepr$([char]0xFC)ft" }
+
+# Ergebnisse eines Tenants zusammenfuehren. Vollstaendiger Lauf (RuleIds leer): nur die neuen Zeilen, wie bisher. Teil-Lauf: die bisherigen
+# Zeilen bleiben, nur die neu geprueften Regeln werden ersetzt (auch die Sollwert-Fehlerzeilen "-"). Kam diesmal nichts zurueck (Lauf
+# fehlgeschlagen), bleibt der bisherige Stand unveraendert. Neue Zeilen tragen RunAt = Beginn des Laufs (fuer "Stand" und Tooltip).
+function Merge-HUSecTenantRows {
+    [CmdletBinding()]
+    param([object[]]$Previous = @(), [object[]]$New = @(), [string[]]$RuleIds = @(), [datetime]$Stamp = (Get-Date))
+    $fresh = @($New | Where-Object { $_ } | ForEach-Object { $_ | Add-Member -NotePropertyName RunAt -NotePropertyValue $Stamp -Force -PassThru })
+    if (-not $RuleIds.Count) { return $fresh }
+    $old = @($Previous | Where-Object { $_ })
+    if (-not $fresh.Count) { return $old }
+    $keep = @($old | Where-Object { "$($_.RuleId)" -ne '-' -and $RuleIds -notcontains "$($_.RuleId)" })
+    return @($keep + $fresh)
+}
+
+# Mehrere Tenants: Ergebnis ist nur fuer $Keys vorhanden (abgewaehlte Tenants fallen weg). $Previous und $New: Tenant-Schluessel -> Zeilen.
+# Ohne $New (Start eines Laufs): vollstaendiger Lauf = leer, Teil-Lauf = bisheriger Stand der angehakten Tenants.
+# Neue Tenants ohne bisherigen Stand haben nur den Teil-Lauf.
+function Merge-HUSecRunData {
+    [CmdletBinding()]
+    param([hashtable]$Previous = @{}, [string[]]$Keys = @(), [hashtable]$New = @{}, [string[]]$RuleIds = @(), [datetime]$Stamp = (Get-Date))
+    $out = @{}
+    foreach ($k in $Keys) {
+        $prev = if ($Previous.ContainsKey($k)) { @($Previous[$k]) } else { $null }
+        if ($New.ContainsKey($k)) { $out[$k] = @(Merge-HUSecTenantRows -Previous @($prev) -New @($New[$k]) -RuleIds $RuleIds -Stamp $Stamp) }
+        elseif ($RuleIds.Count -and $null -ne $prev) { $out[$k] = $prev }
+    }
+    return $out
+}
+
+# Alle Zeilen der angegebenen Tenants als flache Liste (Ergebnisse der Sitzung)
+function Get-HUSecResultList {
+    [CmdletBinding()]
+    param([hashtable]$Data = @{}, [string[]]$Keys = @())
+    $all = New-Object System.Collections.Generic.List[object]
+    foreach ($k in $Keys) { if ($Data.ContainsKey($k)) { foreach ($r in @($Data[$k])) { if ($r) { $all.Add($r) } } } }
+    return $all.ToArray()
+}
+
+# Regeln ohne Ergebnis fuer einen Tenant (Handpruefungen zaehlen nicht, wie in Get-HUSecLight). -Ids begrenzt auf diese Regeln.
+function Get-HUSecNotRunIds {
+    [CmdletBinding()]
+    param([object[]]$Results = @(), [Parameter(Mandatory)][string]$Key, [string[]]$Ids = $null)
+    $hand = @(Get-HUSecManualIds)
+    $have = @{}
+    foreach ($r in @($Results)) { if ($r -and "$($r.Tenant)" -eq $Key) { $have["$($r.RuleId)"] = $true } }
+    $set = if ($null -ne $Ids) { @($Ids) } else { @(Get-HUSecRules | ForEach-Object { "$($_.Id)" }) }
+    return @($set | Where-Object { $_ -and -not $have.ContainsKey("$_") -and $hand -notcontains "$_" })
+}
+
+# Platzhalter-Zelle der Matrix fuer eine Regel, die in dieser Sitzung nicht geprueft wurde (eigener Status, nie gruen, nie erfuellt)
+function New-HUSecNotRunCell($Rule, [string]$Tenant) {
+    [pscustomobject]@{
+        RuleId = "$($Rule.Id)"; Area = "$($Rule.Area)"; Title = "$($Rule.Title)"; Sev = "$($Rule.Sev)"; Tenant = $Tenant
+        Status = 'NichtGeprueft'; Reason = ''; Count = $null; Detail = "in dieser Sitzung $(Get-HUSecNotRunText)"; Complete = $true; ExceptionId = ''
+    }
+}
+
+# Stand einer Zelle bei gemischtem Lauf: '' = frisch (aus dem letzten Lauf), sonst "nicht geprueft" oder "Stand von HH:mm (aelterer Lauf)"
+function Get-HUSecCellStand {
+    [CmdletBinding()]
+    param($Cell, $LastStamp = $null)
+    if (-not $Cell) { return '' }
+    if ("$($Cell.Status)" -eq 'NichtGeprueft') { return (Get-HUSecNotRunText) }
+    if (-not $Cell.PSObject.Properties['RunAt'] -or -not $Cell.RunAt -or -not $LastStamp) { return '' }
+    $at = [datetime]$Cell.RunAt; $last = [datetime]$LastStamp
+    if ($at -ge $last) { return '' }
+    $fmt = if ($at.Date -eq $last.Date) { 'HH:mm' } else { 'dd.MM. HH:mm' }
+    return "Stand von $($at.ToString($fmt)) ($([char]0xE4)lterer Lauf)"
+}
+
+# Ergebnisse des letzten Laufs (RunAt nicht aelter als der Beginn des Laufs). Fuer "wirkungslos" bei Ausnahmen: nur das letzte Pruefen zaehlt,
+# ein aelterer Stand (auch "nicht pruefbar") darf eine Ausnahme nicht als wirkungslos zeigen.
+function Get-HUSecLastRunResults {
+    [CmdletBinding()]
+    param([object[]]$Results = @(), $Stamp = $null)
+    if (-not $Stamp) { return @($Results) }
+    $s = [datetime]$Stamp
+    return @($Results | Where-Object { $_ -and (-not $_.PSObject.Properties['RunAt'] -or -not $_.RunAt -or [datetime]$_.RunAt -ge $s) })
+}
+
+# Sperre von "Soll speichern": Text mit dem Grund oder '' (frei). Gesperrt, solange der Stand nicht aus einem vollstaendigen Lauf stammt.
+function Get-HUSecRefLock {
+    [CmdletBinding()]
+    param([bool]$Ran = $false, [bool]$Full = $true, [string]$ScopeText = '')
+    if (-not $Ran -or $Full) { return '' }
+    return "Gesperrt: Der Stand der Matrix stammt nicht aus einem vollst$([char]0xE4)ndigen Lauf (zuletzt gepr$([char]0xFC)ft: $ScopeText). Ein Soll mit L$([char]0xFC)cken w$([char]0xFC)rde ausgelassene Regeln als unver$([char]0xE4)ndert festschreiben. Zum Freischalten einmal mit dem Umfang `"Alles`" pr$([char]0xFC)fen."
+}
+
+# Hinweiszeile zum letzten Umfang ('' bei vollstaendigem Lauf, dort bleibt alles wie bisher)
+function Get-HUSecRunNote {
+    [CmdletBinding()]
+    param([bool]$Full = $true, [string]$ScopeText = '', $Stamp = $null)
+    if ($Full) { return '' }
+    $at = if ($Stamp) { " ($(([datetime]$Stamp).ToString('HH:mm')))" } else { '' }
+    return "Umfang der letzten Pr$([char]0xFC)fung: $ScopeText$at. Ausgelassene Regeln zeigen den $([char]0xE4)lteren Stand dieser Sitzung (kursiv, Tooltip mit Uhrzeit) oder `"$(Get-HUSecNotRunText)`"; Verlauf und Soll gibt es nur nach einem vollst$([char]0xE4)ndigen Lauf. "
 }
 
 # Gesamtliste "Aenderungen (30 Tage)" eines Tenants: alle heiklen Eintraege mit Tenant-Spalte. Nur Anzeige, nie speichern oder protokollieren (Namen).
@@ -2909,5 +3072,6 @@ Export-ModuleMember -Function @(
     'Get-HUSecRules', 'Invoke-HUSecCatalog', 'New-HUSecContext', 'Get-HUSecFact', 'Invoke-HUSecFetch',
     'Get-HUSecExceptions', 'Add-HUSecException', 'Get-HUSecManual', 'Set-HUSecManual', 'Remove-HUSecManual', 'Get-HUSecManualResult', 'Get-HUSecManualIds', 'Test-HUSecManualRule', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException', 'Test-HUSecExceptionOutdated', 'Get-HUSecExceptionState', 'Get-HUSecFix', 'Get-HUSecFixData',
     'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecReferenceWorse', 'Set-HUSecReferenceWorseShown', 'Get-HUSecBaselineEdit', 'Save-HUSecBaselineEdit', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport',
+    'Get-HUSecScopes', 'Resolve-HUSecScope', 'Get-HUSecRunPlan', 'Get-HUSecNotRunText', 'Merge-HUSecTenantRows', 'Merge-HUSecRunData', 'Get-HUSecResultList', 'Get-HUSecNotRunIds', 'Get-HUSecCellStand', 'Get-HUSecLastRunResults', 'Get-HUSecRefLock', 'Get-HUSecRunNote',
     'Get-HUSecBasicIds', 'Get-HUSecBasicLight', 'Get-HUSecChanges', 'Get-HUSecAuditKind', 'ConvertTo-HUSecAuditRow', 'Get-HUSecAuditRows', 'Get-HUSecAuditEval', 'ConvertTo-HUSecAuditDetail', 'ConvertFrom-HUSecAuditValue'
 )

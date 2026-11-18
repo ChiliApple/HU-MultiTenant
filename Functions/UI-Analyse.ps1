@@ -24,7 +24,7 @@ function Update-HUAnaTenantChecks {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"
         $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'
         $cb.FontSize = 11
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
         $cb.IsChecked = ($saved -contains "$($t.key)")
@@ -72,10 +72,10 @@ function Set-HUAnaMode([string]$Mode) {
     $c['gridCmp'].Visibility = $c['pnlAnaCmp'].Visibility
     $c['gridBak'].Visibility = $c['pnlAnaBak'].Visibility
     $c['gridSec'].Visibility = $c['pnlAnaSec'].Visibility
-    $c['btnAnaModeAsg'].Background = Get-HUBrush $(if ($Mode -eq 'asg') { '#1976D2' } else { '#3E3E42' })
-    $c['btnAnaModeCmp'].Background = Get-HUBrush $(if ($Mode -eq 'cmp') { '#1976D2' } else { '#3E3E42' })
-    $c['btnAnaModeBak'].Background = Get-HUBrush $(if ($Mode -eq 'bak') { '#1976D2' } else { '#3E3E42' })
-    $c['btnAnaModeSec'].Background = Get-HUBrush $(if ($Mode -eq 'sec') { '#1976D2' } else { '#3E3E42' })
+    Set-HUToggleLook $c['btnAnaModeAsg'] ($Mode -eq 'asg')
+    Set-HUToggleLook $c['btnAnaModeCmp'] ($Mode -eq 'cmp')
+    Set-HUToggleLook $c['btnAnaModeBak'] ($Mode -eq 'bak')
+    Set-HUToggleLook $c['btnAnaModeSec'] ($Mode -eq 'sec')
     Set-HUStateValue 'anaMode' $Mode
     if ($Mode -eq 'bak') { Update-HUBakView }
     if ($Mode -eq 'sec') { try { Show-HUSecPreview } catch { } }
@@ -328,7 +328,7 @@ function Update-HUCmpGrid {
         $o = [ordered]@{ Typ = $m.Typ; Name = $m.Name }
         for ($i = 0; $i -lt $keys.Count; $i++) {
             $nip = ($keys[$i] -eq (Get-HUMusterKey) -and $m.PSObject.Properties['NotInPkg'] -and $m.NotInPkg)
-            $o["T$i"] = $(if ($nip) { 'nicht im Paket' } elseif ($m.Have -contains $keys[$i]) { Get-HUCmpCellText $m $keys[$i] } elseif (@($m.Unknown) -contains $keys[$i]) { '?' } else { "$([char]0x2014)" }); $o["Fc$i"] = Get-HUCmpCellColor $m $keys[$i]
+            $o["T$i"] = $(if ($nip) { 'nicht im Paket' } elseif ($m.Have -contains $keys[$i]) { Get-HUCmpCellText $m $keys[$i] } elseif (@($m.Unknown) -contains $keys[$i]) { '?' } else { "$([char]0x2014)" }); $o["Fc$i"] = (ConvertTo-HUThemeColor (Get-HUCmpCellColor $m $keys[$i]) 'Fg')
         }
         $o.Status = ("$($m.Status)$(if ($m.Missing.Count -and -not $m.Copy -and $m.Typ -notin 'Benannter Ort', 'Verzeichniseinstellung', 'Conditional Access') { ' (nur anzeigen)' })" -replace [regex]::Escape((Get-HUMusterKey)), 'Muster')
         $o.Ref = $m

@@ -43,6 +43,16 @@ Describe 'Show-HUManual: nur feste Seiten' {
             foreach ($m in [regex]::Matches($h, 'src="([A-Za-z0-9_\-]+\.png)"')) { $txt | Should -Match ([regex]::Escape("'$($m.Groups[1].Value)'")) -Because "$pg -> $($m.Groups[1].Value)" }
         }
     }
+    It 'jedes Bild der Bildliste liegt in Docs\ und jedes Bild im README existiert' {
+        $txt = Get-Content -LiteralPath $script:Src -Raw
+        $lst = [regex]::Match($txt, '\$script:HUDocImages\s*=\s*@\(([^)]*)\)')
+        $lst.Success | Should -BeTrue
+        $names = @([regex]::Matches($lst.Groups[1].Value, "'([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+        $names.Count | Should -BeGreaterThan 0
+        foreach ($n in $names) { Test-Path -LiteralPath (Join-Path $script:Root "Docs\$n") | Should -BeTrue -Because $n }
+        $rd = Get-Content -LiteralPath (Join-Path $script:Root 'README.md') -Raw -Encoding UTF8
+        foreach ($m in [regex]::Matches($rd, 'src="(Docs/[A-Za-z0-9_\-]+\.png)"')) { Test-Path -LiteralPath (Join-Path $script:Root $m.Groups[1].Value) | Should -BeTrue -Because $m.Groups[1].Value }
+    }
     It 'jeder relative Seiten-Link zeigt auf eine Seite der Liste' {
         foreach ($pg in $script:Pages) {
             $h = Get-Content -LiteralPath (Join-Path $script:Root "Docs\$pg.html") -Raw -Encoding UTF8

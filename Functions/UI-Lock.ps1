@@ -17,6 +17,12 @@ $script:LockActive = $false
 $script:LockTimer = $null
 $script:LockFails = 0
 $script:LockBlockedUntil = [datetime]::MinValue
+$script:CloseChecking = $false    # die Rueckfragen beim Beenden laufen gerade (Main.ps1, Closing-Handler)
+$script:LockDue = $false          # waehrend dieser Rueckfragen waere die Sperre faellig geworden: Inhalt ist verborgen, Sperrfenster folgt
+$script:LockUnlocked = $false     # Ergebnis des letzten Sperrfensters: wirklich entsperrt (PIN oder Windows Hello)
+$script:LockExitPending = $false  # im Sperrfenster wurde "beenden" gewaehlt: das Hauptfenster schliesst ohne weitere Rueckfrage
+$script:LockClosing = $false   # Hauptfenster wird geschlossen: ab dann nicht mehr sperren (Window.IsLoaded bleibt nach Close() wahr)
+$script:LockDlg = $null   # offenes Sperrfenster (@{ W = Fenster; State = Zustand }), damit es beim Schliessen des Hauptfensters mit schliesst
 
 function Initialize-HULockNative {
     if ('HUTools.LockNative' -as [type]) { return }
@@ -280,6 +286,19 @@ function Lock-HUApp([switch]$AtStart) {
     if ($script:LockActive) { return }
     $cfg = Get-HULockConfig
     if (-not $cfg.Enabled) { return }
+    # nie ohne Hauptfenster sperren (Zeitgeber kann waehrend des Beendens noch einmal feuern): das Sperrfenster bliebe allein zurueck
+    # und hielte den Prozess im Hintergrund fest (naechster Start: "laeuft bereits")
+    if ($script:LockClosing -or -not $script:Window) { return }
+    # Waehrend der Rueckfragen beim Beenden kein Sperrfenster oeffnen (ein Fenster mitten im Schliessen des Hauptfensters zu oeffnen
+    # ist nicht verlaesslich und liess die App unter Windows PowerShell 5.1 haengen). Stattdessen sofort den Inhalt verbergen und
+    # merken: bleibt das Fenster offen (Antwort "Nein"), sperrt der Closing-Handler gleich danach (Start-HULockAfterClose).
+    if ($script:CloseChecking) {
+        $script:LockDue = $true
+        try { $script:Window.Content.Visibility = 'Hidden' } catch { }
+        try { Clear-TokenCache } catch { }
+        return
+    }
+    $script:LockDue = $false
     $script:LockActive = $true
     try { Close-HUToasts } catch { }
     try { Clear-TokenCache } catch { }
@@ -292,10 +311,16 @@ function Lock-HUApp([switch]$AtStart) {
     foreach ($ow in @($main.OwnedWindows)) {
         try { if ($ow.IsVisible -and $ow.Content -is [System.Windows.UIElement] -and $ow.Content.Visibility -eq 'Visible') { $ow.Content.Visibility = 'Hidden'; $hidden += $ow } } catch { }
     }
+    $script:LockUnlocked = $false
     try { Show-HULockDialog -AtStart:$AtStart } finally {
-        try { $main.Content.Visibility = 'Visible' } catch { }
-        foreach ($ow in $hidden) { try { $ow.Content.Visibility = 'Visible' } catch { } }
-        $script:LockActive = $false
+        # Nur nach erfolgreichem Entsperren wieder einblenden. Endet das Sperrfenster anders ("beenden", Hauptfenster schliesst,
+        # Fehler), bleibt der Inhalt verborgen und die Sperre aktiv: sonst liesse sich die App ohne PIN entsperren, z. B. wenn die
+        # Sperre waehrend einer offenen Rueckfrage beim Beenden zuschlaegt und diese danach mit "Nein" beantwortet wird.
+        if ($script:LockUnlocked) {
+            try { $main.Content.Visibility = 'Visible' } catch { }
+            foreach ($ow in $hidden) { try { $ow.Content.Visibility = 'Visible' } catch { } }
+            $script:LockActive = $false
+        }
     }
 }
 
@@ -334,6 +359,7 @@ function Show-HULockDialog([switch]$AtStart) {
     $hasPin = Test-HULockPinSet
     if (-not $hasPin) { $c.lblPin.Visibility = 'Collapsed'; $c.pnlPin.Visibility = 'Collapsed' }
     $state = @{ Unlocked = $false; Exit = $false; Busy = $false }
+    $script:LockDlg = @{ W = $w; State = $state }
     # Fenster bleibt unsichtbar, solange Windows Hello laeuft - erst bei Abbruch/Fehler erscheint die PIN-Eingabe
     $reveal = { if ($w.Opacity -lt 1) { $w.Opacity = 1; if ($c.pnlPin.Visibility -eq 'Visible') { [void]$c.pw.Focus() } else { [void]$c.btnHello.Focus() } } }
     $unlock = { $state.Unlocked = $true; $script:LockFails = 0; $w.Close() }
@@ -369,10 +395,40 @@ function Show-HULockDialog([switch]$AtStart) {
             Invoke-HUDelayed -Seconds 30 -Do { if ((Test-Path variable:state) -and -not ($state.Unlocked -or $state.Exit)) { & $reveal } }
         })
     [void]$w.ShowDialog()
+    $script:LockDlg = $null
+    $script:LockUnlocked = [bool]($state.Unlocked -and -not $state.Exit)
     if ($state.Exit) {
-        $script:LockActive = $false
-        try { $script:Window.Content.Visibility = 'Visible' } catch { }
-        $script:Window.Close()
+        # merken: laeuft das Hauptfenster schon durch sein Schliessen (offene Rueckfrage), wirft Close() unten und wird verschluckt;
+        # der Closing-Handler in Main.ps1 beendet dann trotzdem, egal wie die offene Rueckfrage beantwortet wird
+        $script:LockExitPending = $true
+        # Beenden aus der Sperre: sofort und OHNE die Rueckfragen des normalen Schliessens. Sonst liesse sich die Sperre ohne PIN
+        # aufheben (Rueckfrage zu laufendem Auftrag oder ungespeichertem Snippet mit "Nein" beantworten -> Fenster bleibt offen und
+        # entsperrt). Der Inhalt bleibt bis zum Schliessen verborgen. Laufende Auftraege werden abgebrochen, wie beim Not-Aus.
+        $script:SkipCloseChecks = $true
+        try { $script:Window.Close() } catch { }
+    }
+}
+
+# Nach abgebrochenem Beenden (Antwort "Nein"): war waehrend der Rueckfrage die Sperre faellig, jetzt sperren. Der Inhalt ist schon
+# verborgen. Das Sperrfenster kommt erst, wenn der Closing-Handler zurueckgekehrt ist (nie innerhalb des Schliessens oeffnen).
+function Start-HULockAfterClose {
+    if (-not $script:LockDue) { return }
+    try {
+        [void]$script:Window.Dispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [Action] { try { Lock-HUApp } catch { } })
+    } catch { }
+}
+
+# Beim Schliessen des Hauptfensters (Main.ps1, Closing): Zeitgeber anhalten und ein offenes Sperrfenster mit schliessen.
+# Ohne das blieb das Sperrfenster offen, wenn das Hauptfenster aus der Sperre heraus geschlossen wurde (z. B. ueber die
+# Taskleiste): der Prozess lief unsichtbar weiter und der naechste Start meldete "laeuft bereits".
+function Close-HULockDialog {
+    $script:LockClosing = $true
+    try { if ($script:LockTimer) { $script:LockTimer.Stop() } } catch { }
+    $d = $script:LockDlg
+    $script:LockDlg = $null
+    if ($d) {
+        try { $d.State.Exit = $true } catch { }
+        try { $d.W.Close() } catch { }
     }
 }
 

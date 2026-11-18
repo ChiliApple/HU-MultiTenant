@@ -93,7 +93,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp, 
         param([string]$Text, [string]$Color, [switch]$Bold)
         $t = New-Object System.Windows.Controls.TextBlock
         $t.Text = $Text; $t.TextWrapping = 'Wrap'; $t.Margin = '0,2,0,2'; $t.FontSize = 12
-        $t.Foreground = Get-HUBrush $Color
+        $t.Foreground = Get-HUBrush $Color 'Fg'
         if ($Bold) { $t.FontWeight = 'SemiBold' }
         [void]$c.pnlInfo.Children.Add($t)
     }
@@ -105,7 +105,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp, 
     $checks = New-Object System.Collections.Generic.List[object]
     foreach ($cf in $Plan.Confirms) {
         $cb = New-Object System.Windows.Controls.CheckBox
-        $cb.Content = "Verstanden: $cf"; $cb.Foreground = Get-HUBrush '#FF8A65'; $cb.Margin = '0,3,0,3'; $cb.FontSize = 12
+        $cb.Content = "Verstanden: $cf"; $cb.Foreground = Get-HUBrush '#FF8A65' 'Fg'; $cb.Margin = '0,3,0,3'; $cb.FontSize = 12
         try { $cb.Style = $w.FindResource('DarkCheckBox') } catch { }
         $cb.ToolTip = 'Vor dem Zurueckschreiben bewusst bestaetigen'
         $checks.Add($cb); [void]$c.pnlInfo.Children.Add($cb)
@@ -113,7 +113,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp, 
     # 059 B2: Hinweis, wenn eine gewaehlte Gruppe nichts aendert (Haken 'Alle') oder zugleich zugewiesen und ausgenommen ist
     $allOps = @($(if ($Plan.PSObject.Properties['Options']) { $Plan.Options }) | Where-Object { $_ })
     $grpHint = New-Object System.Windows.Controls.TextBlock
-    $grpHint.TextWrapping = 'Wrap'; $grpHint.Margin = '0,2,0,2'; $grpHint.FontSize = 12; $grpHint.Foreground = Get-HUBrush '#FFB74D'; $grpHint.Visibility = 'Collapsed'
+    $grpHint.TextWrapping = 'Wrap'; $grpHint.Margin = '0,2,0,2'; $grpHint.FontSize = 12; $grpHint.Foreground = Get-HUBrush '#FFB74D' 'Fg'; $grpHint.Visibility = 'Collapsed'
     $grpUpd = {
         $gi = @($allOps | Where-Object { "$($_.Kind)" -eq 'group' -and "$($_.Feld)" -eq 'includeGroups' -and "$($_.Value)" })
         $ge = @($allOps | Where-Object { "$($_.Kind)" -eq 'group' -and "$($_.Feld)" -eq 'excludeGroups' -and "$($_.Value)" })
@@ -131,7 +131,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp, 
             $sp = New-Object System.Windows.Controls.StackPanel
             $sp.Orientation = 'Horizontal'; $sp.Margin = '0,3,0,3'
             $tb = New-Object System.Windows.Controls.TextBlock
-            $tb.Text = "$($op.Text)"; $tb.Foreground = Get-HUBrush '#90CAF9'; $tb.FontSize = 12; $tb.VerticalAlignment = 'Center'; $tb.Margin = '0,0,8,0'; $tb.MinWidth = 260
+            $tb.Text = "$($op.Text)"; $tb.Foreground = Get-HUBrush '#90CAF9' 'Fg'; $tb.FontSize = 12; $tb.VerticalAlignment = 'Center'; $tb.Margin = '0,0,8,0'; $tb.MinWidth = 260
             $cb2 = New-Object System.Windows.Controls.ComboBox
             try { $cb2.Style = $w.FindResource('DarkComboBox') } catch { }
             $cb2.MinWidth = 320; $cb2.FontSize = 12; $cb2.IsTextSearchEnabled = $true
@@ -154,7 +154,7 @@ function Show-HUEntraRestorePreview($Plan, [string]$TenantName, [string]$Stamp, 
             continue
         }
         $ob = New-Object System.Windows.Controls.CheckBox
-        $ob.Content = "$($op.Text)"; $ob.IsChecked = [bool]$op.Value; $ob.Foreground = Get-HUBrush '#90CAF9'; $ob.Margin = '0,3,0,3'; $ob.FontSize = 12
+        $ob.Content = "$($op.Text)"; $ob.IsChecked = [bool]$op.Value; $ob.Foreground = Get-HUBrush '#90CAF9' 'Fg'; $ob.Margin = '0,3,0,3'; $ob.FontSize = 12
         try { $ob.Style = $w.FindResource('DarkCheckBox') } catch { }
         $ob.Tag = $op
         $ob.Add_Checked({ $this.Tag.Value = $true; & $grpUpd }); $ob.Add_Unchecked({ $this.Tag.Value = $false; & $grpUpd })

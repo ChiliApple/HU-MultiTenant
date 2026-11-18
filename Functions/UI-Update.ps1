@@ -55,8 +55,8 @@ function Set-HUUpdateButton([string]$RemoteVer = '', [bool]$Pre = $false) {
     $b = $script:Controls['btnUpdate']
     if ($RemoteVer) {
         $b.Content = "Update v$RemoteVer$(if ($Pre) { ' (Test)' })"
-        $b.Background = [System.Windows.Media.Brushes]::Gold
-        $b.Foreground = Get-HUBrush '#1E1E1E'
+        $b.Background = (Get-HUBrush '#FFD700' 'Btn')
+        $b.Foreground = Get-HUBrush '#1E1E1E' 'BtnFg'
         $b.FontWeight = 'Bold'
     } else {
         $b.Content = 'Update'
@@ -530,7 +530,7 @@ function Show-HUAbout {
 # --- Doku-Seiten (F1 = Anleitung): Fassung der installierten Version von GitHub, sonst die mitgelieferte ---
 # Nur feste Seiten; der Aufrufer gibt nie einen Pfad oder Dateinamen vor.
 $script:HUDocPages = [ordered]@{ Anleitung = 'Anleitung.html'; Einstieg = 'Einstieg.html'; Funktionen = 'Funktionen.html'; Roadmap = 'Roadmap.html' }
-$script:HUDocImages = @('screenshot-quickscript.png', 'screenshot-apps.png', 'screenshot-sperre.png', 'screenshot-wartung.png', 'screenshot-sicherheit.png', 'screenshot-muster.png', 'screenshot-autopilot.png')
+$script:HUDocImages = @('screenshot-quickscript.png', 'screenshot-apps.png', 'screenshot-sperre.png', 'screenshot-wartung.png', 'screenshot-sicherheit.png', 'screenshot-muster.png', 'screenshot-autopilot.png', 'screenshot-sicherheit-hell.png', 'screenshot-farbschema-hell.png')
 function Show-HUManual {
     param([ValidateSet('Anleitung', 'Einstieg', 'Funktionen', 'Roadmap')][string]$Page = 'Anleitung')
     $file = $script:HUDocPages[$Page]

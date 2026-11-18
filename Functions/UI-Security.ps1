@@ -9,6 +9,12 @@ $script:SecGen = 0
 $script:SecResults = @()
 $script:SecMatrix = @()
 $script:SecRan = $false
+# Pruefumfang (Teil-Laeufe): Logik in Core\HU.SecCatalog.psm1 (Get-HUSecRunPlan, Merge-HUSecRunData, Get-HUSecRefLock)
+$script:SecFull = $true        # Umfang des zuletzt gestarteten Laufs war "Alles" (nur dann Verlauf und Soll speichern)
+$script:SecScopeText = ''      # Text des Umfangs des letzten Laufs
+$script:SecRunIds = @()        # Regelnummern des letzten Laufs (leer = alle)
+$script:SecStamp = $null       # Beginn des letzten Laufs (Stand der Zellen)
+$script:SecRefTip = ''         # urspruenglicher Tooltip von "Soll speichern"
 
 function Get-HUSecCellText($Cell) {
     if (-not $Cell) { return "$([char]0x2014)" }
@@ -19,6 +25,7 @@ function Get-HUSecCellText($Cell) {
         'Ausnahme' { return "$([char]0x25D0)" }
         'NichtPruefbar' { return "? $why".Trim() }
         'Fehler' { return "$([char]0x26A0)" }
+        'NichtGeprueft' { return (Get-HUSecNotRunText) }
         'Info' { if ("$($Cell.Reason)" -eq 'Aus') { return 'aus' }; if ("$($Cell.Reason)" -eq 'Handgeprueft') { return "$([char]0x2714) Hand" }; if ("$($Cell.Detail)" -match '\(([0-9.,]+ %)\)\s*$') { return $Matches[1] }; return 'i' }
         default { return "$($Cell.Status)" }
     }
@@ -33,6 +40,7 @@ function Get-HUSecCellColor($Cell) {
         'Abweichung' { return '#EF5350' }
         'Fehler' { return '#EF5350' }
         'Ausnahme' { return '#FFB74D' }
+        'NichtGeprueft' { return '#8A8A8A' }
         'NichtPruefbar' { if ("$($Cell.Reason)" -eq 'Manuell' -and (Test-HUSecManualRule "$($Cell.RuleId)")) { return '#FFB74D' }; return '#8A8A8A' }
         'Info' { if ("$($Cell.Reason)" -eq 'Aus') { return '#8A8A8A' }; if ("$($Cell.Reason)" -eq 'Handgeprueft') { return '#A5D6A7' }; return $def }
         default { return $def }
@@ -67,7 +75,7 @@ function Update-HUSecPickButton([string]$Kind) {
 function Initialize-HUSecPick([string]$Kind, [string[]]$Values) {
     $c = $script:Controls; $p = $script:HUSecPick[$Kind]
     $off = @("$(Get-HUStateValue $p.State '')" -split ',' | Where-Object { $_ })
-    $fg = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#CCCCCC')
+    $fg = Get-HUBrush '#CCCCCC' 'Fg'
     foreach ($v in $Values) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = $v; $cb.IsChecked = ($off -notcontains $v); $cb.Foreground = $fg; $cb.FontSize = 12; $cb.Margin = [System.Windows.Thickness]::new(0, 3, 0, 3)
@@ -77,7 +85,7 @@ function Initialize-HUSecPick([string]$Kind, [string[]]$Values) {
     }
     $lnk = New-Object System.Windows.Controls.Button
     $lnk.Content = 'alle'; $lnk.Uid = $Kind; $lnk.FontSize = 11; $lnk.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0); $lnk.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Left; $lnk.Padding = [System.Windows.Thickness]::new(8, 1, 8, 1)
-    try { $lnk.Style = $script:Window.FindResource('DarkButton'); $lnk.Background = ([System.Windows.Media.BrushConverter]::new().ConvertFromString('#3E3E42')) } catch { }
+    try { $lnk.Style = $script:Window.FindResource('DarkButton'); $lnk.Background = (Get-HUBrush '#3E3E42' 'Btn') } catch { }
     $lnk.Add_Click({ $k = $this.Uid; foreach ($x in @($script:Controls["spSec$k"].Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] })) { $x.IsChecked = $true }; Set-HUStateValue $script:HUSecPick[$k].State ''; Update-HUSecPickButton $k; Update-HUSecGrid })
     [void]$c["spSec$Kind"].Children.Add($lnk)
     Update-HUSecPickButton $Kind
@@ -118,20 +126,22 @@ function Update-HUSecHint {
     $c = $script:Controls
     $wait = @($script:SecWait.Keys)
     Set-HUAnaRunDot ($wait.Count -gt 0)
-    if ($wait.Count) { $c['lblAnaHint'].Text = "Pruefe ... warte auf $(@($wait | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')"; return }
+    if ($wait.Count) { $c['lblAnaHint'].Text = "Pruefe ... warte auf $(@($wait | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')$(if (-not $script:SecFull) { " (Umfang: $($script:SecScopeText))" })"; return }
     if (-not $script:SecRan) {
         $c['lblAnaHint'].Text = 'Tenants anhaken und Pruefen klicken. Es wird nur gelesen. Nicht pruefbar ist nie gruen: fehlende Rechte, Lizenz oder Technik werden als "?" mit Grund angezeigt.'
         return
     }
     $all = @($script:SecMatrix)
+    # Teil-Lauf: welcher Umfang zuletzt lief (bei vollstaendigem Lauf leer, Text wie bisher)
+    $note = Get-HUSecRunNote -Full $script:SecFull -ScopeText $script:SecScopeText -Stamp $script:SecStamp
     if (Test-HUSecBasicMode) {
-        $c['lblAnaHint'].Text = "Einfach: $(@(Get-HUSecVisibleRows).Count) Grundschutz-Regeln. Der Balken zaehlt erfuellte Regeln; nicht pruefbar ist nie erfuellt. Rot = eine kritische Regel offen, gelb = sonst etwas offen oder eine kritische Regel nicht pruefbar. Doppelklick = So behebst du es, Rechtsklick = Menue mit Details."
+        $c['lblAnaHint'].Text = "${note}Einfach: $(@(Get-HUSecVisibleRows).Count) Grundschutz-Regeln. Der Balken zaehlt erfuellte Regeln; nicht pruefbar ist nie erfuellt. Rot = eine kritische Regel offen, gelb = sonst etwas offen oder eine kritische Regel nicht pruefbar. Doppelklick = So behebst du es, Rechtsklick = Menue mit Details."
         return
     }
     $dev = @($all | Where-Object Dev).Count
     $vis = @(Get-HUSecVisibleRows).Count
-    $cov = @($script:SecKeys | ForEach-Object { $cv = Get-HUSecCoverage -Results $script:SecResults -Key $_; "$(Get-HUAnaTenantName $_) $($cv.Checked)/$($cv.Total)" }) -join ', '
-    $c['lblAnaHint'].Text = "$($all.Count) Regeln, $dev mit Abweichung$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Geprueft: $cov. Zeichen: $([char]0x2714) ok, $([char]0x2716) Abweichung (Zahl = Anzahl), $([char]0x25D0) Ausnahme, ? nicht pruefbar (Grund dahinter), $([char]0x26A0) Fehler, i Info. Doppelklick = Details."
+    $cov = @($script:SecKeys | ForEach-Object { $cv = Get-HUSecCoverage -Results $script:SecResults -Key $_; $nr = $(if ($script:SecFull) { 0 } else { @(Get-HUSecNotRunIds -Results $script:SecResults -Key $_).Count }); "$(Get-HUAnaTenantName $_) $($cv.Checked)/$($cv.Total)$(if ($nr) { ", $nr $(Get-HUSecNotRunText)" })" }) -join ', '
+    $c['lblAnaHint'].Text = "${note}$($all.Count) Regeln, $dev mit Abweichung$(if ($vis -ne $all.Count) { ", $vis angezeigt" }). Geprueft: $cov. Zeichen: $([char]0x2714) ok, $([char]0x2716) Abweichung (Zahl = Anzahl), $([char]0x25D0) Ausnahme, ? nicht pruefbar (Grund dahinter), $([char]0x26A0) Fehler, i Info. Doppelklick = Details."
 }
 
 function Update-HUSecGrid {
@@ -153,7 +163,7 @@ function Update-HUSecGrid {
     & $pad 28
     # Tenant-Spalten: Text wie bisher, in der letzten Zeile (Ampel) zusaetzlich ein farbiger Punkt
     for ($i = 0; $i -lt $keys.Count; $i++) {
-        $tpl = [System.Windows.Markup.XamlReader]::Parse("<DataTemplate xmlns=`'http://schemas.microsoft.com/winfx/2006/xaml/presentation`'><StackPanel Orientation=`'Horizontal`'><Ellipse Width=`'9`' Height=`'9`' Margin=`'0,0,6,0`' VerticalAlignment=`'Center`' Fill=`'{Binding Lc$i}`' Visibility=`'{Binding Lv$i}`'/><TextBlock Text=`'{Binding T$i}`' Foreground=`'{Binding Fc$i}`' VerticalAlignment=`'Center`'/></StackPanel></DataTemplate>")
+        $tpl = [System.Windows.Markup.XamlReader]::Parse("<DataTemplate xmlns=`'http://schemas.microsoft.com/winfx/2006/xaml/presentation`'><StackPanel Orientation=`'Horizontal`'><Ellipse Width=`'9`' Height=`'9`' Margin=`'0,0,6,0`' VerticalAlignment=`'Center`' Fill=`'{Binding Lc$i}`' Visibility=`'{Binding Lv$i}`'/><TextBlock Text=`'{Binding T$i}`' Foreground=`'{Binding Fc$i}`' FontStyle=`'{Binding Fs$i}`' ToolTip=`'{Binding Tp$i}`' VerticalAlignment=`'Center`'/></StackPanel></DataTemplate>")
         $col = New-Object System.Windows.Controls.DataGridTemplateColumn
         $col.Header = Get-HUAnaTenantName $keys[$i]; $col.CellTemplate = $tpl; $col.SortMemberPath = "T$i"; $col.MinWidth = 120
         $col.Width = New-Object System.Windows.Controls.DataGridLength(1, $cells)
@@ -161,7 +171,15 @@ function Update-HUSecGrid {
     }
     $items = foreach ($m in @(Get-HUSecVisibleRows)) {
         $o = [ordered]@{ Sev = $m.Sev; SevRank = [int]@{ Kritisch = 0; Hoch = 1; Mittel = 2; Niedrig = 3 }["$($m.Sev)"]; Area = $m.Area; Nr = "$($m.RuleId)"; Rule = "$($m.Title)" }
-        for ($i = 0; $i -lt $keys.Count; $i++) { $o["T$i"] = Get-HUSecCellText $m.Cells[$keys[$i]]; $o["Fc$i"] = Get-HUSecCellColor $m.Cells[$keys[$i]] }
+        # Farben gehen als Anzeige-Daten ins Farbschema (Fc = Text, Rolle Fg); sie landen nie in Export, Verlauf oder Soll (die bauen auf Matrix und Ergebnissen auf)
+        for ($i = 0; $i -lt $keys.Count; $i++) {
+            $cell = $m.Cells[$keys[$i]]
+            $o["T$i"] = Get-HUSecCellText $cell; $o["Fc$i"] = ConvertTo-HUThemeColor (Get-HUSecCellColor $cell) 'Fg'
+            # nur bei gemischtem Stand: aeltere Zellen kursiv mit Uhrzeit des Laufs im Tooltip, ausgelassene Regeln "nicht geprueft"
+            $stand = $(if ($script:SecFull) { '' } else { Get-HUSecCellStand -Cell $cell -LastStamp $script:SecStamp })
+            $o["Fs$i"] = $(if ($stand) { [System.Windows.FontStyles]::Italic } else { [System.Windows.FontStyles]::Normal })
+            $o["Tp$i"] = $(if (-not $stand) { $null } elseif ($cell -and "$($cell.Status)" -eq 'NichtGeprueft') { "Diese Regel wurde in dieser Sitzung noch nicht gepr$([char]0xFC)ft (letzter Umfang: $($script:SecScopeText))" } else { $stand })
+        }
         for ($i = 0; $i -lt $keys.Count; $i++) { $o["Lc$i"] = '#000000'; $o["Lv$i"] = 'Collapsed' }
         $o.Ref = $m
         [pscustomobject]$o
@@ -169,7 +187,7 @@ function Update-HUSecGrid {
     $items = @($items)
     # letzte Zeile: Ampel je Tenant in derselben Spalte (rot = ab 10 nicht erfuellte Regeln, gelb = 1 bis 9, gruen = keine)
     if ($script:SecRan -and $keys.Count) {
-        $col = @{ Rot = '#EF5350'; Gelb = '#FFB74D'; Gruen = '#66BB6A'; Grau = '#757575' }
+        $col = @{ Rot = (ConvertTo-HUThemeColor '#EF5350' 'Status'); Gelb = (ConvertTo-HUThemeColor '#FFB74D' 'Status'); Gruen = (ConvertTo-HUThemeColor '#66BB6A' 'Status'); Grau = (ConvertTo-HUThemeColor '#757575' 'Status') }
         # Ampel folgt der Auswahl (Grad, Bereich, Suchtext); "Nur Abweichungen/Unterschiede" zaehlt nicht als Auswahl
         $selIds = @(Get-HUSecVisibleRows -NoStatusFilter | ForEach-Object { "$($_.RuleId)" })
         $basic = Test-HUSecBasicMode
@@ -179,13 +197,17 @@ function Update-HUSecGrid {
         $f = [ordered]@{ Sev = ''; SevRank = 9; Area = ''; Nr = ''; Rule = $(if ($basic) { "Grundschutz ($($basicIds.Count) Regeln)" } elseif ($part) { "Ampel (nur Auswahl: $($selIds.Count) Regeln)" } else { 'Ampel' }) }
         for ($i = 0; $i -lt $keys.Count; $i++) {
             $rows = $script:SecData["$($keys[$i])"]
+            $nr = 0
             $had = [bool]$rows
             if ($rows -and $part) { $rows = @(@($rows) | Where-Object { $selIds -contains "$($_.RuleId)" }) }
             if ($had -and -not @($rows).Count) { $f["T$i"] = '-'; $f["Lc$i"] = $col['Grau'] }
-            elseif ($rows -and $basic) { $l = Get-HUSecBasicLight -Results @($rows) -Key $keys[$i] -Ids $basicIds; $f["T$i"] = "$($l.Ok) von $($l.Total)"; $f["Lc$i"] = $col[$l.Color] }
-            elseif ($rows) { $l = Get-HUSecLight -Results @($rows) -Key $keys[$i]; $f["T$i"] = "$($l.Ok) von $($l.Checked)"; $f["Lc$i"] = $col[$l.Color] }
+            elseif ($rows -and $basic) { $l = Get-HUSecBasicLight -Results @($rows) -Key $keys[$i] -Ids $basicIds -Partial:(-not $script:SecFull); $f["T$i"] = "$($l.Ok) von $($l.Total)"; $f["Lc$i"] = $col[$l.Color]; $nr = $l.NotRun }
+            elseif ($rows) { $l = Get-HUSecLight -Results @($rows) -Key $keys[$i] -Partial:(-not $script:SecFull) -Ids $selIds; $f["T$i"] = "$($l.Ok) von $($l.Checked)"; $f["Lc$i"] = $col[$l.Color]; $nr = $l.NotRun }
             else { $f["T$i"] = '...'; $f["Lc$i"] = $col['Grau'] }
-            $f["Lv$i"] = 'Visible'; $f["Fc$i"] = '#CCCCCC'
+            # Teil-Lauf: ausgelassene Regeln zaehlen nie als erfuellt; die Zahl steht im Text und im Tooltip
+            if ($nr) { $f["T$i"] = "$($f["T$i"]), $nr $(Get-HUSecNotRunText)" }
+            $f["Lv$i"] = 'Visible'; $f["Fc$i"] = (ConvertTo-HUThemeColor '#CCCCCC' 'Fg')
+            $f["Fs$i"] = [System.Windows.FontStyles]::Normal; $f["Tp$i"] = $(if ($nr) { "$nr Regel(n) in dieser Sitzung noch nicht gepr$([char]0xFC)ft, sie z$([char]0xE4)hlen nie als erf$([char]0xFC)llt (letzter Umfang: $($script:SecScopeText))" } else { $null })
         }
         $f.Ref = $null
         $items += [pscustomobject]$f
@@ -201,39 +223,39 @@ function Update-HUSecBasicBars {
     if (-not $wp) { return }
     $wp.Children.Clear()
     if (-not (Test-HUSecBasicMode) -or -not $script:SecRan -or -not @($script:SecKeys).Count) { $wp.Visibility = 'Collapsed'; return }
-    $bc = [System.Windows.Media.BrushConverter]::new()
     $col = @{ Rot = '#EF5350'; Gelb = '#FFB74D'; Gruen = '#66BB6A'; Grau = '#757575' }
     $ids = @(Get-HUSecBasicIds)
     $width = 170.0
     foreach ($k in @($script:SecKeys)) {
         $rows = $script:SecData["$k"]
         $bd = New-Object System.Windows.Controls.Border
-        $bd.Background = $bc.ConvertFromString('#252526'); $bd.BorderBrush = $bc.ConvertFromString('#3E3E42'); $bd.BorderThickness = [System.Windows.Thickness]::new(1)
+        $bd.Background = (Get-HUBrush '#252526' 'Bg'); $bd.BorderBrush = (Get-HUBrush '#3E3E42' 'Border'); $bd.BorderThickness = [System.Windows.Thickness]::new(1)
         $bd.CornerRadius = [System.Windows.CornerRadius]::new(4); $bd.Padding = [System.Windows.Thickness]::new(10, 5, 10, 6); $bd.Margin = [System.Windows.Thickness]::new(0, 0, 8, 4)
         $sp = New-Object System.Windows.Controls.StackPanel
         $hd = New-Object System.Windows.Controls.TextBlock
-        $hd.Text = Get-HUAnaTenantName $k; $hd.Foreground = $bc.ConvertFromString('#E0E0E0'); $hd.FontSize = 12; $hd.FontWeight = [System.Windows.FontWeights]::SemiBold
+        $hd.Text = Get-HUAnaTenantName $k; $hd.Foreground = (Get-HUBrush '#E0E0E0' 'Fg'); $hd.FontSize = 12; $hd.FontWeight = [System.Windows.FontWeights]::SemiBold
         [void]$sp.Children.Add($hd)
         $track = New-Object System.Windows.Controls.Grid
         $track.Width = $width; $track.Height = 8; $track.Margin = [System.Windows.Thickness]::new(0, 4, 0, 3); $track.HorizontalAlignment = 'Left'
-        $bg = New-Object System.Windows.Controls.Border; $bg.Background = $bc.ConvertFromString('#3E3E42'); $bg.CornerRadius = [System.Windows.CornerRadius]::new(4)
+        $bg = New-Object System.Windows.Controls.Border; $bg.Background = (Get-HUBrush '#3E3E42' 'Bg'); $bg.CornerRadius = [System.Windows.CornerRadius]::new(4)
         [void]$track.Children.Add($bg)
-        $txt = New-Object System.Windows.Controls.TextBlock; $txt.FontSize = 11; $txt.Foreground = $bc.ConvertFromString('#AAAAAA')
+        $txt = New-Object System.Windows.Controls.TextBlock; $txt.FontSize = 11; $txt.Foreground = (Get-HUBrush '#AAAAAA' 'Fg')
         if (-not $rows) {
             $txt.Text = 'wird geprueft ...'
             $bd.ToolTip = 'Ergebnis steht noch aus'
         }
         else {
-            $l = Get-HUSecBasicLight -Results @($rows) -Key $k -Ids $ids
+            $l = Get-HUSecBasicLight -Results @($rows) -Key $k -Ids $ids -Partial:(-not $script:SecFull)
             if ($l.Total -gt 0 -and $l.Ok -gt 0) {
                 $fill = New-Object System.Windows.Controls.Border
-                $fill.Background = $bc.ConvertFromString($col[$l.Color]); $fill.CornerRadius = [System.Windows.CornerRadius]::new(4); $fill.HorizontalAlignment = 'Left'
+                $fill.Background = (Get-HUBrush $col[$l.Color] 'Status'); $fill.CornerRadius = [System.Windows.CornerRadius]::new(4); $fill.HorizontalAlignment = 'Left'
                 $fill.Width = $width * ([double]$l.Ok / [double]$l.Total)
                 [void]$track.Children.Add($fill)
             }
-            $txt.Text = "$($l.Ok) von $($l.Total) erfuellt$(if ($l.NotCheckable) { ", $($l.NotCheckable) nicht pruefbar" })"
-            $why = if ($l.Color -eq 'Gelb' -and -not $l.Deviations -and $l.CriticalNotCheckable) { "Gelb: $($l.CriticalNotCheckable) kritische Regel(n) nicht pruefbar, offen ist nichts. " } else { '' }
-            $bd.ToolTip = "${why}Offen: $($l.Deviations) (kritisch $($l.BySev.Kritisch), hoch $($l.BySev.Hoch), mittel $($l.BySev.Mittel), niedrig $($l.BySev.Niedrig)). Nicht pruefbar: $($l.NotCheckable), davon kritisch $($l.CriticalNotCheckable); nicht pruefbar ist nie erfuellt (fehlendes Recht, Lizenz oder Technik)."
+            $txt.Text = "$($l.Ok) von $($l.Total) erfuellt$(if ($l.NotCheckable) { ", $($l.NotCheckable) nicht pruefbar" })$(if ($l.NotRun) { ", $($l.NotRun) $(Get-HUSecNotRunText)" })"
+            $why = if ($l.Color -eq 'Gelb' -and -not $l.Deviations -and ($l.CriticalNotCheckable -or $l.CriticalNotRun)) { "Gelb: $($l.CriticalNotCheckable + $l.CriticalNotRun) kritische Regel(n) nicht pruefbar$(if ($l.CriticalNotRun) { " oder nicht gepr$([char]0xFC)ft" }), offen ist nichts. " } else { '' }
+            $nrTip = $(if ($l.NotRun) { " Nicht gepr$([char]0xFC)ft (Teil-Lauf, letzter Umfang: $($script:SecScopeText)): $($l.NotRun), davon kritisch $($l.CriticalNotRun); sie z$([char]0xE4)hlen nie als erf$([char]0xFC)llt." } else { '' })
+            $bd.ToolTip = "${why}Offen: $($l.Deviations) (kritisch $($l.BySev.Kritisch), hoch $($l.BySev.Hoch), mittel $($l.BySev.Mittel), niedrig $($l.BySev.Niedrig)). Nicht pruefbar: $($l.NotCheckable), davon kritisch $($l.CriticalNotCheckable); nicht pruefbar ist nie erfuellt (fehlendes Recht, Lizenz oder Technik).$nrTip"
         }
         [void]$sp.Children.Add($track)
         [void]$sp.Children.Add($txt)
@@ -323,39 +345,63 @@ function Show-HUSecPreview {
     Update-HUSecGrid
 }
 
+# "Soll speichern" nur frei, wenn der Stand der Matrix aus einem vollstaendigen Lauf stammt (Teil-Lauf: gesperrt, Tooltip nennt den Grund)
+function Update-HUSecRefButton {
+    $b = $script:Controls['btnSecRef']
+    if (-not $b) { return }
+    if (-not $script:SecRefTip) { $script:SecRefTip = "$($b.ToolTip)" }
+    $why = Get-HUSecRefLock -Ran $script:SecRan -Full $script:SecFull -ScopeText $script:SecScopeText
+    if ($why) { $b.IsEnabled = $false; $b.ToolTip = $why } else { $b.IsEnabled = $true; $b.ToolTip = $script:SecRefTip }
+}
+
 function Start-HUSecRun {
     $c = $script:Controls
     $keys = @(Get-HUCheckedTenants $c['spAnaTenants'])
     if (-not $keys.Count) { Show-HUMessage 'Bitte mindestens einen Tenant anhaken.' -Icon Warning; return }
+    # Umfang (Auswahl neben dem Knopf): vollstaendig = wie bisher, sonst Teil-Lauf mit den Regelnummern des Umfangs
+    $plan = Get-HUSecRunPlan -ScopeId (Get-HUSecComboTag 'cmbSecScope')
     $script:SecGen++
     $gen = $script:SecGen
     $script:SecKeys = $keys
-    $script:SecData = @{}
     $script:SecWait = @{}
-    $script:SecResults = @()
     $script:SecRan = $true
-    $script:SecMatrix = @(Get-HUSecMatrix -Results @() -Keys $keys)
+    $script:SecFull = [bool]$plan.Full
+    $script:SecScopeText = "$($plan.Text)"
+    $script:SecRunIds = @($plan.RuleIds)
+    $script:SecStamp = Get-Date
+    # vollstaendiger Lauf: alles leeren wie bisher. Teil-Lauf: Stand der angehakten Tenants behalten, abgewaehlte Tenants fallen weg
+    $script:SecData = Merge-HUSecRunData -Previous $script:SecData -Keys $keys -RuleIds $script:SecRunIds
+    $script:SecResults = @(Get-HUSecResultList -Data $script:SecData -Keys $keys)
+    $script:SecMatrix = @(Get-HUSecMatrix -Results $script:SecResults -Keys $keys -MarkNotRun:(-not $script:SecFull))
+    Update-HUSecRefButton
     Update-HUSecGrid
     $c['rtbAna'].Document.Blocks.Clear()
-    Add-HURtbLine $c['rtbAna'] "Sicherheitskatalog (nur lesend): $(@($keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')" '#90CAF9'
+    Add-HURtbLine $c['rtbAna'] "Sicherheitskatalog (nur lesend): $(@($keys | ForEach-Object { Get-HUAnaTenantName $_ }) -join ', ')$(if (-not $script:SecFull) { " - Umfang: $($script:SecScopeText) (Teil-Lauf)" })" '#90CAF9'
     foreach ($k in $keys) {
         $script:SecWait[$k] = $true
-        $ok = Start-HUJob -Name "Sec-$gen-$k" -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; Gen = $gen } -Code {
+        $ok = Start-HUJob -Name "Sec-$gen-$k" -Quiet -Output $c['rtbAna'] -Vars @{ TK = $k; Gen = $gen; Ids = [string[]]@($plan.RuleIds) } -Code {
             $rows = @()
-            try { $rows = @(Invoke-HUSecCatalog -TenantKey $TK -Settings $Settings) }
+            try { $rows = $(if ($Ids.Count) { @(Invoke-HUSecCatalog -TenantKey $TK -Settings $Settings -RuleIds $Ids) } else { @(Invoke-HUSecCatalog -TenantKey $TK -Settings $Settings) }) }
             catch { Write-HULog -Message $_.Exception.Message -Level 'ERROR' -Tenant $TK }
             [pscustomobject]@{ __SecDone = $TK; __SecGen = $Gen; Rows = $rows }
         } -OnDone {
             param($Result, $Errors)
             $d = @($Result | Where-Object { $_ -and $_.PSObject.Properties['__SecDone'] }) | Select-Object -First 1
+            # Ergebnis eines alten Laufs (andere Zaehlung, auch anderer Umfang) wird verworfen, bevor irgendetwas zusammengefuehrt wird
             if (-not $d -or [int]$d.__SecGen -ne $script:SecGen) { return }
-            $script:SecWait.Remove("$($d.__SecDone)")
-            $script:SecData["$($d.__SecDone)"] = @($d.Rows)
-            if (-not @($d.Rows).Count) { Add-HURtbLine $script:Controls['rtbAna'] "$(Get-HUAnaTenantName "$($d.__SecDone)"): keine Ergebnisse (Fehler siehe Log)" '#FFB74D' }
+            $tk = "$($d.__SecDone)"
+            $script:SecWait.Remove($tk)
+            $merged = Merge-HUSecRunData -Previous $script:SecData -Keys @($tk) -New @{ $tk = @($d.Rows) } -RuleIds $script:SecRunIds -Stamp $script:SecStamp
+            $script:SecData[$tk] = @($merged[$tk])
+            if (-not @($d.Rows).Count) { Add-HURtbLine $script:Controls['rtbAna'] "$(Get-HUAnaTenantName $tk): keine Ergebnisse (Fehler siehe Log)" '#FFB74D' }
             if (-not $script:SecWait.Count) {
-                $script:SecResults = @($script:SecData.Values | ForEach-Object { $_ })
-                $script:SecMatrix = @(Get-HUSecMatrix -Results $script:SecResults -Keys $script:SecKeys)
-                try { [void](Save-HUSecSnapshot -Results $script:SecResults) } catch { Write-HULog -Message "Verlauf nicht gespeichert: $($_.Exception.Message)" -Level 'WARN' }
+                $script:SecResults = @(Get-HUSecResultList -Data $script:SecData -Keys $script:SecKeys)
+                $script:SecMatrix = @(Get-HUSecMatrix -Results $script:SecResults -Keys $script:SecKeys -MarkNotRun:(-not $script:SecFull))
+                if ($script:SecFull) {
+                    try { [void](Save-HUSecSnapshot -Results $script:SecResults) } catch { Write-HULog -Message "Verlauf nicht gespeichert: $($_.Exception.Message)" -Level 'WARN' }
+                }
+                else { Add-HURtbLine $script:Controls['rtbAna'] "Teil-Lauf ($($script:SecScopeText)): kein Eintrag im Verlauf, Soll speichern bleibt gesperrt bis zu einem vollst$([char]0xE4)ndigen Lauf." '#90CAF9' }
+                Update-HUSecRefButton
                 Update-HUSecGrid
             } else { Update-HUSecGrid }
         }
@@ -366,6 +412,7 @@ function Start-HUSecRun {
 
 function Get-HUSecStatusText($Cell) {
     if (-not $Cell) { return 'kein Ergebnis' }
+    if ("$($Cell.Status)" -eq 'NichtGeprueft') { return (Get-HUSecNotRunText) }
     $sym = Get-HUSecCellText $Cell
     $word = switch ("$($Cell.Status)") { 'NichtPruefbar' { 'nicht pruefbar' } default { "$($Cell.Status)" } }
     $why = if ("$($Cell.Reason)") { " ($($Cell.Reason))" } else { '' }
@@ -557,6 +604,7 @@ function Show-HUSecDetail {
                 <DataGridTextColumn Header="Tenant" Binding="{Binding Tenant}" Width="Auto" MinWidth="130"/>
                 <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto" MinWidth="170"/>
                 <DataGridTextColumn Header="Anzahl" Binding="{Binding Anzahl}" Width="Auto" MinWidth="60"/>
+                <DataGridTextColumn x:Name="colStand" Header="Stand" Binding="{Binding Stand}" Width="Auto" MinWidth="120" Visibility="Collapsed"/>
                 <DataGridTextColumn Header="Details" Binding="{Binding Detail}" Width="*"/>
             </DataGrid.Columns>
         </DataGrid>
@@ -576,10 +624,12 @@ function Show-HUSecDetail {
     $ctl.gridD.ItemsSource = @(foreach ($k in @($script:SecKeys)) {
             $cell = $m.Cells[$k]
             # "unvollstaendig" nur, wenn wirklich gelesen wurde (nicht bei fehlender Lizenz, fehlendem Recht oder Handpruefung)
-            $noRead = ($cell -and "$($cell.Status)" -eq 'NichtPruefbar' -and "$($cell.Reason)" -in 'Lizenz', 'Recht', 'Manuell', 'NichtAnwendbar')
+            $noRead = ($cell -and (("$($cell.Status)" -eq 'NichtPruefbar' -and "$($cell.Reason)" -in 'Lizenz', 'Recht', 'Manuell', 'NichtAnwendbar') -or "$($cell.Status)" -eq 'NichtGeprueft'))
             $det = if ($cell) { "$($cell.Detail)$(if ($cell.Complete -eq $false -and -not $noRead) { ' (unvollstaendig gelesen)' })" } else { '' }
-            [pscustomobject]@{ Key = $k; Tenant = (Get-HUAnaTenantName $k); Status = (Get-HUSecStatusText $cell); Anzahl = $(if ($cell -and [int]"0$($cell.Count)" -gt 0) { "$($cell.Count)" } else { '' }); Detail = $det }
+            [pscustomobject]@{ Key = $k; Tenant = (Get-HUAnaTenantName $k); Status = (Get-HUSecStatusText $cell); Anzahl = $(if ($cell -and [int]"0$($cell.Count)" -gt 0) { "$($cell.Count)" } else { '' }); Stand = $(if ($script:SecFull) { '' } else { Get-HUSecCellStand -Cell $cell -LastStamp $script:SecStamp }); Detail = $det }
         })
+    # Spalte "Stand" nur bei gemischtem Lauf (Teil-Lauf): zeigt, ob die Zelle frisch ist, aus einem aelteren Lauf stammt oder nicht geprueft wurde
+    if (-not $script:SecFull) { $ctl.colStand.Visibility = 'Visible' }
     # Liste nur anbieten, wenn mindestens ein Tenant die Regel pruefen konnte
     $listable = { param($cl) $cl -and "$($cl.Status)" -in 'OK', 'Abweichung', 'Ausnahme', 'Info' }
     $hasItems = [bool](@(Get-HUSecRules | Where-Object { $_.Id -eq $m.RuleId -and $_.PSObject.Properties['Items'] }).Count) -and [bool](@(@($script:SecKeys) | Where-Object { & $listable $m.Cells[$_] }).Count)
@@ -587,7 +637,7 @@ function Show-HUSecDetail {
     $ctl.btnList.Add_Click({
             $sel = $ctl.gridD.SelectedItem
             if (-not $sel) { Show-HUMessage 'Bitte zuerst einen Tenant in der Tabelle markieren.' -Icon Info -Owner $w; return }
-            if (-not (& $listable $m.Cells["$($sel.Key)"])) { Show-HUMessage "Bei $($sel.Tenant) war die Regel nicht pruefbar - keine Liste." -Icon Info -Owner $w; return }
+            if (-not (& $listable $m.Cells["$($sel.Key)"])) { Show-HUMessage "Bei $($sel.Tenant) war die Regel $(if ("$($m.Cells["$($sel.Key)"].Status)" -eq 'NichtGeprueft') { 'in dieser Sitzung noch nicht gepr' + [char]0xFC + 'ft' } else { 'nicht pruefbar' }) - keine Liste." -Icon Info -Owner $w; return }
             Start-HUSecItems -Key "$($sel.Key)" -RuleId "$($m.RuleId)" -Title "$($m.Title)" -Window $w -Button $ctl.btnList
         })
     $ctl.btnFix.Add_Click({ Show-HUSecFix -RuleId "$($m.RuleId)" })
@@ -660,7 +710,6 @@ function Show-HUSecFix {
     $ctl.lblTitle.Text = "$($f.Title)"
     $rule = @(Get-HUSecRules | Where-Object { $_.Id -eq $RuleId })[0]
     $ctl.lblMeta.Text = "$RuleId$(if ($rule) { "  |  $($rule.Area)  |  Schweregrad $($rule.Sev)" })"
-    $bc = New-Object System.Windows.Media.BrushConverter
     if ($f.Has) {
         $ctl.txtPath.Text = $(if ($f.Path) { "$($f.Path)" } else { 'kein Menue im Portal - die Schritte unten laufen per PowerShell' })
         $i = 0
@@ -668,14 +717,14 @@ function Show-HUSecFix {
             $i++
             $tb = New-Object System.Windows.Controls.TextBlock
             $tb.Text = "$i.  $st"; $tb.TextWrapping = 'Wrap'; $tb.FontSize = 12; $tb.Margin = [System.Windows.Thickness]::new(0, 0, 0, 6)
-            $tb.Foreground = $bc.ConvertFromString('#E0E0E0')
+            $tb.Foreground = (Get-HUBrush '#E0E0E0' 'Fg')
             [void]$ctl.spSteps.Children.Add($tb)
         }
         if ($f.Note) { $ctl.lblNote.Text = "$($f.Note)"; $ctl.lblNote.Visibility = 'Visible' }
         foreach ($l in @($f.Learn)) {
             $lt = New-Object System.Windows.Controls.TextBlock
             $lt.Text = "$($l.Title)"; $lt.ToolTip = "$($l.Url)"; $lt.Cursor = 'Hand'; $lt.TextDecorations = [System.Windows.TextDecorations]::Underline
-            $lt.Foreground = $bc.ConvertFromString('#4FC3F7'); $lt.FontSize = 12; $lt.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4); $lt.Tag = "$($l.Url)"
+            $lt.Foreground = (Get-HUBrush '#4FC3F7' 'Fg'); $lt.FontSize = 12; $lt.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4); $lt.Tag = "$($l.Url)"
             $lt.Add_MouseLeftButtonUp({ param($s, $e) Open-HUUrl "$($s.Tag)" })
             [void]$ctl.spLinks.Children.Add($lt)
         }
@@ -747,7 +796,12 @@ function Show-HUSecExceptions {
         $now = Get-Date
         $ctl.gridEx.ItemsSource = @(foreach ($e in @(Get-HUSecExceptions)) {
                 $until = [datetime]$e.validUntil
-                $es = Get-HUSecExceptionState -Exception $e -Results @($script:SecResults) -Now $now
+                # "wirkungslos" richtet sich nach dem letzten Pruefen. Nach einem Teil-Lauf zaehlen nur Ergebnisse dieses Laufs: eine in dieser Sitzung
+                # nicht (neu) geprueften Regel darf ihre Ausnahme nicht wirkungslos machen (aelteres "nicht pruefbar" bleibt ohne Wirkung)
+                $res = @($script:SecResults)
+                if ($script:SecRan -and -not $script:SecFull) { $res = @(Get-HUSecLastRunResults -Results $res -Stamp $script:SecStamp) }
+                $es = Get-HUSecExceptionState -Exception $e -Results $res -Now $now
+                if ($script:SecRan -and -not $script:SecFull -and "$es" -eq 'aktiv' -and @($script:SecKeys) -contains "$($e.tenant)" -and -not @($res | Where-Object { "$($_.RuleId)" -eq "$($e.ruleId)" -and "$($_.Tenant)" -eq "$($e.tenant)" }).Count) { $es = "aktiv, im letzten Lauf nicht gepr$([char]0xFC)ft" }
                 [pscustomobject]@{ Id = "$($e.id)"; Regel = "$($e.ruleId)"; Tenant = (Get-HUAnaTenantName "$($e.tenant)"); Begruendung = "$($e.reason)"; Verantwortlich = "$($e.responsible)"; Bis = $until.ToLocalTime().ToString('yyyy-MM-dd'); Status = $es; Wirkungslos = $(if ($es -like 'wirkungslos*') { 'ja' } else { 'nein' }) }
             })
     }
@@ -809,7 +863,7 @@ function Show-HUSecExceptionDialog {
     $ctl.lblHint.Text = "$($Row.RuleId) [$($Row.Sev)] $($Row.Title)`nEine Ausnahme ist befristet und mit Begruendung. Nach Ablauf gilt die Abweichung wieder.$(if (@(Get-HUSecRules | Where-Object { $_.Id -eq "$($Row.RuleId)" -and $_.PSObject.Properties['Rolling'] -and $_.Rolling }).Count) { "`nBei dieser Regel deckt die Ausnahme nur die Ereignisse, die beim letzten Pruefen zu sehen waren. Jedes spaetere Ereignis zaehlt wieder als Abweichung." })"
     $excs = @(Get-HUSecExceptions)
     # Tenants als Haken; vorbelegt sind die mit Abweichung oder Ausnahme, sonst der erste
-    $fg = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#CCCCCC')
+    $fg = Get-HUBrush '#CCCCCC' 'Fg'
     $anyDev = [bool]@($Keys | Where-Object { $Row.Cells[$_] -and $Row.Cells[$_].Status -in 'Abweichung', 'Ausnahme' }).Count
     foreach ($k in $Keys) {
         $cb = New-Object System.Windows.Controls.CheckBox
@@ -920,7 +974,7 @@ function Show-HUSecManualDialog {
     $w.Title = "Von Hand geprueft - $($Row.RuleId)"
     $ctl.lblHint.Text = "$($Row.RuleId) [$($Row.Sev)] $($Row.Title)`nDiese Pruefung kann das Programm nicht selbst lesen. Bestaetigung gilt 12 Monate, danach erscheint sie wieder als offen. Zaehlt nicht zur Ampel."
     $man = @(Get-HUSecManual)
-    $fg = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#CCCCCC')
+    $fg = Get-HUBrush '#CCCCCC' 'Fg'
     # vorbelegt: offene bzw. abgelaufene Tenants, sonst der erste
     $open = @($Keys | Where-Object { -not $Row.Cells[$_] -or "$($Row.Cells[$_].Status)" -ne 'Info' })
     foreach ($k in $Keys) {
@@ -972,11 +1026,14 @@ function Start-HUSecManual {
         # Zelle sofort neu berechnen (kein Graph noetig)
         $new = Get-HUSecManualResult -RuleId "$($Row.RuleId)" -TenantKey $tk
         if ($new -and $script:SecRan) {
+            # neu berechnet gilt als Ergebnis des letzten Laufs (RunAt), auch in den Tenant-Daten von Ampel und Balken
+            if ($script:SecStamp) { $new | Add-Member -NotePropertyName RunAt -NotePropertyValue $script:SecStamp -Force }
             $script:SecResults = @(@($script:SecResults | Where-Object { -not ("$($_.RuleId)" -eq "$($Row.RuleId)" -and "$($_.Tenant)" -eq $tk) }) + $new)
+            if ($script:SecData.ContainsKey($tk)) { $script:SecData[$tk] = @(@($script:SecData[$tk] | Where-Object { -not ("$($_.RuleId)" -eq "$($Row.RuleId)") }) + $new) }
         }
     }
     if ($script:SecRan) {
-        $script:SecMatrix = @(Get-HUSecMatrix -Results $script:SecResults -Keys $script:SecKeys)
+        $script:SecMatrix = @(Get-HUSecMatrix -Results $script:SecResults -Keys $script:SecKeys -MarkNotRun:(-not $script:SecFull))
         Update-HUSecGrid
     }
 }
@@ -1004,11 +1061,21 @@ function Register-HUSecHandlers {
     $c['rbSecAll'].Add_Checked({ Set-HUSecViewMode })
     $c['btnSecChanges'].Add_Click({ try { Start-HUSecChanges } catch { $script:Controls['btnSecChanges'].IsEnabled = $true; Show-HUMessage "Aenderungen: $($_.Exception.Message)" -Icon Warning } })
     $c['txtSecFilter'].Add_TextChanged({ Update-HUSecGrid })
+    # Pruefumfang (Auswahl neben "Pruefen"): Eintraege aus Get-HUSecScopes, die Wahl wird gemerkt (secScope); ein weiterer Umfang ist nur eine Zeile im Katalog-Modul
+    $cs = $c['cmbSecScope']
+    foreach ($sc in @(Get-HUSecScopes)) { $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = $sc.Text; $it.Tag = $sc.Id; $it.ToolTip = $sc.Tip; [void]$cs.Items.Add($it) }
+    $wantScope = "$(Get-HUStateValue 'secScope' 'all')"
+    $selScope = @($cs.Items | Where-Object { "$($_.Tag)" -eq $wantScope })[0]
+    $cs.SelectedItem = $(if ($selScope) { $selScope } else { $cs.Items[0] })
+    $cs.Add_SelectionChanged({ $t = Get-HUSecComboTag 'cmbSecScope'; if ($t) { Set-HUStateValue 'secScope' $t } })
+    Update-HUSecRefButton   # merkt den urspruenglichen Tooltip; vor dem ersten Lauf ist "Soll speichern" nicht gesperrt
     $c['btnSecRun'].Add_Click({ Start-HUSecRun })
     $c['btnSecExc'].Add_Click({ Show-HUSecExceptions })
     $c['btnSecBase'].Add_Click({ try { Show-HUSecBaseline } catch { Show-HUMessage "Sollwerte: $($_.Exception.Message)" -Icon Warning } })
     $c['btnSecRef'].Add_Click({
             if (-not $script:SecRan -or -not @($script:SecResults).Count) { Show-HUMessage 'Noch keine Ergebnisse - zuerst pruefen.' -Icon Info; return }
+            # Sperre auch hier pruefen (der Knopf ist nach einem Teil-Lauf gesperrt): nie einen Stand mit Luecken als Soll speichern
+            if (Get-HUSecRefLock -Ran $script:SecRan -Full $script:SecFull -ScopeText $script:SecScopeText) { Update-HUSecRefButton; return }
             $old = $null; try { $old = Get-HUSecReference } catch { }
             $n = @($script:SecKeys).Count
             $txt = "Den aktuellen Stand ($n Tenant(s)) als Soll speichern?`n`nDie Meldung 'Sicherheits-Aenderung' (Reiter Teams) meldet danach jede Aenderung dagegen. Gespeichert werden nur Status und Zahlen."
@@ -1054,9 +1121,14 @@ function Register-HUSecHandlers {
                 foreach ($k in $keys) {
                     $cell = $m.Cells[$k]
                     $o[(Get-HUAnaTenantName $k)] = $(if ($cell) { "$($cell.Status)$(if ("$($cell.Reason)") { " ($($cell.Reason))" })$(if ($null -ne $cell.Count -and "$($cell.Count)" -ne '' -and [int]"0$($cell.Count)" -gt 0) { " $($cell.Count)" })" } else { '' })
+                    # gemischter Stand (Teil-Lauf): nicht geprueft bzw. Stand der aelteren Zelle in der Zelle vermerken; bei vollstaendigem Lauf unveraendert
+                    if (-not $script:SecFull) {
+                        $stand = Get-HUSecCellStand -Cell $cell -LastStamp $script:SecStamp
+                        if ($stand) { $o[(Get-HUAnaTenantName $k)] = $(if ($cell -and "$($cell.Status)" -eq 'NichtGeprueft') { $stand } else { "$($o[(Get-HUAnaTenantName $k)]) [$stand]" }) }
+                    }
                 }
                 [pscustomobject]$o
             }
-            Show-HUQSTable -Title 'Sicherheitskatalog' -Objects @($rows) -FilePrefix 'Sicherheitskatalog'
+            Show-HUQSTable -Title $(if ($script:SecFull) { 'Sicherheitskatalog' } else { "Sicherheitskatalog - Teil-Lauf: $($script:SecScopeText)" }) -Objects @($rows) -FilePrefix 'Sicherheitskatalog'
         })
 }

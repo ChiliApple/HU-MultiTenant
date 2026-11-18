@@ -16,7 +16,7 @@ function Add-HURtbLine($Rtb, [string]$Text, [string]$Color = '#CCCCCC') {
     if (-not $Rtb) { return }
     $p = New-Object System.Windows.Documents.Paragraph
     $r = New-Object System.Windows.Documents.Run($Text)
-    $r.Foreground = Get-HUBrush $Color
+    $r.Foreground = Get-HUBrush $Color 'Fg'
     [void]$p.Inlines.Add($r)
     $p.Margin = [System.Windows.Thickness]::new(0)
     Add-HUOutputBlock $Rtb $p 1500

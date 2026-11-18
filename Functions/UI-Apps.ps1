@@ -159,7 +159,7 @@ function Show-HUAppCategoryDialog([object[]]$Rows) {
     $catKeys = @($script:AppCatKeys)
     $tenantCount = [Math]::Max(1, $catKeys.Count)
     $names = @($all | ForEach-Object { $_.Name }) + @($cur | Where-Object { @($all | ForEach-Object { $_.Name }) -notcontains $_ })
-    if (-not $names.Count) { $t = New-Object System.Windows.Controls.TextBlock; $t.Text = '(noch keine Kategorien)'; $t.Foreground = Get-HUBrush '#858585'; [void]$dc.spCats.Children.Add($t) }
+    if (-not $names.Count) { $t = New-Object System.Windows.Controls.TextBlock; $t.Text = '(noch keine Kategorien)'; $t.Foreground = Get-HUBrush '#858585' 'Fg'; [void]$dc.spCats.Children.Add($t) }
     foreach ($n in $names) {
         $g = @($all | Where-Object { $_.Name -eq $n })[0]
         $cb = New-Object System.Windows.Controls.CheckBox
@@ -289,7 +289,7 @@ function Update-HUAppTenantChecks {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"
         $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'
         $cb.Margin = [System.Windows.Thickness]::new(0, 2, 14, 2)
         [void]$sp.Children.Add($cb)
     }
@@ -311,8 +311,8 @@ function Add-HUTenantAllToggle($Panel, [scriptblock]$OnChange) {
     $b.VerticalAlignment = 'Center'
     $b.Cursor = [System.Windows.Input.Cursors]::Hand
     $b.Background = [System.Windows.Media.Brushes]::Transparent
-    $b.Foreground = Get-HUBrush '#8A8A8A'
-    $b.BorderBrush = Get-HUBrush '#4A4A4A'
+    $b.Foreground = Get-HUBrush '#8A8A8A' 'BtnFg'
+    $b.BorderBrush = Get-HUBrush '#4A4A4A' 'Border'
     $b.BorderThickness = [System.Windows.Thickness]::new(1)
     $b.Tag = @{ Panel = $Panel; OnChange = $OnChange }
     $b.Add_Click({

@@ -80,7 +80,7 @@ function Update-APTenantChecks {
     foreach ($t in @($script:Settings.tenants)) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"; $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $cb.FontSize = 11
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
         $cb.ToolTip = 'Tenant fuer Laden und Anzeige markieren'
         $cb.IsChecked = ($saved -contains "$($t.key)")
@@ -644,9 +644,9 @@ function Update-APAufTag {
     $c.apTxtAufGruppeName.Visibility = 'Collapsed'; $c.apBtnAufGruppeNeu.Visibility = 'Collapsed'
     $c.apBtnAufGruppeWeg.Visibility = 'Collapsed'
     if (-not $info) { $c.apTxtAufTag.Text = "Zuerst oben 'Laden' klicken."; $c.apTxtAufGruppe.Text = '-'; $c.apTxtAufProfil.Text = '-'; return }
-    if (-not $tag) { $c.apTxtAufTag.Text = 'Tag waehlen oder eintippen.'; $c.apTxtAufTag.Foreground = Get-HUBrush '#AAAAAA'; $c.apTxtAufGruppe.Text = '-'; $c.apTxtAufProfil.Text = '-'; return }
+    if (-not $tag) { $c.apTxtAufTag.Text = 'Tag waehlen oder eintippen.'; $c.apTxtAufTag.Foreground = Get-HUBrush '#AAAAAA' 'Fg'; $c.apTxtAufGruppe.Text = '-'; $c.apTxtAufProfil.Text = '-'; return }
     if (-not (Test-APTagText $tag)) {
-        $c.apTxtAufTag.Text = 'Nur Buchstaben, Ziffern, - und _ erlaubt (keine Leerzeichen, kein Doppelpunkt).'; $c.apTxtAufTag.Foreground = Get-HUBrush '#F44336'
+        $c.apTxtAufTag.Text = 'Nur Buchstaben, Ziffern, - und _ erlaubt (keine Leerzeichen, kein Doppelpunkt).'; $c.apTxtAufTag.Foreground = Get-HUBrush '#F44336' 'Fg'
         $c.apTxtAufGruppe.Text = '-'; $c.apTxtAufProfil.Text = '-'; return
     }
     $vorh = @($info.Tags | Where-Object { "$($_.Tag)".ToUpperInvariant() -eq $tag.ToUpperInvariant() })
@@ -654,8 +654,8 @@ function Update-APAufTag {
         $v = $vorh[0]
         $andersGeschrieben = @($v.Schreibweisen | Where-Object { "$_" -cne $tag })
         $c.apTxtAufTag.Text = "$(if ($v.PSObject.Properties['NurRegel'] -and $v.NurRegel) { 'noch kein Geraet - nur in einer Gruppenregel' } else { "vorhanden: $($v.Anzahl) Geraet(e)" })$(if ($andersGeschrieben.Count) { " - auch geschrieben als $($andersGeschrieben -join ', ') (gilt in Gruppenregeln als gleich)" })"
-        $c.apTxtAufTag.Foreground = Get-HUBrush $(if ($andersGeschrieben.Count) { '#FFB74D' } else { '#81C784' })
-    } else { $c.apTxtAufTag.Text = 'neuer Tag'; $c.apTxtAufTag.Foreground = Get-HUBrush '#4FC3F7' }
+        $c.apTxtAufTag.Foreground = Get-HUBrush $(if ($andersGeschrieben.Count) { '#FFB74D' } else { '#81C784' }) 'Fg'
+    } else { $c.apTxtAufTag.Text = 'neuer Tag'; $c.apTxtAufTag.Foreground = Get-HUBrush '#4FC3F7' 'Fg' }
     $treffer = @(Find-APTagGruppen $tag @($info.Gruppen))
     $sicher = @($treffer | Where-Object { $_.Art -eq 'sicher' })
     $teile = @(foreach ($g in $treffer) {
@@ -669,19 +669,19 @@ function Update-APAufTag {
     if ($weg) { $c.apBtnAufGruppeWeg.Visibility = 'Visible' }
     if (-not $treffer.Count) {
         $c.apTxtAufGruppe.Text = 'keine dynamische Gruppe trifft diesen Tag'
-        $c.apTxtAufGruppe.Foreground = Get-HUBrush '#FFB74D'
+        $c.apTxtAufGruppe.Foreground = Get-HUBrush '#FFB74D' 'Fg'
     } else {
         $c.apTxtAufGruppe.Text = ($teile -join '   |   ')
-        $c.apTxtAufGruppe.Foreground = Get-HUBrush $(if ($sicher.Count) { '#81C784' } else { '#FFB74D' })
+        $c.apTxtAufGruppe.Foreground = Get-HUBrush $(if ($sicher.Count) { '#81C784' } else { '#FFB74D' }) 'Fg'
     }
     if (-not $sicher.Count) {
         if (-not "$($c.apTxtAufGruppeName.Text)" -or "$($c.apTxtAufGruppeName.Tag)" -ne $tag) { $c.apTxtAufGruppeName.Text = "AP-$tag"; $c.apTxtAufGruppeName.Tag = $tag }
         $c.apTxtAufGruppeName.Visibility = 'Visible'; $c.apBtnAufGruppeNeu.Visibility = 'Visible'
     }
     $prof = @($treffer | ForEach-Object { @($_.Profile) } | Where-Object { $_ } | Select-Object -Unique)
-    if ($prof.Count) { $c.apTxtAufProfil.Text = ($prof -join ', '); $c.apTxtAufProfil.Foreground = Get-HUBrush '#81C784' }
-    elseif ($treffer.Count) { $c.apTxtAufProfil.Text = 'Gruppe hat KEIN Autopilot-Profil - die Geraete bekommen keines (Profil im Portal der Gruppe zuweisen)'; $c.apTxtAufProfil.Foreground = Get-HUBrush '#FFB74D' }
-    else { $c.apTxtAufProfil.Text = 'ohne Gruppe kein Profil'; $c.apTxtAufProfil.Foreground = Get-HUBrush '#FFB74D' }
+    if ($prof.Count) { $c.apTxtAufProfil.Text = ($prof -join ', '); $c.apTxtAufProfil.Foreground = Get-HUBrush '#81C784' 'Fg' }
+    elseif ($treffer.Count) { $c.apTxtAufProfil.Text = 'Gruppe hat KEIN Autopilot-Profil - die Geraete bekommen keines (Profil im Portal der Gruppe zuweisen)'; $c.apTxtAufProfil.Foreground = Get-HUBrush '#FFB74D' 'Fg' }
+    else { $c.apTxtAufProfil.Text = 'ohne Gruppe kein Profil'; $c.apTxtAufProfil.Foreground = Get-HUBrush '#FFB74D' 'Fg' }
 }
 function Update-APAufRechteBanner {
     $c = $script:Controls
@@ -977,21 +977,21 @@ function Show-APTagDialog([string]$Tenant, [object[]]$Rows) {
         $gueltig = Test-APTagText $tag
         $st.Gruppe = $null
         if (-not $tag) { $dc.txtTag.Text = 'Tag eintippen oder waehlen.'; $dc.txtGruppe.Text = ''; $dc.txtProfil.Text = ''; $dc.txtWarn.Text = '' }
-        elseif (-not $gueltig) { $dc.txtTag.Text = 'Nur Buchstaben, Ziffern, - und _ erlaubt.'; $dc.txtTag.Foreground = Get-HUBrush '#F44336'; $dc.txtGruppe.Text = ''; $dc.txtProfil.Text = ''; $dc.txtWarn.Text = '' }
+        elseif (-not $gueltig) { $dc.txtTag.Text = 'Nur Buchstaben, Ziffern, - und _ erlaubt.'; $dc.txtTag.Foreground = Get-HUBrush '#F44336' 'Fg'; $dc.txtGruppe.Text = ''; $dc.txtProfil.Text = ''; $dc.txtWarn.Text = '' }
         else {
             $v = @($info.Tags | Where-Object { "$($_.Tag)".ToUpperInvariant() -eq $tag.ToUpperInvariant() })
             $dc.txtTag.Text = $(if ($v.Count) { if ($v[0].PSObject.Properties['NurRegel'] -and $v[0].NurRegel) { 'noch kein Geraet - nur in einer Gruppenregel' } else { "vorhanden: $($v[0].Anzahl) Geraet(e)" } } else { 'neuer Tag - keine Gruppe kennt ihn' })
-            $dc.txtTag.Foreground = Get-HUBrush '#AAAAAA'
+            $dc.txtTag.Foreground = Get-HUBrush '#AAAAAA' 'Fg'
             $tr = @(Find-APTagGruppen $tag @($info.Gruppen))
             $si = @($tr | Where-Object { $_.Art -eq 'sicher' })
             # Nachverfolgung: sichere Gruppe, sonst die erste passende (zusammengesetzte Regel) - Profil zaehlt aus allen Treffern
             $st.Gruppe = $(if ($si.Count) { $si[0] } elseif ($tr.Count) { $tr[0] } else { $null })
             $st.Profile = @($tr | ForEach-Object { @($_.Profile) } | Where-Object { $_ } | Select-Object -Unique)
             $dc.txtGruppe.Text = 'Gruppe: ' + $(if ($tr.Count) { (@($tr | ForEach-Object { "$($_.Name) ($(switch ($_.Art) { 'sicher' { 'Regel -eq' } 'unsicher' { 'zusammengesetzte Regel' } 'mehrere' { 'trifft mehrere Tags' } }))" }) -join ', ') } else { 'keine dynamische Gruppe trifft diesen Tag' })
-            $dc.txtGruppe.Foreground = Get-HUBrush $(if ($si.Count) { '#81C784' } else { '#FFB74D' })
+            $dc.txtGruppe.Foreground = Get-HUBrush $(if ($si.Count) { '#81C784' } else { '#FFB74D' }) 'Fg'
             $pr = @($tr | ForEach-Object { @($_.Profile) } | Where-Object { $_ } | Select-Object -Unique)
             $dc.txtProfil.Text = 'Profil: ' + $(if ($pr.Count) { $pr -join ', ' } else { '(keines)' })
-            $dc.txtProfil.Foreground = Get-HUBrush $(if ($pr.Count) { '#81C784' } else { '#FFB74D' })
+            $dc.txtProfil.Foreground = Get-HUBrush $(if ($pr.Count) { '#81C784' } else { '#FFB74D' }) 'Fg'
             $wa = @()
             if ($eing) { $wa += "$eing Geraet(e) sind schon eingerichtet: der Gruppenwechsel wirkt SOFORT - andere Apps, Richtlinien und Profil, nicht erst beim naechsten Zuruecksetzen." }
             if (-not $pr.Count) { $wa += 'Ohne Profil startet ein zurueckgesetztes Geraet nicht mehr mit dem Schulprofil.' }

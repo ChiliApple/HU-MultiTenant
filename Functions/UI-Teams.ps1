@@ -73,7 +73,7 @@ function Update-HUTeamsCatChecks {
     $cb.Tag = 'Jobs'
     $cb.Content = 'Hinweis, wenn eine zeitgesteuerte Meldung nicht laufen kann'
     $cb.ToolTip = 'Scheitert eine geplante Aufgabe (z. B. Secret abgelaufen, Einstellungen nicht lesbar), kommt eine Fehlerkarte an dieses Ziel.'
-    $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
+    $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $cb.FontSize = 11
     $cb.Margin = [System.Windows.Thickness]::new(0, 1, 12, 1)
     $cb.IsChecked = [bool]$k.Default
     [void]$c['pnlTeamsCats'].Children.Add($cb)
@@ -331,14 +331,14 @@ function Update-HUTeamsJobParams($Values = $null) {
         $sp.Orientation = 'Horizontal'; $sp.Margin = [System.Windows.Thickness]::new(0, 2, 16, 2)
         if ($p.Type -eq 'bool') {
             $ctl = New-Object System.Windows.Controls.CheckBox
-            $ctl.Content = $p.Label; $ctl.Foreground = Get-HUBrush '#CCCCCC'; $ctl.VerticalAlignment = 'Center'
+            $ctl.Content = $p.Label; $ctl.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $ctl.VerticalAlignment = 'Center'
             $ctl.IsChecked = [bool](ConvertTo-HUQSParamValue $p $v)
-            if ($p.Name -match '^(DryRun|WhatIf|Simulation|Simulate|Test|TestMode|Probelauf|NurAnzeigen|Preview)$') { $ctl.Foreground = Get-HUBrush '#FF9800'; $ctl.ToolTip = 'Aus = echter Lauf (beim Speichern kommt eine Rueckfrage)' }
+            if ($p.Name -match '^(DryRun|WhatIf|Simulation|Simulate|Test|TestMode|Probelauf|NurAnzeigen|Preview)$') { $ctl.Foreground = Get-HUBrush '#FF9800' 'Fg'; $ctl.ToolTip = 'Aus = echter Lauf (beim Speichern kommt eine Rueckfrage)' }
             [void]$sp.Children.Add($ctl)
         }
         else {
             $lb = New-Object System.Windows.Controls.TextBlock
-            $lb.Text = "$($p.Label):"; $lb.Foreground = Get-HUBrush '#AAAAAA'; $lb.VerticalAlignment = 'Center'; $lb.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
+            $lb.Text = "$($p.Label):"; $lb.Foreground = Get-HUBrush '#AAAAAA' 'Fg'; $lb.VerticalAlignment = 'Center'; $lb.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
             [void]$sp.Children.Add($lb)
             if ($p.Type -eq 'choice') {
                 $ctl = New-Object System.Windows.Controls.ComboBox
@@ -383,11 +383,11 @@ function Update-HUTeamsSnippetCombo {
     $cur = if ($null -ne $Select) { $Select } elseif ($cb.SelectedItem) { "$($cb.SelectedItem.Tag)" } else { '' }
     $names = @(Get-HUSnippets | ForEach-Object { "$($_.name)" } | Sort-Object)
     $cb.Items.Clear()
-    $none = New-Object System.Windows.Controls.ComboBoxItem; $none.Content = '(kein Skript - eingebaute Meldung oben)'; $none.Tag = ''; $none.Foreground = Get-HUBrush '#888888'
+    $none = New-Object System.Windows.Controls.ComboBoxItem; $none.Content = '(kein Skript - eingebaute Meldung oben)'; $none.Tag = ''; $none.Foreground = Get-HUBrush '#888888' 'Fg'
     [void]$cb.Items.Add($none); if (-not $cur) { $cb.SelectedItem = $none }
     foreach ($n in $names) { $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = $n; $i.Tag = $n; [void]$cb.Items.Add($i); if ($n -eq $cur) { $cb.SelectedItem = $i } }
     if ($cur -and $names -notcontains $cur) {
-        $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = "$cur (fehlt!)"; $i.Tag = $cur; $i.Foreground = Get-HUBrush '#F44336'
+        $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = "$cur (fehlt!)"; $i.Tag = $cur; $i.Foreground = Get-HUBrush '#F44336' 'Fg'
         [void]$cb.Items.Insert(0, $i); $cb.SelectedItem = $i
     }
     } finally { $script:TeamsFillBusy = $wasBusy }
@@ -616,7 +616,7 @@ function Register-HUTeamsHandlers {
         $i++
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = $d; $cb.Tag = $i
-        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $cb.FontSize = 11
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
         [void]$c['pnlTeamsJobDays'].Children.Add($cb)
     }
@@ -679,7 +679,7 @@ function Update-HUTeamsJobTargetChecks {
     foreach ($t in @((Get-HUNotifyConfig).Targets | Where-Object { $_ -and $_.Enabled })) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.Name)"; $cb.Tag = "$($t.Id)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $cb.FontSize = 11
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
         $cb.IsChecked = ($was -contains "$($t.Id)")
         [void]$sp.Children.Add($cb)
@@ -693,7 +693,7 @@ function Update-HUTeamsJobTenantChecks {
     foreach ($t in @($script:Settings.tenants)) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"; $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.FontSize = 11
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $cb.FontSize = 11
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
         $cb.IsChecked = $true
         [void]$sp.Children.Add($cb)

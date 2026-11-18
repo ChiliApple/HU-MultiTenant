@@ -198,7 +198,7 @@ function Show-HUSnippetManager {
             ModifiedShort = (Format-HUShortDate $s.modified); Src = $s
             Group = $(if ("$($s.category)") { "$($s.category)" } else { 'Ohne Kategorie' })
             Star = $(if ($s.favorite -eq $true) { [string][char]0x2605 } else { [string][char]0x2606 })
-            StarColor = $(if ($s.favorite -eq $true) { '#FFC107' } else { '#555555' })
+            StarColor = (ConvertTo-HUThemeColor $(if ($s.favorite -eq $true) { '#FFC107' } else { '#555555' }) 'Fg')
         }
     }
     $refresh = {

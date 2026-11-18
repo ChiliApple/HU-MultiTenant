@@ -129,6 +129,7 @@ $inputRows            </Grid>
 
     # Parse XAML
     try {
+        try { $setupXaml = ConvertTo-HUThemeXaml $setupXaml } catch { }   # Farbschema (UI-Theme.ps1)
         $setupReader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($setupXaml))
         $setupWindow = [System.Windows.Markup.XamlReader]::Load($setupReader)
         if ($script:AppIcon) { try { $setupWindow.Icon = $script:AppIcon } catch { } }

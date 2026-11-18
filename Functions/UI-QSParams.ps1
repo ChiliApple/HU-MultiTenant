@@ -42,18 +42,18 @@ function Update-HUQSParamPanel([switch]$Force) {
         if ($p.Type -eq 'bool') {
             $ctl = New-Object System.Windows.Controls.CheckBox
             $ctl.Content = $p.Label
-            $ctl.Foreground = Get-HUBrush '#CCCCCC'
+            $ctl.Foreground = Get-HUBrush '#CCCCCC' 'Fg'
             $ctl.VerticalAlignment = 'Center'
             $ctl.IsChecked = $(if ($null -ne $remembered) { [bool]$remembered } else { (ConvertTo-HUQSParamValue $p $p.Default) })
             if ($p.Name -match '^(DryRun|WhatIf|Simulation|Simulate|Test|TestMode|Probelauf|NurAnzeigen|Preview)$') {
-                $ctl.Foreground = Get-HUBrush '#FF9800'
+                $ctl.Foreground = Get-HUBrush '#FF9800' 'Fg'
                 $ctl.ToolTip = 'Aus = echter Lauf (vor dem Start kommt eine Rueckfrage)'
             }
             [void]$sp.Children.Add($ctl)
         } else {
             $lb = New-Object System.Windows.Controls.TextBlock
             $lb.Text = "$($p.Label):"
-            $lb.Foreground = Get-HUBrush '#AAAAAA'
+            $lb.Foreground = Get-HUBrush '#AAAAAA' 'Fg'
             $lb.VerticalAlignment = 'Center'
             $lb.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
             [void]$sp.Children.Add($lb)
@@ -125,7 +125,7 @@ function Update-HUQSTenantChecks {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"
         $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'
         $cb.Margin = [System.Windows.Thickness]::new(0, 2, 0, 2)
         $cb.IsChecked = ($saved -contains "$($t.key)")
         $cb.Add_Checked({ Save-HUQSTenantChecks })
@@ -162,7 +162,7 @@ function Update-HUQSMultiDisplay {
         $c['txtQSMulti'].ToolTip = ($names -join "`n")
         $c['txtQSMulti'].Visibility = 'Visible'
         $c['btnQSMulti'].Content = "Mehrere ($($multi.Count)) $([char]0x25BE)"
-        $c['btnQSMulti'].Foreground = Get-HUBrush '#4FC3F7'
+        $c['btnQSMulti'].Foreground = Get-HUBrush '#4FC3F7' 'Fg'
         $c['cmbQSTenant'].IsEnabled = $false
     } else {
         $c['txtQSMulti'].Visibility = 'Collapsed'

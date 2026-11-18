@@ -1,4 +1,4 @@
-﻿<!d<!doctype html>
+﻿<!doctype html>
 <html lang="de">
 <head>
 <meta charset="utf-8">
@@ -149,7 +149,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
   <div class="topbar">
     <div class="brand">
       <div class="logo"><img src="../Assets/logo64.png" onerror="this.onerror=null;this.src='https://raw.githubusercontent.com/ChiliApple/HU-MultiTenant/main/Assets/logo64.png'" alt=""></div>
-      HU-MultiTenant · Roadmap <span class="ver">v2.6.4</span>
+      HU-MultiTenant · Roadmap <span class="ver">v2.6.20</span>
     </div>
     <nav aria-label="Seiten">
       <a href="Einstieg.html">Einstieg</a>
@@ -239,6 +239,32 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
         <li><b>2.6.4 – Stable</b> – <b>erledigt</b>.</li>
       </ul>
     </article>
+    <article class="stage" style="--c: var(--teal)">
+      <div class="stage-head"><span class="when">Fertig - 2.6.13</span><h3>PowerShell 7, WIN-Updates und Rechte</h3></div>
+      <ul>
+        <li><b>PowerShell 7:</b> HU-MultiTenant läuft auch unter PowerShell 7. Starter, Neustart und Update nehmen es, wenn es installiert ist, sonst Windows PowerShell 5.1; wählbar unter Einstellungen &gt; Allgemein &gt; PowerShell beim Start - <b>erledigt</b> (2.6.5).</li>
+        <li>Release signieren wartet, bis die neue Version fertig gebaut ist, statt "Nichts zu signieren" zu melden - <b>erledigt</b> (2.6.5).</li>
+        <li><b>2.6.5 - Stable</b> - <b>erledigt</b>.</li>
+        <li><b>WIN-Updates:</b> Schlusszeile und genaueres Protokoll nach jeder Aktion über mehrere Tenants, neue Hinweise (doppelte Gruppe, Feature-Aufschub, aktive Pause, Expedites ab 60 Tagen), Warnung bei ungewöhnlicher aktiver Zeit, einheitliche Wertebereiche - <b>erledigt</b> (2.6.8 bis 2.6.13).</li>
+        <li>Grund von Microsoft Graph steht auch unter PowerShell 7 in jeder Fehlermeldung - <b>erledigt</b> (2.6.10).</li>
+        <li>Vorhandene Win32-Apps lassen sich wieder aktualisieren (Intune lehnte das mit "400 Bad Request" ab) - <b>erledigt</b> (2.6.10).</li>
+        <li><b>Rechte:</b> Schreibrechte je Tenant wieder entziehen, ohne Vorwahl und mit Bestätigung durch den Tenant-Namen - <b>erledigt</b> (2.6.12).</li>
+        <li><b>2.6.13 - Stable</b> - <b>erledigt</b>.</li>
+      </ul>
+    </article>
+    <article class="stage" style="--c: var(--green)">
+      <div class="stage-head"><span class="when">Fertig - 2.6.20</span><h3>Sicherheitskatalog im Alltag und helles Farbschema</h3></div>
+      <ul>
+        <li><b>Farbschema:</b> Dunkel (Standard), Hell oder "Wie Windows", einstellbar unter Einstellungen &gt; Allgemein und per Knopf in der Titelleiste; gilt für alle Reiter, Fenster und Meldungen - <b>erledigt</b> (2.6.20).</li>
+        <li><b>Ansicht "Einfach":</b> nur der Grundschutz mit 15 Regeln, je Tenant ein Balken "x von y erfüllt" - <b>erledigt</b> (2.6.17).</li>
+        <li><b>Änderungen der letzten 30 Tage</b> aus dem Entra-Überwachungsprotokoll und die Regeln L01 bis L05 mit Teams-Meldung - <b>erledigt</b> (2.6.17), Ausnahmen nur für Bekanntes und Rollen über Gruppen (2.6.18).</li>
+        <li><b>K07:</b> riskante Anmeldungen aus dem Anmeldeprotokoll, auch mit Entra ID P1 - <b>erledigt</b> (2.6.19).</li>
+        <li><b>Prüfumfang wählbar:</b> alles, ohne oder nur die riskanten Anmeldungen - <b>erledigt</b> (2.6.20).</li>
+        <li><b>Beenden fragt nach:</b> Läuft im Hintergrund noch ein Auftrag, nennt die App ihn in einer Rückfrage - <b>erledigt</b> (2.6.20).</li>
+        <li>Korrekturen in Wartung, Apps, Analyse und App-Sicherung - <b>erledigt</b> (2.6.14 bis 2.6.16).</li>
+        <li><b>2.6.20 - Stable</b> - <b>erledigt</b>.</li>
+      </ul>
+    </article>
     <article class="stage" style="--c: var(--red)">
       <div class="stage-head"><span class="when">Danach · 2.6.x</span><h3>Mail und Teams</h3></div>
       <ul>
@@ -252,7 +278,14 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
         <li><b>Modul Autopilot V2</b> – Windows Autopilot device preparation (ohne Hardware-Hash und ohne Group Tag) im selben Reiter, neben dem klassischen V1: vertrauenswürdige Geräte über Unternehmenskennungen oder Gerätezuordnung (CSV hineinziehen), Gerätegruppe mit dem nötigen Besitzer prüfen, Richtlinie lesen und prüfen, ob das Setup startet; Ausscheiden über Kennung bzw. Zuordnung, dann Wipe und Protokoll wie bei V1. Das Hash-Archiv bleibt für klassische Geräte und Rückläufer.</li>
       </ul>
     </article>
-    <article class="stage" style="--c: var(--peach)">
+    <article class="stage" style="--c: var(--yellow)">
+      <div class="stage-head"><span class="when">Geplant</span><h3>Oberfläche und eigene Erweiterungen</h3></div>
+      <ul>
+        <li><b>Umlaute:</b> Die Oberfläche schreibt Umlaute noch als ae, oe und ue. Sie sollen in allen Texten der Oberfläche richtig erscheinen.</li>
+        <li><b>Eigene Farbschemata:</b> ein eigener Ordner für eigene Farbschemata, der bei Updates erhalten bleibt, dazu eine Anleitung.</li>
+        <li><b>Eigene Zusatzmodule:</b> eine Schnittstelle für eigene Zusatzmodule, dazu eine Anleitung und ein Prüfprogramm.</li>
+      </ul>
+    </article>    <article class="stage" style="--c: var(--peach)">
       <div class="stage-head"><span class="when">Ideen</span><h3>Auf der Liste</h3></div>
       <ul>
         <li><b>2.3.x:</b> Sicherheitsabfrage am Handy schneller – Zwischenspeicher je Fakt, damit nur Geändertes neu gelesen wird.</li>
@@ -260,7 +293,6 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
         <li>Schuljahreswechsel-Assistent: alte, doppelte und ausgeschiedene Geräte aufräumen, mit Probelauf.</li>
         <li>Teams: Freigaben direkt aus der Meldung.</li>
         <li>Sandbox-Tests mit mehreren Fällen und Vorbereitungsskript.</li>
-        <li>PowerShell 7 zusätzlich nutzen: die App erkennt beim Start, ob es installiert ist, und nutzt es dann; sonst bleibt sie bei Windows PowerShell 5.1. Code läuft weiter auf beiden, Logik bleibt getrennt von der Oberfläche.</li>
       </ul>
     </article>
   </div>
@@ -269,7 +301,7 @@ kbd { font: 500 .85em/1 var(--f-mono); padding: 2px 6px; border-radius: 5px; bor
 </section>
 
 <footer>
-  <span>Stand 28.10.2026 · Version 2.6.4</span>
+  <span>Stand 18.11.2026 · Version 2.6.20</span>
   <a href="Einstieg.html">Einstieg</a>
   <a href="Funktionen.html">Funktionen</a>
   <a href="Anleitung.html">Anleitung</a>

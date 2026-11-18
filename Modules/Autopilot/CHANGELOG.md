@@ -1,5 +1,10 @@
 # Changelog – Zusatzmodul Autopilot
 
+## v0.5.5 – 18.11.2026 (mit HU-MultiTenant 2.6.20 Test)
+
+### 🎨 Darstellung
+- **Helles Farbschema:** Protokoll, Hinweise zu Tag, Gruppe und Profil sowie die Auswahlfelder sind jetzt auch im hellen Schema gut lesbar. Im dunklen Schema ändert sich nichts.
+
 ## v0.5.4 – 30.10.2026 (mit HU-MultiTenant 2.6.6)
 
 ### 🐞 Behoben
