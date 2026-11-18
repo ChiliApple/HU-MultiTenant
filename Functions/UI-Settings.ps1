@@ -29,7 +29,7 @@ function Initialize-HUSettingsDefaults($S) {
         credentials = @{ tokenCacheTTL = 3000; credentialNamePrefix = 'HU-' }
         logging     = @{ file = './Logs/HU-MultiTenant_{date}.log'; logLevel = 'Info'; retentionDays = 30 }
         reporting   = @{ outputPath = './Reports'; autoVersioning = $true; defaultFormat = 'xlsx' }
-        ui          = @{ maxLogLines = 500; startTab = 'QuickScript'; secretWarnDays = 30; checkSecretsOnStart = $true; checkUpdatesOnStart = $true }
+        ui          = @{ maxLogLines = 500; startTab = 'QuickScript'; secretWarnDays = 30; checkSecretsOnStart = $true; checkUpdatesOnStart = $true; theme = 'dark' }
         extensions  = @{ allowAutoLoad = $true; searchPaths = @('./Extensions'); disabled = @() }
     }
     foreach ($sec in $d.Keys) { foreach ($k in $d[$sec].Keys) { if (-not $S.$sec.PSObject.Properties[$k]) { Set-HUProp $S.$sec $k $d[$sec][$k] } } }
@@ -41,6 +41,36 @@ function New-HUSettingsFile([string]$Path) {
     $s = [pscustomobject]@{ tenants = @() }
     $s = Initialize-HUSettingsDefaults $s
     Write-HUJsonFile -Path $Path -Object $s -Depth 10
+}
+
+# Neustart nur, wenn nichts Laufendes verloren geht: dieselben Rueckfragen wie beim normalen Schliessen (Main.ps1, Closing).
+# Restart-HUApp ueberspringt diese Pruefungen selbst (SkipCloseChecks), deshalb vorher hier. $false = Benutzer hat abgebrochen.
+function Test-HURestartAllowed {
+    try {
+        $run = $false
+        try { $run = [bool](Get-Variable -Name IsRunning -Scope Script -ValueOnly -ErrorAction SilentlyContinue) } catch { }
+        if ($run -and -not (Confirm-HU 'Eine Extension laeuft noch. Trotzdem neu starten?' -Warning)) { return $false }
+        if (-not (Confirm-HUQSDiscard 'neu starten')) { return $false }
+        if ((Test-HUJobRunning 'Apps') -or (Test-HUJobRunning 'Rem')) {
+            if (-not (Confirm-HU 'Ein Upload/Auftrag in Apps oder Wartung laeuft noch und wird abgebrochen. Trotzdem neu starten?' -Warning)) { return $false }
+        }
+    } catch { }
+    return $true
+}
+
+# Knopf im Kopf: Farbschema zwischen Hell und Dunkel umschalten (aus "Wie Windows" heraus auf das Gegenteil des gerade wirksamen),
+# in settings.json speichern und neu starten.
+function Switch-HUThemeQuick {
+    $new = $(if (Test-HULightTheme) { 'dark' } else { 'light' })
+    $txt = $(if ($new -eq 'light') { 'Hell' } else { 'Dunkel' })
+    if (-not (Confirm-HU "Farbschema auf $txt umstellen?`n`nHU-MultiTenant startet dafür neu." 'Farbschema' -Owner $script:Window)) { return }
+    if (-not (Test-HURestartAllowed)) { return }
+    try {
+        Set-HUProp $script:Settings.ui 'theme' $new
+        if (-not (Save-HUSettings)) { Show-HUMessage 'settings.json konnte nicht gespeichert werden (Protokoll).' -Icon Error -Owner $script:Window; return }
+    } catch { Show-HUMessage "Farbschema nicht gespeichert:`n$($_.Exception.Message)" -Icon Error -Owner $script:Window; return }
+    Write-HULogOK "Farbschema: $new"
+    Restart-HUApp
 }
 
 function Test-HUGuid([string]$Value) { return ($Value -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') }
@@ -63,7 +93,7 @@ function Show-HUSettingsDialog {
     $w = $d.Window; $c = $d.C
     Restore-HUDialogState $w 'SettingsWindow'
     $S = $script:Settings
-    $st = @{ Saved = $false; SetupDone = $false; Tenants = [System.Collections.Generic.List[object]]::new(); Cur = -1; Busy = $false }
+    $st = @{ Saved = $false; SetupDone = $false; Tenants = [System.Collections.Generic.List[object]]::new(); Cur = -1; Busy = $false; ThemeChanged = $false; ThemeText = '' }
     foreach ($t in @($S.tenants)) { $st.Tenants.Add(($t | ConvertTo-Json -Depth 6 | ConvertFrom-Json)) }
 
     # ---------------- Allgemein ----------------
@@ -73,6 +103,18 @@ function Show-HUSettingsDialog {
         if ($cmb.Items.Count) { $cmb.SelectedIndex = 0 }
     }
     & $selTag $c.cmbStartTab (Get-HUProp $S.ui 'startTab' 'QuickScript')
+    # Farbschema: Dateien aus Themes\ plus "Wie Windows"; wirkt nach dem Neustart
+    $themeOld = 'dark'
+    try {
+        foreach ($th in @(Get-HUThemeList)) {
+            $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = "$($th.Name)"; $it.Tag = "$($th.Id)"; [void]$c.cmbTheme.Items.Add($it)
+        }
+    } catch { }
+    $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = 'Wie Windows'; $it.Tag = 'system'; [void]$c.cmbTheme.Items.Add($it)
+    $themeRaw = Get-HUProp $S.ui 'theme' 'dark'
+    $themeCur = "$themeRaw".Trim().ToLowerInvariant()
+    & $selTag $c.cmbTheme $themeCur
+    if ($c.cmbTheme.SelectedItem) { $themeOld = "$($c.cmbTheme.SelectedItem.Tag)" }
     $c.chkSplashAnim.IsChecked = [bool](Get-HUProp $S.ui 'splashAnimation' $true)
     foreach ($p in @(80, 90, 100, 110, 120, 130, 140, 150)) {
         $it = New-Object System.Windows.Controls.ComboBoxItem; $it.Content = "$p %"; $it.Tag = "$($p / 100)"; [void]$c.cmbScale.Items.Add($it)
@@ -484,6 +526,11 @@ function Show-HUSettingsDialog {
         Set-HUProp $S 'tenants' @($st.Tenants.ToArray())
         Set-HUProp $S.ui 'startTab' "$($c.cmbStartTab.SelectedItem.Tag)"
         Set-HUProp $S.ui 'splashAnimation' ([bool]$c.chkSplashAnim.IsChecked)
+        $themeNew = $(if ($c.cmbTheme.SelectedItem) { "$($c.cmbTheme.SelectedItem.Tag)" } else { $themeOld })
+        # bei jedem Speichern neu entscheiden (auch nach einem fehlgeschlagenen Versuch): unveraendert = Rohwert aus der Datei bleibt
+        $st.ThemeChanged = ($themeNew -ne $themeOld)
+        $st.ThemeText = $(if ($st.ThemeChanged) { "$($c.cmbTheme.SelectedItem.Content)" } else { '' })
+        Set-HUProp $S.ui 'theme' $(if ($st.ThemeChanged) { $themeNew } else { $themeRaw })
         try { if ($c.cmbPsHost.SelectedItem) { Set-HUPsHostSetting "$($c.cmbPsHost.SelectedItem.Tag)" } } catch { Write-HULogWarn "PowerShell beim Start nicht gespeichert: $($_.Exception.Message)" }
         Set-HUProp $S.ui 'secretWarnDays' $wd
         Set-HUProp $S.ui 'checkSecretsOnStart' ([bool]$c.chkSecretCheckStart.IsChecked)
@@ -533,5 +580,9 @@ function Show-HUSettingsDialog {
     switch ($Tab) { 'Tenants' { $c.tabSettings.SelectedItem = $c.tabTenants } 'Update' { $c.tabSettings.SelectedItem = $c.tabUpdate } 'Sicherung' { $c.tabSettings.SelectedItem = $c.tabAppBackup } default { } }
     $c.txtSettingsInfo.Text = "Programmordner: $($script:AppRoot)"
     [void]$w.ShowDialog()
+    # ein geaendertes Farbschema wirkt erst nach dem Neustart
+    if ($st.Saved -and $st.ThemeChanged) {
+        if ((Confirm-HU "Das Farbschema '$($st.ThemeText)' wirkt nach dem Neustart.`n`nJetzt neu starten?" 'Farbschema' -Owner $script:Window) -and (Test-HURestartAllowed)) { Restart-HUApp; return $false }
+    }
     return ($st.Saved -or $st.SetupDone)
 }

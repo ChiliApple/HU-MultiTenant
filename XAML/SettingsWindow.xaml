@@ -71,6 +71,7 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Text="Reiter beim Start" Style="{StaticResource FieldLabel}"/>
                             <ComboBox Grid.Row="0" Grid.Column="1" x:Name="cmbStartTab" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3">
@@ -127,6 +128,10 @@
                             <CheckBox Grid.Row="9" Grid.Column="1" x:Name="chkSplashAnim" Content="Saugroboter r&#xE4;umt den Startbildschirm weg (Klick darauf &#xFC;berspringt)" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="0,5"/>
                             <ComboBox Grid.Row="5" Grid.Column="1" x:Name="cmbWingetSource" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
                                       ToolTip="winget-Quelle fuer Apps &gt; Updates. Standard: winget (Community-Repository). Die Liste zeigt die auf diesem PC eingerichteten Quellen (winget source list)."/>
+                            <TextBlock Grid.Row="10" Text="Farbschema" Style="{StaticResource FieldLabel}"
+                                       ToolTip="Dunkel, Hell oder wie Windows. Wirkt nach dem Neustart."/>
+                            <ComboBox Grid.Row="10" Grid.Column="1" x:Name="cmbTheme" Width="260" HorizontalAlignment="Left" Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,3"
+                                      ToolTip="Wirkt nach dem Neustart. &quot;Wie Windows&quot; folgt beim Start der Windows-Einstellung &quot;App-Modus&quot;."/>
                         </Grid>
 
                         <TextBlock Text="Sperre" Style="{StaticResource SectionTitle}"/>

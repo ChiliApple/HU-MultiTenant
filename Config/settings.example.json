@@ -74,6 +74,7 @@
         "secretWarnDays": 30,
         "checkSecretsOnStart": true,
         "checkUpdatesOnStart": true,
-        "maxLogLines": 500
+        "maxLogLines": 500,
+        "theme": "dark"
     }
 }

@@ -54,6 +54,20 @@ $script:LevelColors = @{
     'DEBUG' = '#9E9E9E'   # Grau
 }
 
+# Standardfarbe fuer Zeilen ohne Stufe
+$script:LogDefaultColor = '#CCCCCC'
+
+# Farben fuer ein anderes Farbschema setzen (z. B. hell): nur die genannten Stufen (OK, WARN, ERROR, INFO, DEBUG).
+# "Text" bzw. der zweite Parameter ist die Standardfarbe. Im dunklen Schema wird das nie aufgerufen, dort bleibt alles wie es war.
+function Set-HULogColors([hashtable]$Colors, [string]$Default = '') {
+    foreach ($k in @($Colors.Keys)) {
+        $u = "$k".ToUpper()
+        if ($script:LogLevels.ContainsKey($u)) { $script:LevelColors[$u] = "$($Colors[$k])" }
+        elseif ($u -eq 'TEXT' -and -not $Default) { $Default = "$($Colors[$k])" }
+    }
+    if ($Default) { $script:LogDefaultColor = $Default }
+}
+
 # Symbol-Mapping
 $script:LevelSymbols = @{
     'OK'    = [char]0x2713   # ✓
@@ -269,7 +283,7 @@ function Write-LogToGUI {
 
         try {
             $color = $script:LevelColors[$Level]
-            if (-not $color) { $color = '#CCCCCC' }
+            if (-not $color) { $color = $script:LogDefaultColor }
 
             # WPF Dispatcher verwenden falls nötig (UI-Thread)
             $action = {
@@ -514,4 +528,5 @@ Export-ModuleMember -Function @(
     'Get-LogHistory'
     'Clear-LogBuffer'
     'Get-CurrentLogFile'
+    'Set-HULogColors'
 )

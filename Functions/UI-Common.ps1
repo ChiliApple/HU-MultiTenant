@@ -7,8 +7,11 @@
 #>
 
 $script:BrushConv = $null
-function Get-HUBrush([string]$Color) {
+# Rolle (Bg = Flaeche, Fg = Text, Border, Btn = Knopfflaeche, BtnFg, Status, Auto) zaehlt nur in einem Farbschema mit Tabellen (UI-Theme.ps1).
+# Im dunklen Schema (und ohne UI-Theme, z. B. in Tests) kommt exakt die uebergebene Farbe heraus.
+function Get-HUBrush([string]$Color, [string]$Role = 'Auto') {
     if (-not $script:BrushConv) { $script:BrushConv = [System.Windows.Media.BrushConverter]::new() }
+    try { $Color = ConvertTo-HUThemeColor $Color $Role } catch { }
     try { return $script:BrushConv.ConvertFromString($Color) } catch { return [System.Windows.Media.Brushes]::White }
 }
 
@@ -165,7 +168,7 @@ function Add-HUOutputTools($Rtb) {
         $b = New-Object System.Windows.Controls.Button
         if ($sty) { $b.Style = $sty }
         $b.Content = $Text; $b.ToolTip = $Tip; $b.FontSize = 10; $b.Padding = [System.Windows.Thickness]::new(7, 1, 7, 1)
-        $b.Margin = [System.Windows.Thickness]::new(4, 0, 0, 0); $b.Background = Get-HUBrush '#3E3E42'; $b.Cursor = 'Hand'
+        $b.Margin = [System.Windows.Thickness]::new(4, 0, 0, 0); $b.Background = Get-HUBrush '#3E3E42' 'Btn'; $b.Cursor = 'Hand'
         $b
     }
     $bRev = & $mk ([string][char]0x21C5 + ' Umkehren') 'Reihenfolge umkehren: neuestes oben oder unten (wird je Ausgabe gemerkt)'
@@ -204,6 +207,8 @@ function Set-HUOutputTools($Root) {
 # Fenster aus XAML erzeugen; liefert @{ Window = ...; C = @{ Name = Element } } mit allen x:Name-Elementen
 function New-HUWindow([string]$Name, [string]$XamlText = '') {
     $x = if ($XamlText) { $XamlText } else { Get-HUXaml $Name }
+    # Farbschema: im dunklen Schema unveraendert, sonst hier einmal fuer alle Fenster (UI-Theme.ps1); ohne UI-Theme (Tests) unveraendert
+    try { $x = ConvertTo-HUThemeXaml $x } catch { }
     $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($x))
     try { $w = [System.Windows.Markup.XamlReader]::Load($reader) } finally { $reader.Close() }
     $c = @{}
@@ -272,7 +277,11 @@ $script:HUTintWarned = $false
 function Set-HUDiffRowTint($Row, [switch]$Retry) {
     try {
         if ($null -eq $Row) { return }
-        if ($null -eq $script:HUDiffTintBrush) { $b = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#3A321F')); $b.Freeze(); $script:HUDiffTintBrush = $b }
+        if ($null -eq $script:HUDiffTintBrush) {
+            # dezentes Hinweis-Gelb als Flaeche (Rolle Bg); im hellen Schema ein helles Gelb, im dunklen exakt wie bisher
+            $tc = '#3A321F'; try { $tc = ConvertTo-HUThemeColor $tc 'Bg' } catch { }
+            $b = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($tc)); $b.Freeze(); $script:HUDiffTintBrush = $b
+        }
         # nur in Fenstern, die aufgehen (Detail/Ergebnis) - nicht im Hauptfenster (Udo 25.10.)
         $win = [System.Windows.Window]::GetWindow($Row)
         if ($null -eq $win) {
@@ -465,7 +474,7 @@ function Show-HUDialogBox {
         $ic = switch ($Icon) {
             'Warning' { @('#F57C00', '!') } 'Error' { @('#D32F2F', [string][char]0x2715) } 'Question' { @('#1976D2', '?') } default { @('#1976D2', 'i') }
         }
-        $c.icoCircle.Fill = [System.Windows.Media.BrushConverter]::new().ConvertFrom($ic[0])
+        $c.icoCircle.Fill = Get-HUBrush $ic[0] 'Bg'
         $c.icoGlyph.Text = $ic[1]
         # 072 G3: Screenreader - Fenster, Symbol und Text benennen; Knoepfe tragen die Meldung als Hilfetext
         $kind = switch ($Icon) { 'Warning' { 'Warnung' } 'Error' { 'Fehler' } 'Question' { 'Frage' } default { 'Hinweis' } }
@@ -490,7 +499,7 @@ function Show-HUDialogBox {
             [System.Windows.Automation.AutomationProperties]::SetName($btn, $(if ($b[0] -eq $defaultKey -and $defs.Count -gt 1) { "$($b[1]) (Enter)" } else { "$($b[1])" }))
             [System.Windows.Automation.AutomationProperties]::SetHelpText($btn, $short); $btn.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
             $btn.Style = $w.FindResource('DarkButton')
-            $btn.Background = [System.Windows.Media.BrushConverter]::new().ConvertFrom($b[2])
+            $btn.Background = Get-HUBrush $b[2] 'Btn'
             if ($b[0] -eq $defaultKey) { $btn.IsDefault = $true; $first = $btn }
             if ($b[0] -eq $cancelKey) { $btn.IsCancel = $true }
             $btn.Add_Click({ param($sd, $e) $st.R = "$($sd.Tag)"; $w.Close() })
@@ -498,7 +507,7 @@ function Show-HUDialogBox {
                 # vorgewaehlter Knopf (Enter) mit hellem Rahmen - man sieht auf einen Blick, was Enter ausloest
                 $btn.Margin = [System.Windows.Thickness]::new(0)
                 $fr = New-Object System.Windows.Controls.Border
-                $fr.BorderBrush = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#E0E0E0'); $fr.BorderThickness = [System.Windows.Thickness]::new(2)
+                $fr.BorderBrush = Get-HUBrush '#E0E0E0' 'Fg'; $fr.BorderThickness = [System.Windows.Thickness]::new(2)
                 $fr.CornerRadius = [System.Windows.CornerRadius]::new(6); $fr.Padding = [System.Windows.Thickness]::new(1); $fr.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
                 $fr.ToolTip = 'Enter'
                 $fr.Child = $btn
@@ -564,11 +573,13 @@ function Show-HUToast {
     </Border>
 </Window>
 '@
-        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($x.Replace('<!--HU:THEME-->', "$($script:HUDlgTheme)")))
+        $xt = $x.Replace('<!--HU:THEME-->', "$($script:HUDlgTheme)")
+        try { $xt = ConvertTo-HUThemeXaml $xt } catch { }
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xt))
         try { $w = [System.Windows.Markup.XamlReader]::Load($reader) } finally { $reader.Close() }
         $f = { param($n) $w.FindName($n) }
         $col = switch ($Icon) { 'Warning' { @('#F57C00', '!') } 'Error' { @('#D32F2F', [string][char]0x2715) } 'Success' { @('#388E3C', [string][char]0x2713) } default { @('#1976D2', 'i') } }
-        $br = [System.Windows.Media.BrushConverter]::new().ConvertFrom($col[0])
+        $br = Get-HUBrush $col[0] 'Bg'
         (& $f 'bar').Background = $br; (& $f 'icoCircle').Fill = $br; (& $f 'icoGlyph').Text = $col[1]
         (& $f 'txtTitle').Text = $Title
         $tt = & $f 'txtText'; if ($Text) { $tt.Text = $Text } else { $tt.Visibility = 'Collapsed' }
