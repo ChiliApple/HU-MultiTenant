@@ -17,6 +17,8 @@ $script:LockActive = $false
 $script:LockTimer = $null
 $script:LockFails = 0
 $script:LockBlockedUntil = [datetime]::MinValue
+$script:CloseChecking = $false    # die Rueckfragen beim Beenden laufen gerade (Main.ps1, Closing-Handler)
+$script:LockDue = $false          # waehrend dieser Rueckfragen waere die Sperre faellig geworden: Inhalt ist verborgen, Sperrfenster folgt
 $script:LockUnlocked = $false     # Ergebnis des letzten Sperrfensters: wirklich entsperrt (PIN oder Windows Hello)
 $script:LockExitPending = $false  # im Sperrfenster wurde "beenden" gewaehlt: das Hauptfenster schliesst ohne weitere Rueckfrage
 $script:LockClosing = $false   # Hauptfenster wird geschlossen: ab dann nicht mehr sperren (Window.IsLoaded bleibt nach Close() wahr)
@@ -287,6 +289,16 @@ function Lock-HUApp([switch]$AtStart) {
     # nie ohne Hauptfenster sperren (Zeitgeber kann waehrend des Beendens noch einmal feuern): das Sperrfenster bliebe allein zurueck
     # und hielte den Prozess im Hintergrund fest (naechster Start: "laeuft bereits")
     if ($script:LockClosing -or -not $script:Window) { return }
+    # Waehrend der Rueckfragen beim Beenden kein Sperrfenster oeffnen (ein Fenster mitten im Schliessen des Hauptfensters zu oeffnen
+    # ist nicht verlaesslich und liess die App unter Windows PowerShell 5.1 haengen). Stattdessen sofort den Inhalt verbergen und
+    # merken: bleibt das Fenster offen (Antwort "Nein"), sperrt der Closing-Handler gleich danach (Start-HULockAfterClose).
+    if ($script:CloseChecking) {
+        $script:LockDue = $true
+        try { $script:Window.Content.Visibility = 'Hidden' } catch { }
+        try { Clear-TokenCache } catch { }
+        return
+    }
+    $script:LockDue = $false
     $script:LockActive = $true
     try { Close-HUToasts } catch { }
     try { Clear-TokenCache } catch { }
@@ -395,6 +407,15 @@ function Show-HULockDialog([switch]$AtStart) {
         $script:SkipCloseChecks = $true
         try { $script:Window.Close() } catch { }
     }
+}
+
+# Nach abgebrochenem Beenden (Antwort "Nein"): war waehrend der Rueckfrage die Sperre faellig, jetzt sperren. Der Inhalt ist schon
+# verborgen. Das Sperrfenster kommt erst, wenn der Closing-Handler zurueckgekehrt ist (nie innerhalb des Schliessens oeffnen).
+function Start-HULockAfterClose {
+    if (-not $script:LockDue) { return }
+    try {
+        [void]$script:Window.Dispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [Action] { try { Lock-HUApp } catch { } })
+    } catch { }
 }
 
 # Beim Schliessen des Hauptfensters (Main.ps1, Closing): Zeitgeber anhalten und ein offenes Sperrfenster mit schliessen.

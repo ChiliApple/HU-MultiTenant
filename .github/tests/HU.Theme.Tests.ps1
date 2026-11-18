@@ -934,7 +934,15 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         ($fin.Replace($guard, '')) | Should -Not -Match "Visibility = 'Visible'|LockActive = \`$false"
         $lock | Should -Match '\$script:LockUnlocked = \[bool\]\(\$state\.Unlocked -and -not \$state\.Exit\)'
         $lock | Should -Match '\$script:LockExitPending = \$true'
-        $main | Should -Match 'if \(-not \$closeOk -and -not \$lockExit\) \{ \$e\.Cancel = \$true; return \}'
+        $main | Should -Match '(?s)if \(-not \$closeOk -and -not \$lockExit\) \{\s*\$e\.Cancel = \$true.*?Start-HULockAfterClose.*?return'
+        # waehrend der Rueckfragen beim Beenden: kein Sperrfenster, Inhalt sofort verbergen, Sperre nachholen
+        $main | Should -Match '(?s)\$script:CloseChecking = \$true.*?try \{ \$closeOk = Test-HUCloseAllowed ''beenden'' \} finally \{ \$script:CloseChecking = \$false \}'
+        $due = [regex]::Match($lock, '(?s)if \(\$script:CloseChecking\) \{(.*?)\r?\n    \}').Groups[1].Value
+        $due | Should -Match '\$script:LockDue = \$true'
+        $due | Should -Match "Visibility = 'Hidden'"
+        $due | Should -Match 'return'
+        $due | Should -Not -Match 'Show-HULockDialog'
+        $lock | Should -Match '(?s)function Start-HULockAfterClose \{.*?if \(-not \$script:LockDue\) \{ return \}.*?BeginInvoke'
         # Verhalten von Close-HULockDialog mit Stellvertretern (ohne Fenster)
         $fn = [regex]::Match($lock, '(?s)function Close-HULockDialog \{.*?\r?\n\}').Value
         $fn | Should -Not -BeNullOrEmpty
