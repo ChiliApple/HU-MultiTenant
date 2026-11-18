@@ -17,6 +17,7 @@ $script:LockActive = $false
 $script:LockTimer = $null
 $script:LockFails = 0
 $script:LockBlockedUntil = [datetime]::MinValue
+$script:LockClosing = $false   # Hauptfenster wird geschlossen: ab dann nicht mehr sperren (Window.IsLoaded bleibt nach Close() wahr)
 $script:LockDlg = $null   # offenes Sperrfenster (@{ W = Fenster; State = Zustand }), damit es beim Schliessen des Hauptfensters mit schliesst
 
 function Initialize-HULockNative {
@@ -283,7 +284,7 @@ function Lock-HUApp([switch]$AtStart) {
     if (-not $cfg.Enabled) { return }
     # nie ohne Hauptfenster sperren (Zeitgeber kann waehrend des Beendens noch einmal feuern): das Sperrfenster bliebe allein zurueck
     # und hielte den Prozess im Hintergrund fest (naechster Start: "laeuft bereits")
-    if (-not $script:Window -or -not $script:Window.IsLoaded) { return }
+    if ($script:LockClosing -or -not $script:Window) { return }
     $script:LockActive = $true
     try { Close-HUToasts } catch { }
     try { Clear-TokenCache } catch { }
@@ -388,6 +389,7 @@ function Show-HULockDialog([switch]$AtStart) {
 # Ohne das blieb das Sperrfenster offen, wenn das Hauptfenster aus der Sperre heraus geschlossen wurde (z. B. ueber die
 # Taskleiste): der Prozess lief unsichtbar weiter und der naechste Start meldete "laeuft bereits".
 function Close-HULockDialog {
+    $script:LockClosing = $true
     try { if ($script:LockTimer) { $script:LockTimer.Stop() } } catch { }
     $d = $script:LockDlg
     $script:LockDlg = $null

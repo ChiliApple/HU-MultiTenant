@@ -923,7 +923,7 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $h | Should -Not -BeNullOrEmpty
         $h.IndexOf('Test-HUCloseAllowed') | Should -BeLessThan $h.IndexOf('Close-HULockDialog')
         $lock = [IO.File]::ReadAllText((Join-Path $script:Root 'Functions\UI-Lock.ps1'), [Text.Encoding]::UTF8)
-        $lock | Should -Match 'if \(-not \$script:Window -or -not \$script:Window\.IsLoaded\) \{ return \}'
+        $lock | Should -Match 'if \(\$script:LockClosing -or -not \$script:Window\) \{ return \}'
         $lock | Should -Match '\$script:LockDlg = @\{ W = \$w; State = \$state \}'
         # Verhalten von Close-HULockDialog mit Stellvertretern (ohne Fenster)
         $fn = [regex]::Match($lock, '(?s)function Close-HULockDialog \{.*?\r?\n\}').Value
@@ -936,8 +936,9 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $stopped = @{ N = 0 }
         $timer | Add-Member -MemberType ScriptMethod -Name Stop -Value { $stopped.N++ }.GetNewClosure()
         $st = @{ Unlocked = $false; Exit = $false }
-        $script:LockTimer = $timer; $script:LockDlg = @{ W = $w; State = $st }
+        $script:LockTimer = $timer; $script:LockDlg = @{ W = $w; State = $st }; $script:LockClosing = $false
         Close-HULockDialog
+        $script:LockClosing | Should -BeTrue
         $st.Exit | Should -BeTrue
         $closed.N | Should -Be 1
         $stopped.N | Should -Be 1
