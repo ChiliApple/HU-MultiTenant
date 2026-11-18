@@ -825,7 +825,7 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $script:Answer = $false
         Test-HURestartAllowed | Should -BeFalse
         $script:LastConfirm | Should -Match 'Wiederherstellen'
-        $script:LastConfirm | Should -Match 'IntAct'
+        $script:LastConfirm | Should -Match 'Apps in Intune \(Aktion\)'
         $script:LastConfirm | Should -Match 'Sicherheitskatalog'
         $script:LastConfirm | Should -Not -Match 'BakRestore|Sec-3-x'
     }
@@ -905,6 +905,57 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
             })
         $missing | Should -BeNullOrEmpty
     }
+    It 'Zuordnung: jeder feste Auftragsname im Code hat einen lesbaren Text (neue Auftraege fallen auf)' {
+        $files = @(Get-ChildItem (Join-Path $script:Root 'Functions') -Filter *.ps1) + @(Get-ChildItem (Join-Path $script:Root 'Modules\Autopilot') -File -Filter *.ps1)
+        $names = @{}
+        foreach ($f in $files) {
+            $t = [IO.File]::ReadAllText($f.FullName, [Text.Encoding]::UTF8)
+            foreach ($m in [regex]::Matches($t, 'Start-HUJob\s+-Name\s+[''"]([A-Za-z][A-Za-z0-9-]*)')) { $names[$m.Groups[1].Value] = $f.Name }
+        }
+        $names.Count | Should -BeGreaterThan 40
+        $noLabel = @($names.Keys | Where-Object { (Get-HUJobLabel "$_") -ceq "$_" } | Sort-Object | ForEach-Object { "$_ ($($names[$_]))" })
+        $noLabel | Should -BeNullOrEmpty -Because 'jeder Auftrag braucht eine Zeile in $script:HUJobLabels (Functions\UI-Settings.ps1)'
+    }
+    It 'Sperre und Schliessen: aus der Sperre keine Rueckfragen, Sperrfenster schliesst mit, kein Sperren ohne Hauptfenster' {
+        $main = [IO.File]::ReadAllText((Join-Path $script:Root 'Main.ps1'), [Text.Encoding]::UTF8)
+        $main | Should -Match 'if \(-not \$script:SkipCloseChecks -and -not \$script:LockActive\) \{'
+        $h = [regex]::Match($main, '(?s)\$script:Window\.Add_Closing\(\{.*?Close-HULockDialog').Value
+        $h | Should -Not -BeNullOrEmpty
+        $h.IndexOf('Test-HUCloseAllowed') | Should -BeLessThan $h.IndexOf('Close-HULockDialog')
+        $lock = [IO.File]::ReadAllText((Join-Path $script:Root 'Functions\UI-Lock.ps1'), [Text.Encoding]::UTF8)
+        $lock | Should -Match 'if \(-not \$script:Window -or -not \$script:Window\.IsLoaded\) \{ return \}'
+        $lock | Should -Match '\$script:LockDlg = @\{ W = \$w; State = \$state \}'
+        # Verhalten von Close-HULockDialog mit Stellvertretern (ohne Fenster)
+        $fn = [regex]::Match($lock, '(?s)function Close-HULockDialog \{.*?\r?\n\}').Value
+        $fn | Should -Not -BeNullOrEmpty
+        . ([scriptblock]::Create($fn))
+        $closed = @{ N = 0 }
+        $w = New-Object psobject
+        $w | Add-Member -MemberType ScriptMethod -Name Close -Value { $closed.N++ }.GetNewClosure()
+        $timer = New-Object psobject
+        $stopped = @{ N = 0 }
+        $timer | Add-Member -MemberType ScriptMethod -Name Stop -Value { $stopped.N++ }.GetNewClosure()
+        $st = @{ Unlocked = $false; Exit = $false }
+        $script:LockTimer = $timer; $script:LockDlg = @{ W = $w; State = $st }
+        Close-HULockDialog
+        $st.Exit | Should -BeTrue
+        $closed.N | Should -Be 1
+        $stopped.N | Should -Be 1
+        $script:LockDlg | Should -BeNullOrEmpty
+        { Close-HULockDialog } | Should -Not -Throw   # ohne offenes Sperrfenster: nichts zu tun
+        $closed.N | Should -Be 1
+        $script:LockTimer = $null
+    }
+    It 'Beenden aus der Sperre: ohne Rueckfragen (SkipCloseChecks vor Close) und ohne den Inhalt sichtbar zu machen' {
+        $t = [IO.File]::ReadAllText((Join-Path $script:Root 'Functions\UI-Lock.ps1'), [Text.Encoding]::UTF8)
+        $m = [regex]::Match($t, '(?s)if \(\$state\.Exit\) \{(.*?)\r?\n    \}')
+        $m.Success | Should -BeTrue
+        $body = $m.Groups[1].Value
+        $body | Should -Match '\$script:SkipCloseChecks = \$true'
+        $body.IndexOf('$script:SkipCloseChecks = $true') | Should -BeLessThan $body.IndexOf('$script:Window.Close()')
+        $body | Should -Not -Match "Visibility = 'Visible'"
+        $body | Should -Not -Match 'LockActive = \$false'
+    }
     It 'Schliessen: laufendes Muster-Anwenden wird nicht verboten, aber mit Warnung gefragt (Nein bricht ab); der Auftrag MaRun wird nicht zusaetzlich genannt' {
         $script:MA = @{ Running = $true }
         $script:JobRunning = $true; $script:HUJobs = @{ MaRun = 1 }
@@ -983,7 +1034,7 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $main = [IO.File]::ReadAllText((Join-Path $script:Root 'Main.ps1'), [Text.Encoding]::UTF8)
         $h = [regex]::Match($main, '(?s)Window\.Add_Closing\(\{.*?\r?\n\}\)').Value
         $h | Should -Not -BeNullOrEmpty
-        $h | Should -Match "if \(-not \`$script:SkipCloseChecks\) \{"
+        $h | Should -Match "if \(-not \`$script:SkipCloseChecks -and -not \`$script:LockActive\) \{"
         $h | Should -Match "-not \(Test-HUCloseAllowed 'beenden'\)\) \{ \`$e\.Cancel = \`$true; return \}"
         $h | Should -Not -Match "Test-HUJobRunning|Confirm-HUQSDiscard|'Apps'|'Rem'"
         # der uebrige Teil des Handlers (Fensterzustand, Tenants trennen, Aufraeumen) bleibt

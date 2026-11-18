@@ -34,6 +34,10 @@ Gebaut für Schulen mit mehreren Standorten – passt für jede Umgebung mit meh
   <a href="Docs/screenshot-apps.png"><img src="Docs/screenshot-apps.png" width="250" alt="Apps"/></a>
   <a href="Docs/screenshot-wartung.png"><img src="Docs/screenshot-wartung.png" width="250" alt="Wartung"/></a>
   <br><sub>Sicherheit · Muster · Autopilot · Quick Script · Apps · Wartung – zum Vergrößern anklicken</sub>
+  <br>
+  <a href="Docs/screenshot-sicherheit-hell.png"><img src="Docs/screenshot-sicherheit-hell.png" width="250" alt="Sicherheitskatalog im hellen Farbschema"/></a>
+  <a href="Docs/screenshot-farbschema-hell.png"><img src="Docs/screenshot-farbschema-hell.png" width="250" alt="Farbschema in den Einstellungen"/></a>
+  <br><sub>Das Farbschema ist wählbar: Dunkel (Standard), Hell oder Wie Windows, unter Einstellungen &gt; Allgemein &gt; Farbschema.</sub>
 </p>
 
 ---

@@ -17,6 +17,7 @@ $script:LockActive = $false
 $script:LockTimer = $null
 $script:LockFails = 0
 $script:LockBlockedUntil = [datetime]::MinValue
+$script:LockDlg = $null   # offenes Sperrfenster (@{ W = Fenster; State = Zustand }), damit es beim Schliessen des Hauptfensters mit schliesst
 
 function Initialize-HULockNative {
     if ('HUTools.LockNative' -as [type]) { return }
@@ -280,6 +281,9 @@ function Lock-HUApp([switch]$AtStart) {
     if ($script:LockActive) { return }
     $cfg = Get-HULockConfig
     if (-not $cfg.Enabled) { return }
+    # nie ohne Hauptfenster sperren (Zeitgeber kann waehrend des Beendens noch einmal feuern): das Sperrfenster bliebe allein zurueck
+    # und hielte den Prozess im Hintergrund fest (naechster Start: "laeuft bereits")
+    if (-not $script:Window -or -not $script:Window.IsLoaded) { return }
     $script:LockActive = $true
     try { Close-HUToasts } catch { }
     try { Clear-TokenCache } catch { }
@@ -334,6 +338,7 @@ function Show-HULockDialog([switch]$AtStart) {
     $hasPin = Test-HULockPinSet
     if (-not $hasPin) { $c.lblPin.Visibility = 'Collapsed'; $c.pnlPin.Visibility = 'Collapsed' }
     $state = @{ Unlocked = $false; Exit = $false; Busy = $false }
+    $script:LockDlg = @{ W = $w; State = $state }
     # Fenster bleibt unsichtbar, solange Windows Hello laeuft - erst bei Abbruch/Fehler erscheint die PIN-Eingabe
     $reveal = { if ($w.Opacity -lt 1) { $w.Opacity = 1; if ($c.pnlPin.Visibility -eq 'Visible') { [void]$c.pw.Focus() } else { [void]$c.btnHello.Focus() } } }
     $unlock = { $state.Unlocked = $true; $script:LockFails = 0; $w.Close() }
@@ -369,10 +374,26 @@ function Show-HULockDialog([switch]$AtStart) {
             Invoke-HUDelayed -Seconds 30 -Do { if ((Test-Path variable:state) -and -not ($state.Unlocked -or $state.Exit)) { & $reveal } }
         })
     [void]$w.ShowDialog()
+    $script:LockDlg = $null
     if ($state.Exit) {
-        $script:LockActive = $false
-        try { $script:Window.Content.Visibility = 'Visible' } catch { }
-        $script:Window.Close()
+        # Beenden aus der Sperre: sofort und OHNE die Rueckfragen des normalen Schliessens. Sonst liesse sich die Sperre ohne PIN
+        # aufheben (Rueckfrage zu laufendem Auftrag oder ungespeichertem Snippet mit "Nein" beantworten -> Fenster bleibt offen und
+        # entsperrt). Der Inhalt bleibt bis zum Schliessen verborgen. Laufende Auftraege werden abgebrochen, wie beim Not-Aus.
+        $script:SkipCloseChecks = $true
+        try { $script:Window.Close() } catch { }
+    }
+}
+
+# Beim Schliessen des Hauptfensters (Main.ps1, Closing): Zeitgeber anhalten und ein offenes Sperrfenster mit schliessen.
+# Ohne das blieb das Sperrfenster offen, wenn das Hauptfenster aus der Sperre heraus geschlossen wurde (z. B. ueber die
+# Taskleiste): der Prozess lief unsichtbar weiter und der naechste Start meldete "laeuft bereits".
+function Close-HULockDialog {
+    try { if ($script:LockTimer) { $script:LockTimer.Stop() } } catch { }
+    $d = $script:LockDlg
+    $script:LockDlg = $null
+    if ($d) {
+        try { $d.State.Exit = $true } catch { }
+        try { $d.W.Close() } catch { }
     }
 }
 

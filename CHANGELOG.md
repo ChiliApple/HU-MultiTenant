@@ -16,8 +16,10 @@ Stable-Release der Testversionen 2.6.14 bis 2.6.19 – „Sicherheitskatalog im 
   - Fehlt die Datei des Farbschemas Hell oder ist eine Datei fehlerhaft, startet die App dunkel und schreibt einen Hinweis ins Protokoll. Dunkel braucht keine Datei.
 - **Beenden fragt bei allen laufenden Aufträgen nach:** Läuft im Hintergrund noch etwas, z. B. Muster anwenden, Zurückschreiben, Wiederherstellen, App-Sicherung oder der Sicherheitskatalog, nennt die App es in einer Rückfrage. Bisher wurden manche Aufträge beim Beenden ohne Frage abgebrochen.
   - Läuft gerade ein Muster oder die Tenant-Einrichtung, warnt die App zusätzlich vor dem Zwischenstand. Beenden lässt sich immer.
-  - Beim Neustart, z. B. nach dem Umstellen des Farbschemas, stellt die App dieselben Fragen. Mit laufendem Muster oder laufender Tenant-Einrichtung startet sie nicht neu.
+  - Beim Neustart nach dem Umstellen des Farbschemas stellt die App dieselben Fragen. Neustarts nach einem Update oder nach dem Laden eines Zusatzmoduls fragen wie bisher nur nach einem ungespeicherten Snippet. Mit laufendem Muster oder laufender Tenant-Einrichtung startet sie nicht neu.
 - **Support anfragen mit Testinstallationen:** Das Support-Paket brach ab, wenn ein Ordner der Testinstallationen einen sehr kurzen Namen hatte. Es entsteht jetzt auch dann.
+- **Sperre:** "HU-MultiTenant beenden" im Sperrfenster beendet die App jetzt sofort und ohne Rückfragen. Laufende Aufträge werden dabei abgebrochen, ein ungespeichertes Snippet geht verloren. Vorher konnte eine Rückfrage beim Beenden, mit Nein beantwortet, die App entsperrt offen lassen.
+  - Die Rückfrage beim normalen Beenden nennt laufende Aufträge mit verständlichen Namen, z. B. "Muster anwenden" oder "WIN-Updates (Aktion)", statt mit internen Kürzeln.
 
 ### 🛡️ Sicherheitskatalog
 - **Prüfumfang wählbar:** Neue Auswahl "Umfang" neben "Prüfen": Alles, Ohne riskante Anmeldungen oder Nur riskante Anmeldungen.
@@ -61,6 +63,10 @@ Stable-Release der Testversionen 2.6.14 bis 2.6.19 – „Sicherheitskatalog im 
 - **Bricht nicht mehr wegen gelöschter Dateien ab:** Hat das Tenant-Backup während der App-Sicherung alte Stände entfernt, scheiterte die ganze Sicherung. Solche Dateien werden übersprungen, das Protokoll nennt ihre Anzahl.
 - **Automatik wartet auf das Tenant-Backup:** Läuft beim Start gerade das tägliche Tenant-Backup, beginnt die automatische App-Sicherung erst danach.
 
+### 🗺️ Doku
+- **Neue Bilder:** README und Doku zeigen die Oberfläche mit dem Stand 2.6.20 und mit Beispieldaten. Sechs Bilder sind ersetzt, dazu kommen zwei Bilder im hellen Farbschema: der Sicherheitskatalog und die Auswahl unter Einstellungen > Allgemein > Farbschema. Die Hilfe mit F1 lädt die neuen Bilder mit.
+- **Roadmap auf Stand 2.6.20:** Sie nennt die erledigten Schritte von 2.6.5 bis 2.6.20. Neu geplant sind Umlaute in allen Texten der Oberfläche, eigene Farbschemata mit eigenem Ordner und Anleitung sowie eine Schnittstelle für eigene Zusatzmodule mit Anleitung und Prüfprogramm.
+- **Anleitung:** Die Zahl der mitgelieferten Beispiel-Snippets stimmt wieder (15).
 ### ⚠️ Nach dem Update
 - Einmal "Prüfen" und danach "Soll speichern", sonst meldet die Teams-Meldung die neuen Regeln nicht und A27 bei Tenants mit Partner-Gruppen als Verschlechterung.
 - Die neuen Regeln brauchen das Recht AuditLog.Read.All, das bei der Einrichtung schon vorausgewählt ist. Für K07 kommen keine weiteren Rechte dazu.
@@ -76,7 +82,7 @@ Stable-Release der Testversionen 2.6.14 bis 2.6.19 – „Sicherheitskatalog im 
 - Manche Erkennungen rechnet Microsoft erst nachträglich. Eine ältere Anmeldung kann deshalb später dazukommen.
 
 ### ✅ Qualität
-- 1303 automatische Tests, alle bestanden unter Windows PowerShell 5.1 und PowerShell 7.
+- 1307 automatische Tests, alle bestanden unter Windows PowerShell 5.1 und PowerShell 7.
 
 ## v2.6.19 (Testversion)
 

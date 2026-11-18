@@ -602,10 +602,13 @@ $script:Window.Add_ContentRendered({
 
 $script:Window.Add_Closing({
     param($s, $e)
-    if (-not $script:SkipCloseChecks) {
+    # aus der Sperre heraus (Sperrfenster offen) ohne Rueckfragen: sonst liesse sich die Sperre ueber "Nein" ohne PIN aufheben
+    if (-not $script:SkipCloseChecks -and -not $script:LockActive) {
         # gemeinsame Pruefung mit dem Neustart (UI-Settings.ps1): Extension, ungespeichertes Snippet, laufendes Muster-Anwenden und Tenant-Einrichtung, alle Hintergrundauftraege
         if (-not (Test-HUCloseAllowed 'beenden')) { $e.Cancel = $true; return }
     }
+    # ab hier wird beendet: Sperr-Zeitgeber anhalten und ein offenes Sperrfenster mit schliessen (sonst bleibt der Prozess haengen)
+    try { Close-HULockDialog } catch { }
     # 2.5.9: nach dem Wiederherstellen nichts aus dem Speicher zurueckschreiben (Fensterzustand, Apps, Wartung) - sonst waere der wiederhergestellte Stand weg
     if (-not $script:AbRestored) { Save-HUWindowState }
     try { Close-HUToasts } catch { }
