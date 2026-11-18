@@ -34,8 +34,8 @@ function Set-HURemMode([string]$Mode) {
     $c['pnlRemLibRight'].Visibility = $c['pnlRemLibLeft'].Visibility
     $c['pnlRemIntLeft'].Visibility = $(if ($int) { 'Visible' } else { 'Collapsed' })
     $c['pnlRemIntRight'].Visibility = $c['pnlRemIntLeft'].Visibility
-    $c['btnRemModeLib'].Background = Get-HUBrush $(if ($int -or $wu) { '#3E3E42' } else { '#1976D2' })
-    $c['btnRemModeInt'].Background = Get-HUBrush $(if ($int) { '#1976D2' } else { '#3E3E42' })
+    $c['btnRemModeLib'].Background = Get-HUBrush $(if ($int -or $wu) { '#3E3E42' } else { '#1976D2' }) 'Btn'
+    $c['btnRemModeInt'].Background = Get-HUBrush $(if ($int) { '#1976D2' } else { '#3E3E42' }) 'Btn'
     Show-HUWuMode $wu
     if ($int) {
         if (-not $c['spRintTenants'].Children.Count) { Update-HURintTenantChecks }
@@ -53,7 +53,7 @@ function Update-HURintTenantChecks {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"
         $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'
         $cb.FontSize = 11
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
         $cb.IsChecked = ($saved -contains "$($t.key)")
@@ -614,7 +614,7 @@ function Copy-HURintToTenants {
     foreach ($t in $cand) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"; $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.Margin = [System.Windows.Thickness]::new(0, 2, 14, 2)
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $cb.Margin = [System.Windows.Thickness]::new(0, 2, 14, 2)
         [void]$c.spTenants.Children.Add($cb)
     }
     $asg = @($d0.Assignments)

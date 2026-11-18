@@ -1354,8 +1354,13 @@
                                                   ToolTip="Nur Regeln, bei denen sich die Tenants unterscheiden"/>
                                         <CheckBox x:Name="chkSecColor" Content="Farben" IsChecked="True" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,4"
                                                   ToolTip="Zeichen farbig: gruen = ok, rot = Abweichung oder Fehler, orange = Ausnahme, grau = nicht pruefbar"/>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                                            <TextBlock Text="Umfang:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                                            <ComboBox x:Name="cmbSecScope" Width="200" FontSize="11" Style="{StaticResource DarkComboBox}" Margin="0,0,0,4"
+                                                      ToolTip="Welche Regeln beim Pr&#xFC;fen laufen. Alles = alle Regeln. Ohne riskante Anmeldungen ist deutlich schneller (K07 liest das Anmeldeprotokoll). Bei einem Teil-Lauf bleibt der &#xE4;ltere Stand der &#xFC;brigen Regeln stehen (Tooltip mit Uhrzeit), nicht gepr&#xFC;fte Regeln sind nie gr&#xFC;n; Verlauf und Soll speichern gibt es nur nach einem vollst&#xE4;ndigen Lauf."/>
+                                        </StackPanel>
                                         <Button x:Name="btnSecRun" Content="&#x25B6; Pruefen" Background="#1976D2" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
-                                                ToolTip="Alle Regeln gegen die angehakten Tenants pruefen. Es wird nur gelesen, nichts veraendert."/>
+                                                ToolTip="Die Regeln des gew&#xE4;hlten Umfangs (links) gegen die angehakten Tenants pr&#xFC;fen. Es wird nur gelesen, nichts ver&#xE4;ndert."/>
                                         <Button x:Name="btnSecExc" Content="Ausnahmen ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"
                                                 ToolTip="Alle Ausnahmen ansehen, fuer die markierte Regel eine neue befristete Ausnahme eintragen oder eine entfernen"/>
                                         <Button x:Name="btnSecBase" Content="Sollwerte ..." Background="#3E3E42" Style="{StaticResource DarkButton}" FontSize="11" Margin="6,0,0,4"

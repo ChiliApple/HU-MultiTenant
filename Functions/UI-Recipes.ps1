@@ -119,7 +119,6 @@ function Show-HURecipe([string]$Id) {
     $c = $script:HURecipeCur.C
     $rec = @($script:HURecipeCur.R.Rezepte | Where-Object { "$($_.Id)" -eq $Id })[0]
     if (-not $rec) { return }
-    $bc = New-Object System.Windows.Media.BrushConverter
     $c.lblTitle.Text = "$($rec.Titel)"; $c.lblShort.Text = "$($rec.Kurz)"
     $c.spSteps.Children.Clear(); $c.spWarn.Children.Clear(); $c.spSrc.Children.Clear()
     $n = 0
@@ -129,15 +128,15 @@ function Show-HURecipe([string]$Id) {
         $g.Margin = [System.Windows.Thickness]::new(0, 0, 0, 10)
         foreach ($wd in @([System.Windows.GridLength]::new(30), [System.Windows.GridLength]::new(1, 'Star'))) { $cd = New-Object System.Windows.Controls.ColumnDefinition; $cd.Width = $wd; [void]$g.ColumnDefinitions.Add($cd) }
         $num = New-Object System.Windows.Controls.Border
-        $num.Width = 22; $num.Height = 22; $num.CornerRadius = [System.Windows.CornerRadius]::new(11); $num.Background = $bc.ConvertFromString('#1976D2'); $num.VerticalAlignment = 'Top'; $num.HorizontalAlignment = 'Left'
+        $num.Width = 22; $num.Height = 22; $num.CornerRadius = [System.Windows.CornerRadius]::new(11); $num.Background = (Get-HUBrush '#1976D2' 'Btn'); $num.VerticalAlignment = 'Top'; $num.HorizontalAlignment = 'Left'
         $nt = New-Object System.Windows.Controls.TextBlock
-        $nt.Text = "$n"; $nt.Foreground = $bc.ConvertFromString('#FFFFFF'); $nt.FontWeight = 'SemiBold'; $nt.HorizontalAlignment = 'Center'; $nt.VerticalAlignment = 'Center'; $nt.FontSize = 12
+        $nt.Text = "$n"; $nt.Foreground = (Get-HUBrush '#FFFFFF' 'BtnFg'); $nt.FontWeight = 'SemiBold'; $nt.HorizontalAlignment = 'Center'; $nt.VerticalAlignment = 'Center'; $nt.FontSize = 12
         $num.Child = $nt
         [void]$g.Children.Add($num)
         $sp = New-Object System.Windows.Controls.StackPanel
         [System.Windows.Controls.Grid]::SetColumn($sp, 1)
         $tx = New-Object System.Windows.Controls.TextBlock
-        $tx.Text = "$($st.Text)"; $tx.TextWrapping = 'Wrap'; $tx.FontSize = 13; $tx.Foreground = $bc.ConvertFromString('#E0E0E0')
+        $tx.Text = "$($st.Text)"; $tx.TextWrapping = 'Wrap'; $tx.FontSize = 13; $tx.Foreground = (Get-HUBrush '#E0E0E0' 'Fg')
         [void]$sp.Children.Add($tx)
         if ($st.PSObject.Properties['Aktion'] -and "$($st.Aktion)") {
             $b = New-Object System.Windows.Controls.Button
@@ -153,7 +152,7 @@ function Show-HURecipe([string]$Id) {
     }
     foreach ($a in @($rec.Achtung | Where-Object { $_ })) {
         $t = New-Object System.Windows.Controls.TextBlock
-        $t.Text = "$([char]0x2022)  $a"; $t.TextWrapping = 'Wrap'; $t.FontSize = 12; $t.Foreground = $bc.ConvertFromString('#E0E0E0'); $t.Margin = [System.Windows.Thickness]::new(0, 0, 0, 3)
+        $t.Text = "$([char]0x2022)  $a"; $t.TextWrapping = 'Wrap'; $t.FontSize = 12; $t.Foreground = (Get-HUBrush '#E0E0E0' 'Fg'); $t.Margin = [System.Windows.Thickness]::new(0, 0, 0, 3)
         [void]$c.spWarn.Children.Add($t)
     }
     $c.bdWarn.Visibility = $(if ($c.spWarn.Children.Count) { 'Visible' } else { 'Collapsed' })
@@ -163,7 +162,7 @@ function Show-HURecipe([string]$Id) {
         $lt.FontSize = 12; $lt.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4); $lt.TextWrapping = 'Wrap'
         $hl = New-Object System.Windows.Documents.Hyperlink
         [void]$hl.Inlines.Add("$($q.Titel)")
-        $hl.Foreground = $bc.ConvertFromString('#4FC3F7'); $hl.ToolTip = "$($q.Url)"; $hl.Tag = "$($q.Url)"
+        $hl.Foreground = (Get-HUBrush '#4FC3F7' 'Fg'); $hl.ToolTip = "$($q.Url)"; $hl.Tag = "$($q.Url)"
         [System.Windows.Automation.AutomationProperties]::SetName($hl, "Quelle: $($q.Titel)")
         $hl.Add_Click({ param($s, $e) Open-HUUrl "$($s.Tag)" })
         [void]$lt.Inlines.Add($hl)

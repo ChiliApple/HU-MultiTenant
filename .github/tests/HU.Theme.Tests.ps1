@@ -649,3 +649,62 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         Test-HURestartAllowed | Should -BeTrue
     }
 }
+
+Describe 'Farben am Schema vorbei: keine direkten Pinsel, keine neuen festen Farben ohne Rolle' {
+    BeforeAll {
+        $script:ColorFiles = @(Get-ChildItem (Join-Path $script:Root 'Functions') -Filter *.ps1) + @(Get-ChildItem (Join-Path $script:Root 'Modules\Autopilot') -File -Filter *.ps1) + @(Get-Item (Join-Path $script:Root 'Main.ps1'))
+        # Ausnahmen: Datei, Kennwort der Stelle (steht in der Zeile des Treffers; leer = ganze Datei), Grund
+        $script:BrushExceptions = @(
+            @{ File = 'UI-Common.ps1'; Key = 'BrushConverter'; Reason = 'Get-HUBrush selbst: hier wird das Schema angewendet' }
+            @{ File = 'UI-Common.ps1'; Key = 'Brushes]::White'; Reason = 'Get-HUBrush: Rueckfall bei ungueltiger Farbe' }
+            @{ File = 'UI-Common.ps1'; Key = 'ColorConverter'; Reason = 'Abweichend-Tonung: Farbe wird davor per ConvertTo-HUThemeColor umgesetzt' }
+            @{ File = 'UI-Analyse.ps1'; Key = 'FormattedText'; Reason = 'nur Breitenmessung der Auswahlliste, die Farbe wird nie gezeichnet' }
+            @{ File = 'UI-Remote.ps1'; Key = 'DrawRectangle'; Reason = 'gezeichnetes Symbol fuer das Handy (Web-App-Symbol), kein Fenster der App' }
+            @{ File = 'UI-Splash.ps1'; Key = ''; Reason = 'Startbildschirm bleibt wie er ist' }
+        )
+        # Obergrenze je Datei: Get-HUBrush mit festem '#...'-Wert OHNE Rolle. Nicht aufgefuehrte Dateien: 0. Nur kleiner werden lassen.
+        $script:RoleCeiling = @{
+            'UI-Analyse.ps1' = 0; 'UI-AppBackup.ps1' = 0; 'UI-Apps.ps1' = 0; 'UI-Common.ps1' = 0; 'UI-EntraRestore.ps1' = 0
+            'UI-Extensions.ps1' = 0; 'UI-GroupPicker.ps1' = 0; 'UI-IntuneApps.ps1' = 0; 'UI-IntuneRem.ps1' = 0; 'UI-Jobs.ps1' = 0
+            'UI-Maint.ps1' = 0; 'UI-Muster.ps1' = 0; 'UI-MusterApply.ps1' = 0; 'UI-QSParams.ps1' = 0; 'UI-QuickScript.ps1' = 0
+            'UI-Recipes.ps1' = 0; 'UI-Remote.ps1' = 0; 'UI-RemParams.ps1' = 0; 'UI-Security.ps1' = 0; 'UI-Settings.ps1' = 0
+            'UI-Teams.ps1' = 0; 'UI-Tenants.ps1' = 0; 'UI-TenantSetup.ps1' = 0; 'UI-Update.ps1' = 0; 'UI-WinUpdates.ps1' = 0
+            'Addon.ps1' = 0
+        }
+        $script:BrushExceptionUsed = @{}
+    }
+    It 'kein direkter BrushConverter, ColorConverter, SolidColorBrush, Color::From oder [Brushes]:: (ausser Transparent) ausserhalb der Ausnahmeliste' {
+        $bad = New-Object System.Collections.ArrayList
+        foreach ($f in $script:ColorFiles) {
+            $lines = [IO.File]::ReadAllLines($f.FullName, [Text.Encoding]::UTF8)
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -notmatch 'BrushConverter|ColorConverter|SolidColorBrush|Color\]::From|Brushes\]::(?!Transparent)') { continue }
+                if ($lines[$i].TrimStart().StartsWith('#')) { continue }
+                $ok = $false
+                foreach ($e in $script:BrushExceptions) {
+                    if ($e.File -eq $f.Name -and (-not $e.Key -or $lines[$i].Contains($e.Key))) { $ok = $true; $script:BrushExceptionUsed["$($e.File)|$($e.Key)"] = $true }
+                }
+                if (-not $ok) { [void]$bad.Add("$($f.Name):$($i + 1)") }
+            }
+        }
+        $bad | Should -BeNullOrEmpty -Because "diese Stellen setzen Farben am Schema vorbei (Get-HUBrush mit Rolle oder ConvertTo-HUThemeColor, sonst mit Grund in die Ausnahmeliste): $($bad -join ', ')"
+    }
+    It 'jede Ausnahme mit Kennwort trifft noch eine Stelle (keine veralteten Eintraege)' {
+        foreach ($e in $script:BrushExceptions) {
+            if (-not $e.Key) { continue }   # ganze Datei: darf auch ohne Treffer bleiben
+            $script:BrushExceptionUsed.ContainsKey("$($e.File)|$($e.Key)") | Should -BeTrue -Because "$($e.File) / $($e.Key)"
+        }
+    }
+    It 'Get-HUBrush mit festem #-Wert ohne Rolle: nie mehr als in der Tabelle' {
+        $over = New-Object System.Collections.ArrayList
+        foreach ($f in $script:ColorFiles) {
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$null)
+            $calls = @($ast.FindAll({ param($a) $a -is [System.Management.Automation.Language.CommandAst] -and $a.GetCommandName() -eq 'Get-HUBrush' }, $true))
+            $n = 0
+            foreach ($c in $calls) { if (@($c.CommandElements).Count -le 2 -and $c.Extent.Text -match '#[0-9A-Fa-f]{6,8}') { $n++ } }
+            $max = 0; if ($script:RoleCeiling.ContainsKey($f.Name)) { $max = $script:RoleCeiling[$f.Name] }
+            if ($n -gt $max) { [void]$over.Add("$($f.Name): $n statt hoechstens $max") }
+        }
+        $over | Should -BeNullOrEmpty -Because "neue feste Farben brauchen eine Rolle (Get-HUBrush '#...' 'Fg' | 'Bg' | 'Border' | 'Btn' | 'BtnFg' | 'Status'): $($over -join '; ')"
+    }
+}

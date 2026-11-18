@@ -63,7 +63,7 @@ function Update-HUGroupPickView {
     $txt = if ($loaded.Count -lt $g.Keys.Count) { "Lade ... ($($loaded.Count) von $($g.Keys.Count) Tenants)" } else { "$($rows.Count) $what" }
     if ($errs.Count) { $txt += "  |  Fehler: " + ($errs -join '; ') }
     $c.lblState.Text = $txt
-    $c.lblState.Foreground = Get-HUBrush $(if ($errs.Count) { '#FFB74D' } else { '#858585' })
+    $c.lblState.Foreground = Get-HUBrush $(if ($errs.Count) { '#FFB74D' } else { '#858585' }) 'Fg'
     if ($rows.Count -and -not $c.grid.SelectedItem -and -not $g.Multi) {
         $cur = @($rows | Where-Object { $_.Name -eq $g.Current } | Select-Object -First 1)
         $c.grid.SelectedItem = $(if ($cur.Count) { $cur[0] } else { $rows[0] })

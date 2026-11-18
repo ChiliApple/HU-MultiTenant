@@ -42,7 +42,7 @@ function Add-HUTsuLog([string]$Text, [string]$Level = 'Info') {
     $col = switch ($Level) { 'OK' { '#81C784' } 'Warn' { '#FFB74D' } 'Error' { '#EF9A9A' } default { '#90CAF9' } }
     $tb = New-Object System.Windows.Controls.TextBlock
     $tb.Text = "$((Get-Date).ToString('HH:mm:ss'))  $Text"
-    $tb.Foreground = Get-HUBrush $col
+    $tb.Foreground = Get-HUBrush $col 'Fg'
     $tb.TextWrapping = 'Wrap'
     [void]$u.C.lstLog.Items.Add($tb)
     $u.C.lstLog.ScrollIntoView($tb)
@@ -56,7 +56,7 @@ function Add-HUTsuLink([string]$Text, [string]$Url) {
     $tb.TextWrapping = 'Wrap'
     $h = New-Object System.Windows.Documents.Hyperlink
     [void]$h.Inlines.Add($Text)
-    $h.Foreground = Get-HUBrush '#90CAF9'
+    $h.Foreground = Get-HUBrush '#90CAF9' 'Fg'
     $h.Tag = $Url
     $h.Add_Click({ Open-HUUrl "$($this.Tag)" })
     [void]$tb.Inlines.Add("$((Get-Date).ToString('HH:mm:ss'))  ")
@@ -108,10 +108,10 @@ function Update-HUTsuPermList {
         $sp = New-Object System.Windows.Controls.StackPanel
         $t1 = New-Object System.Windows.Controls.TextBlock
         $t1.Text = "$n$(if ($granted) { "   $([char]0x2714) erteilt" } elseif ($covered) { "   $([char]0x2714) abgedeckt durch ReadWrite" } elseif ($u.Mode -eq 'Grant' -and $u.GrantedKnown) { "   $([char]0x2716) fehlt" })$(if ($risky) { '   (weitreichend)' })"
-        $t1.Foreground = Get-HUBrush $(if ($risky) { '#EF5350' } elseif ($granted -or $covered) { '#81C784' } else { '#E0E0E0' })
+        $t1.Foreground = Get-HUBrush $(if ($risky) { '#EF5350' } elseif ($granted -or $covered) { '#81C784' } else { '#E0E0E0' }) 'Fg'
         $t1.FontWeight = 'SemiBold'
         [void]$sp.Children.Add($t1)
-        if ($why) { $t2 = New-Object System.Windows.Controls.TextBlock; $t2.Text = $why; $t2.Foreground = Get-HUBrush '#909090'; $t2.FontSize = 11; $t2.TextWrapping = 'Wrap'; [void]$sp.Children.Add($t2) }
+        if ($why) { $t2 = New-Object System.Windows.Controls.TextBlock; $t2.Text = $why; $t2.Foreground = Get-HUBrush '#909090' 'Fg'; $t2.FontSize = 11; $t2.TextWrapping = 'Wrap'; [void]$sp.Children.Add($t2) }
         $cb.Content = $sp
         if ($granted) { $cb.IsChecked = $true; $cb.IsEnabled = $false }
         elseif ($covered) { $cb.IsChecked = $false; $cb.IsEnabled = $false; $cb.ToolTip = 'Lesen ist im erteilten ReadWrite-Recht enthalten' }

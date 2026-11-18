@@ -41,7 +41,7 @@ function Write-QSOutput {
     $para = [System.Windows.Documents.Paragraph]::new()
     $para.Margin = [System.Windows.Thickness]::new(0)
     $run = [System.Windows.Documents.Run]::new($Text)
-    $run.Foreground = Get-HUBrush $Color
+    $run.Foreground = Get-HUBrush $Color 'Fg'
     $para.Inlines.Add($run)
     Add-HUOutputBlock $rtb $para 5000
 }
@@ -62,7 +62,7 @@ function Update-HUQSSnippetInfo {
     $c['txtSnippetDirty'].ToolTip = $(if ($dirty) { 'Ungespeicherte Aenderungen (Strg+S)' } else { $null })
     $fav = ($script:QS_Current -and $script:QS_CurrentFav)
     $c['btnSnippetFav'].Text = $(if ($fav) { [string][char]0x2605 } else { [string][char]0x2606 })
-    $c['btnSnippetFav'].Foreground = Get-HUBrush $(if ($fav) { '#FFC107' } elseif ($script:QS_Current) { '#888888' } else { '#444444' })
+    $c['btnSnippetFav'].Foreground = Get-HUBrush $(if ($fav) { '#FFC107' } elseif ($script:QS_Current) { '#888888' } else { '#444444' }) 'Fg'
     if ($script:QS_Current) {
         $c['txtSnippetName'].Text = $script:QS_Current
         $c['txtSnippetDesc'].Text = $(if ($script:QS_CurrentDesc) { $script:QS_CurrentDesc } else { '(keine Beschreibung - Speichern unter ... oder Verwalten)' })
@@ -218,7 +218,7 @@ function Save-HUQSSnippet([switch]$As) {
 function Set-HUQSConnected([bool]$On, [string]$Text = '', [string]$Color = '#858585') {
     $c = $script:Controls
     $c['txtQSStatus'].Text = $Text
-    $c['txtQSStatus'].Foreground = Get-HUBrush $Color
+    $c['txtQSStatus'].Foreground = Get-HUBrush $Color 'Fg'
     $c['btnQSDisconnect'].IsEnabled = $On
     $c['btnQSRun'].IsEnabled = ((@(Get-HUQSRunTenants).Count -gt 0) -and -not ($script:QS_Timer -and $script:QS_Timer.IsEnabled))
 }
@@ -354,7 +354,7 @@ function Start-HUQSRun([switch]$Selection) {
     $script:QS_OutputColl = $outColl
     $script:QS_AsyncHandle = $ps.BeginInvoke($inColl, $outColl)
     $c['txtQSStatus'].Text = "Laeuft auf $($names -join ', ') ..."
-    $c['txtQSStatus'].Foreground = Get-HUBrush '#4FC3F7'
+    $c['txtQSStatus'].Foreground = Get-HUBrush '#4FC3F7' 'Fg'
 
     if (-not $script:QS_Timer) {
         $script:QS_Timer = [System.Windows.Threading.DispatcherTimer]::new()
@@ -437,7 +437,7 @@ function Invoke-HUQSPoll {
     $script:QS_RunLines = $null
     Add-HUQSHistory -Snippet $script:QS_RunName -Tenants $script:QS_RunTenants -Seconds $secs -Result $result -Errors $script:QS_ErrCount -Objects $nObj -Lines $lines -Code $script:QS_RunCode
     $script:Controls['txtQSStatus'].Text = "Letzter Lauf $(Get-Date -Format 'HH:mm'): $result ($dur s)"
-    $script:Controls['txtQSStatus'].Foreground = Get-HUBrush $(if ($result -eq 'OK') { '#4CAF50' } else { '#FF9800' })
+    $script:Controls['txtQSStatus'].Foreground = Get-HUBrush $(if ($result -eq 'OK') { '#4CAF50' } else { '#FF9800' }) 'Fg'
     Update-HUQSTableButton
     Reset-HUQSRunner
 }

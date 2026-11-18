@@ -55,8 +55,8 @@ function Set-HUUpdateButton([string]$RemoteVer = '', [bool]$Pre = $false) {
     $b = $script:Controls['btnUpdate']
     if ($RemoteVer) {
         $b.Content = "Update v$RemoteVer$(if ($Pre) { ' (Test)' })"
-        $b.Background = [System.Windows.Media.Brushes]::Gold
-        $b.Foreground = Get-HUBrush '#1E1E1E'
+        $b.Background = (Get-HUBrush '#FFD700' 'Btn')
+        $b.Foreground = Get-HUBrush '#1E1E1E' 'BtnFg'
         $b.FontWeight = 'Bold'
     } else {
         $b.Content = 'Update'

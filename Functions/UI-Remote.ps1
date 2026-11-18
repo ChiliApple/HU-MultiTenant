@@ -639,9 +639,9 @@ function Update-HURemotePushRuns {
 function Update-HURemoteButton {
     $b = $script:Controls['btnRemote']; if (-not $b) { return }
     $r = $script:HURem
-    if ($r -and $r.Runner) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Remote FB ' + [char]0x25B6; $b.Foreground = Get-HUBrush '#FFB74D'; $b.ToolTip = "Vom Handy laeuft: $($r.S.Job.Title)" }
-    elseif ($r) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Remote FB ' + [char]0x25CF; $b.Foreground = Get-HUBrush '#81C784'; $b.ToolTip = "Fernbedienung aktiv: https://$($r.Ip):$($r.Port)" }
-    else { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Remote FB'; $b.Foreground = Get-HUBrush '#CCCCCC'; $b.ToolTip = 'Handy-Fernbedienung: Snippets, Erweiterungen und Teams-Meldungen vom Handy starten' }
+    if ($r -and $r.Runner) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Remote FB ' + [char]0x25B6; $b.Foreground = Get-HUBrush '#FFB74D' 'Fg'; $b.ToolTip = "Vom Handy laeuft: $($r.S.Job.Title)" }
+    elseif ($r) { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Remote FB ' + [char]0x25CF; $b.Foreground = Get-HUBrush '#81C784' 'Fg'; $b.ToolTip = "Fernbedienung aktiv: https://$($r.Ip):$($r.Port)" }
+    else { $b.Content = [char]::ConvertFromUtf32(0x1F4F1) + ' Remote FB'; $b.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $b.ToolTip = 'Handy-Fernbedienung: Snippets, Erweiterungen und Teams-Meldungen vom Handy starten' }
 }
 
 # Beim Start: Knopf, ggf. automatisch einschalten
@@ -754,18 +754,18 @@ function Update-HURemoteDialog {
     $c = $d.C
     $r = $script:HURem
     if ($r) {
-        $c['dotRem'].Fill = Get-HUBrush '#4CAF50'
+        $c['dotRem'].Fill = Get-HUBrush '#4CAF50' 'Status'
         $c['txtRemState'].Text = "Aktiv seit $($r.Started.ToString('HH:mm'))$(if ($r.S.Busy) { " - am PC laeuft: $($r.S.Busy)" })"
         $c['txtRemUrl'].Text = "https://$($r.Ip):$($r.Port)$(if (@($r.Ips).Count -gt 1) { "   (weitere: $((@($r.Ips) | Select-Object -Skip 1) -join ', '))" })"
-        $c['btnRemOnOff'].Content = 'Ausschalten'; $c['btnRemOnOff'].Background = Get-HUBrush '#C62828'
+        $c['btnRemOnOff'].Content = 'Ausschalten'; $c['btnRemOnOff'].Background = Get-HUBrush '#C62828' 'Btn'
         $j = $r.S.Job
         $c['txtRemJob'].Text = if ($j.Running) { "Vom Handy '$($j.By)' laeuft: $($j.Title)$(if ($j.Live) { ' (ECHTER LAUF)' })" } elseif ($j.Title) { "Zuletzt: $($j.Title) - $($j.Result)" } else { '' }
     } else {
-        $c['dotRem'].Fill = Get-HUBrush '#666666'
+        $c['dotRem'].Fill = Get-HUBrush '#666666' 'Status'
         $c['txtRemState'].Text = 'Aus'
         $c['txtRemUrl'].Text = ''
         $c['txtRemJob'].Text = ''
-        $c['btnRemOnOff'].Content = 'Einschalten'; $c['btnRemOnOff'].Background = Get-HUBrush '#4CAF50'
+        $c['btnRemOnOff'].Content = 'Einschalten'; $c['btnRemOnOff'].Background = Get-HUBrush '#4CAF50' 'Btn'
         $c['pnlRemPair'].Visibility = 'Collapsed'
     }
     $devs = if ($r) { $r.S.Devices } else { Read-HURemoteDevices }
@@ -777,7 +777,7 @@ function Update-HURemoteDialog {
     $c['txtRemPin'].Text = if ($pin) { "PIN gesetzt ($($pin.Set))" } else { 'noch keine PIN - echte Laeufe vom Handy sind gesperrt' }
     $st = Get-HURemoteSetupState
     $c['txtRemSetup'].Text = "$($st.Text)$(if ($st.Warn) { "`n$($st.Warn)" })"
-    $c['txtRemSetup'].Foreground = Get-HUBrush $(if (-not $st.Ok) { '#FFB74D' } elseif ($st.Warn) { '#FFB74D' } else { '#81C784' })
+    $c['txtRemSetup'].Foreground = Get-HUBrush $(if (-not $st.Ok) { '#FFB74D' } elseif ($st.Warn) { '#FFB74D' } else { '#81C784' }) 'Fg'
     $c['txtRemFoot'].Text = 'Protokoll der Zugriffe und Laeufe: Logs\Remote. Client Secrets und Webhook-Adressen bleiben am PC; was ein Skript ausgibt, sieht das Handy.'
 }
 

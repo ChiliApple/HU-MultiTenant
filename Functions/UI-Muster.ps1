@@ -62,7 +62,7 @@ function Set-HUMuNoteView($Tb, [string]$Note, [string[]]$Learn = @(), [string[]]
             [void]$Tb.Inlines.Add((New-Object System.Windows.Documents.LineBreak))
             $h = New-Object System.Windows.Documents.Hyperlink
             [void]$h.Inlines.Add((Get-HUMuLinkText $u))
-            $h.Foreground = Get-HUBrush '#90CAF9'; $h.Tag = $u; $h.ToolTip = $u
+            $h.Foreground = Get-HUBrush '#90CAF9' 'Fg'; $h.Tag = $u; $h.ToolTip = $u
             $h.Add_Click({ Open-HUUrl "$($this.Tag)" })
             [void]$Tb.Inlines.Add('    '); [void]$Tb.Inlines.Add($h)
         }
@@ -78,7 +78,7 @@ function Set-HUMuNoteView($Tb, [string]$Note, [string[]]$Learn = @(), [string[]]
             [void]$Tb.Inlines.Add((New-Object System.Windows.Documents.LineBreak))
             $h = New-Object System.Windows.Documents.Hyperlink
             [void]$h.Inlines.Add("$id - $t")
-            $h.Foreground = Get-HUBrush '#81C784'; $h.Tag = $id; $h.ToolTip = 'Anleitung oeffnen: wo im Portal, Schritte, Quellen (So behebst du es)'
+            $h.Foreground = Get-HUBrush '#81C784' 'Fg'; $h.Tag = $id; $h.ToolTip = 'Anleitung oeffnen: wo im Portal, Schritte, Quellen (So behebst du es)'
             $h.Add_Click({ Show-HUSecFix -RuleId "$($this.Tag)" })
             [void]$Tb.Inlines.Add('    '); [void]$Tb.Inlines.Add($h)
         }

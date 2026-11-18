@@ -198,14 +198,14 @@ function Update-HUSecretDisplay([switch]$LogWarnings) {
         if ($first -and $first.Info.Level -in 'Warn', 'Critical', 'Expired') {
             $script:HdrSecretKey = $first.Key
             $c['txtSecretExpiry'].Text = "$($first.Info.Text)  -  $($first.Name)"
-            $c['txtSecretExpiry'].Foreground = Get-HUBrush $first.Info.Color
+            $c['txtSecretExpiry'].Foreground = Get-HUBrush $first.Info.Color 'Fg'
         } else {
             $script:HdrSecretKey = $(if ($first) { $first.Key } else { "$(Get-SelectedTenantKey)" })
             $unk = $all.Count - $known.Count
             $c['txtSecretExpiry'].Text = $(if (-not $known.Count) { "$($script:KeyIcon) ${what}: Ablauf unbekannt" }
                 elseif ($unk) { "$($script:KeyIcon) ${what}: $($known.Count) von $($all.Count) gueltig, $unk unbekannt (fruehestens bis $($first.Info.EndDate.ToString('dd.MM.yyyy')))" }
                 else { "$($script:KeyIcon) ${what}: alle $($all.Count) gueltig (fruehestens bis $($first.Info.EndDate.ToString('dd.MM.yyyy')))" })
-            $c['txtSecretExpiry'].Foreground = Get-HUBrush $(if ($known.Count -and -not $unk) { '#8BC34A' } else { '#858585' })
+            $c['txtSecretExpiry'].Foreground = Get-HUBrush $(if ($known.Count -and -not $unk) { '#8BC34A' } else { '#858585' }) 'Fg'
         }
         $c['txtSecretExpiry'].ToolTip = "$tip`n`nKlick: Einstellungen > Tenants"
     } else {
@@ -214,7 +214,7 @@ function Update-HUSecretDisplay([switch]$LogWarnings) {
         $info = Get-HUSecretInfo $hk
         $tn = "$(@($script:Settings.tenants | Where-Object { "$($_.key)" -eq "$hk" } | ForEach-Object { $_.displayName })[0])"
         $c['txtSecretExpiry'].Text = $(if ($info.Text) { "$($info.Text)$(if ($tn) { "  -  $tn" })" } else { '' })
-        $c['txtSecretExpiry'].Foreground = Get-HUBrush $info.Color
+        $c['txtSecretExpiry'].Foreground = Get-HUBrush $info.Color 'Fg'
         $c['txtSecretExpiry'].ToolTip = "$($info.Tooltip)`n`nKlick: Einstellungen > Tenants"
     }
     # 2.5.6: volle Fassung merken; bei schmalem Fenster nur den (farbigen) Schluessel zeigen
@@ -230,7 +230,7 @@ function Update-HUSecretDisplay([switch]$LogWarnings) {
     if ($bad.Count) {
         $worst = if (@($bad | Where-Object { $_.Info.Level -in 'Critical', 'Expired' }).Count) { '#F44336' } else { '#FF9800' }
         $c['txtSecretWarning'].Text = "$([char]0x26A0) $($bad.Count) Secret$(if ($bad.Count -gt 1) { 's' }) $(if ($bad.Count -gt 1) { 'laufen' } else { 'laeuft' }) bald ab"
-        $c['txtSecretWarning'].Foreground = Get-HUBrush $worst
+        $c['txtSecretWarning'].Foreground = Get-HUBrush $worst 'Fg'
         $c['txtSecretWarning'].ToolTip = (($bad | ForEach-Object { "$($_.Name): $($_.Info.Text -replace '^\S+\s', '')" }) -join "`n") + "`n`nKlick: Einstellungen > Tenants"
         $c['txtSecretWarning'].Visibility = 'Visible'
         if ($LogWarnings) { foreach ($b in $bad) { Write-HULogWarn "$($b.Name): $($b.Info.Text -replace '^\S+\s', '')" } }
@@ -258,7 +258,7 @@ function New-HUTenantItem($Tenant) {
     $b.FontSize = 13
     $b.VerticalAlignment = 'Center'
     $b.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
-    $b.Foreground = Get-HUBrush (Get-HUTenantStatusColor $Tenant.key)
+    $b.Foreground = Get-HUBrush (Get-HUTenantStatusColor $Tenant.key) 'Status'
     $tx = New-Object System.Windows.Controls.TextBlock
     $dom = if ($Tenant.PSObject.Properties['domain'] -and "$($Tenant.domain)") { " ($($Tenant.domain))" } else { '' }
     $tx.Text = "$($Tenant.displayName)$dom"
@@ -283,9 +283,9 @@ function Update-HUTenantItemSuffixes {
             if (-not ($it -is [System.Windows.Controls.ComboBoxItem]) -or -not $it.Tag) { continue }
             $i = Get-HUSecretInfo "$($it.Tag)"
             $sfx = $it.Content.Children[2]
-            if ($i.Level -in 'Warn', 'Critical', 'Expired') { $sfx.Text = "$($script:KeyIcon) $($i.Short)"; $sfx.Foreground = Get-HUBrush $i.Color }
+            if ($i.Level -in 'Warn', 'Critical', 'Expired') { $sfx.Text = "$($script:KeyIcon) $($i.Short)"; $sfx.Foreground = Get-HUBrush $i.Color 'Fg' }
             else { $sfx.Text = '' }
-            $it.Content.Children[0].Foreground = Get-HUBrush (Get-HUTenantStatusColor "$($it.Tag)")
+            $it.Content.Children[0].Foreground = Get-HUBrush (Get-HUTenantStatusColor "$($it.Tag)") 'Status'
         }
     }
 }
@@ -339,10 +339,10 @@ function Update-TenantStatus([string]$TenantKey) {
     $ctrl = $script:Controls['txtTenantStatus']
     if (-not $TenantKey) { $ctrl.Text = ''; return }
     $status = Get-TenantStatus -TenantKey $TenantKey
-    if ($status -and $status.isConnected) { $ctrl.Text = 'Verbunden'; $ctrl.Foreground = Get-HUBrush '#4CAF50' }
-    elseif ($status -and ("$($status.errorMessage)" -like '*403*' -or $status.permissionsOk -eq $false)) { $ctrl.Text = 'Berechtigungen fehlen'; $ctrl.Foreground = Get-HUBrush '#FFEB3B' }
-    elseif ($status -and $status.lastChecked) { $ctrl.Text = 'Nicht verbunden'; $ctrl.Foreground = Get-HUBrush '#D32F2F' }
-    else { $ctrl.Text = 'Nicht geprueft'; $ctrl.Foreground = Get-HUBrush '#858585' }
+    if ($status -and $status.isConnected) { $ctrl.Text = 'Verbunden'; $ctrl.Foreground = Get-HUBrush '#4CAF50' 'Fg' }
+    elseif ($status -and ("$($status.errorMessage)" -like '*403*' -or $status.permissionsOk -eq $false)) { $ctrl.Text = 'Berechtigungen fehlen'; $ctrl.Foreground = Get-HUBrush '#FFEB3B' 'Fg' }
+    elseif ($status -and $status.lastChecked) { $ctrl.Text = 'Nicht verbunden'; $ctrl.Foreground = Get-HUBrush '#D32F2F' 'Fg' }
+    else { $ctrl.Text = 'Nicht geprueft'; $ctrl.Foreground = Get-HUBrush '#858585' 'Fg' }
 }
 
 # ============================================================================
@@ -449,17 +449,17 @@ function Register-HUTenantHandlers {
                 }
                 if ($missing.Count) {
                     $script:Controls['txtPermissionStatus'].Text = "Berechtigungen: $($perms.Count), $($missing.Count) fehlen"
-                    $script:Controls['txtPermissionStatus'].Foreground = Get-HUBrush '#FFEB3B'
+                    $script:Controls['txtPermissionStatus'].Foreground = Get-HUBrush '#FFEB3B' 'Fg'
                     Write-HULogWarn "Fehlt: $($missing -join ', ')" -Tenant $k
                 } else {
                     $script:Controls['txtPermissionStatus'].Text = "Berechtigungen: $($perms.Count)$(if ($script:SelectedExtension) { ' - alles da' })"
-                    $script:Controls['txtPermissionStatus'].Foreground = Get-HUBrush '#4CAF50'
+                    $script:Controls['txtPermissionStatus'].Foreground = Get-HUBrush '#4CAF50' 'Fg'
                 }
                 Update-HUSecretExpiry $k $script:CurrentToken
             } else {
                 Write-HULogError "Verbindung fehlgeschlagen: $($conn.ErrorMessage)" -Tenant $k
                 $script:Controls['txtPermissionStatus'].Text = 'Verbindung fehlgeschlagen'
-                $script:Controls['txtPermissionStatus'].Foreground = Get-HUBrush '#D32F2F'
+                $script:Controls['txtPermissionStatus'].Foreground = Get-HUBrush '#D32F2F' 'Fg'
             }
             Update-TenantStatus -TenantKey $k
             Update-HUTenantItemSuffixes

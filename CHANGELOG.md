@@ -1,5 +1,34 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.20 (Testversion)
+
+### 🎨 Oberfläche
+- **Farbschema Dunkel, Hell oder "Wie Windows":** Auswahl unter Einstellungen > Allgemein > Farbschema.
+  - Dunkel bleibt der Standard und sieht aus wie bisher. Nach dem Update bleibt es bei Dunkel, bis umgestellt wird.
+  - Hell ist warm getönt, nicht reinweiß.
+  - "Wie Windows" folgt beim Start dem App-Modus von Windows.
+  - Gilt für alle Reiter, Fenster und Meldungen, auch für die Reiter der Zusatzmodule.
+- **Knopf in der Titelleiste:** Das Symbol Sonne/Mond schaltet schnell zwischen Dunkel und Hell um.
+- **Wirkt nach einem Neustart:** Die App fragt nach und startet selbst neu.
+- **Farbtabellen als Dateien:** Dunkel und Hell liegen im Ordner Themes. Das ist die Grundlage für eigene Farbschemata; wählbar sind sie in dieser Version noch nicht.
+  - Fehlt die Datei des Farbschemas oder ist sie fehlerhaft, startet die App dunkel und schreibt einen Hinweis ins Protokoll.
+
+### 🛡️ Sicherheitskatalog
+- **Prüfumfang wählbar:** Neue Auswahl "Umfang" neben "Prüfen": Alles, Ohne riskante Anmeldungen oder Nur riskante Anmeldungen.
+  - Die riskanten Anmeldungen (Regel K07) dauern am längsten, ohne sie ist ein Lauf deutlich schneller.
+  - Ausgelassene Regeln zeigen den Stand vom letzten Lauf dieser Sitzung, die Uhrzeit steht im Tooltip. Ohne früheren Lauf steht dort "nicht geprüft".
+  - Ein Teil-Lauf schreibt keinen Verlauf. "Soll speichern" geht nur nach einem vollständigen Lauf.
+  - Im Grundschutz-Balken zählt "nicht geprüft" nie als erfüllt.
+  - Die tägliche Teams-Prüfung prüft weiter alles.
+
+### 🚧 Grenzen
+- Startbildschirm, Handy-Fernbedienung, Excel-Berichte und Teams-Karten bleiben unverändert und damit dunkel.
+- "Wie Windows" wird nur beim Start gelesen. Ändert sich der App-Modus von Windows später, gilt das erst nach dem nächsten Start.
+- Einzelne Stellen können in Hell noch schlecht lesbar sein.
+
+### ✅ Qualität
+- TESTZAHL neue Prüfungen.
+
 ## v2.6.19 (Testversion)
 
 ### 🛡️ Sicherheitskatalog

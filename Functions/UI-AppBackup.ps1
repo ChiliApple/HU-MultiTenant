@@ -141,11 +141,11 @@ function Update-HUAbMainStatus {
     $cfg = Get-HUAbConfig
     if ($run) {
         $p = $script:AbProg; $pc = $(if ($p -and [double]$p.Total -gt 0) { " $([int](100 * [double]$p.Done / [double]$p.Total)) %" } else { ' ...' })
-        $t.Text = "$ic$pc"; $t.Foreground = [System.Windows.Media.Brushes]::LightSkyBlue; $t.ToolTip = "App-Sicherung $run"
+        $t.Text = "$ic$pc"; $t.Foreground = (Get-HUBrush '#87CEFA' 'Fg'); $t.ToolTip = "App-Sicherung $run"
     } elseif ($res -like 'FEHLER*' -or $res -like 'Automatik:*') {
-        $t.Text = "$ic !"; $t.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#FF9800'); $t.ToolTip = "App-Sicherung: $res$(if ($lt) { "`nLetzte erfolgreiche: $lt" })`nKlick: Einstellungen > Sicherung"
+        $t.Text = "$ic !"; $t.Foreground = (Get-HUBrush '#FF9800' 'Fg'); $t.ToolTip = "App-Sicherung: $res$(if ($lt) { "`nLetzte erfolgreiche: $lt" })`nKlick: Einstellungen > Sicherung"
     } else {
-        $t.Text = "$ic"; $t.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#858585')
+        $t.Text = "$ic"; $t.Foreground = (Get-HUBrush '#858585' 'Fg')
         $t.ToolTip = $(if ($lt) { "App-Sicherung: zuletzt $lt$(if ($res) { " ($res)" })`nAutomatisch: $($cfg.Mode)`nKlick: Einstellungen > Sicherung" } else { "Noch keine App-Sicherung`nKlick: Einstellungen > Sicherung" })
     }
 }
@@ -167,8 +167,8 @@ function Update-HUAbTabInfo {
     $run = Get-HUAbProgressText
     foreach ($b in 'btnAbNow', 'btnAbCheck', 'btnAbRestore') { $c[$b].IsEnabled = -not $run }
     $c.btnAbNow.Content = $(if ($run -like 'sichert*') { 'Sichert ...' } else { 'Jetzt sichern' })
-    if ($run) { $c.txtAbLast.Text = $run; $c.txtAbLast.Foreground = [System.Windows.Media.Brushes]::LightSkyBlue; return }
-    $c.txtAbLast.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#AAAAAA')
+    if ($run) { $c.txtAbLast.Text = $run; $c.txtAbLast.Foreground = (Get-HUBrush '#87CEFA' 'Fg'); return }
+    $c.txtAbLast.Foreground = (Get-HUBrush '#AAAAAA' 'Fg')
     $last = "$(Get-HUStateValue 'appBackupLast' '')"; $res = "$(Get-HUStateValue 'appBackupResult' '')"
     $c.txtAbLast.Text = $(if ($last) { "$(try { ([datetime]::Parse($last, [Globalization.CultureInfo]::InvariantCulture)).ToString('dd.MM.yyyy HH:mm') } catch { $last })$(if ($res) { "  -  $res" })" } elseif ($res) { $res } else { 'noch keine' })
 }
@@ -497,7 +497,7 @@ function Show-HUAbRestorePick($Opened, $Owner) {
         $ex = @($g.Group | Where-Object Exists)
         $cv = @($ex | ForEach-Object { "$($_.CurChanged)" } | Where-Object { $_ } | Sort-Object -Descending)[0]
         $code = (@($g.Group | Where-Object { Test-HUAppBackupCodeName "$($_.Name)" }).Count -gt 0)
-        [pscustomobject]@{ Pick = (-not $code); Code = $code; Color = $(if ($code) { '#FFB74D' } else { '#E0E0E0' }); Area = $g.Name; Count = $g.Count; Saved = (& $fmt $sv); Current = $(if ($ex.Count) { "$($ex.Count) vorhanden, neueste $(& $fmt $cv)" } else { 'nicht vorhanden' }) }
+        [pscustomobject]@{ Pick = (-not $code); Code = $code; Color = (ConvertTo-HUThemeColor $(if ($code) { '#FFB74D' } else { '#E0E0E0' }) 'Fg'); Area = $g.Name; Count = $g.Count; Saved = (& $fmt $sv); Current = $(if ($ex.Count) { "$($ex.Count) vorhanden, neueste $(& $fmt $cv)" } else { 'nicht vorhanden' }) }
     }
     $c.grid.ItemsSource = @($rows)
     $st = @{ R = $null; Busy = $false }

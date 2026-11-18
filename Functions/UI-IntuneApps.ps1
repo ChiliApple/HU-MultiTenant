@@ -43,9 +43,9 @@ function Set-HUAppMode([string]$Mode) {
     $c['pnlAppIntRight'].Visibility = & $vis $int
     $c['pnlAppUpdLeft'].Visibility = & $vis $upd
     $c['pnlAppUpdRight'].Visibility = & $vis $upd
-    $c['btnAppModeLib'].Background = Get-HUBrush $(if ($lib) { '#1976D2' } else { '#3E3E42' })
-    $c['btnAppModeInt'].Background = Get-HUBrush $(if ($int) { '#1976D2' } else { '#3E3E42' })
-    $c['btnAppModeUpd'].Background = Get-HUBrush $(if ($upd) { '#1976D2' } else { '#00695C' })   # Updates abgesetzt, damit es auffaellt
+    $c['btnAppModeLib'].Background = Get-HUBrush $(if ($lib) { '#1976D2' } else { '#3E3E42' }) 'Btn'
+    $c['btnAppModeInt'].Background = Get-HUBrush $(if ($int) { '#1976D2' } else { '#3E3E42' }) 'Btn'
+    $c['btnAppModeUpd'].Background = Get-HUBrush $(if ($upd) { '#1976D2' } else { '#00695C' }) 'Btn'   # Updates abgesetzt, damit es auffaellt
     Set-HUStateValue 'appMode' $Mode
     if ($upd) { Update-HUUpdList }
     if ($int) {
@@ -64,7 +64,7 @@ function Update-HUIntTenantChecks {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$($t.displayName)"
         $cb.Tag = "$($t.key)"
-        $cb.Foreground = Get-HUBrush '#CCCCCC'
+        $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'
         $cb.FontSize = 11
         $cb.Margin = [System.Windows.Thickness]::new(0, 1, 10, 1)
         $cb.IsChecked = ($saved -contains "$($t.key)")
@@ -515,7 +515,7 @@ function Show-HUTenantChoice([string]$Title, [string]$Text, [string[]]$Keys, [ha
     foreach ($k in $Keys) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Content = "$(Get-HUTenantDisplayName $k)$(if ($Notes.ContainsKey($k) -and $Notes[$k]) { "  ($($Notes[$k]))" })"
-        $cb.Tag = $k; $cb.Foreground = Get-HUBrush '#CCCCCC'; $cb.Margin = [System.Windows.Thickness]::new(0, 2, 0, 2)
+        $cb.Tag = $k; $cb.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $cb.Margin = [System.Windows.Thickness]::new(0, 2, 0, 2)
         [void]$c.spTenants.Children.Add($cb)
     }
     $c.btnAll.Add_Click({ foreach ($cb in $c.spTenants.Children) { $cb.IsChecked = $true } })

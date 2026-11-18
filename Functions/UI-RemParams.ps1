@@ -58,7 +58,7 @@ function Update-HURemParamPanel([string]$Which, [switch]$Force) {
     $panel.Visibility = 'Visible'
     if ($m.Defs.Count) {
         $t = New-Object System.Windows.Controls.TextBlock
-        $t.Text = 'Werte:'; $t.Foreground = Get-HUBrush '#AAAAAA'; $t.VerticalAlignment = 'Center'; $t.FontWeight = 'SemiBold'
+        $t.Text = 'Werte:'; $t.Foreground = Get-HUBrush '#AAAAAA' 'Fg'; $t.VerticalAlignment = 'Center'; $t.FontWeight = 'SemiBold'
         $t.Margin = [System.Windows.Thickness]::new(0, 2, 10, 2)
         $t.ToolTip = 'Felder aus den "# @param"-Zeilen. Der Wert steht im Skript in der Zeile darunter ("# @value") und wird genau so hochgeladen.'
         [void]$panel.Children.Add($t)
@@ -70,14 +70,14 @@ function Update-HURemParamPanel([string]$Which, [switch]$Force) {
         $cur = if ($m.Values.ContainsKey($p.Name)) { $m.Values[$p.Name] } else { $p.Default }
         if ($p.Type -eq 'bool') {
             $ctl = New-Object System.Windows.Controls.CheckBox
-            $ctl.Content = $p.Label; $ctl.Foreground = Get-HUBrush '#CCCCCC'; $ctl.VerticalAlignment = 'Center'
+            $ctl.Content = $p.Label; $ctl.Foreground = Get-HUBrush '#CCCCCC' 'Fg'; $ctl.VerticalAlignment = 'Center'
             try { $ctl.IsChecked = [bool](ConvertTo-HUQSParamValue $p $cur) } catch { $ctl.IsChecked = $false }
             $ctl.Tag = @{ W = $Which; N = $p.Name }
             $ctl.Add_Click({ Set-HURemParamFromUi $this.Tag.W $this.Tag.N ([bool]$this.IsChecked) $this })
             [void]$sp.Children.Add($ctl)
         } else {
             $lb = New-Object System.Windows.Controls.TextBlock
-            $lb.Text = "$($p.Label):"; $lb.Foreground = Get-HUBrush '#AAAAAA'; $lb.VerticalAlignment = 'Center'
+            $lb.Text = "$($p.Label):"; $lb.Foreground = Get-HUBrush '#AAAAAA' 'Fg'; $lb.VerticalAlignment = 'Center'
             $lb.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
             [void]$sp.Children.Add($lb)
             if ($p.Type -eq 'choice') {
@@ -127,7 +127,7 @@ function Set-HURemParamFromUi([string]$Which, [string]$Name, $Value, $Control = 
         }
         if ($Control) { $Control.ClearValue([System.Windows.Controls.Control]::BorderBrushProperty); $Control.ToolTip = $null }
     } catch {
-        if ($Control) { $Control.BorderBrush = Get-HUBrush '#FF5252'; $Control.ToolTip = "$($_.Exception.Message)" }
+        if ($Control) { $Control.BorderBrush = Get-HUBrush '#FF5252' 'Border'; $Control.ToolTip = "$($_.Exception.Message)" }
     } finally {
         $u.Busy = $false
         try { $u.Sig = (Get-HURemParamModel $Which).Sig } catch { }

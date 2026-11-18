@@ -242,7 +242,7 @@ function Show-HUSettingsDialog {
                 [pscustomobject]@{
                     Title = "$(if ((Get-HUProp $t 'isPrimary' $false) -eq $true) { [char]0x2605 + ' ' })$(Get-HUProp $t 'displayName' '(ohne Namen)')"
                     Sub = "$(Get-HUProp $t 'key' '')  $(Get-HUProp $t 'domain' '')"
-                    Secret = $sl[0]; SecretColor = $sl[1]; Index = $i
+                    Secret = $sl[0]; SecretColor = (ConvertTo-HUThemeColor $sl[1] 'Fg'); Index = $i
                 }
             }
             $c.lstTenants.ItemsSource = @($items)
@@ -296,7 +296,7 @@ function Show-HUSettingsDialog {
             $c.tExpires.Text = $(if ($e) { try { ([datetime]::Parse($e, [Globalization.CultureInfo]::InvariantCulture)).ToString('dd.MM.yyyy') } catch { $e } } else { '' })
             $c.tProtected.Text = (@(Get-HUProp $t 'protectedAppIds' @()) -join ', ')
             $c.tTestResult.Text = ''
-            if ($on) { $sl = & $secretLine $t; $c.tSecretState.Text = $sl[0]; $c.tSecretState.Foreground = Get-HUBrush $sl[1] } else { $c.tSecretState.Text = '' }
+            if ($on) { $sl = & $secretLine $t; $c.tSecretState.Text = $sl[0]; $c.tSecretState.Foreground = Get-HUBrush $sl[1] 'Fg' } else { $c.tSecretState.Text = '' }
             # Zertifikat statt Secret: passende Knoepfe zeigen
             $isCert = ($on -and (Test-HUTenantCertAuth $t))
             foreach ($b in @($c.btnSecretSet, $c.btnSecretDelete)) { $b.Visibility = $(if ($isCert) { 'Collapsed' } else { 'Visible' }) }
@@ -413,14 +413,14 @@ function Show-HUSettingsDialog {
         if (-not $saved -or -not (Test-HUTenantCertAuth $saved)) { Show-HUMessage 'Zuerst speichern (der Tenant ist noch nicht in settings.json).' -Icon Warning -Owner $w; return }
         if (-not (Confirm-HU -Warning "Zertifikat fuer '$($t.displayName)' jetzt erneuern?`n`nNeues Zertifikat (12 Monate) an der App eintragen, testen, altes entfernen. Dauert bis zu 2 Minuten." -Owner $w)) { return }
         $c.btnCertRenew.IsEnabled = $false
-        $c.tTestResult.Text = 'Erneuere Zertifikat ... (Ergebnis auch im Protokoll)'; $c.tTestResult.Foreground = Get-HUBrush '#90CAF9'
+        $c.tTestResult.Text = 'Erneuere Zertifikat ... (Ergebnis auch im Protokoll)'; $c.tTestResult.Foreground = Get-HUBrush '#90CAF9' 'Fg'
         $started = Start-HUCertRenew "$($t.key)" -Done {
             param($k, $ok, $txt)
             try {
                 $c.btnCertRenew.IsEnabled = $true
                 $src = @($script:Settings.tenants | Where-Object { "$($_.key)" -eq $k })[0]
                 foreach ($x in $st.Tenants) { if ("$($x.key)" -eq $k -and $src) { Set-HUProp $x 'certThumbprint' "$($src.certThumbprint)" } }
-                $c.tTestResult.Text = $txt; $c.tTestResult.Foreground = Get-HUBrush $(if ($ok) { '#8BC34A' } else { '#F44336' })
+                $c.tTestResult.Text = $txt; $c.tTestResult.Foreground = Get-HUBrush $(if ($ok) { '#8BC34A' } else { '#F44336' }) 'Fg'
                 & $refreshList $st.Cur
             } catch { }
         }
@@ -446,13 +446,13 @@ function Show-HUSettingsDialog {
         if ($st.Cur -lt 0) { return }
         & $formToTenant
         $t = $st.Tenants[$st.Cur]
-        if (-not (Test-HUGuid "$($t.tenantId)") -or -not (Test-HUGuid "$($t.appId)")) { $c.tTestResult.Text = 'Tenant-ID und Anwendungs-ID muessen GUIDs sein.'; $c.tTestResult.Foreground = Get-HUBrush '#FF9800'; return }
+        if (-not (Test-HUGuid "$($t.tenantId)") -or -not (Test-HUGuid "$($t.appId)")) { $c.tTestResult.Text = 'Tenant-ID und Anwendungs-ID muessen GUIDs sein.'; $c.tTestResult.Foreground = Get-HUBrush '#FF9800' 'Fg'; return }
         $tmp = [pscustomobject]@{ tenants = @($t); credentials = $S.credentials }
         $w.Cursor = [System.Windows.Input.Cursors]::Wait
         try {
             $tok = $null
             try { $tok = Get-GraphToken -TenantKey "$($t.key)" -Settings $tmp -ForceRefresh -ErrorAction Stop } catch { $c.tTestResult.Text = "Anmeldung fehlgeschlagen: $($_.Exception.Message)" }
-            if (-not $tok) { if (-not $c.tTestResult.Text) { $c.tTestResult.Text = 'Anmeldung fehlgeschlagen - Secret fehlt oder ist falsch/abgelaufen.' }; $c.tTestResult.Foreground = Get-HUBrush '#F44336'; return }
+            if (-not $tok) { if (-not $c.tTestResult.Text) { $c.tTestResult.Text = 'Anmeldung fehlgeschlagen - Secret fehlt oder ist falsch/abgelaufen.' }; $c.tTestResult.Foreground = Get-HUBrush '#F44336' 'Fg'; return }
             $perms = @(Get-TokenPermissions -Token $tok)
             $x = Get-AppSecretExpiry -TenantKey "$($t.key)" -Settings $tmp -Token $tok
             Set-HUSecretCacheEntry "$($t.key)" $x
@@ -461,9 +461,9 @@ function Show-HUSettingsDialog {
             elseif ($x.Status -eq 'NoPermission') { $txt += " Ablaufdatum nicht lesbar: Application.Read.All fehlt - Datum manuell eintragen oder Berechtigung erteilen." }
             else { $txt += " Ablaufdatum: $($x.Error)" }
             $c.tTestResult.Text = $txt
-            $c.tTestResult.Foreground = Get-HUBrush '#8BC34A'
+            $c.tTestResult.Foreground = Get-HUBrush '#8BC34A' 'Fg'
             & $refreshList $st.Cur
-            $sl = & $secretLine $t; $c.tSecretState.Text = $sl[0]; $c.tSecretState.Foreground = Get-HUBrush $sl[1]
+            $sl = & $secretLine $t; $c.tSecretState.Text = $sl[0]; $c.tSecretState.Foreground = Get-HUBrush $sl[1] 'Fg'
         } finally { $w.Cursor = $null; try { Clear-TokenCache -TenantKey "$($t.key)" } catch { } }
     })
     $c.btnCheckAllSecrets.Add_Click({
