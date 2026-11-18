@@ -605,7 +605,11 @@ $script:Window.Add_Closing({
     # aus der Sperre heraus (Sperrfenster offen) ohne Rueckfragen: sonst liesse sich die Sperre ueber "Nein" ohne PIN aufheben
     if (-not $script:SkipCloseChecks -and -not $script:LockActive) {
         # gemeinsame Pruefung mit dem Neustart (UI-Settings.ps1): Extension, ungespeichertes Snippet, laufendes Muster-Anwenden und Tenant-Einrichtung, alle Hintergrundauftraege
-        if (-not (Test-HUCloseAllowed 'beenden')) { $e.Cancel = $true; return }
+        $closeOk = Test-HUCloseAllowed 'beenden'
+        # Hat waehrend der offenen Rueckfrage die Sperre zugeschlagen und wurde dort "beenden" gewaehlt, wird beendet, auch wenn die
+        # Rueckfrage danach mit "Nein" beantwortet wird (der Inhalt bleibt verborgen, entsperrt wird nur mit PIN oder Windows Hello)
+        $lockExit = $false; try { $lockExit = [bool](Get-Variable -Name LockExitPending -Scope Script -ValueOnly -ErrorAction SilentlyContinue) } catch { }
+        if (-not $closeOk -and -not $lockExit) { $e.Cancel = $true; return }
     }
     # ab hier wird beendet: Sperr-Zeitgeber anhalten und ein offenes Sperrfenster mit schliessen (sonst bleibt der Prozess haengen)
     try { Close-HULockDialog } catch { }

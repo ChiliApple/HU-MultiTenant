@@ -17,6 +17,8 @@ $script:LockActive = $false
 $script:LockTimer = $null
 $script:LockFails = 0
 $script:LockBlockedUntil = [datetime]::MinValue
+$script:LockUnlocked = $false     # Ergebnis des letzten Sperrfensters: wirklich entsperrt (PIN oder Windows Hello)
+$script:LockExitPending = $false  # im Sperrfenster wurde "beenden" gewaehlt: das Hauptfenster schliesst ohne weitere Rueckfrage
 $script:LockClosing = $false   # Hauptfenster wird geschlossen: ab dann nicht mehr sperren (Window.IsLoaded bleibt nach Close() wahr)
 $script:LockDlg = $null   # offenes Sperrfenster (@{ W = Fenster; State = Zustand }), damit es beim Schliessen des Hauptfensters mit schliesst
 
@@ -297,10 +299,16 @@ function Lock-HUApp([switch]$AtStart) {
     foreach ($ow in @($main.OwnedWindows)) {
         try { if ($ow.IsVisible -and $ow.Content -is [System.Windows.UIElement] -and $ow.Content.Visibility -eq 'Visible') { $ow.Content.Visibility = 'Hidden'; $hidden += $ow } } catch { }
     }
+    $script:LockUnlocked = $false
     try { Show-HULockDialog -AtStart:$AtStart } finally {
-        try { $main.Content.Visibility = 'Visible' } catch { }
-        foreach ($ow in $hidden) { try { $ow.Content.Visibility = 'Visible' } catch { } }
-        $script:LockActive = $false
+        # Nur nach erfolgreichem Entsperren wieder einblenden. Endet das Sperrfenster anders ("beenden", Hauptfenster schliesst,
+        # Fehler), bleibt der Inhalt verborgen und die Sperre aktiv: sonst liesse sich die App ohne PIN entsperren, z. B. wenn die
+        # Sperre waehrend einer offenen Rueckfrage beim Beenden zuschlaegt und diese danach mit "Nein" beantwortet wird.
+        if ($script:LockUnlocked) {
+            try { $main.Content.Visibility = 'Visible' } catch { }
+            foreach ($ow in $hidden) { try { $ow.Content.Visibility = 'Visible' } catch { } }
+            $script:LockActive = $false
+        }
     }
 }
 
@@ -376,7 +384,11 @@ function Show-HULockDialog([switch]$AtStart) {
         })
     [void]$w.ShowDialog()
     $script:LockDlg = $null
+    $script:LockUnlocked = [bool]($state.Unlocked -and -not $state.Exit)
     if ($state.Exit) {
+        # merken: laeuft das Hauptfenster schon durch sein Schliessen (offene Rueckfrage), wirft Close() unten und wird verschluckt;
+        # der Closing-Handler in Main.ps1 beendet dann trotzdem, egal wie die offene Rueckfrage beantwortet wird
+        $script:LockExitPending = $true
         # Beenden aus der Sperre: sofort und OHNE die Rueckfragen des normalen Schliessens. Sonst liesse sich die Sperre ohne PIN
         # aufheben (Rueckfrage zu laufendem Auftrag oder ungespeichertem Snippet mit "Nein" beantworten -> Fenster bleibt offen und
         # entsperrt). Der Inhalt bleibt bis zum Schliessen verborgen. Laufende Auftraege werden abgebrochen, wie beim Not-Aus.

@@ -925,6 +925,16 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $lock = [IO.File]::ReadAllText((Join-Path $script:Root 'Functions\UI-Lock.ps1'), [Text.Encoding]::UTF8)
         $lock | Should -Match 'if \(\$script:LockClosing -or -not \$script:Window\) \{ return \}'
         $lock | Should -Match '\$script:LockDlg = @\{ W = \$w; State = \$state \}'
+        # fail-closed: Inhalt und LockActive nur nach erfolgreichem Entsperren zuruecksetzen
+        $fin = [regex]::Match($lock, '(?s)try \{ Show-HULockDialog -AtStart:\$AtStart \} finally \{(.*?)\r?\n    \}\r?\n\}').Groups[1].Value
+        $fin | Should -Not -BeNullOrEmpty
+        $guard = [regex]::Match($fin, '(?s)if \(\$script:LockUnlocked\) \{(.*)\}').Groups[1].Value
+        $guard | Should -Match "Visibility = 'Visible'"
+        $guard | Should -Match '\$script:LockActive = \$false'
+        ($fin.Replace($guard, '')) | Should -Not -Match "Visibility = 'Visible'|LockActive = \`$false"
+        $lock | Should -Match '\$script:LockUnlocked = \[bool\]\(\$state\.Unlocked -and -not \$state\.Exit\)'
+        $lock | Should -Match '\$script:LockExitPending = \$true'
+        $main | Should -Match 'if \(-not \$closeOk -and -not \$lockExit\) \{ \$e\.Cancel = \$true; return \}'
         # Verhalten von Close-HULockDialog mit Stellvertretern (ohne Fenster)
         $fn = [regex]::Match($lock, '(?s)function Close-HULockDialog \{.*?\r?\n\}').Value
         $fn | Should -Not -BeNullOrEmpty
@@ -1036,7 +1046,7 @@ Describe 'Farbschema umschalten: Switch-HUThemeQuick und Test-HURestartAllowed (
         $h = [regex]::Match($main, '(?s)Window\.Add_Closing\(\{.*?\r?\n\}\)').Value
         $h | Should -Not -BeNullOrEmpty
         $h | Should -Match "if \(-not \`$script:SkipCloseChecks -and -not \`$script:LockActive\) \{"
-        $h | Should -Match "-not \(Test-HUCloseAllowed 'beenden'\)\) \{ \`$e\.Cancel = \`$true; return \}"
+        $h | Should -Match "\`$closeOk = Test-HUCloseAllowed 'beenden'"
         $h | Should -Not -Match "Test-HUJobRunning|Confirm-HUQSDiscard|'Apps'|'Rem'"
         # der uebrige Teil des Handlers (Fensterzustand, Tenants trennen, Aufraeumen) bleibt
         $h | Should -Match 'Save-HUWindowState'
