@@ -31,6 +31,13 @@ Stable-Release der Testversion 2.6.21 - "Teams-Meldungen für einzelne Regeln de
   - Das gilt auch für eine von Hand bearbeitete Meldungsdatei: Steht dort bei der Auswahl etwas anderes als Text oder eine Liste von Text, gilt die Auswahl als ungültig.
 - **Handy-Fernbedienung:** "Sicherheits-Änderung" und "Sicherheits-Regeln" lassen sich jetzt auch vom Handy aus senden. Bisher meldete "Sicherheits-Änderung" dort fälschlich "Kein Soll-Stand gespeichert".
 
+### 💻 Modul Autopilot 0.5.6
+- **Zeitfilter "nur letzte" in der Übersicht:** Haken mit Zeitraum 4 h, 24 h, 48 h oder heute. Zeigt nur Geräte, die in diesem Zeitraum eingerichtet oder importiert wurden.
+  - Zeitbasis wählbar: "nach Einrichtung" (Spalte "Eingerichtet am") oder "nach Autopilot-Import" (Zeit der Profil-Zuweisung, weil Microsoft keine Importzeit liefert).
+  - Geräte ohne die gewählte Zeit sind ausgeblendet. Der Haken ist nach jedem Start aus.
+- **Summe in eigener Zeile:** Die Zeile mit den Zahlen steht jetzt unter den Filtern statt daneben, damit sie auch bei schmalem Fenster lesbar bleibt.
+- **Detailfenster:** Neue Zeile "Profil zugewiesen am (Autopilot)".
+
 ### 🗺️ Doku
 - **Roadmap:** Neuer Abschnitt "Beobachten" mit Neuerungen von Microsoft, die noch Vorschau sind (Windows Server in Intune, Richtlinienpläne im bedingten Zugriff, Software-Compliance-Richtlinie). Dazu der Stand 2.6.21.
 - **Anleitung, Einstieg und Funktionsübersicht** nennen die neue Meldung und die Regelauswahl.
@@ -45,7 +52,7 @@ Stable-Release der Testversion 2.6.21 - "Teams-Meldungen für einzelne Regeln de
 - Die Texte der neuen Felder und Karten sind noch ohne Umlaute geschrieben. Die Umstellung aller Texte kommt in den nächsten Versionen.
 
 ### ✅ Qualität
-- 1389 automatische Tests, alle bestanden unter Windows PowerShell 5.1 und PowerShell 7.
+- 1394 automatische Tests, alle bestanden unter Windows PowerShell 5.1 und PowerShell 7.
 
 ## v2.6.20 (Stable, 18.11.2026)
 

@@ -83,6 +83,57 @@ Describe 'Modul-Aufbau (wie die CI eines Zusatzmoduls)' {
     }
 }
 
+Describe 'Uebersicht: Zeitfilter nur letzte' {
+    BeforeAll {
+        $r = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $script:ApCode = Get-Content -LiteralPath (Join-Path $r 'Modules\Autopilot\Addon.ps1') -Raw -Encoding UTF8
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $r 'Modules\Autopilot\Addon.ps1'), [ref]$null, [ref]$null)
+        foreach ($n in 'Get-APZeitAb', 'Test-APZeitNeu') {
+            $fn = $ast.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq $n }.GetNewClosure(), $true)
+            . ([scriptblock]::Create($fn.Extent.Text))
+        }
+        $script:ApXaml = Get-Content -LiteralPath (Join-Path $r 'Modules\Autopilot\Tab.xaml') -Raw -Encoding UTF8
+        $script:ApCore = Get-Content -LiteralPath (Join-Path $r 'Modules\Autopilot\Autopilot.Core.ps1') -Raw -Encoding UTF8
+    }
+    It 'Beginn: Stunden zurueck, heute ab Mitternacht' {
+        $j = [datetime]'2026-11-23 10:30:45'
+        Get-APZeitAb 24 $j | Should -Be ([datetime]'2026-11-22 10:30:45')
+        Get-APZeitAb 4 $j | Should -Be ([datetime]'2026-11-23 06:30:45')
+        Get-APZeitAb 0 $j | Should -Be ([datetime]'2026-11-23 00:00:00')
+        # kurz nach Mitternacht: heute ist enger als 4 Stunden
+        Get-APZeitAb 0 ([datetime]'2026-11-23 00:05:00') | Should -Be ([datetime]'2026-11-23 00:00:00')
+    }
+    It 'Zeit im Zeitraum: Grenze zaehlt mit der ganzen Minute, leer und unlesbar nie' {
+        $ab = [datetime]'2026-11-22 10:30:45'
+        Test-APZeitNeu '2026-11-22 10:31' $ab | Should -BeTrue
+        Test-APZeitNeu '2026-11-22 10:30' $ab | Should -BeTrue
+        Test-APZeitNeu '2026-11-22 10:29' $ab | Should -BeFalse
+        Test-APZeitNeu '2026-11-23 09:00' $ab | Should -BeTrue
+        Test-APZeitNeu '' $ab | Should -BeFalse
+        Test-APZeitNeu '  ' $ab | Should -BeFalse
+        Test-APZeitNeu '22.11.2026 11:00' $ab | Should -BeFalse
+        Test-APZeitNeu 'nein' $ab | Should -BeFalse
+    }
+    It 'heute: gestern 23:59 faellt heraus, heute 00:00 bleibt' {
+        $ab = Get-APZeitAb 0 ([datetime]'2026-11-23 08:00:00')
+        Test-APZeitNeu '2026-11-22 23:59' $ab | Should -BeFalse
+        Test-APZeitNeu '2026-11-23 00:00' $ab | Should -BeTrue
+    }
+    It 'Zeitraeume und Zeitbasis stehen an einer Stelle, die Felder gibt es in der Zeile' {
+        $script:ApCode | Should -Match "(?m)^\`$script:APZeitSpannen = .*'4 h'.*'24 h'.*'48 h'.*'heute'; Stunden = 0"
+        $script:ApCode | Should -Match "(?m)^\`$script:APZeitBasis = .*Feld = 'EingerichtetAm'.*Feld = 'ProfilZugewiesenAm'"
+        $script:ApCore | Should -Match "(?m)^\s+EingerichtetAm\s+="
+        $script:ApCore | Should -Match "(?m)^\s+ProfilZugewiesenAm\s+=.*deploymentProfileAssignedDateTime"
+    }
+    It 'Steuerelemente vorhanden, Haken startet aus, Liste zeichnet nur bei gesetztem Haken neu' {
+        foreach ($n in 'apChkZeit', 'apCmbZeit', 'apCmbZeitBasis') { $script:ApXaml | Should -Match ('x:Name="' + $n + '"') }
+        ([regex]::Match($script:ApXaml, '<CheckBox x:Name="apChkZeit"[^>]*>').Value) | Should -Not -Match 'IsChecked'
+        $script:ApCode | Should -Match "apCmbZeit\.Add_SelectionChanged\(\{ if \(\`$script:Controls\['apChkZeit'\]\.IsChecked\) \{ Update-APGrid \} \}\)"
+        $script:ApCode | Should -Match "apCmbZeitBasis\.Add_SelectionChanged\(\{ if \(\`$script:Controls\['apChkZeit'\]\.IsChecked\) \{ Update-APGrid \} \}\)"
+        $script:ApCode | Should -Not -Match "Set-HUStateValue 'apChkZeit'"
+    }
+}
+
 Describe 'Hash speichern: Dateiname mit Seriennummer' {
     BeforeAll {
         $r = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent

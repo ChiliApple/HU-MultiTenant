@@ -1,5 +1,15 @@
 # Changelog – Zusatzmodul Autopilot
 
+## v0.5.6 – 23.11.2026 (mit HU-MultiTenant 2.6.21)
+
+### 🕒 Übersicht
+- **Zeitfilter „nur letzte“:** Neuer Haken in der Übersicht mit Zeitraum 4 h, 24 h, 48 h oder heute (seit Mitternacht). Zeigt nur Geräte, die in diesem Zeitraum dazugekommen sind.
+  - Zeitbasis wählbar: „nach Einrichtung“ nimmt die Spalte „Eingerichtet am“ (Intune), „nach Autopilot-Import“ die Zeit der Profil-Zuweisung. Microsoft liefert keine eigene Importzeit, die Profil-Zuweisung folgt meist wenige Minuten nach dem Import.
+  - Geräte ohne die gewählte Zeit sind ausgeblendet: ohne Intune bei „nach Einrichtung“, ohne Profil bei „nach Autopilot-Import“.
+  - Der Filter wirkt zusammen mit den anderen Filtern und gilt auch für „Tabelle / Export“. Der Haken ist nach jedem Start aus.
+- **Summe in eigener Zeile:** Die Zeile mit den Zahlen (Geräte, Bereit, ohne Intune, angezeigt) steht jetzt unter den Filtern statt daneben, damit sie auch bei schmalem Fenster lesbar bleibt.
+- **Detailfenster:** Neue Zeile „Profil zugewiesen am (Autopilot)“.
+
 ## v0.5.5 – 18.11.2026 (mit HU-MultiTenant 2.6.20 Test)
 
 ### 🎨 Darstellung
