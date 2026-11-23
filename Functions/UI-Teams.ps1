@@ -337,10 +337,27 @@ function Update-HUTeamsRuleCombo {
     } finally { $script:TeamsFillBusy = $wasBusy }
 }
 
+# Liste "Hinzufuegen ..." zurueck auf den ersten Eintrag, ohne etwas zu uebernehmen
+function Reset-HUTeamsRuleCombo {
+    $wasBusy = $script:TeamsFillBusy; $script:TeamsFillBusy = $true
+    try { $script:Controls['cmbTeamsJobRuleAdd'].SelectedIndex = 0 } finally { $script:TeamsFillBusy = $wasBusy }
+}
+
+# Den in der Liste gewaehlten Eintrag (Regel oder Umfang) an das Feld "Regeln" anfuegen, doppelte nicht; danach Liste zuruecksetzen
+function Add-HUTeamsRuleFromCombo {
+    $c2 = $script:Controls
+    $it = $c2['cmbTeamsJobRuleAdd'].SelectedItem
+    if ($it -and "$($it.Tag)") {
+        $cur = @("$($c2['txtTeamsJobRules'].Text)" -split '[,;\s]+' | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+        if ($cur -notcontains "$($it.Tag)") { $c2['txtTeamsJobRules'].Text = (@($cur) + "$($it.Tag)") -join ', ' }
+    }
+    Reset-HUTeamsRuleCombo
+}
+
 # Regelauswahl aus dem Formular pruefen. Rueckgabe: Liste zum Speichern (leer = alle). Wirft bei unbekannten Eintraegen.
 function Get-HUTeamsFormRules {
     $sel = Resolve-HUSecRuleSelection -Value "$($script:Controls['txtTeamsJobRules'].Text)"
-    if ($sel.Unknown.Count) { throw "Unbekannte Regel oder unbekannter Umfang: $($sel.Unknown -join ', ').`nErlaubt sind Regelnummern des Sicherheitskatalogs (z. B. K07) und die Umfaenge aus der Liste rechts." }
+    if ($sel.Unknown.Count) { throw "Unbekannte Regel oder unbekannter Umfang: $($sel.Unknown -join ', ').`nIm Feld stehen Regelnummern des Sicherheitskatalogs (z. B. K07) oder die Kennung eines Umfangs (z. B. onlyRisk), mit Komma getrennt.`nAm einfachsten ueber die Liste rechts einfuegen." }
     return [string[]]@($sel.Tokens)
 }
 
@@ -675,17 +692,25 @@ function Register-HUTeamsHandlers {
     $c['btnTeamsDel'].Add_Click({ Remove-HUTeamsTarget })
     $c['btnTeamsTest'].Add_Click({ Test-HUTeamsTarget })
 
-    # Regel oder Umfang aus der Liste an das Textfeld anfuegen (doppelte nicht), danach Liste zurueck auf "Hinzufuegen ..."
+    # Regel oder Umfang aus der Liste an das Textfeld anfuegen (doppelte nicht), danach Liste zurueck auf "Hinzufuegen ...".
+    # Uebernommen wird erst beim Schliessen der Liste (Mausklick oder Enter) bzw. mit Enter bei zugeklappter Liste - NICHT bei
+    # jeder Aenderung der Auswahl: Pfeiltasten, Buchstabensuche und Mausrad aendern die Auswahl einer zugeklappten Liste sofort
+    # und haetten sonst beim Blaettern ungewollt Eintraege eingefuegt. Esc verwirft.
     try { Update-HUTeamsRuleCombo } catch { Write-HULog -Message "[Teams] Regelliste nicht geladen: $($_.Exception.Message)" -Level WARN }
-    $c['cmbTeamsJobRuleAdd'].Add_SelectionChanged({
+    $script:TeamsRuleEsc = $false
+    $c['cmbTeamsJobRuleAdd'].Add_DropDownClosed({
         if ($script:TeamsFillBusy) { return }
-        $c2 = $script:Controls
-        $it = $c2['cmbTeamsJobRuleAdd'].SelectedItem
-        if (-not $it -or -not "$($it.Tag)") { return }
-        $cur = @("$($c2['txtTeamsJobRules'].Text)" -split '[,;\s]+' | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
-        if ($cur -notcontains "$($it.Tag)") { $c2['txtTeamsJobRules'].Text = (@($cur) + "$($it.Tag)") -join ', ' }
-        $script:TeamsFillBusy = $true
-        try { $c2['cmbTeamsJobRuleAdd'].SelectedIndex = 0 } finally { $script:TeamsFillBusy = $false }
+        if ($script:TeamsRuleEsc) { $script:TeamsRuleEsc = $false; Reset-HUTeamsRuleCombo; return }
+        Add-HUTeamsRuleFromCombo
+    })
+    $c['cmbTeamsJobRuleAdd'].Add_PreviewKeyDown({
+        param($s, $e)
+        if ($e.Key -eq [System.Windows.Input.Key]::Escape) { if ($s.IsDropDownOpen) { $script:TeamsRuleEsc = $true } else { Reset-HUTeamsRuleCombo } }
+        elseif ($e.Key -eq [System.Windows.Input.Key]::Return -and -not $s.IsDropDownOpen) { Add-HUTeamsRuleFromCombo; $e.Handled = $true }
+    })
+    $c['cmbTeamsJobRuleAdd'].Add_LostKeyboardFocus({
+        param($s, $e)
+        if (-not $s.IsDropDownOpen -and -not $s.IsKeyboardFocusWithin) { Reset-HUTeamsRuleCombo }
     })
 
     # Name folgt der gewaehlten Art, solange im Feld ein Standardname steht (eigene Namen bleiben)

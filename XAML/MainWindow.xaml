@@ -1695,10 +1695,11 @@
                                                 </DockPanel>
                                                 <StackPanel x:Name="pnlTeamsJobSec" Visibility="Collapsed" Margin="0,0,0,6">
                                                     <TextBlock Text="Regeln des Sicherheitskatalogs (leer = alle)" Style="{StaticResource FieldLabel}"/>
-                                                    <DockPanel Margin="0,2,0,2">
-                                                        <ComboBox x:Name="cmbTeamsJobRuleAdd" DockPanel.Dock="Right" Width="200" Margin="6,0,0,0" AutomationProperties.Name="Regel oder Umfang hinzufuegen" ToolTip="Eine Regel oder einen Umfang aus dem Sicherheitskatalog waehlen: der Eintrag wird links angefuegt." Style="{StaticResource DarkComboBox}" FontSize="11"/>
-                                                        <TextBox x:Name="txtTeamsJobRules" AutomationProperties.Name="Regeln der Meldung" ToolTip="Regelnummern mit Komma getrennt, z. B. K07, K04. Auch die Kennung eines Umfangs ist erlaubt (z. B. onlyRisk); sie folgt spaeteren Aenderungen des Umfangs. Leer = alle Regeln. Unbekannte Eintraege werden beim Speichern abgelehnt." Style="{StaticResource DarkTextBox}" FontSize="12"/>
-                                                    </DockPanel>
+                                                    <Grid Margin="0,2,0,2">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                        <TextBox x:Name="txtTeamsJobRules" Grid.Column="0" AutomationProperties.Name="Regeln der Meldung" ToolTip="Regelnummern mit Komma getrennt, z. B. K07, K04. Auch die Kennung eines Umfangs ist erlaubt (z. B. onlyRisk); sie folgt spaeteren Aenderungen des Umfangs. Leer = alle Regeln. Unbekannte Eintraege werden beim Speichern abgelehnt." Style="{StaticResource DarkTextBox}" FontSize="12"/>
+                                                        <ComboBox x:Name="cmbTeamsJobRuleAdd" Grid.Column="1" Width="200" Margin="6,0,0,0" AutomationProperties.Name="Regel oder Umfang hinzufuegen" ToolTip="Eine Regel oder einen Umfang aus dem Sicherheitskatalog waehlen: der Eintrag wird links angefuegt. Mit der Tastatur: Eintrag mit den Pfeiltasten waehlen, Enter uebernimmt, Esc verwirft." Style="{StaticResource DarkComboBox}" FontSize="11"/>
+                                                    </Grid>
                                                     <CheckBox x:Name="chkTeamsJobSendAlways" Content="Auch ohne Befund senden" Foreground="#CCCCCC" FontSize="11" Margin="0,2,0,2" ToolTip="Aus (Standard): Karte nur, wenn eine gewaehlte Regel abweicht oder nicht pruefbar ist. An: die Karte kommt bei jedem Lauf, auch wenn alles in Ordnung ist."/>
                                                     <TextBlock x:Name="lblTeamsJobSecHint" Style="{StaticResource HintText}" TextWrapping="Wrap" FontSize="10"/>
                                                 </StackPanel>

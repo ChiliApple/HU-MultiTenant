@@ -1,34 +1,51 @@
 ﻿# HU-MultiTenant Changelog
 
-## v2.6.21 (Testversion)
+## v2.6.21 (Stable, 23.11.2026)
+
+Stable-Release der Testversion 2.6.21 - "Teams-Meldungen für einzelne Regeln des Sicherheitskatalogs".
 
 ### 🛡️ Sicherheitskatalog und Teams
 - **Neue Teams-Meldung "Sicherheits-Regeln":** Meldet den heutigen Stand einzelner Regeln des Sicherheitskatalogs, unabhängig vom Soll-Stand. Damit kommt z. B. K07 (riskante Anmeldungen) täglich als eigene Karte.
   - Im Reiter Teams bei "Eingebaute Meldung" wählen, darunter die Regeln eintragen, z. B. K07, K04. Die Liste rechts neben dem Feld fügt Regeln und Umfänge ein. Leer heißt alle Regeln.
   - Auch ein Umfang ist als Eintrag erlaubt, z. B. "Nur riskante Anmeldungen" aus der Liste (im Feld steht dann die Kennung onlyRisk). Er folgt späteren Änderungen des Umfangs.
+  - Die Liste übernimmt einen Eintrag beim Anklicken. Mit der Tastatur: Eintrag mit den Pfeiltasten wählen, Enter übernimmt, Esc verwirft.
   - Standard: Die Karte kommt nur bei Befund. Mit dem Haken "Auch ohne Befund senden" kommt sie bei jedem Lauf.
   - Als Befund zählt auch, wenn eine Regel nicht prüfbar ist oder ein Tenant nicht lesbar war. "Nichts zu melden" heißt also immer: geprüft und in Ordnung.
   - Ausnahmen und in den Sollwerten abgeschaltete Regeln sind kein Befund. Sie stehen in der Karte, wenn sie ohnehin gesendet wird. Sind bei einem Tenant alle gewählten Regeln abgeschaltet, meldet die Karte das als Befund.
   - Die Karte nennt Regelnummer, Titel und Anzahl, bei K07 stattdessen die Zahlen der Anmeldungen. Namen von Konten stehen nicht darin, die Details zeigt Analyse > Sicherheit.
   - Regeln mit Zeitraum wie K07 melden ein Ereignis so lange, wie es im Zeitraum liegt (Sollwert "K07 days", Standard 7 Tage). Wer jedes Ereignis nur einmal will, nimmt die Meldung "Sicherheits-Änderung".
   - Der Sollwert "Katalog silent" gilt nur für die Meldung "Sicherheits-Änderung". Eine in "Sicherheits-Regeln" gewählte Regel wird trotzdem gemeldet.
-- **"Sicherheits-Änderung" mit Regelauswahl:** Dieselbe Auswahl gibt es jetzt auch dort. Verglichen werden dann nur die gewählten Regeln. Ohne K07 in der Auswahl ist der Lauf schneller. Ohne Auswahl bleibt alles wie bisher.
+- **"Sicherheits-Änderung" mit Regelauswahl:** Dieselbe Auswahl gibt es jetzt auch dort. Verglichen werden dann nur die gewählten Regeln. Ohne K07 in der Auswahl ist der Lauf schneller.
+  - Ohne Auswahl bleibt alles wie bisher, mit einer Ausnahme: Ist der Katalog bei keinem Tenant lesbar, endet der Lauf jetzt mit einer klaren Fehlermeldung statt mit einem technischen Fehlertext.
   - Die Karte nennt in einer eigenen Zeile, welche Regeln verglichen wurden.
   - Konnte eine einzeln mit Nummer gewählte Regel nicht verglichen werden, meldet die Karte das je Tenant als "nicht verglichen", mit Grund. Die Karte kommt bei jedem Lauf, bis der Grund behoben ist:
     - Regel fehlt im Soll-Stand (z. B. neuer Tenant) oder war beim Soll-Speichern nicht prüfbar: "Soll speichern" behebt es.
     - Regel ist heute nicht prüfbar: Recht oder Lizenz klären.
     - Regel ist abgeschaltet, nur ein Hinweis oder per Sollwert "Katalog silent" stumm, oder die Sollwerte sind fehlerhaft: Sollwerte anpassen oder die Regel aus der Auswahl nehmen.
-  - Regeln, die über einen Umfang gewählt sind, bleiben in diesen Fällen wie bei "alle Regeln" still. Ein nicht lesbarer Tenant wird bei jeder Auswahl genannt.
+  - Regeln, die über einen Umfang gewählt sind, bleiben in diesen Fällen wie bei "alle Regeln" still.
+  - Ein nicht lesbarer Tenant steht bei jeder Auswahl in der Karte. Ohne Auswahl und beim Umfang "all" steht er wie bisher nur im Protokoll.
   - Der Hinweis "Soll-Stand schlechter als vorher" kommt nur in der Meldung ohne Regelauswahl.
-- **Ungültige Auswahl bricht ab:** Bleibt von einer Auswahl nichts Gültiges übrig, z. B. weil eine Regel entfernt wurde, läuft die Meldung nicht. Sie prüft dann nicht still alle Regeln. In Teams kommt dazu keine Karte: "Regelauswahl ungültig" steht beim letzten Ergebnis der Meldung im Reiter Teams, die geplante Aufgabe endet mit Code 3.
+- **Ungültige Auswahl bricht ab:** Bleibt von einer Auswahl nichts Gültiges übrig, z. B. weil eine Regel entfernt wurde, läuft die Meldung nicht. Sie prüft dann nicht still alle Regeln.
+  - Die Karte der Meldung kommt dann nicht. "Regelauswahl ungültig" steht beim letzten Ergebnis der Meldung im Reiter Teams, die geplante Aufgabe endet mit Code 3. Kanäle mit dem Haken "Fehlermeldungen" bekommen den üblichen Hinweis auf einen fehlgeschlagenen Lauf.
   - Sind nur einzelne Einträge unbekannt, läuft der Rest. Beide Meldungen senden dann eine Karte, die die unbekannten Einträge nennt.
+  - Das gilt auch für eine von Hand bearbeitete Meldungsdatei: Steht dort bei der Auswahl etwas anderes als Text oder eine Liste von Text, gilt die Auswahl als ungültig.
 - **Handy-Fernbedienung:** "Sicherheits-Änderung" und "Sicherheits-Regeln" lassen sich jetzt auch vom Handy aus senden. Bisher meldete "Sicherheits-Änderung" dort fälschlich "Kein Soll-Stand gespeichert".
 
-### ⚠️ Bekannte Grenzen
-- Prüfen zwei Meldungen dieselbe Regel, zählt der Hinweis "Prüfung verloren" bei jedem Lauf mit. Er kommt dann früher als nach drei Tagen, aber nur einmal.
-- Bestehende Meldungen bleiben unverändert.
+### 🗺️ Doku
+- **Roadmap:** Neuer Abschnitt "Beobachten" mit Neuerungen von Microsoft, die noch Vorschau sind (Windows Server in Intune, Richtlinienpläne im bedingten Zugriff, Software-Compliance-Richtlinie). Dazu der Stand 2.6.21.
+- **Anleitung, Einstieg und Funktionsübersicht** nennen die neue Meldung und die Regelauswahl.
+
+### ⚠️ Nach dem Update
+- Bestehende Meldungen bleiben unverändert und brauchen keine Anpassung.
 - Zurück auf eine ältere Version: Vorher die Meldungen der Art "Sicherheits-Regeln" löschen. Die ältere Version kennt die Art nicht und kann sonst im Reiter Teams keine Meldung mehr speichern oder löschen.
+
+### 🚧 Grenzen
 - "Sicherheits-Regeln" ohne Regelauswahl prüft alle Regeln. Weil auch dauerhaft nicht prüfbare Regeln als Befund zählen, kommt die Karte dann praktisch täglich. Gedacht ist die Meldung für einzelne Regeln.
+- "Prüfung verloren" gehört zur Meldung "Sicherheits-Änderung" und kommt einmal, wenn eine Regel an drei Läufen in Folge nicht prüfbar ist. Prüfen zwei Meldungen dieselbe Regel, zählen beide Läufe mit: Der Hinweis kommt dann früher und nur in der Meldung, die die Schwelle zuerst erreicht.
+- Die Texte der neuen Felder und Karten sind noch ohne Umlaute geschrieben. Die Umstellung aller Texte kommt in den nächsten Versionen.
+
+### ✅ Qualität
+- 1389 automatische Tests, alle bestanden unter Windows PowerShell 5.1 und PowerShell 7.
 
 ## v2.6.20 (Stable, 18.11.2026)
 

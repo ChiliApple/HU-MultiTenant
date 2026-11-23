@@ -107,6 +107,36 @@ Describe 'Regelauswahl aufloesen (Resolve-HUSecRuleSelection)' {
         ($s.Ids -join ',') | Should -Be 'K07'
         ($s.Unknown -join ',') | Should -Be 'X99'
     }
+    It 'falscher Typ (<Name>): gesetzt und ungueltig, nie still "alles" - auch unter Windows PowerShell 5.1' -ForEach @(
+        @{ Name = 'Objekt'; Json = '{"rules":{"id":"K07"}}' }
+        @{ Name = 'leeres Objekt'; Json = '{"rules":{}}' }
+        @{ Name = 'Liste mit Objekt'; Json = '{"rules":[{"a":"K07"}]}' }
+    ) {
+        $s = Resolve-HUSecRuleSelection -Value ((ConvertFrom-Json $Json).rules)
+        $s.Set | Should -BeTrue
+        $s.Valid | Should -BeFalse
+        $s.Full | Should -BeFalse
+        ($s.Unknown -join ',') | Should -Be '(PSCustomObject)'
+    }
+    It 'Tabelle als Wert: ungueltig' {
+        $s = Resolve-HUSecRuleSelection -Value @{ a = 1 }
+        $s.Valid | Should -BeFalse
+        ($s.Unknown -join ',') | Should -Be '(Hashtable)'
+    }
+    It 'gueltige Regel neben einem falschen Typ: Regel gilt, der falsche Eintrag wird genannt' {
+        $s = Resolve-HUSecRuleSelection -Value ((ConvertFrom-Json '{"rules":["K07",{"a":1}]}').rules)
+        $s.Valid | Should -BeTrue
+        ($s.Ids -join ',') | Should -Be 'K07'
+        ($s.Unknown -join ',') | Should -Be '(PSCustomObject)'
+    }
+    It 'Liste mit null oder leerem Text bleibt "nichts gewaehlt"' {
+        (Resolve-HUSecRuleSelection -Value ((ConvertFrom-Json '{"rules":[null]}').rules)).Set | Should -BeFalse
+        (Resolve-HUSecRuleSelection -Value ((ConvertFrom-Json '{"rules":[]}').rules)).Set | Should -BeFalse
+        (Resolve-HUSecRuleSelection -Value ((ConvertFrom-Json '{"rules":["", " "]}').rules)).Set | Should -BeFalse
+    }
+    It 'unbekannter Eintrag in anderer Schreibweise wird nur einmal genannt' {
+        ((Resolve-HUSecRuleSelection -Value 'K07, x99, X99').Unknown -join ',') | Should -Be 'x99'
+    }
     It 'K07 darf seinen Detailtext in die Karte geben (nur Zahlen), andere Regeln nicht ungefragt' {
         $k = $script:Rules | Where-Object { $_.Id -eq 'K07' }
         $k.CardDetail | Should -BeTrue
@@ -442,6 +472,31 @@ Describe 'Werte aus einer von Hand bearbeiteten Datei' {
     }
 }
 
+Describe 'Options der Meldung ist kein Objekt (von Hand bearbeitete Datei)' {
+    BeforeEach {
+        Mock -ModuleName HU.TeamsJobs Update-HUTeamsJobResult { }
+        Mock -ModuleName HU.TeamsJobs Send-HUNotify { throw 'im Test wird nicht gesendet' }
+        Mock -ModuleName HU.TeamsJobs Invoke-HUSecCatalog { throw 'darf nicht laufen' }
+        Mock -ModuleName HU.TeamsJobs Get-HUSecReference { [pscustomobject]@{ time = '2026-11-18T10:00:00Z'; rows = @(); worse = 0; worseShown = $true } }
+    }
+    It '<Kind> mit Options = <Name>: Code 3 statt eines Laufs ueber alle Regeln' -ForEach @(
+        @{ Kind = 'SecRules'; Name = 'Text'; V = 'K07' }, @{ Kind = 'SecRules'; Name = 'Liste'; V = @('K07') }
+        @{ Kind = 'SecDrift'; Name = 'Text'; V = 'K07' }, @{ Kind = 'SecDrift'; Name = 'Liste'; V = @('K07') }
+    ) {
+        $j = New-HUTeamsJob -Name 'S' -Kind $Kind -Tenants @('T1')
+        $j.Options = $V
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+        $r.Code | Should -Be 3
+        $r.Message | Should -Match 'Regelauswahl ungueltig \(Options der Meldung ist kein Objekt\)'
+        Should -Invoke -ModuleName HU.TeamsJobs Invoke-HUSecCatalog -Times 0 -Exactly
+    }
+    It 'Options als Tabelle (im Code gebaute Meldung): die Auswahl wird gelesen' {
+        $j = New-HUTeamsJob -Name 'S' -Kind 'SecRules' -Tenants @('T1')
+        $j.Options = @{ rules = 'k07' }
+        ((Get-HUTeamsSecSelection -Job $j).Ids -join ',') | Should -Be 'K07'
+    }
+}
+
 Describe 'Handy-Fernbedienung' {
     It 'laedt fuer Teams-Meldungen den Sicherheitskatalog vor dem Teams-Modul' {
         $remote = [IO.File]::ReadAllText((Join-Path $script:Root 'Core\HU.RemoteRun.ps1'), [Text.Encoding]::UTF8)
@@ -469,6 +524,16 @@ Describe 'Oberflaeche: Regelauswahl im Reiter Teams' {
         $script:TeamsSrc | Should -Match 'if \(\$sel\.Unknown\.Count\) \{ throw'
         $script:TeamsSrc | Should -Match "foreach \(\`$n in 'rules', 'sendAlways'\) \{ if \(\`$j\.Options\.PSObject\.Properties\[\`$n\]\) \{ \`$j\.Options\.PSObject\.Properties\.Remove\(\`$n\) \} \}"
         $script:TeamsSrc | Should -Match "if \(\`$kind -in 'SecDrift', 'SecRules'\)"
+    }
+    It 'Liste "Hinzufuegen" uebernimmt erst beim Schliessen oder mit Enter, nicht beim Blaettern mit der Tastatur' {
+        $script:TeamsSrc | Should -Not -Match "\['cmbTeamsJobRuleAdd'\]\.Add_SelectionChanged"
+        $script:TeamsSrc | Should -Match "\['cmbTeamsJobRuleAdd'\]\.Add_DropDownClosed"
+        $script:TeamsSrc | Should -Match "\['cmbTeamsJobRuleAdd'\]\.Add_PreviewKeyDown"
+        $script:TeamsSrc | Should -Match 'function Add-HUTeamsRuleFromCombo'
+    }
+    It 'das Feld "Regeln" steht im Fenster vor der Liste (Tab-Reihenfolge)' {
+        $script:Xaml.IndexOf('x:Name="txtTeamsJobRules"') | Should -BeLessThan $script:Xaml.IndexOf('x:Name="cmbTeamsJobRuleAdd"')
+        $script:Xaml.IndexOf('x:Name="txtTeamsJobRules"') | Should -BeGreaterThan 0
     }
     It 'Felder sind nur bei den Meldungen des Sicherheitskatalogs sichtbar' {
         $script:TeamsSrc | Should -Match "\`$isSec = \(\`$kind -in 'SecDrift', 'SecRules'\)"

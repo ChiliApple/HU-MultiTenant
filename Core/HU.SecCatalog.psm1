@@ -2708,12 +2708,23 @@ function Get-HUSecRunPlan {
 #           bestellt, bekommt gesagt, wenn sie nicht geprueft oder verglichen werden konnte; ein Umfang verhaelt sich wie "alles".
 #   Unknown Eintraege, die weder Regel noch Umfang sind (z. B. eine spaeter entfernte Regel)
 #   Valid   $false = etwas gewaehlt, aber nichts Gueltiges uebrig. Aufrufer brechen dann ab und pruefen NICHT still alles.
+# Angenommen werden nur Text und Listen von Text (eine Ebene). Jeder andere Typ (Objekt, Tabelle - z. B. aus einer von Hand
+# bearbeiteten Datei) gilt als gesetzt und unbekannt: "$_" auf einem Objekt ist unter Windows PowerShell 5.1 leer, die Auswahl
+# wuerde sonst still zu "alles". Zahlen und Wahrheitswerte werden zu Text und sind damit unbekannte Eintraege.
 function Resolve-HUSecRuleSelection {
     [CmdletBinding()]
     param($Value = $null)
-    $raw = @(@($Value) | ForEach-Object { "$_" -split '[,;\s]+' } | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
-    $res = [pscustomobject]@{ Set = [bool]$raw.Count; Full = $true; Ids = [string[]]@(); Tokens = [string[]]@(); Explicit = [string[]]@(); Unknown = [string[]]@(); Valid = $true; Text = '' }
-    if (-not $raw.Count) { return $res }
+    $raw = New-Object System.Collections.Generic.List[string]
+    $bad = New-Object System.Collections.Generic.List[string]
+    foreach ($e in @($Value)) {
+        foreach ($x in $(if ($e -is [array]) { $e } else { , $e })) {
+            if ($null -eq $x) { continue }
+            if ($x -is [string] -or $x -is [System.ValueType]) { foreach ($p in ("$x" -split '[,;\s]+')) { if ("$p".Trim()) { $raw.Add("$p".Trim()) } } }
+            else { $n = "($($x.GetType().Name))"; if (-not $bad.Contains($n)) { $bad.Add($n) } }
+        }
+    }
+    $res = [pscustomobject]@{ Set = [bool]($raw.Count + $bad.Count); Full = $true; Ids = [string[]]@(); Tokens = [string[]]@(); Explicit = [string[]]@(); Unknown = [string[]]@(); Valid = $true; Text = '' }
+    if (-not $res.Set) { return $res }
     $ruleIds = @(Get-HUSecRules | ForEach-Object { "$($_.Id)" })
     $scopes = @(Get-HUSecScopes)
     $ids = New-Object System.Collections.Generic.List[string]
@@ -2730,8 +2741,9 @@ function Resolve-HUSecRuleSelection {
             if ($sc.Full) { $full = $true } else { foreach ($x in @(Resolve-HUSecScope -Id $sc.Id)) { if (-not $ids.Contains("$x")) { $ids.Add("$x") } } }
             continue
         }
-        if (-not $unk.Contains($t)) { $unk.Add($t) }
+        if (-not @($unk | Where-Object { $_ -eq $t }).Count) { $unk.Add($t) }   # -eq: x99 und X99 nur einmal nennen
     }
+    foreach ($n in $bad) { $unk.Add($n) }
     $res.Tokens = [string[]]$tok.ToArray()
     $res.Unknown = [string[]]$unk.ToArray()
     $res.Explicit = [string[]]@($ruleIds | Where-Object { $exp.Contains($_) })

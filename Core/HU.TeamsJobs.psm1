@@ -788,8 +788,18 @@ function Get-HUTeamsSecSelection {
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Job)
+    $o = $null; try { $o = $Job.Options } catch { $o = $null }
+    # Options von Hand als Text oder Liste statt Objekt: die Auswahl ist nicht lesbar - ungueltig, nicht still "alles"
+    if ($null -ne $o -and -not ($o -is [System.Management.Automation.PSCustomObject] -or $o -is [System.Collections.IDictionary])) {
+        $r = Resolve-HUSecRuleSelection -Value $null
+        $r.Set = $true; $r.Full = $false; $r.Valid = $false; $r.Unknown = [string[]]@('Options der Meldung ist kein Objekt')
+        return $r
+    }
     $v = $null
-    try { if ($Job.Options -and $Job.Options.PSObject.Properties['rules']) { $v = $Job.Options.rules } } catch { $v = $null }
+    try {
+        if ($o -is [System.Collections.IDictionary]) { if ($o.Contains('rules')) { $v = $o['rules'] } }
+        elseif ($o -and $o.PSObject.Properties['rules']) { $v = $o.rules }
+    } catch { $v = $null }
     return (Resolve-HUSecRuleSelection -Value $v)
 }
 
