@@ -1002,11 +1002,13 @@ function Invoke-HUTeamsJob {
                 # Mit Auswahl geht es weiter: die Karte nennt jeden Tenant als "nicht verglichen".
                 if (-not $all.Count -and -not $rid.Count) { $res.Message = 'Katalog bei keinem Tenant lesbar - nichts verglichen'; $res.Code = 1; return $res }
                 $cmp = if ($all.Count) { Compare-HUSecReference -Results $all -Reference $ref -Keys $keys } else { [pscustomobject]@{ Changes = @(); Unchecked = 0; Since = "$($ref.time)"; HiddenCount = 0; Silent = @() } }
-                # Mit Regelauswahl: alles aus der Auswahl, was der Vergleich still ueberspringt, gehoert in die Karte (Get-HUSecNotCompared:
-                # Regel fehlt im Soll, war dort nicht pruefbar, ist heute nicht pruefbar, abgeschaltet oder stumm) - sonst liefe die Meldung dauerhaft leer.
+                # Mit Regelauswahl: was der Vergleich bei einer EINZELN bestellten Regel still ueberspringt, gehoert in die Karte
+                # (Get-HUSecNotCompared: Regel fehlt im Soll, war dort nicht pruefbar, ist heute nicht pruefbar, abgeschaltet oder stumm) -
+                # sonst liefe die Meldung dauerhaft leer. Regeln, die nur ueber einen Umfang hereinkommen, bleiben wie bei "alles" still:
+                # ein Umfang enthaelt Regeln, die nie vergleichbar sind, die Karte kaeme sonst bei jedem Lauf. Ein nicht lesbarer Tenant wird immer genannt.
                 $noRef = @()
                 if ($rid.Count) {
-                    $noRef = @(Get-HUSecNotCompared -Results $all -Reference $ref -Keys $keys)
+                    if ($sel.Explicit.Count) { $noRef = @(Get-HUSecNotCompared -Results $all -Reference $ref -Keys $keys -RuleIds $sel.Explicit) }
                     $noRef += @($failed | ForEach-Object { [pscustomobject]@{ Tenant = "$_"; RuleId = ''; Why = 'Katalog nicht lesbar' } })
                 }
                 # "Pruefung verloren" zaehlt je Lauf: pruefen zwei Meldungen dieselbe Regel, ist die Schwelle frueher erreicht (frueher gemeldet, nie doppelt)
@@ -1014,7 +1016,7 @@ function Invoke-HUTeamsJob {
                 # Hinweis "Soll schlechter" betrifft alle Regeln: nur die Meldung ohne Regelauswahl zeigt und verbraucht ihn
                 $sw = 0; if (-not $rid.Count) { try { if ($ref.PSObject.Properties['worse'] -and -not [bool]$ref.worseShown) { $sw = [int]$ref.worse } } catch { $sw = 0 } }
                 $spec = New-HUSecDriftCardSpec -Compare $cmp -Names $names -Title "$($Job.Name)" -Lost $lost -SollWorse $sw -NoRef $noRef -Unknown $sel.Unknown
-                if ($spec -and $rid.Count) { $spec.Lines = @($spec.Lines) + @("Verglichen wurden nur die gewaehlten Regeln: $selTxt.") }
+                if ($spec -and $rid.Count) { $spec.Lines = @($spec.Lines) + @($(if ($all.Count) { "Verglichen wurden nur die gewaehlten Regeln: $selTxt." } else { "Gewaehlte Regeln: $selTxt. Verglichen wurde nichts." })) }
                 $detail = "$(@($cmp.Changes).Count) Aenderungen, $($cmp.Unchecked) nicht pruefbar, $($lost.Count) Pruefungen verloren$(if ($rid.Count) { ", $($noRef.Count) nicht verglichen, Regeln: $selTxt" })"
             }
             'SecRules' {

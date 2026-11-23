@@ -2704,23 +2704,26 @@ function Get-HUSecRunPlan {
 #   Full    $true  = es wird alles geprueft (nichts gewaehlt oder Umfang "all")
 #   Ids     Regelnummern in der Schreibweise des Katalogs (leer bei Full)
 #   Tokens  die gueltigen Eintraege, so wie sie gespeichert werden (Umfang bleibt Umfang und folgt spaeteren Aenderungen)
+#   Explicit die einzeln mit Nummer genannten Regeln (ohne die, die nur ueber einen Umfang hereinkommen). Wer eine Regel einzeln
+#           bestellt, bekommt gesagt, wenn sie nicht geprueft oder verglichen werden konnte; ein Umfang verhaelt sich wie "alles".
 #   Unknown Eintraege, die weder Regel noch Umfang sind (z. B. eine spaeter entfernte Regel)
 #   Valid   $false = etwas gewaehlt, aber nichts Gueltiges uebrig. Aufrufer brechen dann ab und pruefen NICHT still alles.
 function Resolve-HUSecRuleSelection {
     [CmdletBinding()]
     param($Value = $null)
     $raw = @(@($Value) | ForEach-Object { "$_" -split '[,;\s]+' } | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
-    $res = [pscustomobject]@{ Set = [bool]$raw.Count; Full = $true; Ids = [string[]]@(); Tokens = [string[]]@(); Unknown = [string[]]@(); Valid = $true; Text = '' }
+    $res = [pscustomobject]@{ Set = [bool]$raw.Count; Full = $true; Ids = [string[]]@(); Tokens = [string[]]@(); Explicit = [string[]]@(); Unknown = [string[]]@(); Valid = $true; Text = '' }
     if (-not $raw.Count) { return $res }
     $ruleIds = @(Get-HUSecRules | ForEach-Object { "$($_.Id)" })
     $scopes = @(Get-HUSecScopes)
     $ids = New-Object System.Collections.Generic.List[string]
     $tok = New-Object System.Collections.Generic.List[string]
     $unk = New-Object System.Collections.Generic.List[string]
+    $exp = New-Object System.Collections.Generic.List[string]
     $full = $false
     foreach ($t in $raw) {
         $rid = @($ruleIds | Where-Object { $_ -eq $t })[0]   # -eq: Gross-/Kleinschreibung egal, Ergebnis in Katalog-Schreibweise
-        if ($rid) { if (-not $ids.Contains($rid)) { $ids.Add($rid) }; if (-not $tok.Contains($rid)) { $tok.Add($rid) }; continue }
+        if ($rid) { if (-not $ids.Contains($rid)) { $ids.Add($rid) }; if (-not $tok.Contains($rid)) { $tok.Add($rid) }; if (-not $exp.Contains($rid)) { $exp.Add($rid) }; continue }
         $sc = @($scopes | Where-Object { $_.Id -eq $t })[0]
         if ($sc) {
             if (-not $tok.Contains("$($sc.Id)")) { $tok.Add("$($sc.Id)") }
@@ -2731,6 +2734,7 @@ function Resolve-HUSecRuleSelection {
     }
     $res.Tokens = [string[]]$tok.ToArray()
     $res.Unknown = [string[]]$unk.ToArray()
+    $res.Explicit = [string[]]@($ruleIds | Where-Object { $exp.Contains($_) })
     $res.Full = $full
     # Reihenfolge wie im Katalog, damit Karten und Protokoll immer gleich aussehen
     if (-not $full) { $res.Ids = [string[]]@($ruleIds | Where-Object { $ids.Contains($_) }) }
@@ -3022,9 +3026,12 @@ function Get-HUSecQuiet {
 # Fuer Aufrufer mit Regelauswahl (Teams-Meldung "Sicherheits-Aenderung" mit Options.rules): welche Ergebnisse vergleicht
 # Compare-HUSecReference NICHT, und warum? Der Vergleich ueberspringt diese Faelle still. Wer bestimmte Regeln bestellt hat,
 # muss das erfahren, sonst hiesse "keine Aenderung" in Wahrheit "nie verglichen". Reine Funktion, schreibt nichts.
-# Rueckgabe je Fall: Tenant, RuleId (leer bei fehlerhaften Sollwerten), Why. Die Reihenfolge der Gruende ist die des Vergleichs.
+# Rueckgabe je Fall: Tenant, RuleId (leer bei fehlerhaften Sollwerten), Why.
+# Gruende in der Reihenfolge des Vergleichs: fehlt im Soll, stumm, Status heute, Status im Soll. So steht "Soll neu speichern" immer dann da, wenn es hilft.
+# -RuleIds: nur diese Regeln melden (die einzeln bestellten). Regeln, die nie vergleichbar sind (reine Hinweise, Handpruefung),
+#           kaemen sonst ueber einen Umfang bei jedem Lauf wieder, ohne dass sich das beheben liesse.
 function Get-HUSecNotCompared {
-    param([AllowEmptyCollection()][object[]]$Results = @(), [Parameter(Mandatory)]$Reference, [string[]]$Keys = @())
+    param([AllowEmptyCollection()][object[]]$Results = @(), [Parameter(Mandatory)]$Reference, [string[]]$Keys = @(), [string[]]$RuleIds = @())
     $ruleOf = @{}; foreach ($r in (Get-HUSecRules)) { $ruleOf[$r.Id] = $r }
     $ref = @{}; foreach ($x in @($Reference.rows)) { $ref["$($x.tenant)|$($x.ruleId)"] = $x }
     $checkable = 'OK', 'Abweichung', 'Ausnahme'
@@ -3034,13 +3041,14 @@ function Get-HUSecNotCompared {
         if ($Keys.Count -and $Keys -notcontains $r.Tenant) { continue }
         $why = ''
         if ("$($r.RuleId)" -eq '-') { $out.Add([pscustomobject]@{ Tenant = "$($r.Tenant)"; RuleId = ''; Why = 'Sollwerte fehlerhaft' }); continue }
+        if ($RuleIds.Count -and $RuleIds -notcontains "$($r.RuleId)") { continue }
         if (-not $quiet.ContainsKey("$($r.Tenant)")) { $quiet["$($r.Tenant)"] = Get-HUSecQuiet "$($r.Tenant)" }
         $rule = $ruleOf["$($r.RuleId)"]
         $o = $ref["$($r.Tenant)|$($r.RuleId)"]
-        if ($quiet["$($r.Tenant)"].si -contains "$($r.RuleId)" -and -not ($rule -and $rule.Min)) { $why = 'in den Sollwerten stumm (Katalog silent)' }
+        if (-not $o) { $why = 'im Soll-Stand nicht enthalten (Soll neu speichern)' }
+        elseif ($quiet["$($r.Tenant)"].si -contains "$($r.RuleId)" -and -not ($rule -and $rule.Min)) { $why = 'in den Sollwerten stumm (Katalog silent)' }
         elseif ("$($r.Status)" -eq 'Info') { $why = 'abgeschaltet oder nur Hinweis' }
         elseif ("$($r.Status)" -notin $checkable) { $why = 'heute nicht pruefbar' }
-        elseif (-not $o) { $why = 'im Soll-Stand nicht enthalten (Soll neu speichern)' }
         elseif ("$($o.status)" -notin $checkable) { $why = 'im Soll-Stand nicht pruefbar oder abgeschaltet (Soll neu speichern)' }
         if ($why) { $out.Add([pscustomobject]@{ Tenant = "$($r.Tenant)"; RuleId = "$($r.RuleId)"; Why = $why }) }
     }

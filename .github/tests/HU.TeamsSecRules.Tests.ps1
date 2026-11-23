@@ -73,6 +73,12 @@ Describe 'Regelauswahl aufloesen (Resolve-HUSecRuleSelection)' {
         $n.Ids | Should -Not -Contain 'K07'
         $n.Ids.Count | Should -Be ($script:AllIds.Count - 1)
     }
+    It 'Explicit nennt nur die einzeln mit Nummer gewaehlten Regeln, nicht die aus einem Umfang' {
+        ((Resolve-HUSecRuleSelection -Value 'onlyRisk').Explicit).Count | Should -Be 0
+        ((Resolve-HUSecRuleSelection -Value 'noRisk, k04').Explicit -join ',') | Should -Be 'K04'
+        ((Resolve-HUSecRuleSelection -Value 'K07, onlyRisk').Explicit -join ',') | Should -Be 'K07'
+        ((Resolve-HUSecRuleSelection -Value $null).Explicit).Count | Should -Be 0
+    }
     It 'jeder Umfang aus der Tabelle ist als Eintrag gueltig (ein neuer Umfang gilt sofort auch hier)' {
         foreach ($sc in @(Get-HUSecScopes)) {
             $s = Resolve-HUSecRuleSelection -Value $sc.Id
@@ -339,6 +345,28 @@ Describe 'Sicherheits-Aenderung mit Regelauswahl' {
         $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
         $r.Spec | Should -Not -BeNullOrEmpty
         $r.Spec.Rows[0].Text | Should -Be "$($Grund): K07"
+    }
+    It 'Regel fehlt im Soll UND ist heute nicht pruefbar: der Grund nennt "Soll neu speichern" (Reihenfolge wie im Vergleich)' {
+        Mock -ModuleName HU.TeamsJobs Invoke-HUSecCatalog { [pscustomobject]@{ RuleId = 'K07'; Title = 'R'; Sev = 'Hoch'; Tenant = $TenantKey; Status = 'NichtPruefbar'; Reason = 'Recht'; Count = $null; Detail = '' } }
+        $j = New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1') -Options @{ rules = @('K07') }
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+        $r.Spec.Rows[0].Text | Should -Be 'im Soll-Stand nicht enthalten (Soll neu speichern): K07'
+    }
+    It 'Regeln aus einem Umfang bleiben still wie bei "alles": keine taegliche Karte fuer nie vergleichbare Regeln' {
+        # Soll ohne Zeilen, K07 heute nicht pruefbar: ueber den Umfang gewaehlt keine Karte, einzeln gewaehlt eine Karte
+        Mock -ModuleName HU.TeamsJobs Invoke-HUSecCatalog { [pscustomobject]@{ RuleId = 'K07'; Title = 'R'; Sev = 'Hoch'; Tenant = $TenantKey; Status = 'Info'; Reason = ''; Count = $null; Detail = '' } }
+        $viaScope = Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1') -Options @{ rules = @('onlyRisk') }) -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+        $viaScope.Code | Should -Be 0
+        $viaScope.Spec | Should -BeNullOrEmpty
+        $single = Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1') -Options @{ rules = @('K07') }) -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+        $single.Spec | Should -Not -BeNullOrEmpty
+    }
+    It 'Umfang gewaehlt, Tenant nicht lesbar: wird trotzdem genannt' {
+        Mock -ModuleName HU.TeamsJobs Invoke-HUSecCatalog { throw 'Token' }
+        $r = Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1') -Options @{ rules = @('onlyRisk') }) -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+        $r.Spec.Rows[0].Text | Should -Be 'Katalog nicht lesbar'
+        @($r.Spec.Lines | Where-Object { $_ -eq 'Gewaehlte Regeln: K07. Verglichen wurde nichts.' }).Count | Should -Be 1
+        @($r.Spec.Lines | Where-Object { $_ -like 'Verglichen wurden nur*' }).Count | Should -Be 0
     }
     It 'mit Auswahl, Regel im Tenant per Sollwert stumm: Karte sagt es, statt dauerhaft zu schweigen' {
         @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'Katalog.silent' = 'K07' }).Count | Should -Be 0
