@@ -319,6 +319,50 @@ Describe 'Sicherheits-Aenderung mit Regelauswahl' {
         $r.Spec.Facts['Nicht verglichen'] | Should -Be 1
         $r.Spec.Preview | Should -Be 'keine Aenderung, aber nicht alles verglichen'
     }
+    It 'mit Auswahl, Soll-Zeile vorhanden, aber dort <Soll>: Karte "nicht verglichen" statt "nichts zu melden"' -ForEach @(@{ Soll = 'NichtPruefbar' }, @{ Soll = 'Info' }, @{ Soll = 'Fehler' }) {
+        $script:SollStatus = $Soll
+        Mock -ModuleName HU.TeamsJobs Get-HUSecReference { [pscustomobject]@{ time = '2026-11-18T10:00:00Z'; rows = @([pscustomobject]@{ tenant = 'T1'; ruleId = 'K07'; status = $script:SollStatus; count = $null; latest = '' }); worse = 0; worseShown = $true } }
+        Mock -ModuleName HU.TeamsJobs Invoke-HUSecCatalog { [pscustomobject]@{ RuleId = 'K07'; Title = 'R'; Sev = 'Hoch'; Tenant = $TenantKey; Status = 'Abweichung'; Reason = ''; Count = 2; Detail = '' } }
+        $j = New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1') -Options @{ rules = @('K07') }
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+        $r.Spec | Should -Not -BeNullOrEmpty
+        $r.Spec.Rows[0].Name | Should -Be 'Schule A - nicht verglichen'
+        $r.Spec.Rows[0].Text | Should -Be 'im Soll-Stand nicht pruefbar oder abgeschaltet (Soll neu speichern): K07'
+    }
+    It 'mit Auswahl, heute <Heute>: Karte nennt den Grund "<Grund>"' -ForEach @(
+        @{ Heute = 'NichtPruefbar'; Grund = 'heute nicht pruefbar' }, @{ Heute = 'Fehler'; Grund = 'heute nicht pruefbar' }, @{ Heute = 'Info'; Grund = 'abgeschaltet oder nur Hinweis' }
+    ) {
+        $script:HeuteStatus = $Heute
+        Mock -ModuleName HU.TeamsJobs Get-HUSecReference { [pscustomobject]@{ time = '2026-11-18T10:00:00Z'; rows = @([pscustomobject]@{ tenant = 'T1'; ruleId = 'K07'; status = 'OK'; count = 0; latest = '' }); worse = 0; worseShown = $true } }
+        Mock -ModuleName HU.TeamsJobs Invoke-HUSecCatalog { [pscustomobject]@{ RuleId = 'K07'; Title = 'R'; Sev = 'Hoch'; Tenant = $TenantKey; Status = $script:HeuteStatus; Reason = 'Recht'; Count = $null; Detail = '' } }
+        $j = New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1') -Options @{ rules = @('K07') }
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+        $r.Spec | Should -Not -BeNullOrEmpty
+        $r.Spec.Rows[0].Text | Should -Be "$($Grund): K07"
+    }
+    It 'mit Auswahl, Regel im Tenant per Sollwert stumm: Karte sagt es, statt dauerhaft zu schweigen' {
+        @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'Katalog.silent' = 'K07' }).Count | Should -Be 0
+        try {
+            Mock -ModuleName HU.TeamsJobs Get-HUSecReference { [pscustomobject]@{ time = '2026-11-18T10:00:00Z'; rows = @([pscustomobject]@{ tenant = 'T1'; ruleId = 'K07'; status = 'OK'; count = 0; latest = '' }, [pscustomobject]@{ tenant = 'T2'; ruleId = 'K07'; status = 'OK'; count = 0; latest = '' }); worse = 0; worseShown = $true } }
+            $j = New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1', 'T2') -Options @{ rules = @('K07') }
+            $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+            $r.Spec.Rows.Count | Should -Be 1
+            $r.Spec.Rows[0].Name | Should -Be 'Schule A - nicht verglichen'
+            $r.Spec.Rows[0].Text | Should -Be 'in den Sollwerten stumm (Katalog silent): K07'
+        }
+        finally { @(Save-HUSecBaselineEdit -Scope 'T1' -Values @{ 'Katalog.silent' = '' }).Count | Should -Be 0 }
+    }
+    It 'Katalog bei allen Tenants nicht lesbar: mit Auswahl Karte je Tenant, ohne Auswahl Fehler - nie "nichts zu melden"' {
+        Mock -ModuleName HU.TeamsJobs Invoke-HUSecCatalog { throw 'Token' }
+        $j = New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1', 'T2') -Options @{ rules = @('K07') }
+        $r = Invoke-HUTeamsJob -Job $j -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+        $r.Spec.Rows.Count | Should -Be 2
+        @($r.Spec.Rows | ForEach-Object { $_.Text } | Select-Object -Unique) | Should -Be @('Katalog nicht lesbar')
+        $n = Invoke-HUTeamsJob -Job (New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1', 'T2')) -Settings $script:Set2 -AppRoot $script:TestRoot -NoSend
+        $n.Success | Should -BeFalse
+        $n.Code | Should -Be 1
+        $n.Message | Should -Match 'bei keinem Tenant lesbar'
+    }
     It 'ohne Auswahl bleibt eine Regel ohne Soll-Zeile wie bisher still (kein neues Verhalten fuer bestehende Meldungen)' {
         Mock -ModuleName HU.TeamsJobs Get-HUSecReference { [pscustomobject]@{ time = '2026-11-18T10:00:00Z'; rows = @(); worse = 0; worseShown = $true } }
         $j = New-HUTeamsJob -Name 'S' -Kind 'SecDrift' -Tenants @('T1')

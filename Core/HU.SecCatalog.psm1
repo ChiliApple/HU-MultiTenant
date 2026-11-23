@@ -3019,6 +3019,34 @@ function Get-HUSecQuiet {
     return @{ so = @(@($k.statusOnly) | ForEach-Object { "$_".Trim().ToUpperInvariant() } | Where-Object { $_ }); si = @(@($k.silent) | ForEach-Object { "$_".Trim().ToUpperInvariant() } | Where-Object { $_ }) }
 }
 
+# Fuer Aufrufer mit Regelauswahl (Teams-Meldung "Sicherheits-Aenderung" mit Options.rules): welche Ergebnisse vergleicht
+# Compare-HUSecReference NICHT, und warum? Der Vergleich ueberspringt diese Faelle still. Wer bestimmte Regeln bestellt hat,
+# muss das erfahren, sonst hiesse "keine Aenderung" in Wahrheit "nie verglichen". Reine Funktion, schreibt nichts.
+# Rueckgabe je Fall: Tenant, RuleId (leer bei fehlerhaften Sollwerten), Why. Die Reihenfolge der Gruende ist die des Vergleichs.
+function Get-HUSecNotCompared {
+    param([AllowEmptyCollection()][object[]]$Results = @(), [Parameter(Mandatory)]$Reference, [string[]]$Keys = @())
+    $ruleOf = @{}; foreach ($r in (Get-HUSecRules)) { $ruleOf[$r.Id] = $r }
+    $ref = @{}; foreach ($x in @($Reference.rows)) { $ref["$($x.tenant)|$($x.ruleId)"] = $x }
+    $checkable = 'OK', 'Abweichung', 'Ausnahme'
+    $quiet = @{}
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($r in @($Results | Where-Object { $_ -and "$($_.RuleId)" })) {
+        if ($Keys.Count -and $Keys -notcontains $r.Tenant) { continue }
+        $why = ''
+        if ("$($r.RuleId)" -eq '-') { $out.Add([pscustomobject]@{ Tenant = "$($r.Tenant)"; RuleId = ''; Why = 'Sollwerte fehlerhaft' }); continue }
+        if (-not $quiet.ContainsKey("$($r.Tenant)")) { $quiet["$($r.Tenant)"] = Get-HUSecQuiet "$($r.Tenant)" }
+        $rule = $ruleOf["$($r.RuleId)"]
+        $o = $ref["$($r.Tenant)|$($r.RuleId)"]
+        if ($quiet["$($r.Tenant)"].si -contains "$($r.RuleId)" -and -not ($rule -and $rule.Min)) { $why = 'in den Sollwerten stumm (Katalog silent)' }
+        elseif ("$($r.Status)" -eq 'Info') { $why = 'abgeschaltet oder nur Hinweis' }
+        elseif ("$($r.Status)" -notin $checkable) { $why = 'heute nicht pruefbar' }
+        elseif (-not $o) { $why = 'im Soll-Stand nicht enthalten (Soll neu speichern)' }
+        elseif ("$($o.status)" -notin $checkable) { $why = 'im Soll-Stand nicht pruefbar oder abgeschaltet (Soll neu speichern)' }
+        if ($why) { $out.Add([pscustomobject]@{ Tenant = "$($r.Tenant)"; RuleId = "$($r.RuleId)"; Why = $why }) }
+    }
+    return @($out.ToArray())
+}
+
 function Compare-HUSecReference {
     param([Parameter(Mandatory)][object[]]$Results, [Parameter(Mandatory)]$Reference, [string[]]$Keys = @())
     $ruleOf = @{}; foreach ($r in (Get-HUSecRules)) { $ruleOf[$r.Id] = $r }
@@ -3115,6 +3143,6 @@ Export-ModuleMember -Function @(
     'Get-HUSecRules', 'Invoke-HUSecCatalog', 'New-HUSecContext', 'Get-HUSecFact', 'Invoke-HUSecFetch',
     'Get-HUSecExceptions', 'Add-HUSecException', 'Get-HUSecManual', 'Set-HUSecManual', 'Remove-HUSecManual', 'Get-HUSecManualResult', 'Get-HUSecManualIds', 'Test-HUSecManualRule', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException', 'Test-HUSecExceptionOutdated', 'Get-HUSecExceptionState', 'Get-HUSecFix', 'Get-HUSecFixData',
     'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecReferenceWorse', 'Set-HUSecReferenceWorseShown', 'Get-HUSecBaselineEdit', 'Save-HUSecBaselineEdit', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport',
-    'Get-HUSecScopes', 'Resolve-HUSecScope', 'Resolve-HUSecRuleSelection', 'Get-HUSecRunPlan', 'Get-HUSecNotRunText', 'Merge-HUSecTenantRows', 'Merge-HUSecRunData', 'Get-HUSecResultList', 'Get-HUSecNotRunIds', 'Get-HUSecCellStand', 'Get-HUSecLastRunResults', 'Get-HUSecRefLock', 'Get-HUSecRunNote',
+    'Get-HUSecScopes', 'Resolve-HUSecScope', 'Resolve-HUSecRuleSelection', 'Get-HUSecNotCompared', 'Get-HUSecRunPlan', 'Get-HUSecNotRunText', 'Merge-HUSecTenantRows', 'Merge-HUSecRunData', 'Get-HUSecResultList', 'Get-HUSecNotRunIds', 'Get-HUSecCellStand', 'Get-HUSecLastRunResults', 'Get-HUSecRefLock', 'Get-HUSecRunNote',
     'Get-HUSecBasicIds', 'Get-HUSecBasicLight', 'Get-HUSecChanges', 'Get-HUSecAuditKind', 'ConvertTo-HUSecAuditRow', 'Get-HUSecAuditRows', 'Get-HUSecAuditEval', 'ConvertTo-HUSecAuditDetail', 'ConvertFrom-HUSecAuditValue'
 )

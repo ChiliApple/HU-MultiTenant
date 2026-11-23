@@ -12,9 +12,9 @@
   - Die Karte nennt Regelnummer, Titel und Anzahl, bei K07 stattdessen die Zahlen der Anmeldungen. Namen von Konten stehen nicht darin, die Details zeigt Analyse > Sicherheit.
   - Regeln mit Zeitraum wie K07 melden ein Ereignis so lange, wie es im Zeitraum liegt (Sollwert "K07 days", Standard 7 Tage). Wer jedes Ereignis nur einmal will, nimmt die Meldung "Sicherheits-Änderung".
   - Der Sollwert "Katalog silent" gilt nur für die Meldung "Sicherheits-Änderung". Eine in "Sicherheits-Regeln" gewählte Regel wird trotzdem gemeldet.
-- **"Sicherheits-Änderung" mit Regelauswahl:** Dieselbe Auswahl gibt es jetzt auch dort. Verglichen werden dann nur die gewählten Regeln, das ist deutlich schneller. Ohne Auswahl bleibt alles wie bisher.
+- **"Sicherheits-Änderung" mit Regelauswahl:** Dieselbe Auswahl gibt es jetzt auch dort. Verglichen werden dann nur die gewählten Regeln. Ohne K07 in der Auswahl ist der Lauf schneller. Ohne Auswahl bleibt alles wie bisher.
   - Die Karte nennt in einer eigenen Zeile, welche Regeln verglichen wurden.
-  - Steht eine gewählte Regel nicht im Soll-Stand, z. B. bei einem neuen Tenant, oder war ein Tenant nicht lesbar, meldet die Karte "nicht verglichen". Abhilfe: Soll neu speichern.
+  - Was aus der Auswahl nicht verglichen werden konnte, meldet die Karte je Tenant als "nicht verglichen", mit Grund: Regel fehlt im Soll-Stand (z. B. neuer Tenant), war beim Soll-Speichern nicht prüfbar, ist heute nicht prüfbar, ist abgeschaltet oder per Sollwert "Katalog silent" stumm, oder der Tenant war nicht lesbar. Diese Karte kommt bei jedem Lauf, bis der Grund behoben ist, meist durch "Soll speichern".
   - Der Hinweis "Soll-Stand schlechter als vorher" kommt nur in der Meldung ohne Regelauswahl.
 - **Ungültige Auswahl bricht ab:** Bleibt von einer Auswahl nichts Gültiges übrig, z. B. weil eine Regel entfernt wurde, läuft die Meldung nicht. Sie prüft dann nicht still alle Regeln. In Teams kommt dazu keine Karte: "Regelauswahl ungültig" steht beim letzten Ergebnis der Meldung im Reiter Teams, die geplante Aufgabe endet mit Code 3.
   - Sind nur einzelne Einträge unbekannt, läuft der Rest. Beide Meldungen senden dann eine Karte, die die unbekannten Einträge nennt.
