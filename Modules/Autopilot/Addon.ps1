@@ -74,7 +74,7 @@ function Get-APZeitAb([int]$Stunden, [datetime]$Jetzt = (Get-Date)) {
 function Test-APZeitNeu([string]$Zeit, [datetime]$Ab) {
     $d = [datetime]::MinValue
     if (-not [datetime]::TryParseExact("$Zeit".Trim(), 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$d)) { return $false }
-    return ($d -ge $Ab.AddSeconds(-1 * $Ab.Second).AddMilliseconds(-1 * $Ab.Millisecond))
+    return ($d -ge $Ab.AddTicks(-1 * ($Ab.Ticks % [TimeSpan]::TicksPerMinute)))
 }
 # Filter wie in Analyse: mehrere Woerter, alle muessen vorkommen
 function Test-APFilter($Row, [string]$Filter, [string[]]$Props) {

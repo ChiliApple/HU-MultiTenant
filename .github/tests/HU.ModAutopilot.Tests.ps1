@@ -108,6 +108,12 @@ Describe 'Uebersicht: Zeitfilter nur letzte' {
         Test-APZeitNeu '2026-11-22 10:31' $ab | Should -BeTrue
         Test-APZeitNeu '2026-11-22 10:30' $ab | Should -BeTrue
         Test-APZeitNeu '2026-11-22 10:29' $ab | Should -BeFalse
+        # echte Uhrzeit hat Bruchteile unter einer Millisekunde: die Grenzminute zaehlt trotzdem
+        $echt = ([datetime]'2026-11-22 14:01:06').AddTicks(706993)
+        Test-APZeitNeu '2026-11-22 14:01' $echt | Should -BeTrue
+        Test-APZeitNeu '2026-11-22 14:00' $echt | Should -BeFalse
+        $jetzt = Get-APZeitAb 24 (Get-Date)
+        Test-APZeitNeu $jetzt.ToString('yyyy-MM-dd HH:mm') $jetzt | Should -BeTrue
         Test-APZeitNeu '2026-11-23 09:00' $ab | Should -BeTrue
         Test-APZeitNeu '' $ab | Should -BeFalse
         Test-APZeitNeu '  ' $ab | Should -BeFalse
