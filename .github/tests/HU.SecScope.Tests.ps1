@@ -392,12 +392,14 @@ Describe 'Oberflaeche, Lauf und andere Aufrufer des Katalogs' {
         $script:Sec | Should -Match "Set-HUStateValue 'secScope'"
     }
 
-    It 'die taegliche Teams-Pruefung prueft alles, die Fernbedienung nach ihrer eigenen Auswahl; beide unabhaengig vom Umfang der Oberflaeche' {
+    It 'die taegliche Teams-Pruefung prueft nach der Auswahl an der Meldung (ohne Auswahl alles), die Fernbedienung nach ihrer eigenen Auswahl; beide unabhaengig vom Umfang der Oberflaeche' {
         $teams = [IO.File]::ReadAllText((Join-Path $script:Root 'Core\HU.TeamsJobs.psm1'), [Text.Encoding]::UTF8)
-        $m = [regex]::Match($teams, 'Invoke-HUSecCatalog -TenantKey \$k -Settings \$Settings[^\r\n]{0,10}')
-        $m.Success | Should -BeTrue
-        $m.Value | Should -Not -Match 'RuleIds'
-        $teams | Should -Not -Match 'cmbSecScope'
+        # jeder Katalog-Lauf der Teams-Meldungen bekommt die Regeln der Meldung ($rid aus Get-HUTeamsSecSelection), nie den Umfang der Oberflaeche
+        $calls = [regex]::Matches($teams, 'Invoke-HUSecCatalog -TenantKey \$k -Settings \$Settings[^\r\n)]*')
+        $calls.Count | Should -Be 2
+        foreach ($m in $calls) { $m.Value | Should -Be 'Invoke-HUSecCatalog -TenantKey $k -Settings $Settings -RuleIds $rid' }
+        $teams | Should -Match '\$sel = Get-HUTeamsSecSelection -Job \$Job'
+        $teams | Should -Not -Match 'cmbSecScope|Get-HUSecRunPlan'
         $remote = [IO.File]::ReadAllText((Join-Path $script:Root 'Core\HU.RemoteRun.ps1'), [Text.Encoding]::UTF8)
         $remote | Should -Not -Match 'cmbSecScope|Get-HUSecRunPlan|Resolve-HUSecScope|Start-HUSecRun'
         # nur der Knopf in der Oberflaeche ruft Start-HUSecRun auf

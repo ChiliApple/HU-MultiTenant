@@ -141,7 +141,7 @@ Describe 'Teams-Auftraege: Ausfuehrung ohne Ziele' {
 Describe 'Teams-Auftraege: Arten mit Befund-Logik' {
     It 'Kinds-Liste und Kategorien' {
         $k = @(Get-HUTeamsKinds)
-        $k.Key | Should -Be @('Daily', 'Secrets', 'Licenses', 'Defender', 'SecDrift', 'Script')
+        $k.Key | Should -Be @('Daily', 'Secrets', 'Licenses', 'Defender', 'SecDrift', 'SecRules', 'Script')
         ($k | Where-Object Key -eq 'Daily').OnlyFindings | Should -BeFalse
         ($k | Where-Object Key -eq 'Secrets').Category | Should -Be 'Secrets'
     }
