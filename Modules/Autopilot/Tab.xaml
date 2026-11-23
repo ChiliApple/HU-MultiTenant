@@ -74,7 +74,7 @@
             <!-- Uebersicht -->
             <TabItem Header="Uebersicht" Style="{StaticResource DarkTabItem}">
                 <DockPanel Margin="0,6,0,0">
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4" LastChildFill="False">
                         <Button x:Name="apBtnClear" DockPanel.Dock="Right" Content="Ergebnis leeren" Background="#3E3E42" Style="{StaticResource ToolButton}" VerticalAlignment="Center"
                                 Foreground="#CCCCCC" FontSize="11" Padding="8,1" Margin="12,0,0,0" ToolTip="Geraete der markierten Tenants aus der Tabelle entfernen"/>
                         <Button x:Name="apBtnTagUndo" DockPanel.Dock="Right" Content="Tag-Aenderung rueckgaengig ..." Background="#3E3E42" Style="{StaticResource ToolButton}" Foreground="#CCCCCC" FontSize="11" Padding="8,1" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"
@@ -87,9 +87,18 @@
                                   ToolTip="nur Geraete, die nicht bereit fuer die Ausgabe sind (kein Profil, ohne Group Tag, Fehler)"/>
                         <CheckBox x:Name="apChkOhneIntune" DockPanel.Dock="Right" Content="nur ohne Intune" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center"
                                   ToolTip="nur Geraete, die in Autopilot stehen, aber (noch) nicht in Intune verwaltet werden"/>
+                        <ComboBox x:Name="apCmbZeitBasis" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="160" VerticalAlignment="Center" Margin="6,0,12,0"
+                                  ToolTip="Einrichtung = Spalte 'Eingerichtet am' (Einrichtung in Intune); Geraete ohne Intune haben diese Zeit nicht.&#x0a;Autopilot-Import = Zeit der Profil-Zuweisung (meist wenige Minuten nach dem Import, steht im Detailfenster);&#x0a;Geraete ohne Profil haben diese Zeit nicht. Microsoft liefert keine eigene Importzeit."/>
+                        <ComboBox x:Name="apCmbZeit" DockPanel.Dock="Right" Style="{StaticResource DarkComboBox}" Width="80" MinWidth="0" VerticalAlignment="Center" Margin="6,0,0,0"
+                                  ToolTip="Zeitraum bis jetzt; 'heute' = seit Mitternacht"/>
+                        <CheckBox x:Name="apChkZeit" DockPanel.Dock="Right" Content="nur letzte" Style="{StaticResource DarkCheckBox}" VerticalAlignment="Center" Margin="0,0,0,0"
+                                  ToolTip="Zeitfilter: nur Geraete, die im gewaehlten Zeitraum eingerichtet bzw. importiert wurden. Geraete ohne diese Zeit werden ausgeblendet."/>
                         <TextBlock DockPanel.Dock="Left" Text="Filter:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
                         <TextBox x:Name="apTxtFilter" DockPanel.Dock="Left" VerticalAlignment="Center" Width="220" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,0,12,0"
                                  ToolTip="Text in Seriennummer, Modell, Group Tag, Geraetename, Status ... (mehrere Woerter: alle muessen vorkommen)"/>
+                    </DockPanel>
+                    <!-- Summe in eigener Zeile: neben den Filtern bleibt bei schmalem Fenster kein Platz -->
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                         <Ellipse x:Name="apDotLaden" DockPanel.Dock="Left" Width="10" Height="10" Fill="#4CAF50" Margin="0,0,6,0" VerticalAlignment="Center" Visibility="Collapsed" ToolTip="laeuft ..."/>
                         <TextBlock x:Name="apTxtSumme" Style="{StaticResource HintText}" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                    ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" Text="Tenants markieren und Laden klicken."/>

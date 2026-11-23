@@ -260,6 +260,10 @@ function Show-HUTeamsJob($Job) {
         $mask = $false
         if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['maskDevices']) { $mv = $Job.Options.maskDevices; $mask = [bool]($mv -eq $true -or "$mv".Trim() -match '^(?i)(true|1|ja|yes|on|an)$') }
         $c['chkTeamsJobMask'].IsChecked = $mask
+        # Regelauswahl (Sicherheits-Aenderung und Sicherheits-Regeln): Liste oder Text aus der Datei, so wie gespeichert
+        $rl = @(); if ($Job -and $Job.Options -and $Job.Options.PSObject.Properties['rules']) { $rl = @(@($Job.Options.rules) | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) }
+        $c['txtTeamsJobRules'].Text = ($rl -join ', ')
+        $c['chkTeamsJobSendAlways'].IsChecked = [bool]($Job -and $Job.Options -and $Job.Options.PSObject.Properties['sendAlways'] -and (ConvertTo-HUTeamsBool $Job.Options.sendAlways $false))   # gleiche Lesart wie im Lauf
         Update-HUTeamsMaskState
         $kind = if ($Job) { "$($Job.Kind)" } else { 'Daily' }
         $c['cmbTeamsJobKind'].SelectedItem = $null   # Skript-Meldung: oben nichts gewaehlt
@@ -307,6 +311,54 @@ function Update-HUTeamsMaskState {
     $c['chkTeamsJobMask'].Visibility = $(if ($kind -eq 'Script') { 'Collapsed' } else { 'Visible' })
     $sv = $(if ($kind -eq 'Script') { 'Visible' } else { 'Collapsed' })
     $c['pnlTeamsJobScriptOpts'].Visibility = $sv; $c['chkTeamsJobSendOutput'].Visibility = $sv
+    # Regelauswahl nur bei den beiden Meldungen des Sicherheitskatalogs; "auch ohne Befund" nur bei Sicherheits-Regeln
+    $isSec = ($kind -in 'SecDrift', 'SecRules')
+    $c['pnlTeamsJobSec'].Visibility = $(if ($isSec) { 'Visible' } else { 'Collapsed' })
+    $c['chkTeamsJobSendAlways'].Visibility = $(if ($kind -eq 'SecRules') { 'Visible' } else { 'Collapsed' })
+    $c['lblTeamsJobSecHint'].Text = $(if ($kind -eq 'SecRules') { 'Meldet den heutigen Stand dieser Regeln je Tenant, unabhaengig vom Soll-Stand. Regeln mit Zeitraum (z. B. K07) melden ein Ereignis so lange, wie es im Zeitraum liegt.' } else { 'Vergleicht nur diese Regeln mit dem Soll-Stand. Leer = alle Regeln, wie bisher.' })
+}
+
+# Auswahlliste "Regel oder Umfang hinzufuegen": Umfaenge und Regeln kommen aus dem Katalog (neue Eintraege erscheinen von selbst)
+function Update-HUTeamsRuleCombo {
+    $cb = $script:Controls['cmbTeamsJobRuleAdd']
+    $wasBusy = $script:TeamsFillBusy; $script:TeamsFillBusy = $true
+    try {
+        $cb.Items.Clear()
+        $first = New-Object System.Windows.Controls.ComboBoxItem; $first.Content = 'Hinzufuegen ...'; $first.Tag = ''; $first.Foreground = Get-HUBrush '#888888' 'Fg'
+        [void]$cb.Items.Add($first)
+        foreach ($s in @(Get-HUSecScopes | Where-Object { -not $_.Full })) {
+            $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = "Umfang: $($s.Text)"; $i.Tag = "$($s.Id)"; $i.ToolTip = "$($s.Tip)"; [void]$cb.Items.Add($i)
+        }
+        foreach ($r in @(Get-HUSecRules | Sort-Object Id)) {
+            $t = "$($r.Title)"; $short = if ($t.Length -gt 60) { $t.Substring(0, 57) + '...' } else { $t }
+            $i = New-Object System.Windows.Controls.ComboBoxItem; $i.Content = "$($r.Id)  $short"; $i.Tag = "$($r.Id)"; $i.ToolTip = $t; [void]$cb.Items.Add($i)
+        }
+        $cb.SelectedIndex = 0
+    } finally { $script:TeamsFillBusy = $wasBusy }
+}
+
+# Liste "Hinzufuegen ..." zurueck auf den ersten Eintrag, ohne etwas zu uebernehmen
+function Reset-HUTeamsRuleCombo {
+    $wasBusy = $script:TeamsFillBusy; $script:TeamsFillBusy = $true
+    try { $script:Controls['cmbTeamsJobRuleAdd'].SelectedIndex = 0 } finally { $script:TeamsFillBusy = $wasBusy }
+}
+
+# Den in der Liste gewaehlten Eintrag (Regel oder Umfang) an das Feld "Regeln" anfuegen, doppelte nicht; danach Liste zuruecksetzen
+function Add-HUTeamsRuleFromCombo {
+    $c2 = $script:Controls
+    $it = $c2['cmbTeamsJobRuleAdd'].SelectedItem
+    if ($it -and "$($it.Tag)") {
+        $cur = @("$($c2['txtTeamsJobRules'].Text)" -split '[,;\s]+' | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+        if ($cur -notcontains "$($it.Tag)") { $c2['txtTeamsJobRules'].Text = (@($cur) + "$($it.Tag)") -join ', ' }
+    }
+    Reset-HUTeamsRuleCombo
+}
+
+# Regelauswahl aus dem Formular pruefen. Rueckgabe: Liste zum Speichern (leer = alle). Wirft bei unbekannten Eintraegen.
+function Get-HUTeamsFormRules {
+    $sel = Resolve-HUSecRuleSelection -Value "$($script:Controls['txtTeamsJobRules'].Text)"
+    if ($sel.Unknown.Count) { throw "Unbekannte Regel oder unbekannter Umfang: $($sel.Unknown -join ', ').`nIm Feld stehen Regelnummern des Sicherheitskatalogs (z. B. K07) oder die Kennung eines Umfangs (z. B. onlyRisk), mit Komma getrennt.`nAm einfachsten ueber die Liste rechts einfuegen." }
+    return [string[]]@($sel.Tokens)
 }
 
 # @param-Felder des gewaehlten Skripts an der Meldung (wie oben im Quick Script); Werte: gespeicherte, sonst Standard
@@ -425,6 +477,14 @@ function Get-HUTeamsJobFromForm {
     $j.Days = $days; $j.Tenants = $keys; $j.Category = $cat; $j.Enabled = [bool]$c['chkTeamsJobEnabled'].IsChecked
     if ($null -eq $j.Options) { $j | Add-Member -NotePropertyName Options -NotePropertyValue ([pscustomobject]@{}) -Force }
     $j.Options | Add-Member -NotePropertyName maskDevices -NotePropertyValue ([bool]$c['chkTeamsJobMask'].IsChecked) -Force
+    # Regelauswahl gehoert nur zu den Meldungen des Sicherheitskatalogs: bei jeder anderen Art entfernen (das Objekt der
+    # gespeicherten Meldung wird weiterverwendet, alte Werte blieben sonst nach einem Wechsel der Art stehen)
+    foreach ($n in 'rules', 'sendAlways') { if ($j.Options.PSObject.Properties[$n]) { $j.Options.PSObject.Properties.Remove($n) } }
+    if ($kind -in 'SecDrift', 'SecRules') {
+        $rules = @(Get-HUTeamsFormRules)
+        if ($rules.Count) { $j.Options | Add-Member -NotePropertyName rules -NotePropertyValue ([string[]]$rules) -Force }   # leer = alle: kein Feld
+        if ($kind -eq 'SecRules') { $j.Options | Add-Member -NotePropertyName sendAlways -NotePropertyValue ([bool]$c['chkTeamsJobSendAlways'].IsChecked) -Force }
+    }
     if ($kind -eq 'Script') {
         $sn = if ($c['cmbTeamsJobSnippet'].SelectedItem) { "$($c['cmbTeamsJobSnippet'].SelectedItem.Tag)" } else { '' }
         if (-not $sn) { throw 'Bitte ein Skript waehlen (gespeichertes Snippet aus Quick Script).' }
@@ -631,6 +691,27 @@ function Register-HUTeamsHandlers {
     $c['btnTeamsSave'].Add_Click({ Save-HUTeamsTarget })
     $c['btnTeamsDel'].Add_Click({ Remove-HUTeamsTarget })
     $c['btnTeamsTest'].Add_Click({ Test-HUTeamsTarget })
+
+    # Regel oder Umfang aus der Liste an das Textfeld anfuegen (doppelte nicht), danach Liste zurueck auf "Hinzufuegen ...".
+    # Uebernommen wird erst beim Schliessen der Liste (Mausklick oder Enter) bzw. mit Enter bei zugeklappter Liste - NICHT bei
+    # jeder Aenderung der Auswahl: Pfeiltasten, Buchstabensuche und Mausrad aendern die Auswahl einer zugeklappten Liste sofort
+    # und haetten sonst beim Blaettern ungewollt Eintraege eingefuegt. Esc verwirft.
+    try { Update-HUTeamsRuleCombo } catch { Write-HULog -Message "[Teams] Regelliste nicht geladen: $($_.Exception.Message)" -Level WARN }
+    $script:TeamsRuleEsc = $false
+    $c['cmbTeamsJobRuleAdd'].Add_DropDownClosed({
+        if ($script:TeamsFillBusy) { return }
+        if ($script:TeamsRuleEsc) { $script:TeamsRuleEsc = $false; Reset-HUTeamsRuleCombo; return }
+        Add-HUTeamsRuleFromCombo
+    })
+    $c['cmbTeamsJobRuleAdd'].Add_PreviewKeyDown({
+        param($s, $e)
+        if ($e.Key -eq [System.Windows.Input.Key]::Escape) { if ($s.IsDropDownOpen) { $script:TeamsRuleEsc = $true } else { Reset-HUTeamsRuleCombo } }
+        elseif ($e.Key -eq [System.Windows.Input.Key]::Return -and -not $s.IsDropDownOpen) { Add-HUTeamsRuleFromCombo; $e.Handled = $true }
+    })
+    $c['cmbTeamsJobRuleAdd'].Add_LostKeyboardFocus({
+        param($s, $e)
+        if (-not $s.IsDropDownOpen -and -not $s.IsKeyboardFocusWithin) { Reset-HUTeamsRuleCombo }
+    })
 
     # Name folgt der gewaehlten Art, solange im Feld ein Standardname steht (eigene Namen bleiben)
     $c['cmbTeamsJobKind'].Add_SelectionChanged({

@@ -11,6 +11,10 @@
       Kind 'Licenses' Lizenzen knapp: SKUs mit weniger als minFree freien Lizenzen. Sendet nur bei Befund.
       Kind 'Defender' Defender-Alarm: Geraete mit gemeldeter Bedrohung oder Fehlkonfiguration. Sendet nur bei Befund.
       Kind 'SecDrift' Sicherheits-Aenderung: Sicherheitskatalog gegen den gespeicherten Soll-Stand (Analyse > Sicherheit > Soll speichern). Sendet nur bei Aenderung.
+                      Options.rules (optional): nur diese Regeln vergleichen, sonst alle.
+      Kind 'SecRules' Sicherheits-Regeln: heutiger Stand der gewaehlten Regeln (Options.rules, leer = alle), unabhaengig vom Soll-Stand.
+                      Sendet nur bei Befund, mit Options.sendAlways auch ohne.
+                      Options.rules = Regelnummern und/oder Kennungen eines Umfangs (Resolve-HUSecRuleSelection im Katalog).
     Meldung aus Skript:
       Kind 'Script'   fuehrt ein gespeichertes Quick-Script-Snippet (Options.snippet = Name) je Tenant aus, mit den
                       Werten seiner @param-Zeilen (an der Meldung gespeichert, sonst Standard). Jedes Send-HUNotify im Snippet geht an die Ziele der Meldung.
@@ -37,7 +41,7 @@
 $script:TeamsJobsFile = 'Config\teams-jobs.json'
 $script:TeamsTaskPath = '\HU-MultiTenant\'
 $script:TeamsTaskPrefix = 'Teams-'
-$script:TeamsJobKinds = @('Daily', 'Secrets', 'Licenses', 'Defender', 'SecDrift', 'Script')
+$script:TeamsJobKinds = @('Daily', 'Secrets', 'Licenses', 'Defender', 'SecDrift', 'SecRules', 'Script')
 $script:TeamsScriptTimeoutMin = 25   # Meldung aus Skript: laengste Laufzeit (Aufgabenplanung bricht nach 30 min ab, Review 030 B40)
 $script:TeamsJobIdPattern = '^[0-9a-f]{8}$'
 $script:TeamsDayNames = @('So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa')   # [DayOfWeek] 0 = Sonntag
@@ -87,7 +91,7 @@ function New-HUTeamsJob {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Name,
-        [ValidateSet('Daily', 'Secrets', 'Licenses', 'Defender', 'SecDrift', 'Script')][string]$Kind = 'Daily',
+        [ValidateSet('Daily', 'Secrets', 'Licenses', 'Defender', 'SecDrift', 'SecRules', 'Script')][string]$Kind = 'Daily',
         [string[]]$Tenants = @(),
         [string]$Time = '07:00',
         [int[]]$Days = @(),
@@ -334,6 +338,8 @@ function Get-HUTeamsKinds {
     [pscustomobject]@{ Key = 'Licenses'; Label = 'Lizenzen knapp';   Category = 'Licenses'; OnlyFindings = $true }
     [pscustomobject]@{ Key = 'Defender'; Label = 'Defender-Alarm';   Category = 'Defender'; OnlyFindings = $true }
     [pscustomobject]@{ Key = 'SecDrift'; Label = 'Sicherheits-Aenderung'; Category = 'Security'; OnlyFindings = $true }
+    # SecRules: OnlyFindings ist der Standard, je Meldung umstellbar (Options.sendAlways)
+    [pscustomobject]@{ Key = 'SecRules'; Label = 'Sicherheits-Regeln'; Category = 'Security'; OnlyFindings = $true }
     [pscustomobject]@{ Key = 'Script';   Label = 'Aus Skript';       Category = '';         OnlyFindings = $true }
 }
 
@@ -712,10 +718,15 @@ function New-HUSecDriftCardSpec {
         Anzeigenamen je Tenant-Schluessel (sonst der Schluessel).
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$Compare, [hashtable]$Names = @{}, [string]$Title = 'Sicherheits-Aenderung', [int]$MaxPerTenant = 4, [object[]]$Lost = @(), [int]$SollWorse = 0, [string]$SollPrev = '')
+    # NoRef: bei einer Regelauswahl die gewaehlten Regeln, die nicht verglichen werden konnten (Tenant, RuleId, Why) - im Soll-Stand
+    #        nicht enthalten oder Katalog nicht lesbar. Unknown: Eintraege der Auswahl, die es im Katalog nicht gibt.
+    #        Beides ist ein Grund fuer eine Karte: sonst hiesse "nichts zu melden" in Wahrheit "nichts verglichen".
+    param([Parameter(Mandatory)]$Compare, [hashtable]$Names = @{}, [string]$Title = 'Sicherheits-Aenderung', [int]$MaxPerTenant = 4, [object[]]$Lost = @(), [int]$SollWorse = 0, [string]$SollPrev = '', [object[]]$NoRef = @(), [string[]]$Unknown = @())
     $ch = @($Compare.Changes)
     $Lost = @($Lost | Where-Object { $_ })
-    if (-not $ch.Count -and -not $Lost.Count -and $SollWorse -le 0) { return $null }
+    $NoRef = @($NoRef | Where-Object { $_ })
+    $Unknown = @($Unknown | Where-Object { "$_" })
+    if (-not $ch.Count -and -not $Lost.Count -and $SollWorse -le 0 -and -not $NoRef.Count -and -not $Unknown.Count) { return $null }
     $rows = @()
     $ar = ' ' + [char]0x2192 + ' '   # Pfeil (ueberlebt die Textbereinigung, anders als >)
     foreach ($g in ($ch | Group-Object Tenant | Sort-Object Name)) {
@@ -734,13 +745,20 @@ function New-HUSecDriftCardSpec {
         $txt = (@($g.Group | Select-Object -First $MaxPerTenant | ForEach-Object { "$($_.RuleId) $($_.Title) (seit $($_.Runs) Laeufen nicht pruefbar$(if ($_.Reason) { ": $($_.Reason)" }))" }) -join '; ')
         $rows += @{ Name = "$nm - Pruefung verloren"; Status = 'Error'; Text = (ConvertTo-HUNotifySafeText -Text $txt -Max 400) }
     }
+    foreach ($g in ($NoRef | Group-Object Tenant | Sort-Object Name)) {
+        $nm = if ($Names.ContainsKey("$($g.Name)")) { "$($Names["$($g.Name)"])" } else { "$($g.Name)" }
+        $txt = (@($g.Group | Group-Object Why | ForEach-Object { "$($_.Name)$(if (@($_.Group | Where-Object { "$($_.RuleId)" }).Count) { ": $((@($_.Group | ForEach-Object { "$($_.RuleId)" } | Where-Object { $_ } | Select-Object -First 8) -join ', '))" })" }) -join '; ')
+        $rows += @{ Name = "$nm - nicht verglichen"; Status = 'Warning'; Text = (ConvertTo-HUNotifySafeText -Text $txt -Max 400) }
+    }
     $worse = @($ch | Where-Object { $_.Worse }).Count
     $tn = @($ch | Select-Object -ExpandProperty Tenant -Unique).Count
     $pv = if ($ch.Count) { "$(Get-HUTeamsCountText $ch.Count 'Aenderung' 'Aenderungen') in $(Get-HUTeamsCountText $tn 'Tenant' 'Tenants')$(if ($worse) { ", $worse schlechter" })" } else { '' }
     if ($Lost.Count) { $pv = ("$pv$(if ($pv) { ', ' })$(Get-HUTeamsCountText $Lost.Count 'Pruefung' 'Pruefungen') verloren").Trim() }
     if ($SollWorse -gt 0 -and -not $pv) { $pv = "Soll-Stand geaendert: $(Get-HUTeamsCountText $SollWorse 'Regel' 'Regeln') schlechter als vorher" }
+    if (-not $pv) { $pv = 'keine Aenderung, aber nicht alles verglichen' }
     $facts = [ordered]@{ 'Aenderungen' = $ch.Count; 'davon schlechter' = $worse }
     if ($Lost.Count) { $facts['Pruefung verloren'] = $Lost.Count }
+    if ($NoRef.Count) { $facts['Nicht verglichen'] = $NoRef.Count }
     if ($Compare.Unchecked -gt 0) { $facts['Heute nicht pruefbar (im Soll pruefbar)'] = $Compare.Unchecked }
     # Fusszeile: bewusst gefilterte Meldungen (Sollwerte Katalog statusOnly / silent) offenlegen
     $flt = @()
@@ -757,7 +775,122 @@ function New-HUSecDriftCardSpec {
         Level = $(if ($worse -or $Lost.Count) { 'Error' } else { 'Warning' })   # Soll schlechter allein: Warnung
         Rows  = $rows
         Facts = $facts
-        Lines = @(@("Vergleich mit dem gespeicherten Soll-Stand$(if ($since) { " vom $since" }). Neuen Stand uebernehmen: Analyse $([char]0x203A) Sicherheit $([char]0x203A) Soll speichern.") + @(if ($SollWorse -gt 0) { "Hinweis: Der Soll-Stand$(if ($since) { " vom $since" }) ist bei $(Get-HUTeamsCountText $SollWorse 'Regel' 'Regeln') schlechter als der vorige - diese Verschlechterungen werden nicht mehr als Aenderung gemeldet." }) + @(if ($fline) { $fline }))
+        Lines = @(@("Vergleich mit dem gespeicherten Soll-Stand$(if ($since) { " vom $since" }). Neuen Stand uebernehmen: Analyse $([char]0x203A) Sicherheit $([char]0x203A) Soll speichern.") + @(if ($SollWorse -gt 0) { "Hinweis: Der Soll-Stand$(if ($since) { " vom $since" }) ist bei $(Get-HUTeamsCountText $SollWorse 'Regel' 'Regeln') schlechter als der vorige - diese Verschlechterungen werden nicht mehr als Aenderung gemeldet." }) + @(if ($fline) { $fline }) + @(if ($Unknown.Count) { "Nicht im Katalog und deshalb nicht verglichen: $(ConvertTo-HUNotifySafeText -Text ($Unknown -join ', ') -Max 120). Meldung im Reiter Teams pruefen." }))
+    }
+}
+
+function Get-HUTeamsSecSelection {
+    <#
+    .SYNOPSIS
+        Regelauswahl einer Meldung (Options.rules) ueber den Katalog aufloesen. Feld fehlt oder leer = alle Regeln.
+    .OUTPUTS
+        Ergebnis von Resolve-HUSecRuleSelection (Set, Full, Ids, Tokens, Unknown, Valid, Text)
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Job)
+    $o = $null; try { $o = $Job.Options } catch { $o = $null }
+    # Options von Hand als Text oder Liste statt Objekt: die Auswahl ist nicht lesbar - ungueltig, nicht still "alles"
+    if ($null -ne $o -and -not ($o -is [System.Management.Automation.PSCustomObject] -or $o -is [System.Collections.IDictionary])) {
+        $r = Resolve-HUSecRuleSelection -Value $null
+        $r.Set = $true; $r.Full = $false; $r.Valid = $false; $r.Unknown = [string[]]@('Options der Meldung ist kein Objekt')
+        return $r
+    }
+    $v = $null
+    try {
+        if ($o -is [System.Collections.IDictionary]) { if ($o.Contains('rules')) { $v = $o['rules'] } }
+        elseif ($o -and $o.PSObject.Properties['rules']) { $v = $o.rules }
+    } catch { $v = $null }
+    return (Resolve-HUSecRuleSelection -Value $v)
+}
+
+function New-HUSecRulesCardSpec {
+    <#
+    .SYNOPSIS
+        Karteninhalt Sicherheits-Regeln (reine Funktion): heutiger Stand der gewaehlten Regeln je Tenant. $null = nichts zu melden.
+    .DESCRIPTION
+        Befund ist: Abweichung, nicht pruefbar, Fehler, fehlerhafte Sollwerte, ein Tenant ohne Ergebnis und ein unbekannter Eintrag
+        in der Auswahl. "Nichts zu melden" heisst also immer: geprueft und in Ordnung - nie: nicht lesbar.
+        Kein Befund sind: OK, Ausnahme und in den Sollwerten abgeschaltete Regeln (stehen in der Karte, wenn sie ohnehin gesendet wird).
+        Ausnahme: bleibt bei einem Tenant keine einzige gepruefte Regel uebrig (alle gewaehlten abgeschaltet oder nur Hinweis), ist das ein Befund.
+        In die Karte kommen Regelnummer, Titel und Anzahl. Der Detailtext nur bei Regeln mit CardDetail (Text ohne Namen).
+    .PARAMETER Results
+        Ergebnisse von Invoke-HUSecCatalog (alle Tenants).
+    .PARAMETER Keys
+        Tenant-Schluessel der Meldung, in dieser Reihenfolge; jeder bekommt eine Zeile.
+    .PARAMETER Failed
+        Tenant-Schluessel, deren Katalog-Lauf fehlgeschlagen ist.
+    .PARAMETER Rules
+        Regeln des Katalogs (Id, Rolling, CardDetail) - fuer Detailtext und den Hinweis auf Regeln mit Zeitraum.
+    .PARAMETER Unknown
+        Eintraege der Auswahl, die es im Katalog nicht (mehr) gibt.
+    #>
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()][object[]]$Results = @(), [string[]]$Keys = @(), [hashtable]$Names = @{}, [hashtable]$Failed = @{},
+        [object[]]$Rules = @(), [string[]]$Unknown = @(), [string]$Selection = '', [switch]$SendAlways,
+        [string]$Title = 'Sicherheits-Regeln', [int]$MaxPerTenant = 6
+    )
+    $ruleOf = @{}; foreach ($x in @($Rules | Where-Object { $_ })) { $ruleOf["$($x.Id)"] = $x }
+    $flag = { param($id, $n) $x = $ruleOf["$id"]; [bool]($x -and $x.PSObject.Properties[$n] -and $x.$n) }
+    $Unknown = @($Unknown | Where-Object { "$_" })
+    $rows = @(); $worst = 0; $dev = 0; $np = 0; $bad = 0; $hit = @(); $rolling = @{}; $seen = @{}
+    foreach ($k in @($Keys | Where-Object { "$_" })) {
+        $nm = if ($Names.ContainsKey("$k")) { "$($Names["$k"])" } else { "$k" }
+        $rs = @($Results | Where-Object { $_ -and "$($_.Tenant)" -eq "$k" })
+        if ($Failed.ContainsKey("$k") -or -not $rs.Count) {
+            $bad++; $worst = 2
+            $rows += @{ Name = $nm; Status = 'Error'; Text = 'Katalog nicht lesbar - nichts geprueft' }
+            continue
+        }
+        $lvl = 0; $find = @(); $note = @(); $ok = 0; $chk = 0; $devHere = $false
+        foreach ($r in $rs) {
+            $id = "$($r.RuleId)"
+            if ($id -and $id -ne '-') { $seen[$id] = 1; if (& $flag $id 'Rolling') { $rolling[$id] = 1 } }
+            if ($id -eq '-') { $find += 'Sollwerte fehlerhaft (Analyse, Sicherheit, Sollwerte)'; $lvl = [math]::Max($lvl, 1); $np++; continue }
+            switch ("$($r.Status)") {
+                'OK' { $ok++; $chk++ }
+                'Ausnahme' { $chk++; $note += "$id Ausnahme" }
+                'Info' { $note += "$id $(if ("$($r.Reason)" -eq 'Aus') { 'abgeschaltet (Sollwerte)' } else { 'nur Hinweis' })" }
+                'Abweichung' {
+                    $dev++; $devHere = $true
+                    $lvl = [math]::Max($lvl, $(if ("$($r.Sev)" -in 'Kritisch', 'Hoch') { 2 } else { 1 }))
+                    $find += $(if ((& $flag $id 'CardDetail') -and "$($r.Detail)") { "$($id): $($r.Detail)" } else { "$id $($r.Title)$(if ($null -ne $r.Count -and "$($r.Count)" -ne '') { " ($($r.Count))" })" })
+                }
+                default {
+                    # nicht pruefbar, Fehler oder ein Status, den diese Version nicht kennt: nie als in Ordnung werten
+                    $np++; $lvl = [math]::Max($lvl, 1)
+                    $find += "$id nicht pruefbar$(if ("$($r.Reason)") { ": $($r.Reason)" })"
+                }
+            }
+        }
+        # nichts wirklich geprueft (alle gewaehlten Regeln abgeschaltet oder nur Hinweis): nicht als "in Ordnung" durchgehen lassen
+        if (-not $chk -and -not $find.Count) { $np++; $lvl = [math]::Max($lvl, 1); $find += 'keine der gewaehlten Regeln geprueft' }
+        $parts = @($find | Select-Object -First $MaxPerTenant)
+        if ($find.Count -gt $MaxPerTenant) { $parts += "und $($find.Count - $MaxPerTenant) weitere" }
+        $parts += @($note | Select-Object -First $MaxPerTenant)
+        if ($ok) { $parts += $(if ($find.Count -or $note.Count) { "$ok in Ordnung" } elseif ($ok -eq 1) { 'in Ordnung' } else { "alle $ok in Ordnung" }) }
+        if ($devHere) { $hit += $nm }
+        $worst = [math]::Max($worst, $lvl)
+        $rows += @{ Name = $nm; Status = @('OK', 'Warning', 'Error')[$lvl]; Text = (ConvertTo-HUNotifySafeText -Text ($parts -join '; ') -Max 600) }
+    }
+    if ($Unknown.Count) { $worst = [math]::Max($worst, 1) }
+    if (-not $dev -and -not $np -and -not $bad -and -not $Unknown.Count -and -not $SendAlways) { return $null }
+    $pv = if ($dev) { "$(Get-HUTeamsCountText $dev 'Abweichung' 'Abweichungen') in $(Get-HUTeamsCountText $hit.Count 'Tenant' 'Tenants')$(if ($hit.Count) { " ($($hit -join ', '))" })" } elseif ($np -or $bad -or $Unknown.Count) { 'keine Abweichung, aber nicht alles pruefbar' } else { 'alles in Ordnung' }
+    if ($bad) { $pv += ", $(Get-HUTeamsCountText $bad 'Tenant' 'Tenants') nicht lesbar" }
+    $ids = @($seen.Keys | Sort-Object)
+    $facts = [ordered]@{ 'Gepruefte Regeln' = $(if ($Selection -and $Selection.Length -le 60) { $Selection } elseif ($ids.Count -and $ids.Count -le 8) { $ids -join ', ' } else { "$($ids.Count)" }); 'Abweichungen' = $dev }
+    if ($np) { $facts['Nicht pruefbar'] = $np }
+    if ($bad) { $facts['Tenants nicht lesbar'] = $bad }
+    $lines = @("Stand von heute, unabhaengig vom Soll-Stand. Details: Analyse $([char]0x203A) Sicherheit.")
+    if ($rolling.Count) { $lines += "Regeln mit Zeitraum ($(@($rolling.Keys | Sort-Object) -join ', ')) zaehlen alles, was im Zeitraum liegt: dasselbe Ereignis steht so lange in jeder Meldung, bis es herausfaellt oder eine Ausnahme gilt." }
+    if ($Unknown.Count) { $lines += "Nicht im Katalog und deshalb nicht geprueft: $(ConvertTo-HUNotifySafeText -Text ($Unknown -join ', ') -Max 120). Meldung im Reiter Teams pruefen." }
+    return @{
+        Preview = $pv
+        Title   = "$Title - $(Get-HUTeamsDateLabel)"
+        Level   = @('OK', 'Warning', 'Error')[$worst]
+        Rows    = $rows
+        Facts   = $facts
+        Lines   = $lines
     }
 }
 
@@ -861,18 +994,60 @@ function Invoke-HUTeamsJob {
             'SecDrift' {
                 $ref = $null; try { $ref = Get-HUSecReference } catch { }
                 if (-not $ref) { $res.Message = 'Kein Soll-Stand gespeichert (Analyse > Sicherheit > Soll speichern) - nichts verglichen'; $res.Code = 3; return $res }
-                $all = @(); $names = @{}
+                # Regelauswahl (Options.rules): fehlt sie, wird wie bisher alles verglichen. Gewaehlt, aber nichts Gueltiges uebrig:
+                # abbrechen - eine leere Liste hiesse fuer den Katalog "alles" und waere ein anderer Lauf als bestellt.
+                $sel = Get-HUTeamsSecSelection -Job $Job
+                if (-not $sel.Valid) { $res.Message = "Regelauswahl ungueltig ($($sel.Unknown -join ', ')) - nichts verglichen. Meldung im Reiter Teams pruefen."; $res.Code = 3; return $res }
+                $rid = [string[]]@(); if (-not $sel.Full) { $rid = [string[]]$sel.Ids }
+                $selTxt = if ($sel.Text.Length -le 80) { $sel.Text } else { "$($rid.Count) Regeln" }
+                if ($sel.Unknown.Count -and $log) { Write-HULog -Message "[Teams] $($Job.Name): Regelauswahl enthaelt Unbekanntes ($($sel.Unknown -join ', ')) - uebersprungen" -Level WARN }
+                $all = @(); $names = @{}; $failed = @()
                 foreach ($k in $keys) {
                     & $readLog $k
                     $tt = $Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1
                     $names[$k] = "$(if ($tt) { $tt.displayName } else { $k })"
-                    try { $all += @(Invoke-HUSecCatalog -TenantKey $k -Settings $Settings) } catch { if ($log) { Write-HULog -Message "[Teams] $($Job.Name): $k Katalog fehlgeschlagen: $($_.Exception.Message)" -Level WARN } }
+                    try { $all += @(Invoke-HUSecCatalog -TenantKey $k -Settings $Settings -RuleIds $rid) } catch { $failed += $k; if ($log) { Write-HULog -Message "[Teams] $($Job.Name): $k Katalog fehlgeschlagen: $($_.Exception.Message)" -Level WARN } }
                 }
-                $cmp = Compare-HUSecReference -Results $all -Reference $ref -Keys $keys
-                $lost = @(); try { $lost = @(Update-HUSecLost -Results $all -Reference $ref -Keys $keys -NoWrite:$NoSend) } catch { }
-                $sw = 0; try { if ($ref.PSObject.Properties['worse'] -and -not [bool]$ref.worseShown) { $sw = [int]$ref.worse } } catch { $sw = 0 }
-                $spec = New-HUSecDriftCardSpec -Compare $cmp -Names $names -Title "$($Job.Name)" -Lost $lost -SollWorse $sw
-                $detail = "$(@($cmp.Changes).Count) Aenderungen, $($cmp.Unchecked) nicht pruefbar, $($lost.Count) Pruefungen verloren"
+                # Kein einziges Ergebnis (Katalog bei allen Tenants fehlgeschlagen): ohne Auswahl wie bisher ein Fehler, nie "nichts zu melden".
+                # Mit Auswahl geht es weiter: die Karte nennt jeden Tenant als "nicht verglichen".
+                if (-not $all.Count -and -not $rid.Count) { $res.Message = 'Katalog bei keinem Tenant lesbar - nichts verglichen'; $res.Code = 1; return $res }
+                $cmp = if ($all.Count) { Compare-HUSecReference -Results $all -Reference $ref -Keys $keys } else { [pscustomobject]@{ Changes = @(); Unchecked = 0; Since = "$($ref.time)"; HiddenCount = 0; Silent = @() } }
+                # Mit Regelauswahl: was der Vergleich bei einer EINZELN bestellten Regel still ueberspringt, gehoert in die Karte
+                # (Get-HUSecNotCompared: Regel fehlt im Soll, war dort nicht pruefbar, ist heute nicht pruefbar, abgeschaltet oder stumm) -
+                # sonst liefe die Meldung dauerhaft leer. Regeln, die nur ueber einen Umfang hereinkommen, bleiben wie bei "alles" still:
+                # ein Umfang enthaelt Regeln, die nie vergleichbar sind, die Karte kaeme sonst bei jedem Lauf. Ein nicht lesbarer Tenant wird immer genannt.
+                $noRef = @()
+                if ($rid.Count) {
+                    if ($sel.Explicit.Count) { $noRef = @(Get-HUSecNotCompared -Results $all -Reference $ref -Keys $keys -RuleIds $sel.Explicit) }
+                    $noRef += @($failed | ForEach-Object { [pscustomobject]@{ Tenant = "$_"; RuleId = ''; Why = 'Katalog nicht lesbar' } })
+                }
+                # "Pruefung verloren" zaehlt je Lauf: pruefen zwei Meldungen dieselbe Regel, ist die Schwelle frueher erreicht (frueher gemeldet, nie doppelt)
+                $lost = @(); if ($all.Count) { try { $lost = @(Update-HUSecLost -Results $all -Reference $ref -Keys $keys -NoWrite:$NoSend) } catch { } }
+                # Hinweis "Soll schlechter" betrifft alle Regeln: nur die Meldung ohne Regelauswahl zeigt und verbraucht ihn
+                $sw = 0; if (-not $rid.Count) { try { if ($ref.PSObject.Properties['worse'] -and -not [bool]$ref.worseShown) { $sw = [int]$ref.worse } } catch { $sw = 0 } }
+                $spec = New-HUSecDriftCardSpec -Compare $cmp -Names $names -Title "$($Job.Name)" -Lost $lost -SollWorse $sw -NoRef $noRef -Unknown $sel.Unknown
+                if ($spec -and $rid.Count) { $spec.Lines = @($spec.Lines) + @($(if ($all.Count) { "Verglichen wurden nur die gewaehlten Regeln: $selTxt." } else { "Gewaehlte Regeln: $selTxt. Verglichen wurde nichts." })) }
+                $detail = "$(@($cmp.Changes).Count) Aenderungen, $($cmp.Unchecked) nicht pruefbar, $($lost.Count) Pruefungen verloren$(if ($rid.Count) { ", $($noRef.Count) nicht verglichen, Regeln: $selTxt" })"
+            }
+            'SecRules' {
+                $sel = Get-HUTeamsSecSelection -Job $Job
+                if (-not $sel.Valid) { $res.Message = "Regelauswahl ungueltig ($($sel.Unknown -join ', ')) - nichts geprueft. Meldung im Reiter Teams pruefen."; $res.Code = 3; return $res }
+                $rid = [string[]]@(); if (-not $sel.Full) { $rid = [string[]]$sel.Ids }
+                $selTxt = if ($sel.Full) { 'alle' } elseif ($sel.Text.Length -le 80) { $sel.Text } else { "$($rid.Count) Regeln" }
+                if ($sel.Unknown.Count -and $log) { Write-HULog -Message "[Teams] $($Job.Name): Regelauswahl enthaelt Unbekanntes ($($sel.Unknown -join ', ')) - uebersprungen" -Level WARN }
+                $always = $false
+                try { if ($Job.Options -and $Job.Options.PSObject.Properties['sendAlways']) { $always = ConvertTo-HUTeamsBool $Job.Options.sendAlways $false } } catch { $always = $false }
+                $all = @(); $names = @{}; $failed = @{}
+                foreach ($k in $keys) {
+                    & $readLog $k
+                    $tt = $Settings.tenants | Where-Object { $_.key -eq $k } | Select-Object -First 1
+                    $names[$k] = "$(if ($tt) { $tt.displayName } else { $k })"
+                    # ein fehlgeschlagener Lauf ist ein Befund (Zeile "nicht lesbar"), keine Entwarnung
+                    try { $all += @(Invoke-HUSecCatalog -TenantKey $k -Settings $Settings -RuleIds $rid) }
+                    catch { $failed[$k] = 1; if ($log) { Write-HULog -Message "[Teams] $($Job.Name): $k Katalog fehlgeschlagen: $($_.Exception.Message)" -Level WARN } }
+                }
+                $spec = New-HUSecRulesCardSpec -Results $all -Keys $keys -Names $names -Failed $failed -Rules @(Get-HUSecRules) -Unknown $sel.Unknown -Selection $selTxt -SendAlways:$always -Title "$($Job.Name)"
+                $detail = "$(@($all | Where-Object { "$($_.Status)" -eq 'OK' }).Count) Pruefungen in Ordnung, Regeln: $selTxt"
             }
             default { $res.Message = "Unbekannte Auftragsart: $($Job.Kind)"; $res.Code = 3; return $res }
         }
@@ -999,6 +1174,9 @@ Export-ModuleMember -Function @(
     'Get-HUDefenderStatus',
     'New-HUDefenderCardSpec',
     'New-HUSecDriftCardSpec',
+    'New-HUSecRulesCardSpec',
+    'Get-HUTeamsSecSelection',
+    'ConvertTo-HUTeamsBool',
     'Invoke-HUTeamsJob',
     'Get-HUTeamsJobTaskName',
     'Get-HUTeamsJobTask',

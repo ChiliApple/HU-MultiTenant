@@ -42,6 +42,10 @@ $script:APAusWecker = $false
 $script:APAusStatusTenant = ''
 $script:APAusIntuneTenant = ''
 $script:APUebergabeDateien = @()
+# Zeitfilter der Uebersicht ("nur letzte"): Stunden 0 = heute (ab Mitternacht). Ein weiterer Zeitraum ist eine Zeile hier.
+$script:APZeitSpannen = @(@{ Text = '4 h'; Stunden = 4 }, @{ Text = '24 h'; Stunden = 24 }, @{ Text = '48 h'; Stunden = 48 }, @{ Text = 'heute'; Stunden = 0 })
+# Zeitbasis: Feld der Zeile je Eintrag der Auswahl
+$script:APZeitBasis = @(@{ Text = 'nach Einrichtung'; Feld = 'EingerichtetAm' }, @{ Text = 'nach Autopilot-Import'; Feld = 'ProfilZugewiesenAm' })
 $script:APProps = @('TenantName', 'Status', 'Seriennummer', 'Hersteller', 'Modell', 'GroupTag', 'Profil', 'Registrierung', 'InIntune', 'Geraetename', 'Benutzer', 'EingerichtetAm', 'LetzterKontakt', 'LetzterSync', 'Hinweis')
 
 function Write-APLog([string]$Text, [string]$Color = '#CCCCCC') { Add-HURtbLine $script:Controls['apLog'] $Text $Color }
@@ -60,6 +64,17 @@ function Set-APDot($Dot, [bool]$On) {
         $Dot.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
         $Dot.Opacity = 1.0; $Dot.Visibility = 'Collapsed'
     }
+}
+# Zeitfilter: Beginn des Zeitraums (Stunden 0 oder kleiner = heute ab Mitternacht, sonst jetzt minus Stunden)
+function Get-APZeitAb([int]$Stunden, [datetime]$Jetzt = (Get-Date)) {
+    if ($Stunden -le 0) { return $Jetzt.Date }
+    return $Jetzt.AddHours(-1 * $Stunden)
+}
+# Zeitfilter: liegt die angezeigte Zeit (yyyy-MM-dd HH:mm, lokal) im Zeitraum? Leer oder unlesbar = nein. Die Anzeige hat keine Sekunden, deshalb zaehlt die ganze Minute.
+function Test-APZeitNeu([string]$Zeit, [datetime]$Ab) {
+    $d = [datetime]::MinValue
+    if (-not [datetime]::TryParseExact("$Zeit".Trim(), 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$d)) { return $false }
+    return ($d -ge $Ab.AddTicks(-1 * ($Ab.Ticks % [TimeSpan]::TicksPerMinute)))
 }
 # Filter wie in Analyse: mehrere Woerter, alle muessen vorkommen
 function Test-APFilter($Row, [string]$Filter, [string[]]$Props) {
@@ -115,6 +130,13 @@ function Update-APGrid {
     $rows = $all
     if ($c.apChkNurProbleme.IsChecked) { $rows = @($rows | Where-Object { $_.Status -ne 'Bereit' }) }
     if ($c.apChkOhneIntune.IsChecked) { $rows = @($rows | Where-Object { $_.InIntune -ne 'ja' }) }
+    if ($c.apChkZeit.IsChecked) {
+        $zi = [Math]::Max(0, [Math]::Min($script:APZeitSpannen.Count - 1, [int]$c.apCmbZeit.SelectedIndex))
+        $bi = [Math]::Max(0, [Math]::Min($script:APZeitBasis.Count - 1, [int]$c.apCmbZeitBasis.SelectedIndex))
+        $ab = Get-APZeitAb ([int]$script:APZeitSpannen[$zi].Stunden)
+        $feld = "$($script:APZeitBasis[$bi].Feld)"
+        $rows = @($rows | Where-Object { $_.PSObject.Properties[$feld] -and (Test-APZeitNeu "$($_.$feld)" $ab) })
+    }
     $f = "$($c.apTxtFilter.Text)"
     if ($f.Trim()) { $rows = @($rows | Where-Object { Test-APFilter $_ $f $script:APProps }) }
     # Sortierung: Standard zuletzt eingerichtet oben; eine vom Benutzer gewaehlte Spalte bleibt beim Neuladen erhalten
@@ -209,7 +231,7 @@ function Show-APDetail($Row) {
         'Tenant' = $Row.TenantName; 'Status' = $Row.Status; 'Hinweis' = $Row.Hinweis; 'Seriennummer' = $Row.Seriennummer
         'Hersteller' = $Row.Hersteller; 'Modell' = $Row.Modell; 'Group Tag' = $Row.GroupTag; 'Profil' = $Row.Profil
         'Profil (Graph)' = $Row.ProfilRoh; 'Registrierung' = $Row.Registrierung; 'In Intune' = $Row.InIntune
-        'Geraetename' = $Row.Geraetename; 'Benutzer (UPN)' = $Row.Benutzer; 'Eingerichtet am (Intune)' = $Row.EingerichtetAm; 'Letzter Kontakt (Autopilot)' = $Row.LetzterKontakt; 'Letzter Sync (Intune)' = $Row.LetzterSync
+        'Geraetename' = $Row.Geraetename; 'Benutzer (UPN)' = $Row.Benutzer; 'Eingerichtet am (Intune)' = $Row.EingerichtetAm; 'Profil zugewiesen am (Autopilot)' = $(if ($Row.PSObject.Properties['ProfilZugewiesenAm']) { $Row.ProfilZugewiesenAm } else { '' }); 'Letzter Kontakt (Autopilot)' = $Row.LetzterKontakt; 'Letzter Sync (Intune)' = $Row.LetzterSync
         'Autopilot-ID' = $Row.AutopilotId; 'Intune-ID' = $Row.IntuneId
     }
     $zeilen = @(foreach ($k in $felder.Keys) { [pscustomobject]@{ Feld = $k; Wert = "$($felder[$k])" } })
@@ -1647,7 +1669,15 @@ function Initialize-HUAddonAutopilot {
     $c = $script:Controls
     $c.apTxtVersion.Text = Get-APVersionText
     Update-APTenantChecks
+    # Zeitfilter: Eintraege und Vorauswahl vor dem ersten Zeichnen und vor den Handlern setzen. Der Haken startet immer aus (wird nicht gemerkt).
+    foreach ($z in $script:APZeitSpannen) { [void]$c.apCmbZeit.Items.Add("$($z.Text)") }
+    $c.apCmbZeit.SelectedIndex = 1
+    foreach ($z in $script:APZeitBasis) { [void]$c.apCmbZeitBasis.Items.Add("$($z.Text)") }
+    $c.apCmbZeitBasis.SelectedIndex = 0
     Update-APGrid
+    $c.apChkZeit.Add_Click({ Update-APGrid })
+    $c.apCmbZeit.Add_SelectionChanged({ if ($script:Controls['apChkZeit'].IsChecked) { Update-APGrid } })
+    $c.apCmbZeitBasis.Add_SelectionChanged({ if ($script:Controls['apChkZeit'].IsChecked) { Update-APGrid } })
     $c.apBtnLaden.Add_Click({ Invoke-APLadenKnopf })
     $c.apBtnRechte.Add_Click({ Grant-APRechte })
     $c.apBtnLogClear.Add_Click({ $script:Controls['apLog'].Document.Blocks.Clear() })

@@ -246,7 +246,7 @@ function Invoke-HURemoteRun($S, $Req, $Settings, [string]$AppRoot, [int]$LimitMi
                 # haengender Lauf sendet danach keine Karte mehr
                 $vars = @{ AppRoot = $AppRoot; Settings = $Settings; __Job = $job; __Ids = $ids; __Tail = $tail; __Cancel = [hashtable]::Synchronized(@{ CancelReq = $false }) }
                 $r = Invoke-HURemoteChild $S $vars {
-                    foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Notify', 'HU.TeamsJobs') { $p = Join-Path $AppRoot "Core\$m.psm1"; if (Test-Path $p) { Import-Module $p -Force -DisableNameChecking -ErrorAction Stop } }
+                    foreach ($m in 'HU.Logging', 'HU.Auth', 'HU.Tenant', 'HU.Graph', 'HU.Intune', 'HU.SecCatalog', 'HU.Notify', 'HU.TeamsJobs') { $p = Join-Path $AppRoot "Core\$m.psm1"; if (Test-Path $p) { Import-Module $p -Force -DisableNameChecking -ErrorAction Stop } }
                     Initialize-Logging -LogFilePath $__Tail -MinLevel 'INFO'
                     Grant-HUSendApproval -Reason 'Handy: Meldung'   # Bestaetigung am Handy ist die Freigabe
                     $res = Invoke-HUTeamsJob -Job $__Job -Settings $Settings -AppRoot $AppRoot -TargetIds $__Ids -Cancel $__Cancel

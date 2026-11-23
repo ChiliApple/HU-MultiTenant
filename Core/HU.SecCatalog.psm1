@@ -669,7 +669,7 @@ $script:HUSecDefaults = @{
 $script:HUSecBaselineInfo = @(
     @{ Rule = 'Katalog'; Key = 'disabled';      Kind = 'rules'; Text = 'Abgeschaltete Regeln (Nummern, mit Komma getrennt, z. B. A29, A30, K06): Zelle zeigt "aus", zaehlt weder in der Ampel noch im Soll-Stand. Regeln mit Mindeststandard lassen sich nicht abschalten.' }
     @{ Rule = 'Katalog'; Key = 'statusOnly';    Kind = 'rules'; Text = 'Teams-Meldung: bei diesen Regeln nur den Wechsel ok/Abweichung melden, nicht jede Aenderung der Anzahl (z. B. Defender-Alarme, Konten, Geraete). Regeln mit Mindeststandard werden immer voll gemeldet.' }
-    @{ Rule = 'Katalog'; Key = 'silent';        Kind = 'rules'; Text = 'Teams-Meldung: diese Regeln gar nicht melden (Matrix und Ampel bleiben). Regeln mit Mindeststandard werden immer gemeldet.' }
+    @{ Rule = 'Katalog'; Key = 'silent';        Kind = 'rules'; Text = 'Teams-Meldung "Sicherheits-Aenderung": diese Regeln gar nicht melden (Matrix und Ampel bleiben). Regeln mit Mindeststandard werden immer gemeldet. Die Meldung "Sicherheits-Regeln" meldet ihre gewaehlten Regeln trotzdem.' }
     @{ Rule = 'Katalog'; Key = 'basic';         Kind = 'rulesAny'; Text = 'Grundschutz fuer die Ansicht "Einfach" (Nummern, mit Komma getrennt). Gilt fuer alle Tenants; ein Wert je Tenant wird hier nicht verwendet.' }
     @{ Rule = 'V1';  Key = 'accounts';          Kind = 'guids'; Text = 'Notfallkonten (Objekt-IDs der Benutzer, mit Komma getrennt). Jedes muss in jeder aussperrfaehigen Richtlinie ausgenommen sein; gilt auch fuer A25 und A27.' }
     @{ Rule = 'V5';  Key = 'policies';          Kind = 'names'; Text = 'Richtlinien, die zusammen den MFA-Grundschutz bilden (Nummer am Namensanfang wie 100, 200 oder voller Name; mit Komma getrennt). Sind alle vorhanden und aktiv, gilt V5 als erfuellt - auch ohne eine einzelne Richtlinie fuer alle Benutzer.' }
@@ -1837,7 +1837,7 @@ $script:HUSecRules = @(
             if ($all.Count) { @{ Status = 'Abweichung'; Count = $all.Count; Detail = "$($all.Count) gefaehrdete(r) Benutzer, davon $hm mit Risiko hoch oder mittel (Risikostufe 'hidden' oder 'none' = ohne P2 nicht sichtbar)" } }
             else { @{ Status = 'OK'; Count = 0; Detail = 'keine gefaehrdeten Benutzer' } }
         } }
-    @{ Id = 'K07'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine riskanten Anmeldungen mit angenommenem Kennwort (erfolgreich oder erst danach gestoppt; Anmeldeprotokoll)'; Facts = @('signrisk'); Min = $false; Rolling = $true; RollingCount = $true; ItemsLabel = 'Konten'; ItemsSort = 'Letzte'; ItemsDesc = $true
+    @{ Id = 'K07'; Area = 'Entra'; Sev = 'Hoch'; Title = 'Keine riskanten Anmeldungen mit angenommenem Kennwort (erfolgreich oder erst danach gestoppt; Anmeldeprotokoll)'; Facts = @('signrisk'); Min = $false; Rolling = $true; RollingCount = $true; CardDetail = $true; ItemsLabel = 'Konten'; ItemsSort = 'Letzte'; ItemsDesc = $true
         Items = { param($F, $B)
             foreach ($k in @(Get-HUSecK07 $F)) {
                 $f = $k.First
@@ -2654,7 +2654,7 @@ function Get-HUSecBasicLight {
 # ============================================================================
 # Pruefumfang (Auswahl in Analyse > Sicherheit) und Teil-Laeufe
 # Alles hier ist reine Logik ohne Fenster: Umfang aufloesen, Ergebnisse zusammenfuehren, "nicht geprueft", Sperre von "Soll speichern".
-# Die taegliche Teams-Pruefung (HU.TeamsJobs) prueft immer alles, die Fernbedienung nach ihrer eigenen Auswahl am Handy (-RuleIds, wenn weniger gewaehlt ist); beide unabhaengig vom Umfang der Oberflaeche.
+# Die taegliche Teams-Pruefung (HU.TeamsJobs) prueft alles, solange an der Meldung keine Regeln gewaehlt sind (Resolve-HUSecRuleSelection), die Fernbedienung nach ihrer eigenen Auswahl am Handy (-RuleIds, wenn weniger gewaehlt ist); beide unabhaengig vom Umfang der Oberflaeche.
 # ============================================================================
 # Ein weiterer Umfang ist EINE Zeile: Id, Text, Tip (Tooltip) und entweder Include (nur diese Regeln) oder Exclude (alle ausser diesen).
 # Beides leer = keine Einschraenkung. Die Regelnummern muessen im Katalog stehen (Test in HU.SecScope.Tests.ps1).
@@ -2694,6 +2694,65 @@ function Get-HUSecRunPlan {
     $ids = @(Resolve-HUSecScope -Id $s.Id)
     $full = ($ids.Count -eq 0)
     return [pscustomobject]@{ Id = $s.Id; Text = $s.Text; RuleIds = [string[]]$ids; Full = $full; SaveHistory = $full }
+}
+
+# Regelauswahl fuer Aufrufer ohne Oberflaeche (Teams-Meldungen, spaeter Fernbedienung oder Zusatzmodule): EINE Stelle, die
+# einen gespeicherten Wert in Regelnummern aufloest. Wert = Liste oder Text mit Komma, Strichpunkt oder Leerzeichen.
+# Erlaubt sind Regelnummern (K07) und Kennungen eines Umfangs (onlyRisk, noRisk, all) - ein neuer Umfang gilt damit sofort auch hier.
+# Rueckgabe:
+#   Set     $false = nichts gewaehlt (Feld fehlt oder leer): keine Einschraenkung, wie bisher
+#   Full    $true  = es wird alles geprueft (nichts gewaehlt oder Umfang "all")
+#   Ids     Regelnummern in der Schreibweise des Katalogs (leer bei Full)
+#   Tokens  die gueltigen Eintraege, so wie sie gespeichert werden (Umfang bleibt Umfang und folgt spaeteren Aenderungen)
+#   Explicit die einzeln mit Nummer genannten Regeln (ohne die, die nur ueber einen Umfang hereinkommen). Wer eine Regel einzeln
+#           bestellt, bekommt gesagt, wenn sie nicht geprueft oder verglichen werden konnte; ein Umfang verhaelt sich wie "alles".
+#   Unknown Eintraege, die weder Regel noch Umfang sind (z. B. eine spaeter entfernte Regel)
+#   Valid   $false = etwas gewaehlt, aber nichts Gueltiges uebrig. Aufrufer brechen dann ab und pruefen NICHT still alles.
+# Angenommen werden nur Text und Listen von Text (eine Ebene). Jeder andere Typ (Objekt, Tabelle - z. B. aus einer von Hand
+# bearbeiteten Datei) gilt als gesetzt und unbekannt: "$_" auf einem Objekt ist unter Windows PowerShell 5.1 leer, die Auswahl
+# wuerde sonst still zu "alles". Zahlen und Wahrheitswerte werden zu Text und sind damit unbekannte Eintraege.
+function Resolve-HUSecRuleSelection {
+    [CmdletBinding()]
+    param($Value = $null)
+    $raw = New-Object System.Collections.Generic.List[string]
+    $bad = New-Object System.Collections.Generic.List[string]
+    foreach ($e in @($Value)) {
+        foreach ($x in $(if ($e -is [array]) { $e } else { , $e })) {
+            if ($null -eq $x) { continue }
+            if ($x -is [string] -or $x -is [System.ValueType]) { foreach ($p in ("$x" -split '[,;\s]+')) { if ("$p".Trim()) { $raw.Add("$p".Trim()) } } }
+            else { $n = "($($x.GetType().Name))"; if (-not $bad.Contains($n)) { $bad.Add($n) } }
+        }
+    }
+    $res = [pscustomobject]@{ Set = [bool]($raw.Count + $bad.Count); Full = $true; Ids = [string[]]@(); Tokens = [string[]]@(); Explicit = [string[]]@(); Unknown = [string[]]@(); Valid = $true; Text = '' }
+    if (-not $res.Set) { return $res }
+    $ruleIds = @(Get-HUSecRules | ForEach-Object { "$($_.Id)" })
+    $scopes = @(Get-HUSecScopes)
+    $ids = New-Object System.Collections.Generic.List[string]
+    $tok = New-Object System.Collections.Generic.List[string]
+    $unk = New-Object System.Collections.Generic.List[string]
+    $exp = New-Object System.Collections.Generic.List[string]
+    $full = $false
+    foreach ($t in $raw) {
+        $rid = @($ruleIds | Where-Object { $_ -eq $t })[0]   # -eq: Gross-/Kleinschreibung egal, Ergebnis in Katalog-Schreibweise
+        if ($rid) { if (-not $ids.Contains($rid)) { $ids.Add($rid) }; if (-not $tok.Contains($rid)) { $tok.Add($rid) }; if (-not $exp.Contains($rid)) { $exp.Add($rid) }; continue }
+        $sc = @($scopes | Where-Object { $_.Id -eq $t })[0]
+        if ($sc) {
+            if (-not $tok.Contains("$($sc.Id)")) { $tok.Add("$($sc.Id)") }
+            if ($sc.Full) { $full = $true } else { foreach ($x in @(Resolve-HUSecScope -Id $sc.Id)) { if (-not $ids.Contains("$x")) { $ids.Add("$x") } } }
+            continue
+        }
+        if (-not @($unk | Where-Object { $_ -eq $t }).Count) { $unk.Add($t) }   # -eq: x99 und X99 nur einmal nennen
+    }
+    foreach ($n in $bad) { $unk.Add($n) }
+    $res.Tokens = [string[]]$tok.ToArray()
+    $res.Unknown = [string[]]$unk.ToArray()
+    $res.Explicit = [string[]]@($ruleIds | Where-Object { $exp.Contains($_) })
+    $res.Full = $full
+    # Reihenfolge wie im Katalog, damit Karten und Protokoll immer gleich aussehen
+    if (-not $full) { $res.Ids = [string[]]@($ruleIds | Where-Object { $ids.Contains($_) }) }
+    $res.Valid = ($full -or $res.Ids.Count -gt 0)
+    $res.Text = if ($full) { 'alle Regeln' } else { $res.Ids -join ', ' }
+    return $res
 }
 
 function Get-HUSecNotRunText { return "nicht gepr$([char]0xFC)ft" }
@@ -2976,6 +3035,38 @@ function Get-HUSecQuiet {
     return @{ so = @(@($k.statusOnly) | ForEach-Object { "$_".Trim().ToUpperInvariant() } | Where-Object { $_ }); si = @(@($k.silent) | ForEach-Object { "$_".Trim().ToUpperInvariant() } | Where-Object { $_ }) }
 }
 
+# Fuer Aufrufer mit Regelauswahl (Teams-Meldung "Sicherheits-Aenderung" mit Options.rules): welche Ergebnisse vergleicht
+# Compare-HUSecReference NICHT, und warum? Der Vergleich ueberspringt diese Faelle still. Wer bestimmte Regeln bestellt hat,
+# muss das erfahren, sonst hiesse "keine Aenderung" in Wahrheit "nie verglichen". Reine Funktion, schreibt nichts.
+# Rueckgabe je Fall: Tenant, RuleId (leer bei fehlerhaften Sollwerten), Why.
+# Gruende in der Reihenfolge des Vergleichs: fehlt im Soll, stumm, Status heute, Status im Soll. So steht "Soll neu speichern" immer dann da, wenn es hilft.
+# -RuleIds: nur diese Regeln melden (die einzeln bestellten). Regeln, die nie vergleichbar sind (reine Hinweise, Handpruefung),
+#           kaemen sonst ueber einen Umfang bei jedem Lauf wieder, ohne dass sich das beheben liesse.
+function Get-HUSecNotCompared {
+    param([AllowEmptyCollection()][object[]]$Results = @(), [Parameter(Mandatory)]$Reference, [string[]]$Keys = @(), [string[]]$RuleIds = @())
+    $ruleOf = @{}; foreach ($r in (Get-HUSecRules)) { $ruleOf[$r.Id] = $r }
+    $ref = @{}; foreach ($x in @($Reference.rows)) { $ref["$($x.tenant)|$($x.ruleId)"] = $x }
+    $checkable = 'OK', 'Abweichung', 'Ausnahme'
+    $quiet = @{}
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($r in @($Results | Where-Object { $_ -and "$($_.RuleId)" })) {
+        if ($Keys.Count -and $Keys -notcontains $r.Tenant) { continue }
+        $why = ''
+        if ("$($r.RuleId)" -eq '-') { $out.Add([pscustomobject]@{ Tenant = "$($r.Tenant)"; RuleId = ''; Why = 'Sollwerte fehlerhaft' }); continue }
+        if ($RuleIds.Count -and $RuleIds -notcontains "$($r.RuleId)") { continue }
+        if (-not $quiet.ContainsKey("$($r.Tenant)")) { $quiet["$($r.Tenant)"] = Get-HUSecQuiet "$($r.Tenant)" }
+        $rule = $ruleOf["$($r.RuleId)"]
+        $o = $ref["$($r.Tenant)|$($r.RuleId)"]
+        if (-not $o) { $why = 'im Soll-Stand nicht enthalten (Soll neu speichern)' }
+        elseif ($quiet["$($r.Tenant)"].si -contains "$($r.RuleId)" -and -not ($rule -and $rule.Min)) { $why = 'in den Sollwerten stumm (Katalog silent)' }
+        elseif ("$($r.Status)" -eq 'Info') { $why = 'abgeschaltet oder nur Hinweis' }
+        elseif ("$($r.Status)" -notin $checkable) { $why = 'heute nicht pruefbar' }
+        elseif ("$($o.status)" -notin $checkable) { $why = 'im Soll-Stand nicht pruefbar oder abgeschaltet (Soll neu speichern)' }
+        if ($why) { $out.Add([pscustomobject]@{ Tenant = "$($r.Tenant)"; RuleId = "$($r.RuleId)"; Why = $why }) }
+    }
+    return @($out.ToArray())
+}
+
 function Compare-HUSecReference {
     param([Parameter(Mandatory)][object[]]$Results, [Parameter(Mandatory)]$Reference, [string[]]$Keys = @())
     $ruleOf = @{}; foreach ($r in (Get-HUSecRules)) { $ruleOf[$r.Id] = $r }
@@ -3072,6 +3163,6 @@ Export-ModuleMember -Function @(
     'Get-HUSecRules', 'Invoke-HUSecCatalog', 'New-HUSecContext', 'Get-HUSecFact', 'Invoke-HUSecFetch',
     'Get-HUSecExceptions', 'Add-HUSecException', 'Get-HUSecManual', 'Set-HUSecManual', 'Remove-HUSecManual', 'Get-HUSecManualResult', 'Get-HUSecManualIds', 'Test-HUSecManualRule', 'Remove-HUSecException', 'Test-HUSecExceptionInput', 'Find-HUSecException', 'Test-HUSecExceptionOutdated', 'Get-HUSecExceptionState', 'Get-HUSecFix', 'Get-HUSecFixData',
     'Get-HUSecBaseline', 'Save-HUSecSnapshot', 'Save-HUSecReference', 'Get-HUSecReference', 'Compare-HUSecReference', 'Update-HUSecLost', 'Get-HUSecReferenceWorse', 'Set-HUSecReferenceWorseShown', 'Get-HUSecBaselineEdit', 'Save-HUSecBaselineEdit', 'Get-HUSecPath', 'Get-HUSecMatrix', 'Get-HUSecCoverage', 'Get-HUSecLight', 'Get-HUSecWhy', 'Get-HUSecItems', 'Get-HUSecItemsLabel', 'Test-HUSecItemsExport',
-    'Get-HUSecScopes', 'Resolve-HUSecScope', 'Get-HUSecRunPlan', 'Get-HUSecNotRunText', 'Merge-HUSecTenantRows', 'Merge-HUSecRunData', 'Get-HUSecResultList', 'Get-HUSecNotRunIds', 'Get-HUSecCellStand', 'Get-HUSecLastRunResults', 'Get-HUSecRefLock', 'Get-HUSecRunNote',
+    'Get-HUSecScopes', 'Resolve-HUSecScope', 'Resolve-HUSecRuleSelection', 'Get-HUSecNotCompared', 'Get-HUSecRunPlan', 'Get-HUSecNotRunText', 'Merge-HUSecTenantRows', 'Merge-HUSecRunData', 'Get-HUSecResultList', 'Get-HUSecNotRunIds', 'Get-HUSecCellStand', 'Get-HUSecLastRunResults', 'Get-HUSecRefLock', 'Get-HUSecRunNote',
     'Get-HUSecBasicIds', 'Get-HUSecBasicLight', 'Get-HUSecChanges', 'Get-HUSecAuditKind', 'ConvertTo-HUSecAuditRow', 'Get-HUSecAuditRows', 'Get-HUSecAuditEval', 'ConvertTo-HUSecAuditDetail', 'ConvertFrom-HUSecAuditValue'
 )

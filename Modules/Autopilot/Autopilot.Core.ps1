@@ -175,6 +175,8 @@ function ConvertTo-APZeile($Ap, [hashtable]$IntuneById, [hashtable]$IntuneBySeri
         LetzterSync     = $(if ($md) { ConvertTo-APZeit $md.lastSyncDateTime } else { '' })
         # Autopilot liefert kein Import-/Registrierungsdatum (Graph) - naechstes Datum: Einrichtung in Intune
         EingerichtetAm  = $(if ($md) { ConvertTo-APZeit $md.enrolledDateTime } else { '' })
+        # Zeit der Profil-Zuweisung (meist wenige Minuten nach dem Import) - fuer den Zeitfilter der Uebersicht, leer ohne Profil
+        ProfilZugewiesenAm = $(if ($Ap.PSObject.Properties['deploymentProfileAssignedDateTime']) { ConvertTo-APZeit $Ap.deploymentProfileAssignedDateTime } else { '' })
         Hinweis         = $hinweis
         ProfilRoh       = $prof
         AutopilotId     = "$($Ap.id)"

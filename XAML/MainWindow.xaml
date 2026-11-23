@@ -1679,12 +1679,13 @@
                                                 <DockPanel Margin="0,0,0,6" LastChildFill="False">
                                                     <StackPanel DockPanel.Dock="Left" Width="160" Margin="0,0,10,0">
                                                         <TextBlock Text="Eingebaute Meldung" Style="{StaticResource FieldLabel}"/>
-                                                        <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Fertige Meldungen. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp, Defender-Alarm und Sicherheits-Aenderung nur, wenn es etwas zu melden gibt. Fuer ein eigenes Skript das Feld darunter verwenden." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
+                                                        <ComboBox x:Name="cmbTeamsJobKind" ToolTip="Fertige Meldungen. Tages-Ampel sendet immer; Secret-Countdown, Lizenzen knapp, Defender-Alarm und Sicherheits-Aenderung nur, wenn es etwas zu melden gibt. Sicherheits-Regeln meldet den heutigen Stand gewaehlter Regeln des Sicherheitskatalogs (z. B. K07), auf Wunsch auch ohne Befund. Fuer ein eigenes Skript das Feld darunter verwenden." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,0">
                                                             <ComboBoxItem Content="Tages-Ampel" Tag="Daily"/>
                                                             <ComboBoxItem Content="Secret-Countdown" Tag="Secrets"/>
                                                             <ComboBoxItem Content="Lizenzen knapp" Tag="Licenses"/>
                                                             <ComboBoxItem Content="Defender-Alarm" Tag="Defender"/>
                                                             <ComboBoxItem Content="Sicherheits-Aenderung" Tag="SecDrift"/>
+                                                            <ComboBoxItem Content="Sicherheits-Regeln" Tag="SecRules"/>
                                                         </ComboBox>
                                                     </StackPanel>
                                                     <StackPanel DockPanel.Dock="Left" Width="70" Margin="0,0,10,0">
@@ -1692,6 +1693,16 @@
                                                         <TextBox x:Name="txtTeamsJobTime" ToolTip="Uhrzeit (HH:mm) fuer die Aufgabenplanung" Style="{StaticResource DarkTextBox}" FontSize="12" Margin="0,2,0,0" Text="07:00"/>
                                                     </StackPanel>
                                                 </DockPanel>
+                                                <StackPanel x:Name="pnlTeamsJobSec" Visibility="Collapsed" Margin="0,0,0,6">
+                                                    <TextBlock Text="Regeln des Sicherheitskatalogs (leer = alle)" Style="{StaticResource FieldLabel}"/>
+                                                    <Grid Margin="0,2,0,2">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                        <TextBox x:Name="txtTeamsJobRules" Grid.Column="0" AutomationProperties.Name="Regeln der Meldung" ToolTip="Regelnummern mit Komma getrennt, z. B. K07, K04. Auch die Kennung eines Umfangs ist erlaubt (z. B. onlyRisk); sie folgt spaeteren Aenderungen des Umfangs. Leer = alle Regeln. Unbekannte Eintraege werden beim Speichern abgelehnt." Style="{StaticResource DarkTextBox}" FontSize="12"/>
+                                                        <ComboBox x:Name="cmbTeamsJobRuleAdd" Grid.Column="1" Width="200" Margin="6,0,0,0" AutomationProperties.Name="Regel oder Umfang hinzufuegen" ToolTip="Eine Regel oder einen Umfang aus dem Sicherheitskatalog waehlen: der Eintrag wird links angefuegt. Mit der Tastatur: Eintrag mit den Pfeiltasten waehlen, Enter uebernimmt, Esc verwirft." Style="{StaticResource DarkComboBox}" FontSize="11"/>
+                                                    </Grid>
+                                                    <CheckBox x:Name="chkTeamsJobSendAlways" Content="Auch ohne Befund senden" Foreground="#CCCCCC" FontSize="11" Margin="0,2,0,2" ToolTip="Aus (Standard): Karte nur, wenn eine gewaehlte Regel abweicht oder nicht pruefbar ist. An: die Karte kommt bei jedem Lauf, auch wenn alles in Ordnung ist."/>
+                                                    <TextBlock x:Name="lblTeamsJobSecHint" Style="{StaticResource HintText}" TextWrapping="Wrap" FontSize="10"/>
+                                                </StackPanel>
                                                 <StackPanel x:Name="pnlTeamsJobScript" Margin="0,0,0,6">
                                                     <TextBlock Text="oder Meldung aus Skript (gespeichertes Snippet aus Quick Script)" Style="{StaticResource FieldLabel}"/>
                                                     <ComboBox x:Name="cmbTeamsJobSnippet" AutomationProperties.Name="Skript der Meldung" ToolTip="Snippet aus Quick Script. Laeuft je Tenant oder einmal (Einstellung darunter) mit den Werten der @param-Felder an dieser Meldung." Style="{StaticResource DarkComboBox}" FontSize="12" Margin="0,2,0,2"/>
