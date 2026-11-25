@@ -32,7 +32,7 @@ BeforeAll {
 AfterAll { Remove-Item -LiteralPath $script:UserRoot -Recurse -Force -ErrorAction SilentlyContinue }
 
 Describe 'Verschiebbare Bereiche merken' {
-    BeforeEach { $script:UIState = $null; $script:HUSplitRoots = @{}; $script:HUSplitLimited.Clear(); $script:HUSplitWant.Clear(); Remove-Item -LiteralPath $script:StateFilePath -ErrorAction SilentlyContinue }
+    BeforeEach { $script:UIState = $null; $script:HUSplitRoots = @{}; $script:HUSplitLimited.Clear(); $script:HUSplitWant.Clear(); $script:HUSplitApplied.Clear(); Remove-Item -LiteralPath $script:StateFilePath -ErrorAction SilentlyContinue }
 
     It 'findet das Grid mit Splitter und liest Zeilenhoehen' {
         if (-not $script:Sta) { Set-ItResult -Skipped -Because 'WPF braucht STA'; return }
@@ -103,6 +103,36 @@ Describe 'Verschiebbare Bereiche merken' {
         [void]$tc.Items.Add($a); [void]$tc.Items.Add($b); $outer.Content = $tc
         @(Get-HUSplitterGrids $outer).Count | Should -Be 1
     }
+    It 'echter Modul-Reiter (Autopilot, Tab.xaml): Bereiche nach Beenden und Neustart wieder da' {
+        if (-not $script:Sta) { Set-ItResult -Skipped -Because 'WPF braucht STA'; return }
+        $theme = [IO.File]::ReadAllText((Join-Path $script:Root 'XAML\Theme.xaml'), [Text.Encoding]::UTF8)
+        $res = [regex]::Match($theme, '(?s)<ResourceDictionary[^>]*>(.*)</ResourceDictionary>').Groups[1].Value
+        $load = { [System.Windows.Markup.XamlReader]::Parse(([IO.File]::ReadAllText((Join-Path $script:Root 'Modules\Autopilot\Tab.xaml'), [Text.Encoding]::UTF8)).Replace('<!--HU:THEME-->', $res)) }
+        $tab = & $load
+        Register-HUSplitterState $tab 'Reiter.tabAddonAutopilot'
+        $grids = @(Get-HUSplitterGrids $tab)
+        $grids.Count | Should -Be 2
+        # in jedem Grid die Zeile nach dem Trenner aendern (wie Ziehen)
+        $want = @()
+        foreach ($g in $grids) {
+            $sp = @($g.Children | Where-Object { $_ -is [System.Windows.Controls.GridSplitter] })[0]
+            $r = [System.Windows.Controls.Grid]::GetRow($sp) + 1
+            if ($g.RowDefinitions[$r].Height.IsStar) { $g.RowDefinitions[$r].Height = [System.Windows.GridLength]::new(3, 'Star'); $want += 'Star:3' }
+            else { $g.RowDefinitions[$r].Height = [System.Windows.GridLength]::new(333); $want += 'Pixel:333' }
+        }
+        Save-HUAllSplitterState; Save-HUUIState
+        $script:UIState = $null; $script:HUSplitRoots = @{}
+        $tab2 = & $load
+        Register-HUSplitterState $tab2 'Reiter.tabAddonAutopilot'
+        $i = 0
+        foreach ($g in @(Get-HUSplitterGrids $tab2)) {
+            $sp = @($g.Children | Where-Object { $_ -is [System.Windows.Controls.GridSplitter] })[0]
+            $r = [System.Windows.Controls.Grid]::GetRow($sp) + 1
+            ConvertTo-HUGridLengthText $g.RowDefinitions[$r].Height | Should -Be $want[$i]
+            $i++
+        }
+        $i | Should -Be 2
+    }
     It 'kleinere Flaeche (anderer Bildschirm): fester Bereich wird begrenzt, Trenner bleibt erreichbar' {
         if (-not $script:Sta) { Set-ItResult -Skipped -Because 'WPF braucht STA'; return }
         $p = New-SplitPanel
@@ -121,6 +151,15 @@ Describe 'Verschiebbare Bereiche merken' {
         Limit-HUSplitterGrid $g
         $g.RowDefinitions[2].Height.Value | Should -Be 900
         (@(Get-HUSplitterSnapshot $p)[0].R)[2] | Should -Be 'Pixel:900'
+        # gekuerzt und danach anders verschoben (Tastatur, kein Loslassen-Ereignis): der neue Wert gilt, nicht der alte Wunsch
+        $g.Measure([System.Windows.Size]::new(300, 500)); $g.Arrange([System.Windows.Rect]::new(0, 0, 300, 500))
+        Limit-HUSplitterGrid $g
+        $g.RowDefinitions[2].Height.Value | Should -BeLessThan 900
+        $g.RowDefinitions[2].Height = [System.Windows.GridLength]::new(150)
+        (@(Get-HUSplitterSnapshot $p)[0].R)[2] | Should -Be 'Pixel:150'
+        $g.Measure([System.Windows.Size]::new(300, 1200)); $g.Arrange([System.Windows.Rect]::new(0, 0, 300, 1200))
+        Limit-HUSplitterGrid $g
+        $g.RowDefinitions[2].Height.Value | Should -Be 150
         # passt der Wert, bleibt er
         $g.RowDefinitions[2].Height = [System.Windows.GridLength]::new(200)
         $g.Measure([System.Windows.Size]::new(300, 500)); $g.Arrange([System.Windows.Rect]::new(0, 0, 300, 500))

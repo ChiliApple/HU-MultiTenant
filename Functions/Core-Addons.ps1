@@ -13,6 +13,8 @@
                      "tab": { "header": "...", "xaml": "Tab.xaml", "script": "Addon.ps1", "init": "Initialize-HUAddon<Kennung>" } }
       Tab.xaml     Wurzel <TabItem>; Theme ueber <TabItem.Resources><!--HU:THEME--></TabItem.Resources>
       Addon.ps1    Funktionen des Moduls (wird in den Programm-Bereich geladen), Einstieg = "init"
+    Verschiebbare Bereiche (GridSplitter) im Reiter und in Fenstern mit Restore-/Save-HUDialogState merkt der Kern (2.6.24,
+    UI-State.ps1, Register-HUSplitterState). Module bauen dafuer nichts Eigenes.
     Mitgeliefert (2.5.4): <AppRoot>\Modules\<Kennung>\ - gleicher Aufbau, Teil des Programms (ohne eigene Signatur).
     Lokal: <AppRoot>\Addons\<Kennung>\ (Dateien + addon.sha256 + addon.sha256.p7s); neue Fassungen warten in
     Addons\.pending\<Kennung>\ und werden beim naechsten Start uebernommen.

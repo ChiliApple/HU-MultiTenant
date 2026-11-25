@@ -7,7 +7,7 @@
   - Gilt für alle Reiter, auch für Reiter von Zusatzmodulen (z. B. Kinderschutz: App-Steuerung oben und unten, Protokoll), und für Fenster, die ihre Größe merken.
   - Module brauchen dafür nichts Eigenes. Bisher merkten sich nur einzelne Bereiche ihre Größe, in den Modul-Reitern ging die Aufteilung beim Beenden verloren.
   - Neu gemerkt: Reiter Autopilot, im Reiter Teams die Meldungsliste und das Sendeprotokoll, in der Snippet-Verwaltung die Aufteilung Liste und Editor, dazu das Fenster Anleitungen (Größe, Platz und Breite der Liste).
-  - Feste Bereiche werden nie größer als die vorhandene Fläche. Nach einem Wechsel auf einen kleineren Bildschirm bleibt der Trenner erreichbar.
+  - Feste Bereiche werden nie größer als die vorhandene Fläche. Nach einem Wechsel auf einen kleineren Bildschirm bleibt der Trenner erreichbar. Ist wieder Platz, z. B. nach kurzem Andocken des Fensters, kommt die gemerkte Größe zurück.
   - Hat sich ein Bereich in einer neuen Version geändert, gilt dort wieder die Standard-Aufteilung.
   - Ein Test meldet künftig jeden Trenner in Reitern und Fenstern, der nicht gemerkt wird.
 
