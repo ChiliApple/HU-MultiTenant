@@ -163,8 +163,10 @@ function Get-HUBuiltinModules([Version]$AppVersion, [string]$Dir = '') {
 
 # --- Installieren / Aktualisieren --------------------------------------------------------------
 # Neueste signierte Fassung (Kanal wie das Programm) laden, pruefen und unter Addons\.pending\<Kennung> ablegen.
-# Rueckgabe: Status (Neu, Aktuell, Fehler), Text, Id, Version.
-function Install-HUAddon([string]$Owner, [string]$Repo, [string]$Token, [string]$AddonsDir, [Version]$AppVersion, [string]$Channel = 'Stable', [string]$Thumbprint) {
+# Rueckgabe: Status (Neu, Aktuell, Entwicklung, Fehler), Text, Id, Version.
+# -DevVersions: Kennungen, die gerade aus AddonsDev laufen (Kennung -> Version). Fuer sie wird die neue Fassung trotzdem
+# abgelegt (Addons bleibt aktuell), aber mit Status Entwicklung: ein Neustart wuerde weiter AddonsDev laden.
+function Install-HUAddon([string]$Owner, [string]$Repo, [string]$Token, [string]$AddonsDir, [Version]$AppVersion, [string]$Channel = 'Stable', [string]$Thumbprint, [hashtable]$DevVersions = @{}) {
     $res = [pscustomobject]@{ Status = 'Fehler'; Text = ''; Id = ''; Version = $null }
     try {
         $rel = Select-HMRelease (Get-HMReleases $Owner $Repo $Token) $Channel -SignedOnly
@@ -201,6 +203,13 @@ function Install-HUAddon([string]$Owner, [string]$Repo, [string]$Token, [string]
             if (Test-Path -LiteralPath $pend) { Remove-Item -LiteralPath $pend -Recurse -Force }
             New-Item -ItemType Directory -Path (Split-Path $pend -Parent) -Force | Out-Null
             Move-Item -LiteralPath $stage -Destination $pend -Force
+            if ($null -ne $DevVersions -and $DevVersions.ContainsKey($i.Id)) {
+                $dv = ConvertTo-HMVersion "$($DevVersions[$i.Id])"
+                $res.Status = 'Entwicklung'
+                $res.Text = if ($dv -and $dv -lt $i.Version) { "$($i.Title) $($i.Version) geladen - es laeuft weiter die aeltere Fassung $dv aus AddonsDev, solange sie dort liegt" }
+                            else { "$($i.Title) $($i.Version) geladen - laeuft schon aus AddonsDev$(if ($dv) { " ($dv)" }), kein Neustart noetig" }
+                return $res
+            }
             $res.Status = 'Neu'; $res.Text = "$($i.Title) $($i.Version) geladen - wirkt nach dem Neustart von HU-MultiTenant"
             return $res
         } finally { if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue } }

@@ -76,6 +76,18 @@ function Get-HUAddonStartList {
     return $ok
 }
 
+# Kennungen der Module, die gerade aus AddonsDev laufen (Kennung -> Version). Fuer sie fragt die Modulpruefung nicht nach
+# einem Neustart, weil der weiter AddonsDev laden wuerde.
+function Get-HUAddonDevVersions {
+    $h = @{}
+    $dev = (Join-Path $script:AppRoot 'AddonsDev').TrimEnd('\')
+    foreach ($a in @($script:LoadedAddons)) {
+        if (-not $a -or -not "$($a.Dir)") { continue }
+        if ((Split-Path -Parent "$($a.Dir)").TrimEnd('\') -eq $dev) { $h["$($a.Id)"] = "$($a.Version)" }
+    }
+    return $h
+}
+
 # Im Hintergrund: fuer jedes hinterlegte Modul die neueste signierte Fassung holen (wirkt nach dem Neustart)
 function Start-HUAddonUpdate([switch]$Loud) {
     $src = @(Get-HUAddonSources)
@@ -85,16 +97,16 @@ function Start-HUAddonUpdate([switch]$Loud) {
     $chan = if ($cfg) { "$($cfg.Channel)" } else { 'Stable' }
     $script:AddonUpdateLoud = [bool]$Loud
     Invoke-AsyncCommand -ScriptBlock {
-        param($lib, $addonLib, $sources, $dir, $ver, $chan, $tp)
+        param($lib, $addonLib, $sources, $dir, $ver, $chan, $tp, $devVer)
         . $lib; . $addonLib
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
         $out = @()
         foreach ($s in @($sources)) {
-            $r = Install-HUAddon -Owner $s.Owner -Repo $s.Repo -Token $s.Token -AddonsDir $dir -AppVersion ([Version]$ver) -Channel $chan -Thumbprint $tp
+            $r = Install-HUAddon -Owner $s.Owner -Repo $s.Repo -Token $s.Token -AddonsDir $dir -AppVersion ([Version]$ver) -Channel $chan -Thumbprint $tp -DevVersions $devVer
             $out += "$($r.Status)|$($s.Owner)/$($s.Repo)|$($r.Text)"
         }
         return ($out -join "`n")
-    } -ArgumentList @($script:UpdateLib, (Join-Path $script:AppRoot 'Functions\Core-Addons.ps1'), $src, (Get-HUAddonsDir), "$($script:Version)", $chan, $tp) -TimeoutSec 300 -OnComplete {
+    } -ArgumentList @($script:UpdateLib, (Join-Path $script:AppRoot 'Functions\Core-Addons.ps1'), $src, (Get-HUAddonsDir), "$($script:Version)", $chan, $tp, (Get-HUAddonDevVersions)) -TimeoutSec 300 -OnComplete {
         param($result)
         $neu = @()
         foreach ($ln in @("$result" -split "`n" | Where-Object { $_ })) {
@@ -102,6 +114,7 @@ function Start-HUAddonUpdate([switch]$Loud) {
             switch ($p[0]) {
                 'Neu' { Write-HULogOK "Zusatzmodul: $($p[2])"; $neu += ($p[2] -replace ' geladen - .*$', '') }
                 'Aktuell' { if ($script:AddonUpdateLoud) { Write-HULogInfo "Zusatzmodul: $($p[2])" } }
+                'Entwicklung' { Write-HULogInfo "Zusatzmodul: $($p[2])" }   # laeuft aus AddonsDev: kein Neustart-Hinweis
                 default { Write-HULogWarn "Zusatzmodul $($p[1]): $($p[2])" }
             }
         }
