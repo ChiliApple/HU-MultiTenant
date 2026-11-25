@@ -258,3 +258,48 @@ function Get-HMBuildWaitState($State, [int]$MaxAgeMin = 30) {
     if ($State.AgeMin -lt $MaxAgeMin) { return 'Building' }
     return 'None'
 }
+
+# --- Alle Releases signieren und freigeben (2.6.23) ---------------------------------------------
+# Was in einem Repository offen ist: ToSign = Releases mit Pruefsummen-Datei ohne Signatur; Publish = neuestes Vorab-Release mit
+# Pruefsummen-Datei, neuer als das freigegebene (wird es im selben Durchgang signiert, darf es danach freigegeben werden);
+# Stable = bisher freigegeben; NoManifest = neuere Releases ohne Pruefsummen-Datei (automatische Tests noch nicht fertig oder fehlgeschlagen).
+function Get-HMReleasePlan($Releases) {
+    $l = @($Releases | Where-Object { $_ -and $_.Version } | Sort-Object Version -Descending)
+    $stable = @($l | Where-Object { -not $_.Prerelease })[0]
+    $cand = @($l | Where-Object { $_.Prerelease -and $_.ManifestUrl -and (-not $stable -or $_.Version -gt $stable.Version) })[0]
+    return [pscustomobject]@{
+        ToSign     = @($l | Where-Object { $_.ManifestUrl -and -not $_.SignatureUrl } | ForEach-Object { "$($_.Tag)" })
+        Publish    = $(if ($cand) { "$($cand.Tag)" } else { '' })
+        Stable     = $(if ($stable) { "$($stable.Tag)" } else { '' })
+        NoManifest = @($l | Where-Object { -not $_.ManifestUrl -and (-not $stable -or $_.Version -gt $stable.Version) } | ForEach-Object { "$($_.Tag)" })
+    }
+}
+# Einen Auftrag erledigen: erst signieren, nur wenn das ging freigeben. $Job: Owner, Repo, Token, Sign (Tags), Publish (Tag oder '').
+# Rueckgabe: Key (Besitzer/Name), Repo, Ok, Auth (Schreibrecht fehlt), Published (freigegebener Tag oder ''), Text.
+function Invoke-HMReleaseJob($Job, [string]$Thumbprint, [int]$RetrySec = 5) {
+    $msgs = @(); $ok = $true; $auth = $false; $pub = ''
+    $sign = @(@($Job.Sign) | Where-Object { "$_" } | ForEach-Object { "$_" })
+    if ($sign.Count) {
+        try {
+            foreach ($x in @(Invoke-HMReleaseSigning $Job.Owner $Job.Repo $Thumbprint $Job.Token ([string[]]$sign))) {
+                $msgs += "$($x.Tag) $($x.Text)"
+                if (-not $x.Ok) { $ok = $false; if ("$($x.Text)" -match 'Schreibrecht') { $auth = $true } }
+            }
+        } catch { $ok = $false; $msgs += "Signieren: $($_.Exception.Message)" }
+    }
+    $tag = "$($Job.Publish)"
+    if ($tag -and $ok) {
+        try {
+            # gerade erst signiert: GitHub zeigt die Signatur u. U. ein paar Sekunden spaeter, darum bis zu 3 Versuche
+            for ($try = 1; $try -le 3; $try++) {
+                try { Publish-HMRelease $Job.Owner $Job.Repo $tag $Thumbprint $Job.Token; break }
+                catch { if ($try -lt 3 -and "$($_.Exception.Message)" -match 'nicht signiert') { if ($RetrySec -gt 0) { Start-Sleep -Seconds $RetrySec } } else { throw } }
+            }
+            $pub = $tag; $msgs += "$tag freigegeben"
+        } catch {
+            $ok = $false; $code = 0; try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+            if ($code -in 401, 403, 404) { $auth = $true; $msgs += "$tag nicht freigegeben: kein Schreibrecht (HTTP $code)" } else { $msgs += "$tag nicht freigegeben: $($_.Exception.Message)" }
+        }
+    } elseif ($tag) { $msgs += "$tag nicht freigegeben, weil das Signieren nicht ging" }
+    return [pscustomobject]@{ Key = "$($Job.Owner)/$($Job.Repo)"; Repo = "$($Job.Repo)"; Ok = $ok; Auth = $auth; Published = $pub; Text = ($msgs -join ', ') }
+}
