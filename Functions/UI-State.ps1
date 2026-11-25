@@ -96,6 +96,13 @@ function Restore-HUWindowState {
         if ($fs -and [double]$fs -ge 8 -and [double]$fs -le 32) { $c['txtQSEditor'].FontSize = [double]$fs }
     } catch { Write-Verbose "[UIState] Aufteilung: $_" }
 
+    # 2.6.24: verschiebbare Bereiche aller eingebauten Reiter (Modul-Reiter meldet Add-HUAddonTab selbst an)
+    try {
+        foreach ($t in @($c['tabMain'].Items | Where-Object { $_ -is [System.Windows.Controls.TabItem] -and "$($_.Tag)" -ne 'addon' -and "$($_.Name)" })) {
+            Register-HUSplitterState $t "Reiter.$($t.Name)"
+        }
+    } catch { Write-Verbose "[UIState] Bereiche: $_" }
+
     Set-HUUiScale ([double](Get-HUStateValue 'UiScale' 1.0)) -NoSave
     try { Initialize-HUTabDrag } catch { Write-Verbose "[UIState] Reiter: $_" }
 }
@@ -130,6 +137,8 @@ function Save-HUWindowState {
         $last = if ($sel -eq $c['tabExtensions']) { 'Extensions' } elseif ($sel -eq $c['tabApps']) { 'Apps' } elseif ($sel -eq $c['tabMaint']) { 'Wartung' } elseif ($sel -eq $c['tabAnalyse']) { 'Analyse' } elseif ($sel -eq $c['tabTeams']) { 'Teams' } elseif ($sel -eq $c['tabMuster']) { 'Muster' } elseif ($sel -and "$($sel.Tag)" -eq 'addon' -and "$($sel.Name)") { "$($sel.Name)" } else { 'QuickScript' }
         Set-HUStateValue 'LastTab' $last
     } catch { Write-Verbose "[UIState] Erfassen: $_" }
+    # 2.6.24: verschiebbare Bereiche aller Reiter (auch ohne Loslassen-Ereignis, z. B. per Tastatur)
+    try { Save-HUAllSplitterState } catch { Write-Verbose "[UIState] Bereiche: $_" }
     Save-HUUIState
 }
 
@@ -300,6 +309,7 @@ function Update-HUMainOverlay {
 
 # Unterfenster (z. B. Snippet-Verwaltung): Groesse/Position merken
 function Restore-HUDialogState($Window, [string]$Key) {
+    try { Register-HUSplitterState $Window "Fenster.$Key" } catch { }   # 2.6.24: verschiebbare Bereiche im Fenster
     $g = Get-HUStateValue $Key
     if (-not $g) { return }
     try {
@@ -318,10 +328,168 @@ function Restore-HUDialogState($Window, [string]$Key) {
     } catch { }
 }
 function Save-HUDialogState($Window, [string]$Key) {
+    try { Save-HUSplitterState "Bereiche.Fenster.$Key" -NoFlush } catch { }
     try {
         $rb = if ($Window.WindowState -ne 'Normal') { $Window.RestoreBounds } else { [System.Windows.Rect]::new($Window.Left, $Window.Top, $Window.Width, $Window.Height) }
         $sc = Get-HUUiScaleValue
         Set-HUStateValue $Key ([pscustomobject]@{ Left = [Math]::Round($rb.Left); Top = [Math]::Round($rb.Top); Width = [Math]::Round($rb.Width / $sc); Height = [Math]::Round($rb.Height / $sc); Unscaled = $true })
         Save-HUUIState
     } catch { }
+}
+
+# ---------------------------------------------------------------- Verschiebbare Bereiche (GridSplitter) ----------------------------------------------------------------
+# 2.6.24: Gilt fuer JEDEN Reiter (eingebaut und Zusatzmodul) und jedes Fenster mit Restore-/Save-HUDialogState: Module bauen dafuer nichts Eigenes.
+# Gespeichert werden die Zeilen- und Spaltengroessen aller Grids, in denen ein GridSplitter liegt (ui-state.json, je Benutzer),
+# bei jedem Loslassen des Splitters und beim Schliessen. Wiederhergestellt nur, wenn Zahl und Art der Zeilen/Spalten noch passen.
+$script:HUSplitRoots = @{}
+$script:HUSplitOwner = New-Object 'System.Collections.Generic.Dictionary[object,string]'   # Splitter -> Schluessel (Tag bleibt dem Modul)
+
+function Get-HUSplitterGrids($Root) {
+    $list = New-Object System.Collections.Generic.List[object]
+    $stack = New-Object System.Collections.Generic.Stack[object]
+    $stack.Push($Root)
+    while ($stack.Count) {
+        $n = $stack.Pop()
+        if (-not ($n -is [System.Windows.DependencyObject])) { continue }
+        if ($n -is [System.Windows.Controls.GridSplitter] -and $n.Parent -is [System.Windows.Controls.Grid] -and -not $list.Contains($n.Parent)) { $list.Add($n.Parent) }
+        foreach ($ch in [System.Windows.LogicalTreeHelper]::GetChildren($n)) { $stack.Push($ch) }
+    }
+    return $list.ToArray()
+}
+
+function ConvertTo-HUGridLengthText($L) { if ($L.IsStar) { return "Star:$([Math]::Round($L.Value, 4))" } if ($L.IsAuto) { return 'Auto' } return "Pixel:$([Math]::Round($L.Value, 1))" }
+function ConvertFrom-HUGridLengthText([string]$T) {
+    if ($T -match '^Star:([0-9.]+)$') { return [System.Windows.GridLength]::new([double]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture), [System.Windows.GridUnitType]::Star) }
+    if ($T -match '^Pixel:([0-9.]+)$') { return [System.Windows.GridLength]::new([double]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture), [System.Windows.GridUnitType]::Pixel) }
+    return [System.Windows.GridLength]::Auto
+}
+
+# Zustand aller Splitter-Grids eines Reiters/Fensters als Liste (je Grid: Kennung, Zeilen, Spalten)
+function Get-HUSplitterSnapshot($Root) {
+    $i = 0
+    return @(foreach ($g in @(Get-HUSplitterGrids $Root)) {
+            $i++
+            [pscustomobject]@{
+                G = $(if ($g.Name) { $g.Name } else { "#$i" })
+                # begrenzte Bereiche: gewuenschten Wert speichern, nicht den gekuerzten (Limit-HUSplitterGrid)
+                R = @($g.RowDefinitions | ForEach-Object { Update-HUSplitterWant $_ 'Height'; if ($script:HUSplitWant.ContainsKey($_)) { "Pixel:$([Math]::Round($script:HUSplitWant[$_], 1))" } else { ConvertTo-HUGridLengthText $_.Height } })
+                C = @($g.ColumnDefinitions | ForEach-Object { Update-HUSplitterWant $_ 'Width'; if ($script:HUSplitWant.ContainsKey($_)) { "Pixel:$([Math]::Round($script:HUSplitWant[$_], 1))" } else { ConvertTo-HUGridLengthText $_.Width } })
+            }
+        })
+}
+
+function Restore-HUSplitterSnapshot($Root, $Snapshot) {
+    $grids = @(Get-HUSplitterGrids $Root); $i = 0
+    foreach ($g in $grids) {
+        $i++
+        $id = $(if ($g.Name) { $g.Name } else { "#$i" })
+        $s = @($Snapshot | Where-Object { $_.G -eq $id })[0]
+        if (-not $s) { continue }
+        $rows = @($s.R); $cols = @($s.C)
+        # nur bei gleicher Struktur (sonst hat sich die Oberflaeche geaendert): Zahl und Art (Star/Pixel/Auto) je Eintrag
+        $kind = { param($t) ("$t" -split ':')[0] }
+        if ($rows.Count -eq $g.RowDefinitions.Count) {
+            $ok = $true; for ($k = 0; $k -lt $rows.Count; $k++) { if ((& $kind $rows[$k]) -ne (& $kind (ConvertTo-HUGridLengthText $g.RowDefinitions[$k].Height))) { $ok = $false } }
+            if ($ok) { for ($k = 0; $k -lt $rows.Count; $k++) { if ((& $kind $rows[$k]) -ne 'Auto') { $g.RowDefinitions[$k].Height = ConvertFrom-HUGridLengthText $rows[$k] } } }
+        }
+        if ($cols.Count -eq $g.ColumnDefinitions.Count) {
+            $ok = $true; for ($k = 0; $k -lt $cols.Count; $k++) { if ((& $kind $cols[$k]) -ne (& $kind (ConvertTo-HUGridLengthText $g.ColumnDefinitions[$k].Width))) { $ok = $false } }
+            if ($ok) { for ($k = 0; $k -lt $cols.Count; $k++) { if ((& $kind $cols[$k]) -ne 'Auto') { $g.ColumnDefinitions[$k].Width = ConvertFrom-HUGridLengthText $cols[$k] } } }
+        }
+    }
+}
+
+# 2.6.24: feste Bereiche (Pixel) nie groesser als die vorhandene Flaeche - sonst liegt der Trenner nach einem Wechsel auf einen
+# kleineren Bildschirm ausserhalb und ist nicht mehr erreichbar. Stern-Bereiche behalten mindestens 80 px.
+# Der gewuenschte Wert bleibt gemerkt (HUSplitWant) und kommt zurueck, sobald wieder Platz ist (z. B. Fenster kurz angedockt).
+$script:HUSplitLimited = New-Object 'System.Collections.Generic.HashSet[object]'
+$script:HUSplitWant = New-Object 'System.Collections.Generic.Dictionary[object,double]'
+$script:HUSplitApplied = New-Object 'System.Collections.Generic.Dictionary[object,double]'   # zuletzt gesetzter gekuerzter Wert
+# Wunschwert verwerfen, wenn der Bereich seither anders verschoben wurde (z. B. per Tastatur, ohne Loslassen-Ereignis)
+function Update-HUSplitterWant($Def, [string]$Prop) {
+    if (-not $script:HUSplitWant.ContainsKey($Def)) { return }
+    $a = 0.0
+    if (-not $script:HUSplitApplied.TryGetValue($Def, [ref]$a) -or [Math]::Abs([double]$Def.$Prop.Value - $a) -gt 0.5) {
+        [void]$script:HUSplitWant.Remove($Def); [void]$script:HUSplitApplied.Remove($Def)
+    }
+}
+function Limit-HUSplitterGrid($Grid) {
+    # Flaeche = Platz, den das umgebende Element dem Grid gibt (ActualHeight waechst mit zu grossen festen Zeilen mit)
+    $slot = [System.Windows.Controls.Primitives.LayoutInformation]::GetLayoutSlot($Grid)
+    if ($slot.IsEmpty) { return }
+    foreach ($axis in 'Row', 'Col') {
+        if ($axis -eq 'Row') { $defs = @($Grid.RowDefinitions); $total = [double]$slot.Height - $Grid.Margin.Top - $Grid.Margin.Bottom; $p = 'Height'; $mp = 'MinHeight' }
+        else { $defs = @($Grid.ColumnDefinitions); $total = [double]$slot.Width - $Grid.Margin.Left - $Grid.Margin.Right; $p = 'Width'; $mp = 'MinWidth' }
+        if ($total -le 0 -or $defs.Count -lt 2) { continue }
+        foreach ($d in $defs) { Update-HUSplitterWant $d $p }
+        $big =@($defs | Where-Object { $_.$p.IsAbsolute -and ($script:HUSplitWant.ContainsKey($_) -or $_.$p.Value -gt 12) })   # Trenner selbst (5 bis 8 px) bleibt
+        if (-not $big.Count) { continue }
+        $fixed = 0.0
+        foreach ($d in $defs) {
+            if ($big -contains $d) { continue }
+            if ($d.$p.IsAbsolute) { $fixed += $d.$p.Value } elseif ($d.$p.IsAuto) { $fixed += $(if ($axis -eq 'Row') { $d.ActualHeight } else { $d.ActualWidth }) }
+        }
+        $reserve = $(if (@($defs | Where-Object { $_.$p.IsStar }).Count) { 80.0 } else { 0.0 })
+        $room = $total - $fixed - $reserve
+        $want = @{}; $sum = 0.0
+        foreach ($d in $big) { $v = $(if ($script:HUSplitWant.ContainsKey($d)) { $script:HUSplitWant[$d] } else { [double]$d.$p.Value }); $want[$d] = $v; $sum += $v }
+        if ($room -le 0) { continue }
+        if ($sum -le $room) {
+            # wieder genug Platz: gewuenschte Werte zurueck
+            foreach ($d in $big) { if ($script:HUSplitWant.ContainsKey($d)) { $d.$p = [System.Windows.GridLength]::new($want[$d]); [void]$script:HUSplitWant.Remove($d); [void]$script:HUSplitApplied.Remove($d) } }
+            continue
+        }
+        $f = $room / $sum
+        foreach ($d in $big) {
+            $nv = [Math]::Max([double]$d.$mp, [Math]::Floor($want[$d] * $f))
+            $script:HUSplitWant[$d] = $want[$d]; $script:HUSplitApplied[$d] = $nv
+            $d.$p = [System.Windows.GridLength]::new($nv)
+        }
+    }
+}
+function Limit-HUSplitterAll {
+    foreach ($g in @($script:HUSplitLimited)) { try { if ($g -is [System.Windows.Controls.Grid] -and $g.IsLoaded) { Limit-HUSplitterGrid $g } } catch { } }
+}
+
+<#
+.SYNOPSIS
+    Verschiebbare Bereiche eines Reiters oder Fensters merken: jetzt wiederherstellen, bei jedem Loslassen und beim Schliessen speichern.
+#>
+function Register-HUSplitterState($Root, [string]$Key) {
+    if (-not $Root -or -not $Key) { return }
+    $grids = @(Get-HUSplitterGrids $Root)
+    if (-not $grids.Count) { return }
+    $sk = "Bereiche.$Key"
+    $script:HUSplitRoots[$sk] = $Root
+    # Groessenaenderung des Fensters (Hauptfenster bzw. das Fenster selbst): feste Bereiche nachziehen, je Fenster einmal
+    $win = $(if ($Root -is [System.Windows.Window]) { $Root } else { Get-Variable -Name Window -Scope Script -ValueOnly -ErrorAction SilentlyContinue })
+    if ($win -and -not $script:HUSplitLimited.Contains($win)) {
+        [void]$script:HUSplitLimited.Add($win)
+        $win.Add_SizeChanged({ try { Limit-HUSplitterAll } catch { } })
+    }
+    try { $saved = Get-HUStateValue $sk; if ($saved) { Restore-HUSplitterSnapshot $Root @($saved) } } catch { }
+    foreach ($g in $grids) {
+        if (-not $script:HUSplitLimited.Contains($g)) {
+            [void]$script:HUSplitLimited.Add($g)
+            # beim Anzeigen (auch Reiterwechsel) pruefen; Fenstergroesse: siehe unten
+            $g.Add_Loaded({ param($s, $e) try { Limit-HUSplitterGrid $s } catch { } })
+        }
+        foreach ($sp in @($g.Children | Where-Object { $_ -is [System.Windows.Controls.GridSplitter] })) {
+            if ($script:HUSplitOwner.ContainsKey($sp)) { $script:HUSplitOwner[$sp] = $sk; continue }   # nur einmal anmelden
+            $script:HUSplitOwner[$sp] = $sk
+            # Loslassen: der gezogene Wert gilt, ein gemerkter Wunschwert dieses Grids entfaellt
+            $sp.Add_DragCompleted({ param($s, $e) try { foreach ($d in @($s.Parent.RowDefinitions) + @($s.Parent.ColumnDefinitions)) { [void]$script:HUSplitWant.Remove($d); [void]$script:HUSplitApplied.Remove($d) }; $k = ''; if ($script:HUSplitOwner.TryGetValue($s, [ref]$k)) { Save-HUSplitterState $k } } catch { } })
+        }
+    }
+}
+
+function Save-HUSplitterState([string]$StateKey, [switch]$NoFlush) {
+    $root = $script:HUSplitRoots[$StateKey]
+    if (-not $root) { return }
+    Set-HUStateValue $StateKey @(Get-HUSplitterSnapshot $root)
+    if (-not $NoFlush) { Save-HUUIState }
+}
+
+function Save-HUAllSplitterState {
+    foreach ($k in @($script:HUSplitRoots.Keys)) { try { Save-HUSplitterState $k -NoFlush } catch { } }
 }

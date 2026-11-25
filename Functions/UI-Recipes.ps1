@@ -91,6 +91,9 @@ function Show-HURecipeWindow([string]$Area, [string]$SelectId = '') {
     [System.Windows.Automation.AutomationProperties]::SetName($d.C.lstRec, 'Anleitungen')
     $d.C.lstRec.Add_SelectionChanged({ $it = $script:HURecipeCur.C.lstRec.SelectedItem; if ($it) { Show-HURecipe "$($it.Tag)" } })
     $d.C.btnClose.Add_Click({ $script:HURecipeCur.Win.Close() })
+    # 2.6.24: Groesse, Platz und Breite der Liste merken
+    try { Restore-HUDialogState $w 'RecipeWindow' } catch { }
+    $w.Add_Closing({ try { Save-HUDialogState $script:HURecipeCur.Win 'RecipeWindow' } catch { } })
     $w.Add_Closed({ $script:HURecipeWin = $null })
     Update-HURecipeList $SelectId
     $w.Show()
