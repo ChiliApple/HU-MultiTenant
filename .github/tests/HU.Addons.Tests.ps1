@@ -136,6 +136,64 @@ Describe 'Zusatzmodule: Installieren (ohne Netzwerk)' {
         Test-Path -LiteralPath (Join-Path $dir '.pending\Testmodul') | Should -BeFalse
         @(Get-ChildItem -LiteralPath (Join-Path $dir '.staging') -ErrorAction SilentlyContinue).Count | Should -Be 0
     }
+    It 'Modul laeuft gleich aus AddonsDev: Fassung wird abgelegt, Status Entwicklung, kein Neustart noetig' {
+        $dir = Join-Path $script:Tmp 'inst3'
+        $r = Install-HUAddon -Owner 'o' -Repo 'r' -Token 't' -AddonsDir $dir -AppVersion ([Version]'2.3.1') -Thumbprint $script:Cert.Thumbprint -DevVersions @{ Testmodul = '1.2.0' }
+        $r.Status | Should -Be 'Entwicklung'
+        $r.Text | Should -Match 'laeuft schon aus AddonsDev \(1\.2\.0\), kein Neustart noetig'
+        Test-HUAddonFiles (Join-Path $dir '.pending\Testmodul') $script:Cert.Thumbprint | Should -Be ''
+    }
+    It 'AddonsDev ist aelter: Fassung wird abgelegt, Text nennt die aeltere Fassung' {
+        $dir = Join-Path $script:Tmp 'inst4'
+        $r = Install-HUAddon -Owner 'o' -Repo 'r' -Token 't' -AddonsDir $dir -AppVersion ([Version]'2.3.1') -Thumbprint $script:Cert.Thumbprint -DevVersions @{ Testmodul = '1.1.0' }
+        $r.Status | Should -Be 'Entwicklung'
+        $r.Text | Should -Match 'aeltere Fassung 1\.1\.0 aus AddonsDev'
+        Test-Path -LiteralPath (Join-Path $dir '.pending\Testmodul') | Should -BeTrue
+    }
+    It 'anderes Modul in AddonsDev: wie bisher Status Neu' {
+        $dir = Join-Path $script:Tmp 'inst5'
+        (Install-HUAddon -Owner 'o' -Repo 'r' -Token 't' -AddonsDir $dir -AppVersion ([Version]'2.3.1') -Thumbprint $script:Cert.Thumbprint -DevVersions @{ Anderes = '9.0.0' }).Status | Should -Be 'Neu'
+    }
+    It 'installiert schon aktuell und AddonsDev vorhanden: Aktuell, nichts abgelegt' {
+        $dir = Join-Path $script:Tmp 'inst6'
+        New-TestAddon (Join-Path $dir 'Testmodul') -Version '1.2.0'
+        (Install-HUAddon -Owner 'o' -Repo 'r' -Token 't' -AddonsDir $dir -AppVersion ([Version]'2.3.1') -Thumbprint $script:Cert.Thumbprint -DevVersions @{ Testmodul = '1.2.0' }).Status | Should -Be 'Aktuell'
+        Test-Path -LiteralPath (Join-Path $dir '.pending\Testmodul') | Should -BeFalse
+    }
+}
+
+Describe 'Zusatzmodule: AddonsDev ohne Neustart-Hinweis (2.6.22)' {
+    It 'Get-HUAddonDevVersions nennt nur Module aus AddonsDev' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        . (Join-Path $root 'Functions\UI-Addons.ps1')
+        $script:AppRoot = Join-Path $script:Tmp 'app'
+        $script:LoadedAddons = @(
+            [pscustomobject]@{ Id = 'Kinderschutz'; Version = [Version]'0.2.4'; Dir = (Join-Path $script:AppRoot 'AddonsDev\Kinderschutz') }
+            [pscustomobject]@{ Id = 'MCP'; Version = [Version]'0.5.8'; Dir = (Join-Path $script:AppRoot 'Addons\MCP') }
+            [pscustomobject]@{ Id = 'Autopilot'; Version = [Version]'0.5.6'; Dir = (Join-Path $script:AppRoot 'Modules\Autopilot') })
+        $h = Get-HUAddonDevVersions
+        @($h.Keys) | Should -Be @('Kinderschutz')
+        $h['Kinderschutz'] | Should -Be '0.2.4'
+        $script:LoadedAddons = @()
+        (Get-HUAddonDevVersions).Count | Should -Be 0
+    }
+    It 'Hintergrundlauf uebergibt AddonsDev und zeigt bei Entwicklung keinen Neustart-Hinweis' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $ui = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Addons.ps1') -Raw
+        $fn = [regex]::Match($ui, '(?s)function Start-HUAddonUpdate.*?\n\}').Value
+        $fn | Should -Match '-DevVersions \$devVer'
+        $fn | Should -Match '\(Get-HUAddonDevVersions\)\) -TimeoutSec'
+        $fn | Should -Match "'Entwicklung' \{ Write-HULogInfo"
+    }
+    It 'Freigabe eines Zusatzmoduls prueft gleich die Module, Programm-Freigabe wie bisher das Programm' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $up = Get-Content -LiteralPath (Join-Path $root 'Functions\UI-Update.ps1') -Raw
+        $fn = [regex]::Match($up, '(?s)function Start-HUReleasePublish.*?\n\}').Value
+        $fn.IndexOf('$wasAddon = $false; try { $wasAddon = [bool]$script:PubCtx.Addon }') | Should -BeGreaterThan 0
+        $fn.IndexOf('$wasAddon = $false') | Should -BeLessThan $fn.LastIndexOf('$script:PubCtx = $null')
+        $fn | Should -Match 'if \(\$wasAddon\) \{ try \{ Start-HUAddonUpdate -Loud \}'
+        $fn | Should -Match 'else \{ Invoke-UpdateCheck \}'
+    }
 }
 
 Describe 'Zusatzmodule: Einbindung' {

@@ -488,9 +488,15 @@ function Start-HUReleasePublish([switch]$Addon) {
             }
         } -ArgumentList @($script:UpdateLib, $pc.Owner, $pc.Repo, $tag, $pc.Thumb, $pc.Token) -TimeoutSec 60 -OnComplete {
             param($res)
+            $wasAddon = $false; try { $wasAddon = [bool]$script:PubCtx.Addon } catch { }
             $script:PubCtx = $null
             $s = "$res".Trim()
-            if ($s -match '^OK:(.+)$') { $t = $Matches[1]; Write-HUPub "${t}: freigegeben (Kanal Stabil)" OK; Show-HUMessage "$t ist freigegeben (Kanal Stabil) und wird allen Installationen als Update angeboten." 'Release freigeben'; Invoke-UpdateCheck }
+            if ($s -match '^OK:(.+)$') {
+                $t = $Matches[1]; Write-HUPub "${t}: freigegeben (Kanal Stabil)" OK; Show-HUMessage "$t ist freigegeben (Kanal Stabil) und wird allen Installationen als Update angeboten." 'Release freigeben'
+                # Zusatzmodul: gleich die Module pruefen, damit die neue Fassung in dieser Sitzung geladen wird und ein Neustart reicht
+                if ($wasAddon) { try { Start-HUAddonUpdate -Loud } catch { Write-HULogWarn "Zusatzmodule: Pruefung nach der Freigabe fehlgeschlagen: $($_.Exception.Message)" } }
+                else { Invoke-UpdateCheck }
+            }
             elseif ($s -match '^AUTH:(.+)$') { $msg = "Freigabe fehlgeschlagen: $($Matches[1])"; Write-HUPub $msg ERROR; Remove-Item -LiteralPath $script:PubTokFile -Force -ErrorAction SilentlyContinue; Show-HUMessage "$msg`n`nGespeicherter Token wurde geloescht - beim naechsten Versuch neu eingeben." 'Release freigeben' -Icon Error }
             else { $msg = "Freigabe fehlgeschlagen: $($s -replace '^(ERR:|FEHLER:)\s*', '')"; Write-HUPub $msg ERROR; Show-HUMessage $msg 'Release freigeben' -Icon Error }
         }

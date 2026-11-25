@@ -1,5 +1,14 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.22 (Testversion)
+
+### 🧩 Zusatzmodule
+- **Freigabe lädt das Modul gleich:** Nach "Zusatzmodul: Release freigeben" prüft HU-MultiTenant sofort die Zusatzmodule und lädt die freigegebene Fassung. Der Hinweis "Jetzt neu starten?" kommt damit in derselben Sitzung, ein Neustart reicht.
+  - Bisher wurde nach der Freigabe nur das Programm geprüft. Das Modul kam erst nach dem nächsten Start im Hintergrund und verlangte einen zweiten Neustart.
+- **Kein Neustart-Hinweis für Module aus AddonsDev:** Läuft ein Modul aus dem Entwicklungsordner AddonsDev, fragt HU-MultiTenant nach dem Laden einer neuen Fassung nicht mehr nach einem Neustart. Der Neustart würde weiter AddonsDev laden.
+  - Die neue Fassung wird trotzdem abgelegt. Wer AddonsDev wegnimmt, hat nach dem nächsten Start die freigegebene Fassung.
+  - Das Protokoll nennt die geladene Version und die Version in AddonsDev und sagt, ob dort eine ältere Fassung liegt.
+
 ## v2.6.21 (Stable, 23.11.2026)
 
 Stable-Release der Testversion 2.6.21 - "Teams-Meldungen für einzelne Regeln des Sicherheitskatalogs".
