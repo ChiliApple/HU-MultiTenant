@@ -1,5 +1,15 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.24 (Testversion)
+
+### 🪟 Oberfläche
+- **Verschobene Bereiche werden gemerkt, auch in Zusatzmodulen:** Zieht man einen Trenner zwischen zwei Bereichen, merkt sich HU-MultiTenant die neue Aufteilung beim Loslassen und beim Beenden. Nach dem nächsten Start ist sie wieder da.
+  - Gilt für alle Reiter, auch für Reiter von Zusatzmodulen (z. B. Kinderschutz: App-Steuerung oben und unten, Protokoll), und für Fenster, die ihre Größe merken.
+  - Module brauchen dafür nichts Eigenes. Bisher merkten sich nur einzelne Bereiche ihre Größe, in den Modul-Reitern ging die Aufteilung beim Beenden verloren.
+  - Neu gemerkt: im Reiter Teams die Meldungsliste und das Sendeprotokoll, dazu das Fenster Anleitungen (Größe, Platz und Breite der Liste).
+  - Hat sich ein Bereich in einer neuen Version geändert, gilt dort wieder die Standard-Aufteilung.
+  - Ein Test meldet künftig jeden Trenner, der nicht gemerkt wird.
+
 ## v2.6.23 (Testversion)
 
 ### 🔏 Releases (Herausgeber)

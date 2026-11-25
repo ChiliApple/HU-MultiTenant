@@ -35,6 +35,8 @@ function Add-HUAddonTab($Info) {
     try { Set-HUOutputTools $tab } catch { }  # Ausgaben: Umkehren/Loeschen, neuestes oben (global)
     $script:Controls[$tab.Name] = $tab
     [void]$script:Controls['tabMain'].Items.Add($tab)
+    # 2.6.24: verschiebbare Bereiche des Reiters merkt der Kern (wiederherstellen jetzt, speichern beim Loslassen und Beenden)
+    try { Register-HUSplitterState $tab "Reiter.$($tab.Name)" } catch { try { Write-HULogWarn "Bereiche ($($Info.Id)): $($_.Exception.Message)" } catch { } }
 }
 
 # Beim Start: wartende Fassungen uebernehmen, gepruefte Module laden. Gibt die zu ladenden Skripte zurueck
