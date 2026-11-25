@@ -398,6 +398,36 @@ function Restore-HUSplitterSnapshot($Root, $Snapshot) {
     }
 }
 
+# 2.6.24: feste Bereiche (Pixel) nie groesser als die vorhandene Flaeche - sonst liegt der Trenner nach einem Wechsel auf einen
+# kleineren Bildschirm ausserhalb und ist nicht mehr erreichbar. Stern-Bereiche behalten mindestens 80 px.
+$script:HUSplitLimited = New-Object 'System.Collections.Generic.HashSet[object]'
+function Limit-HUSplitterGrid($Grid) {
+    # Flaeche = Platz, den das umgebende Element dem Grid gibt (ActualHeight waechst mit zu grossen festen Zeilen mit)
+    $slot = [System.Windows.Controls.Primitives.LayoutInformation]::GetLayoutSlot($Grid)
+    if ($slot.IsEmpty) { return }
+    foreach ($axis in 'Row', 'Col') {
+        if ($axis -eq 'Row') { $defs = @($Grid.RowDefinitions); $total = [double]$slot.Height - $Grid.Margin.Top - $Grid.Margin.Bottom; $p = 'Height'; $mp = 'MinHeight' }
+        else { $defs = @($Grid.ColumnDefinitions); $total = [double]$slot.Width - $Grid.Margin.Left - $Grid.Margin.Right; $p = 'Width'; $mp = 'MinWidth' }
+        if ($total -le 0 -or $defs.Count -lt 2) { continue }
+        $big = @($defs | Where-Object { $_.$p.IsAbsolute -and $_.$p.Value -gt 12 })   # Trenner selbst (5 bis 8 px) bleibt
+        if (-not $big.Count) { continue }
+        $fixed = 0.0
+        foreach ($d in $defs) {
+            if ($big -contains $d) { continue }
+            if ($d.$p.IsAbsolute) { $fixed += $d.$p.Value } elseif ($d.$p.IsAuto) { $fixed += $(if ($axis -eq 'Row') { $d.ActualHeight } else { $d.ActualWidth }) }
+        }
+        $reserve = $(if (@($defs | Where-Object { $_.$p.IsStar }).Count) { 80.0 } else { 0.0 })
+        $room = $total - $fixed - $reserve
+        $sum = 0.0; foreach ($d in $big) { $sum += $d.$p.Value }
+        if ($room -le 0 -or $sum -le $room) { continue }
+        $f = $room / $sum
+        foreach ($d in $big) { $d.$p = [System.Windows.GridLength]::new([Math]::Max([double]$d.$mp, [Math]::Floor($d.$p.Value * $f))) }
+    }
+}
+function Limit-HUSplitterAll {
+    foreach ($g in @($script:HUSplitLimited)) { try { if ($g -is [System.Windows.Controls.Grid] -and $g.IsLoaded) { Limit-HUSplitterGrid $g } } catch { } }
+}
+
 <#
 .SYNOPSIS
     Verschiebbare Bereiche eines Reiters oder Fensters merken: jetzt wiederherstellen, bei jedem Loslassen und beim Schliessen speichern.
@@ -408,8 +438,19 @@ function Register-HUSplitterState($Root, [string]$Key) {
     if (-not $grids.Count) { return }
     $sk = "Bereiche.$Key"
     $script:HUSplitRoots[$sk] = $Root
+    # Groessenaenderung des Fensters (Hauptfenster bzw. das Fenster selbst): feste Bereiche nachziehen, je Fenster einmal
+    $win = $(if ($Root -is [System.Windows.Window]) { $Root } else { $script:Window })
+    if ($win -and -not $script:HUSplitLimited.Contains($win)) {
+        [void]$script:HUSplitLimited.Add($win)
+        $win.Add_SizeChanged({ try { Limit-HUSplitterAll } catch { } })
+    }
     try { $saved = Get-HUStateValue $sk; if ($saved) { Restore-HUSplitterSnapshot $Root @($saved) } } catch { }
     foreach ($g in $grids) {
+        if (-not $script:HUSplitLimited.Contains($g)) {
+            [void]$script:HUSplitLimited.Add($g)
+            # beim Anzeigen (auch Reiterwechsel) pruefen; Fenstergroesse: siehe unten
+            $g.Add_Loaded({ param($s, $e) try { Limit-HUSplitterGrid $s } catch { } })
+        }
         foreach ($sp in @($g.Children | Where-Object { $_ -is [System.Windows.Controls.GridSplitter] })) {
             if ($script:HUSplitOwner.ContainsKey($sp)) { $script:HUSplitOwner[$sp] = $sk; continue }   # nur einmal anmelden
             $script:HUSplitOwner[$sp] = $sk

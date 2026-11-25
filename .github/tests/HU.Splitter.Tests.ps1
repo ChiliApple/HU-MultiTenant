@@ -32,7 +32,7 @@ BeforeAll {
 AfterAll { Remove-Item -LiteralPath $script:UserRoot -Recurse -Force -ErrorAction SilentlyContinue }
 
 Describe 'Verschiebbare Bereiche merken' {
-    BeforeEach { $script:UIState = $null; $script:HUSplitRoots = @{}; Remove-Item -LiteralPath $script:StateFilePath -ErrorAction SilentlyContinue }
+    BeforeEach { $script:UIState = $null; $script:HUSplitRoots = @{}; $script:HUSplitLimited.Clear(); Remove-Item -LiteralPath $script:StateFilePath -ErrorAction SilentlyContinue }
 
     It 'findet das Grid mit Splitter und liest Zeilenhoehen' {
         if (-not $script:Sta) { Set-ItResult -Skipped -Because 'WPF braucht STA'; return }
@@ -103,6 +103,20 @@ Describe 'Verschiebbare Bereiche merken' {
         [void]$tc.Items.Add($a); [void]$tc.Items.Add($b); $outer.Content = $tc
         @(Get-HUSplitterGrids $outer).Count | Should -Be 1
     }
+    It 'kleinere Flaeche (anderer Bildschirm): fester Bereich wird begrenzt, Trenner bleibt erreichbar' {
+        if (-not $script:Sta) { Set-ItResult -Skipped -Because 'WPF braucht STA'; return }
+        $p = New-SplitPanel
+        $g = @(Get-HUSplitterGrids $p)[0]
+        $g.RowDefinitions[2].Height = [System.Windows.GridLength]::new(900)   # gespeichert auf einem grossen Bildschirm
+        $g.Measure([System.Windows.Size]::new(300, 500)); $g.Arrange([System.Windows.Rect]::new(0, 0, 300, 500))
+        Limit-HUSplitterGrid $g
+        $g.RowDefinitions[2].Height.Value | Should -BeLessOrEqual (500 - 5 - 80)
+        $g.RowDefinitions[1].Height.Value | Should -Be 5   # Trenner selbst unveraendert
+        # passt der Wert, bleibt er
+        $g.RowDefinitions[2].Height = [System.Windows.GridLength]::new(200)
+        Limit-HUSplitterGrid $g
+        $g.RowDefinitions[2].Height.Value | Should -Be 200
+    }
 }
 
 Describe 'Verschiebbare Bereiche: Einbindung und Waechter' {
@@ -122,14 +136,16 @@ Describe 'Verschiebbare Bereiche: Einbindung und Waechter' {
         $files = @(Get-ChildItem -LiteralPath (Join-Path $script:Root 'Functions'), (Join-Path $script:Root 'Modules') -Recurse -Filter *.ps1 -File -ErrorAction SilentlyContinue)
         foreach ($f in $files) {
             $src = [IO.File]::ReadAllText($f.FullName)
-            # Fenster als Text im Skript (here-string mit <Window ... <GridSplitter)
-            if ($src -match '<Window[\s\S]*?<GridSplitter' -and $src -notmatch 'Restore-HUDialogState') { $miss.Add($f.Name) }
+            # Fenster als Text im Skript: je Fenster mit Splitter (<Window ... </Window>) ein Aufruf von Restore-HUDialogState
+            $withSplit = @([regex]::Matches($src, '(?s)<Window\b.*?</Window>') | Where-Object { $_.Value -match '<GridSplitter' }).Count
+            $restores = [regex]::Matches($src, 'Restore-HUDialogState\s+\$').Count
+            if ($withSplit -gt $restores) { $miss.Add("$($f.Name) ($withSplit Fenster mit Trenner, $restores mit Restore-HUDialogState)") }
         }
         # Fenster als eigene XAML-Datei: das Skript, das sie laedt, muss Restore-HUDialogState aufrufen
         foreach ($x in @(Get-ChildItem -LiteralPath (Join-Path $script:Root 'XAML') -Filter *.xaml -File)) {
             if ($x.BaseName -eq 'MainWindow') { continue }   # Hauptfenster: Reiter meldet Restore-HUWindowState an
             $xs = [IO.File]::ReadAllText($x.FullName)
-            if ($xs -notmatch '<GridSplitter' -or $xs -notmatch '^\s*(﻿)?\s*<Window') { continue }
+            if ($xs -notmatch '<GridSplitter' -or $xs -notmatch '<Window\b') { continue }   # Kommentarkopf vor <Window ist erlaubt
             $users = @($files | Where-Object { ([IO.File]::ReadAllText($_.FullName)) -match "'$([regex]::Escape($x.BaseName))'" })
             if (-not @($users | Where-Object { ([IO.File]::ReadAllText($_.FullName)) -match 'Restore-HUDialogState' }).Count) { $miss.Add($x.Name) }
         }
