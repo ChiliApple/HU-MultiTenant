@@ -220,6 +220,118 @@ Describe 'Update-Bibliothek' {
     }
 }
 
+Describe 'Alle Releases signieren und freigeben (2.6.23)' {
+    BeforeAll {
+        function New-R([string]$Tag, [bool]$Pre, [bool]$Man, [bool]$Sig) {
+            [pscustomobject]@{ Version = [version]($Tag.TrimStart('v')); Tag = $Tag; Prerelease = $Pre; ManifestUrl = $(if ($Man) { 'm' } else { '' }); SignatureUrl = $(if ($Sig) { 's' } else { '' }) }
+        }
+        $script:Job = [pscustomobject]@{ Owner = 'o'; Repo = 'r'; Token = 't'; Sign = @('v1.0.5'); Publish = 'v1.0.5' }
+    }
+    Context 'Was offen ist (Get-HMReleasePlan)' {
+        It 'neues Vorab-Release ohne Signatur: signieren und freigeben' {
+            $p = Get-HMReleasePlan @((New-R 'v1.0.5' $true $true $false), (New-R 'v1.0.4' $false $true $true))
+            $p.ToSign | Should -Be @('v1.0.5')
+            $p.Publish | Should -Be 'v1.0.5'
+            $p.Stable | Should -Be 'v1.0.4'
+        }
+        It 'schon signiertes Vorab-Release: nur freigeben; mehrere: das neueste' {
+            $p = Get-HMReleasePlan @((New-R 'v1.0.3' $true $true $true), (New-R 'v1.0.4' $true $true $true), (New-R 'v1.0.2' $false $true $true))
+            @($p.ToSign).Count | Should -Be 0
+            $p.Publish | Should -Be 'v1.0.4'
+        }
+        It 'alles freigegeben: nichts offen; Release ohne Pruefsummen-Datei wird gemeldet, nicht freigegeben' {
+            $p = Get-HMReleasePlan @((New-R 'v1.0.4' $false $true $true), (New-R 'v1.0.3' $true $true $true))
+            @($p.ToSign).Count | Should -Be 0
+            $p.Publish | Should -Be ''
+            $q = Get-HMReleasePlan @((New-R 'v1.0.5' $true $false $false), (New-R 'v1.0.4' $false $true $true))
+            $q.Publish | Should -Be ''
+            $q.NoManifest | Should -Be @('v1.0.5')
+        }
+        It 'ohne freigegebenes Release: neuestes Vorab-Release ist der Kandidat' {
+            (Get-HMReleasePlan @((New-R 'v0.1.0' $true $true $false))).Publish | Should -Be 'v0.1.0'
+            (Get-HMReleasePlan @()).Publish | Should -Be ''
+        }
+    }
+    Context 'Ein Auftrag (Invoke-HMReleaseJob)' {
+        It 'signieren klappt: danach wird freigegeben' {
+            Mock Invoke-HMReleaseSigning { @([pscustomobject]@{ Tag = 'v1.0.5'; Ok = $true; Text = 'signiert' }) }
+            Mock Publish-HMRelease { }
+            $r = Invoke-HMReleaseJob $script:Job 'x' -RetrySec 0
+            $r.Ok | Should -BeTrue
+            $r.Published | Should -Be 'v1.0.5'
+            $r.Text | Should -Be 'v1.0.5 signiert, v1.0.5 freigegeben'
+            Should -Invoke Publish-HMRelease -Times 1 -Exactly
+        }
+        It 'signieren scheitert: keine Freigabe, Schreibrecht-Fehler wird erkannt' {
+            Mock Invoke-HMReleaseSigning { @([pscustomobject]@{ Tag = 'v1.0.5'; Ok = $false; Text = 'kein Schreibrecht (HTTP 403) - Token pruefen' }) }
+            Mock Publish-HMRelease { }
+            $r = Invoke-HMReleaseJob $script:Job 'x' -RetrySec 0
+            $r.Ok | Should -BeFalse
+            $r.Auth | Should -BeTrue
+            $r.Published | Should -Be ''
+            $r.Text | Should -Match 'nicht freigegeben, weil das Signieren nicht ging'
+            Should -Invoke Publish-HMRelease -Times 0 -Exactly
+        }
+        It 'Signatur bei GitHub noch nicht sichtbar: Freigabe wird wiederholt' {
+            Mock Invoke-HMReleaseSigning { @([pscustomobject]@{ Tag = 'v1.0.5'; Ok = $true; Text = 'signiert' }) }
+            $script:PubTry = 0
+            Mock Publish-HMRelease { $script:PubTry++; if ($script:PubTry -lt 2) { throw "v1.0.5 ist nicht signiert - zuerst 'Release signieren'" } }
+            (Invoke-HMReleaseJob $script:Job 'x' -RetrySec 0).Published | Should -Be 'v1.0.5'
+            Should -Invoke Publish-HMRelease -Times 2 -Exactly
+        }
+        It 'nur signieren (ohne Freigabe) und nur freigeben (nichts zu signieren)' {
+            Mock Invoke-HMReleaseSigning { @([pscustomobject]@{ Tag = 'v1.0.5'; Ok = $true; Text = 'signiert' }) }
+            Mock Publish-HMRelease { }
+            $a = Invoke-HMReleaseJob ([pscustomobject]@{ Owner = 'o'; Repo = 'r'; Token = 't'; Sign = @('v1.0.5'); Publish = '' }) 'x'
+            $a.Published | Should -Be ''
+            Should -Invoke Publish-HMRelease -Times 0 -Exactly
+            $b = Invoke-HMReleaseJob ([pscustomobject]@{ Owner = 'o'; Repo = 'r'; Token = 't'; Sign = @(); Publish = 'v1.0.4' }) 'x'
+            $b.Published | Should -Be 'v1.0.4'
+            Should -Invoke Invoke-HMReleaseSigning -Times 1 -Exactly
+        }
+        It 'leere Signierliste ($null oder leerer Text): nie ohne Tags signieren (das wuerde alles Unsignierte signieren)' {
+            Mock Invoke-HMReleaseSigning { @() }
+            Mock Publish-HMRelease { }
+            [void](Invoke-HMReleaseJob ([pscustomobject]@{ Owner = 'o'; Repo = 'r'; Token = 't'; Sign = $null; Publish = '' }) 'x')
+            [void](Invoke-HMReleaseJob ([pscustomobject]@{ Owner = 'o'; Repo = 'r'; Token = 't'; Sign = @(''); Publish = '' }) 'x')
+            Should -Invoke Invoke-HMReleaseSigning -Times 0 -Exactly
+        }
+        It 'Signieren wirft: keine Freigabe; Freigabe mit HTTP 403: Schreibrecht fehlt; Rueckgabe traegt Besitzer/Name' {
+            Mock Invoke-HMReleaseSigning { throw 'Zertifikat fehlt' }
+            Mock Publish-HMRelease { }
+            $a = Invoke-HMReleaseJob $script:Job 'x' -RetrySec 0
+            $a.Ok | Should -BeFalse
+            $a.Key | Should -Be 'o/r'
+            Should -Invoke Publish-HMRelease -Times 0 -Exactly
+            Mock Publish-HMRelease { $ex = [Exception]::new('verboten'); Add-Member -InputObject $ex NoteProperty Response ([pscustomobject]@{ StatusCode = 403 }); throw $ex }
+            $b = Invoke-HMReleaseJob ([pscustomobject]@{ Owner = 'o'; Repo = 'r'; Token = 't'; Sign = @(); Publish = 'v1.0.4' }) 'x' -RetrySec 0
+            $b.Ok | Should -BeFalse
+            $b.Auth | Should -BeTrue
+            $b.Published | Should -Be ''
+            $b.Text | Should -Match 'v1.0.4 nicht freigegeben'
+        }
+    }
+    It 'StrictMode: die Sperren der Release-Ablaeufe sind in Main.ps1 vorbelegt' {
+        $main = [IO.File]::ReadAllText((Join-Path $script:AppRoot 'Main.ps1'), [Text.Encoding]::UTF8)
+        $up = [IO.File]::ReadAllText((Join-Path $script:AppRoot 'Functions\UI-Update.ps1'), [Text.Encoding]::UTF8)
+        foreach ($v in @([regex]::Matches($up, 'if \(\$script:(\w+Ctx)\)') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)) {
+            $main | Should -Match ('\$script:' + $v + ' = \$null') -Because $v
+        }
+        $main | Should -Match '\$script:AllCtx = \$null'
+    }
+    It 'Menue: Eintrag nur fuer Herausgeber, Rueckfragen mit Warnung, nach Modul-Freigabe Modulpruefung' {
+        $up = [IO.File]::ReadAllText((Join-Path $script:AppRoot 'Functions\UI-Update.ps1'), [Text.Encoding]::UTF8)
+        $up | Should -Match "\`$miAll = & \`$add 'Alle Releases signieren und freigeben \(Herausgeber\) \.\.\.' \{ Start-HUReleaseAll \}"
+        $up | Should -Match '\$script:UpdMenuSign = @\(\$sep, \$miAll,'
+        $fn = [regex]::Match($up, '(?s)function Start-HUReleaseAll \{.*?\n\}').Value
+        $fn | Should -Match 'if \(\$script:AllCtx\)'
+        $fn | Should -Match 'Invoke-HMReleaseJob \$j \$tp'
+        $fn | Should -Match 'if \(\$addonPub\) \{ try \{ Start-HUAddonUpdate -Loud \}'
+        @([regex]::Matches($fn, 'Confirm-HU ')).Count | Should -Be 2
+        @([regex]::Matches($fn, 'Confirm-HU -Warning')).Count | Should -Be 2
+    }
+}
+
 Describe 'Snippet-Parameter' {
     It 'liest @param-Zeilen (Format wie .PARAM)' {
         $code = "# @param DryRun|bool|Nur anzeigen|true`n# @param Tage|int|Tage|30`n# @param Modus|choice|Modus|B|A;B;C`n# @param Name`n# @param 1kaputt|int`nWrite-Host x"

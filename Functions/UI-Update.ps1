@@ -503,6 +503,134 @@ function Start-HUReleasePublish([switch]$Addon) {
     }
 }
 
+# --- Alle Releases auf einmal (2.6.23, wie HU-Amt): Programm und alle hinterlegten Zusatzmodule, eine Liste ---
+# Sucht in jedem Repository, was zu signieren und freizugeben ist (Get-HMReleasePlan), zeigt alles zusammen und erledigt es in
+# einem Durchgang (Invoke-HMReleaseJob). Fehler eines Repositorys halten die anderen nicht auf. Wird eine Version gerade gebaut,
+# steht das in der Liste; das Warten darauf kann nur der Einzel-Eintrag "Release signieren".
+function Start-HUReleaseAll {
+    $t0 = 'Alle Releases signieren und freigeben'
+    if ($script:AllCtx) { Write-HUPub "$t0 laeuft schon." WARN; return }
+    $cfg = Update-UpdateConfig
+    if (-not $cfg) { return }
+    Write-HUPub "=== $t0 ===" INFO
+    if (-not (Get-HMSigningCert $cfg.SignerThumbprint)) {
+        $msg = "Signatur-Zertifikat $($cfg.SignerThumbprint) mit privatem Schluessel ist auf diesem PC nicht vorhanden (oder abgelaufen)."
+        Write-HUPub $msg ERROR; Show-HUMessage $msg $t0 -Icon Error; return
+    }
+    # Ziele: Programm und jedes hinterlegte Zusatzmodul; fehlt ein Schreib-Token, wird einmal danach gefragt (verschluesselt gespeichert)
+    # Zuordnung immer ueber Besitzer/Name (Key), jedes Repository nur einmal
+    $targets = New-Object System.Collections.Generic.List[object]
+    $tok = Get-HUSignTokenOrPrompt $cfg
+    if ($tok) { $targets.Add([pscustomobject]@{ Key = "$($cfg.Owner)/$($cfg.Repo)"; Name = 'HU-MultiTenant'; Owner = "$($cfg.Owner)"; Repo = "$($cfg.Repo)"; Token = $tok; TokFile = (Get-HUSignTokenFile); Addon = $false }) }
+    else { Write-HUPub "$($cfg.Owner)/$($cfg.Repo): uebersprungen, kein GitHub-Token mit Schreibrecht." WARN }
+    foreach ($s in @(Get-HUAddonSources)) {
+        $key = "$($s.Owner)/$($s.Repo)"
+        if (@($targets | Where-Object { $_.Key -eq $key }).Count) { continue }
+        $sc = [pscustomobject]@{ Owner = "$($s.Owner)"; Repo = "$($s.Repo)"; SignerThumbprint = $cfg.SignerThumbprint }
+        $tk = Get-HUSignTokenOrPrompt $sc -Addon
+        if ($tk) { $targets.Add([pscustomobject]@{ Key = $key; Name = "$($s.Repo)"; Owner = "$($s.Owner)"; Repo = "$($s.Repo)"; Token = $tk; TokFile = (Get-HUSignTokenFile $s.Owner $s.Repo); Addon = $true }) }
+        else { Write-HUPub "${key}: uebersprungen, kein GitHub-Token mit Schreibrecht." WARN }
+    }
+    if (-not $targets.Count) { Show-HUMessage 'Kein Repository mit Schreib-Token. Nichts zu tun.' $t0 -Icon Warning; return }
+    $script:AllCtx = [pscustomobject]@{ Targets = $targets.ToArray(); Thumb = $cfg.SignerThumbprint; Title = $t0 }
+    Write-HUPub "Releases von $($targets.Count) Repositorys werden gelesen ..." INFO
+    Invoke-AsyncCommand -ScriptBlock {
+        param($lib, $targets)
+        . $lib
+        $out = foreach ($t in @($targets)) {
+            try {
+                $p = Get-HMReleasePlan @(Get-HMReleases $t.Owner $t.Repo $t.Token)
+                $b = 'None'; try { $b = Get-HMBuildWaitState (Get-HMMainBuildState $t.Owner $t.Repo $t.Token) } catch { }
+                [pscustomobject]@{ Key = $t.Key; Ok = $true; Plan = $p; Build = $b; Error = '' }
+            } catch { [pscustomobject]@{ Key = $t.Key; Ok = $false; Plan = $null; Build = 'None'; Error = "$($_.Exception.Message)" } }
+        }
+        return ('PLAN:' + (ConvertTo-Json -Depth 6 -InputObject @($out) -Compress))
+    } -ArgumentList @($script:UpdateLib, @($targets | ForEach-Object { [pscustomobject]@{ Key = $_.Key; Owner = $_.Owner; Repo = $_.Repo; Token = $_.Token } })) -TimeoutSec 120 -OnComplete {
+        param($result)
+        # jeder unerwartete Fehler gibt die Sperre frei, sonst wirkt der Menuepunkt bis zum Neustart tot
+        try {
+        $ac = $script:AllCtx
+        $r = "$result".Trim()
+        if ($r -notmatch '^PLAN:') { $msg = "Releases nicht lesbar: $($r -replace '^(ERR:|FEHLER:)\s*', '')"; Write-HUPub $msg ERROR; Show-HUMessage $msg $ac.Title -Icon Error; $script:AllCtx = $null; return }
+        $plans = @(($r.Substring(5) | ConvertFrom-Json) | Where-Object { $_ })
+        $lines = @(); $work = @(); $errs = @(); $building = @()
+        foreach ($p in $plans) {
+            $name = @($ac.Targets | Where-Object { $_.Key -eq $p.Key })[0].Name
+            if (-not $p.Ok) { $errs += "${name}: nicht lesbar ($($p.Error))"; continue }
+            if ("$($p.Build)" -eq 'Building') { $building += "${name}: neue Version wird gerade gebaut" }
+            $sign = @(@($p.Plan.ToSign) | Where-Object { $_ }); $pub = "$($p.Plan.Publish)"
+            if (@(@($p.Plan.NoManifest) | Where-Object { $_ }).Count) { Write-HUPub "${name}: $(@($p.Plan.NoManifest) -join ', ') noch ohne Pruefsummen-Datei (Tests laufen noch?)" WARN }
+            if (-not $sign.Count -and -not $pub) { continue }
+            $txt = @(); if ($sign.Count) { $txt += "signieren $($sign -join ', ')" }; if ($pub) { $txt += "freigeben $pub (bisher $(if ($p.Plan.Stable) { $p.Plan.Stable } else { '-' }))" }
+            $lines += "${name}: $($txt -join ', ')"
+            $work += [pscustomobject]@{ Key = $p.Key; Name = $name; Sign = $sign; Publish = $pub }
+        }
+        foreach ($e in $errs) { Write-HUPub $e ERROR }
+        foreach ($b in $building) { Write-HUPub $b INFO }
+        $note = ''
+        if ($building.Count) { $note += "`n`nNoch im Bau:`n$($building -join "`n")`nDanach erneut aufrufen, oder 'Release signieren' bzw. 'Zusatzmodul: Release signieren' - das wartet auf den Bau." }
+        if ($errs.Count) { $note += "`n`nNicht lesbar:`n$($errs -join "`n")" }
+        if (-not $work.Count) {
+            if ($errs.Count) {
+                Write-HUPub 'Nichts erledigt: nicht alle Repositorys waren lesbar.' WARN
+                Show-HUMessage "Nichts erledigt, weil nicht alle Repositorys lesbar waren. In den lesbaren ist nichts offen.$note" $ac.Title -Icon Warning
+            } else {
+                Write-HUPub 'Nichts zu signieren oder freizugeben.' OK
+                Show-HUMessage "Nichts offen: alles Fertige ist signiert und freigegeben.$note" $ac.Title
+            }
+            $script:AllCtx = $null; return
+        }
+        $toSign = @($work | Where-Object { @($_.Sign).Count })
+        $toPub = @($work | Where-Object { $_.Publish })
+        # Zwei Fragen statt einer mit drei Knoepfen: "Nein" loest nie etwas aus
+        if ($toSign.Count -and -not (Confirm-HU -Warning "Offen:`n`n$($lines -join "`n")$note`n`nAlles Offene jetzt signieren? Signierte Versionen gehen an Installationen im Kanal Test." $ac.Title)) { Write-HUPub 'Abgebrochen.' WARN; $script:AllCtx = $null; return }
+        $doPub = $false
+        if ($toPub.Count) {
+            $pl = @($toPub | ForEach-Object { "$($_.Name): $($_.Publish)" })
+            $q = "$(if ($toSign.Count) { 'Danach auch freigeben?' } else { "Offen:`n`n$($lines -join "`n")$note`n`nJetzt freigeben?" })`n`n$($pl -join "`n")`n`nDanach ist es im Kanal Stabil die neueste Version und wird ALLEN Installationen als Update angeboten.$(if ($toSign.Count) { "`n`nNein = nur signieren, Kanal Stabil bleibt, wie er ist." })"
+            $doPub = Confirm-HU -Warning $q $ac.Title
+            if (-not $doPub -and -not $toSign.Count) { Write-HUPub 'Abgebrochen.' WARN; $script:AllCtx = $null; return }
+        }
+        $jobs = @(@(foreach ($wk in $work) {
+                    $tg = @($ac.Targets | Where-Object { $_.Key -eq $wk.Key })[0]
+                    [pscustomobject]@{ Owner = $tg.Owner; Repo = $tg.Repo; Token = $tg.Token; Sign = @($wk.Sign); Publish = $(if ($doPub) { $wk.Publish } else { '' }) }
+                }) | Where-Object { @($_.Sign).Count -or $_.Publish })
+        if (-not $jobs.Count) { Write-HUPub 'Nichts zu tun.' INFO; $script:AllCtx = $null; return }
+        Write-HUPub "Wird erledigt: $(@($jobs | ForEach-Object { "$($_.Owner)/$($_.Repo)" }) -join ', ')" INFO
+        Invoke-AsyncCommand -ScriptBlock {
+            param($lib, $tp, $jobs)
+            . $lib
+            $out = foreach ($j in @($jobs)) { Invoke-HMReleaseJob $j $tp }
+            return ('RES:' + (ConvertTo-Json -Depth 6 -InputObject @($out) -Compress))
+        } -ArgumentList @($script:UpdateLib, $ac.Thumb, $jobs) -TimeoutSec 600 -OnComplete {
+            param($res)
+            $ac = $script:AllCtx; $script:AllCtx = $null
+            $s = "$res".Trim()
+            if ($s -notmatch '^RES:') { $msg = "Fehlgeschlagen: $($s -replace '^(ERR:|FEHLER:)\s*', '')"; Write-HUPub $msg ERROR; Show-HUMessage $msg $ac.Title -Icon Error; return }
+            $items = @(($s.Substring(4) | ConvertFrom-Json) | Where-Object { $_ })
+            $sum = @(); $addonPub = $false
+            foreach ($x in $items) {
+                $tg = @($ac.Targets | Where-Object { $_.Key -eq $x.Key })[0]
+                $sum += "$($tg.Name): $($x.Text)"
+                Write-HUPub "$($tg.Name): $($x.Text)" $(if ($x.Ok) { 'OK' } else { 'ERROR' })
+                if ("$($x.Published)" -and $tg.Addon) { $addonPub = $true }
+                if ($x.Auth -and $tg.TokFile) { Remove-Item -LiteralPath $tg.TokFile -Force -ErrorAction SilentlyContinue; Write-HUPub "$($tg.Name): gespeicherter Schreib-Token geloescht, beim naechsten Mal neu eingeben." WARN }
+            }
+            $bad = @($items | Where-Object { -not $_.Ok })
+            Show-HUMessage ("$(if ($bad.Count) { 'Fertig, mit Fehlern:' } else { 'Fertig:' })`n`n$($sum -join "`n")") $ac.Title -Icon $(if ($bad.Count) { 'Error' } else { 'Info' })
+            Invoke-UpdateCheck
+            # Zusatzmodul freigegeben: gleich die Module pruefen, damit die neue Fassung in dieser Sitzung geladen wird (wie Einzel-Freigabe)
+            if ($addonPub) { try { Start-HUAddonUpdate -Loud } catch { Write-HULogWarn "Zusatzmodule: Pruefung nach der Freigabe fehlgeschlagen: $($_.Exception.Message)" } }
+        }
+        } catch {
+            $t = 'Alle Releases signieren und freigeben'
+            $script:AllCtx = $null
+            $msg = "Abgebrochen: $($_.Exception.Message)"
+            Write-HUPub $msg ERROR; try { Show-HUMessage $msg $t -Icon Error } catch { }
+        }
+    }
+}
+
 # --- Info-Fenster ---
 function Show-HUAbout {
     $x = @'
@@ -599,11 +727,14 @@ function Register-HUUpdateHandlers {
     })
     $sep = New-Object System.Windows.Controls.Separator
     [void]$cm.Items.Add($sep)
+    $miAll = & $add 'Alle Releases signieren und freigeben (Herausgeber) ...' { Start-HUReleaseAll }
+    $miAll.FontWeight = 'SemiBold'
+    $miAll.ToolTip = 'Programm und alle hinterlegten Zusatzmodule auf einmal: eine Liste mit allem Offenen, dann wird alles signiert und auf Wunsch freigegeben.'
     $miSign = & $add 'Release signieren (Herausgeber) ...' { Start-HUReleaseSigning }
     $miPub = & $add 'Release freigeben (Herausgeber) ...' { Start-HUReleasePublish }
     $miASign = & $add 'Zusatzmodul: Release signieren (Herausgeber) ...' { Start-HUReleaseSigning -Addon }
     $miAPub = & $add 'Zusatzmodul: Release freigeben (Herausgeber) ...' { Start-HUReleasePublish -Addon }
-    $script:UpdMenuSign = @($sep, $miSign, $miPub, $miASign, $miAPub)
+    $script:UpdMenuSign = @($sep, $miAll, $miSign, $miPub, $miASign, $miAPub)
     $cm.Add_Opened({ $v = $(if (Test-HUCanSign) { 'Visible' } else { 'Collapsed' }); foreach ($m in $script:UpdMenuSign) { $m.Visibility = $v } })
     $b.ContextMenu = $cm
     $script:Controls['btnHelp'].Add_Click({ Show-HUManual })

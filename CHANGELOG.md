@@ -1,5 +1,15 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.23 (Testversion)
+
+### 🔏 Releases (Herausgeber)
+- **Alle Releases signieren und freigeben:** Neuer Eintrag im Rechtsklick-Menü des Update-Knopfs. Er sucht im Programm und in allen hinterlegten Zusatzmodulen, was zu signieren und freizugeben ist, und zeigt alles in einer Liste.
+  - Erste Rückfrage: alles Offene signieren. Zweite Rückfrage, nur wenn es etwas freizugeben gibt: danach auch freigeben. "Nein" bei der zweiten heißt nur signieren, Kanal Stabil bleibt, wie er ist.
+  - Fehler in einem Repository halten die anderen nicht auf. Am Ende kommt eine Zusammenfassung je Repository.
+  - Wird eine Version gerade gebaut, steht das unter der Liste. Auf den Bau warten können weiter nur die Einzel-Einträge "Release signieren" und "Zusatzmodul: Release signieren".
+  - Wurde ein Zusatzmodul freigegeben, lädt HU-MultiTenant die neue Fassung gleich, wie bei der Einzel-Freigabe.
+  - Sichtbar nur auf einem PC mit dem Signatur-Zertifikat. Die Einzel-Einträge bleiben für Sonderfälle.
+
 ## v2.6.22 (Testversion)
 
 ### 🧩 Zusatzmodule

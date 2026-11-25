@@ -40,7 +40,7 @@ $script:CurrentToken = $null; $script:UiScale = 1.0
 $script:StartupDone = $false; $script:SkipCloseChecks = $false; $script:AbRestored = $false
 $script:TenantSelectBusy = $false; $script:PersistBusy = $false
 $script:SecretCheckDone = $null; $script:SettingsRefresh = $null; $script:UpdateQuiet = $false
-$script:SignCtx = $null; $script:PubCtx = $null; $script:UpdMenuSign = @(); $script:ManualLocal = ''
+$script:SignCtx = $null; $script:PubCtx = $null; $script:AllCtx = $null; $script:UpdMenuSign = @(); $script:ManualLocal = ''
 $script:BgLogFile = $null; $script:BgLogLastLine = 0; $script:BgTenantKey = $null; $script:LogLevelColorMap = @{}
 $script:SmokeTestFile = $SmokeTest; $script:SmokeTimer = $null; $script:SmokeCloser = $null; $script:LastDialog = $null; $script:SmokeSteps = @()
 
