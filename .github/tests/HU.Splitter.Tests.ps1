@@ -32,7 +32,7 @@ BeforeAll {
 AfterAll { Remove-Item -LiteralPath $script:UserRoot -Recurse -Force -ErrorAction SilentlyContinue }
 
 Describe 'Verschiebbare Bereiche merken' {
-    BeforeEach { $script:UIState = $null; $script:HUSplitRoots = @{}; $script:HUSplitLimited.Clear(); Remove-Item -LiteralPath $script:StateFilePath -ErrorAction SilentlyContinue }
+    BeforeEach { $script:UIState = $null; $script:HUSplitRoots = @{}; $script:HUSplitLimited.Clear(); $script:HUSplitWant.Clear(); Remove-Item -LiteralPath $script:StateFilePath -ErrorAction SilentlyContinue }
 
     It 'findet das Grid mit Splitter und liest Zeilenhoehen' {
         if (-not $script:Sta) { Set-ItResult -Skipped -Because 'WPF braucht STA'; return }
@@ -113,7 +113,17 @@ Describe 'Verschiebbare Bereiche merken' {
         $g.RowDefinitions[2].Height.Value | Should -BeLessOrEqual (500 - 5 - 80)
         $g.RowDefinitions[1].Height.Value | Should -Be 5   # Trenner selbst unveraendert
         # passt der Wert, bleibt er
+        # gespeichert wird der gewuenschte Wert, nicht der gekuerzte
+        Register-HUSplitterState $p 'Reiter.Klein'
+        (@(Get-HUSplitterSnapshot $p)[0].R)[2] | Should -Be 'Pixel:900'
+        # wieder genug Platz (Fenster gross): gewuenschter Wert kommt zurueck
+        $g.Measure([System.Windows.Size]::new(300, 1200)); $g.Arrange([System.Windows.Rect]::new(0, 0, 300, 1200))
+        Limit-HUSplitterGrid $g
+        $g.RowDefinitions[2].Height.Value | Should -Be 900
+        (@(Get-HUSplitterSnapshot $p)[0].R)[2] | Should -Be 'Pixel:900'
+        # passt der Wert, bleibt er
         $g.RowDefinitions[2].Height = [System.Windows.GridLength]::new(200)
+        $g.Measure([System.Windows.Size]::new(300, 500)); $g.Arrange([System.Windows.Rect]::new(0, 0, 300, 500))
         Limit-HUSplitterGrid $g
         $g.RowDefinitions[2].Height.Value | Should -Be 200
     }

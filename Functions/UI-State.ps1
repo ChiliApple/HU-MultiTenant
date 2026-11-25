@@ -371,8 +371,9 @@ function Get-HUSplitterSnapshot($Root) {
             $i++
             [pscustomobject]@{
                 G = $(if ($g.Name) { $g.Name } else { "#$i" })
-                R = @($g.RowDefinitions | ForEach-Object { ConvertTo-HUGridLengthText $_.Height })
-                C = @($g.ColumnDefinitions | ForEach-Object { ConvertTo-HUGridLengthText $_.Width })
+                # begrenzte Bereiche: gewuenschten Wert speichern, nicht den gekuerzten (Limit-HUSplitterGrid)
+                R = @($g.RowDefinitions | ForEach-Object { if ($script:HUSplitWant.ContainsKey($_)) { "Pixel:$([Math]::Round($script:HUSplitWant[$_], 1))" } else { ConvertTo-HUGridLengthText $_.Height } })
+                C = @($g.ColumnDefinitions | ForEach-Object { if ($script:HUSplitWant.ContainsKey($_)) { "Pixel:$([Math]::Round($script:HUSplitWant[$_], 1))" } else { ConvertTo-HUGridLengthText $_.Width } })
             }
         })
 }
@@ -400,7 +401,9 @@ function Restore-HUSplitterSnapshot($Root, $Snapshot) {
 
 # 2.6.24: feste Bereiche (Pixel) nie groesser als die vorhandene Flaeche - sonst liegt der Trenner nach einem Wechsel auf einen
 # kleineren Bildschirm ausserhalb und ist nicht mehr erreichbar. Stern-Bereiche behalten mindestens 80 px.
+# Der gewuenschte Wert bleibt gemerkt (HUSplitWant) und kommt zurueck, sobald wieder Platz ist (z. B. Fenster kurz angedockt).
 $script:HUSplitLimited = New-Object 'System.Collections.Generic.HashSet[object]'
+$script:HUSplitWant = New-Object 'System.Collections.Generic.Dictionary[object,double]'
 function Limit-HUSplitterGrid($Grid) {
     # Flaeche = Platz, den das umgebende Element dem Grid gibt (ActualHeight waechst mit zu grossen festen Zeilen mit)
     $slot = [System.Windows.Controls.Primitives.LayoutInformation]::GetLayoutSlot($Grid)
@@ -409,7 +412,7 @@ function Limit-HUSplitterGrid($Grid) {
         if ($axis -eq 'Row') { $defs = @($Grid.RowDefinitions); $total = [double]$slot.Height - $Grid.Margin.Top - $Grid.Margin.Bottom; $p = 'Height'; $mp = 'MinHeight' }
         else { $defs = @($Grid.ColumnDefinitions); $total = [double]$slot.Width - $Grid.Margin.Left - $Grid.Margin.Right; $p = 'Width'; $mp = 'MinWidth' }
         if ($total -le 0 -or $defs.Count -lt 2) { continue }
-        $big = @($defs | Where-Object { $_.$p.IsAbsolute -and $_.$p.Value -gt 12 })   # Trenner selbst (5 bis 8 px) bleibt
+        $big = @($defs | Where-Object { $_.$p.IsAbsolute -and ($script:HUSplitWant.ContainsKey($_) -or $_.$p.Value -gt 12) })   # Trenner selbst (5 bis 8 px) bleibt
         if (-not $big.Count) { continue }
         $fixed = 0.0
         foreach ($d in $defs) {
@@ -418,10 +421,16 @@ function Limit-HUSplitterGrid($Grid) {
         }
         $reserve = $(if (@($defs | Where-Object { $_.$p.IsStar }).Count) { 80.0 } else { 0.0 })
         $room = $total - $fixed - $reserve
-        $sum = 0.0; foreach ($d in $big) { $sum += $d.$p.Value }
-        if ($room -le 0 -or $sum -le $room) { continue }
+        $want = @{}; $sum = 0.0
+        foreach ($d in $big) { $v = $(if ($script:HUSplitWant.ContainsKey($d)) { $script:HUSplitWant[$d] } else { [double]$d.$p.Value }); $want[$d] = $v; $sum += $v }
+        if ($room -le 0) { continue }
+        if ($sum -le $room) {
+            # wieder genug Platz: gewuenschte Werte zurueck
+            foreach ($d in $big) { if ($script:HUSplitWant.ContainsKey($d)) { $d.$p = [System.Windows.GridLength]::new($want[$d]); [void]$script:HUSplitWant.Remove($d) } }
+            continue
+        }
         $f = $room / $sum
-        foreach ($d in $big) { $d.$p = [System.Windows.GridLength]::new([Math]::Max([double]$d.$mp, [Math]::Floor($d.$p.Value * $f))) }
+        foreach ($d in $big) { $script:HUSplitWant[$d] = $want[$d]; $d.$p = [System.Windows.GridLength]::new([Math]::Max([double]$d.$mp, [Math]::Floor($want[$d] * $f))) }
     }
 }
 function Limit-HUSplitterAll {
@@ -454,7 +463,8 @@ function Register-HUSplitterState($Root, [string]$Key) {
         foreach ($sp in @($g.Children | Where-Object { $_ -is [System.Windows.Controls.GridSplitter] })) {
             if ($script:HUSplitOwner.ContainsKey($sp)) { $script:HUSplitOwner[$sp] = $sk; continue }   # nur einmal anmelden
             $script:HUSplitOwner[$sp] = $sk
-            $sp.Add_DragCompleted({ param($s, $e) try { $k = ''; if ($script:HUSplitOwner.TryGetValue($s, [ref]$k)) { Save-HUSplitterState $k } } catch { } })
+            # Loslassen: der gezogene Wert gilt, ein gemerkter Wunschwert dieses Grids entfaellt
+            $sp.Add_DragCompleted({ param($s, $e) try { foreach ($d in @($s.Parent.RowDefinitions) + @($s.Parent.ColumnDefinitions)) { [void]$script:HUSplitWant.Remove($d) }; $k = ''; if ($script:HUSplitOwner.TryGetValue($s, [ref]$k)) { Save-HUSplitterState $k } } catch { } })
         }
     }
 }
