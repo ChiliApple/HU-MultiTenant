@@ -30,6 +30,7 @@ $script:HUWuBuilds = @{   # Hashtable (nicht [ordered]: dort waere [int] ein Pos
 # Neuere Versionen (z. B. 26H2) liefert der Update-Katalog von Microsoft selbst (versionName/productName) - die Liste oben ist nur der Rueckfall.
 $script:HUWuStaleDays = 30
 $script:HUWuSupportDays = 75   # kein Sicherheitspatch seit so vielen Tagen = Version ohne Support
+$script:HUWuWin10End = [datetime]'2025-10-14'   # Ende Windows 10 22H2, danach nur ESU: https://learn.microsoft.com/lifecycle/products/windows-10-enterprise-and-education
 
 # '10.0.26200.6899' -> @{ Build; Ubr; Product; Version; Label }. Mit -Catalog: Name aus dem Microsoft-Katalog (auch neue Versionen)
 function Get-HUWuBuildInfo([string]$OsVersion, [hashtable]$Catalog = $null) {
@@ -51,10 +52,13 @@ function Get-HUWuBuildInfo([string]$OsVersion, [hashtable]$Catalog = $null) {
 
 # Qualitaets-Update-Katalog -> Build -> Liste @{ Ubr; Date; Security; Name } (neueste zuerst)
 function ConvertFrom-HUWuCatalog([object[]]$Items) {
-    $map = @{}
+    $map = @{}; $n = 0
     foreach ($it in @($Items)) {
         if (-not $it -or "$($it.'@odata.type')" -notmatch 'windowsQualityUpdateCatalogItem') { continue }
         $sec = "$($it.classification)" -eq 'security'
+        # Ein Katalogeintrag kann je Build mehrere Revisionen haben (z. B. 26200.9911 und 26200.9974 im selben Monats-Update) - Key haelt sie zusammen
+        $n++; $id = "$($it.PSObject.Properties['id'] | ForEach-Object { $_.Value })"
+        $key = $(if ($id) { $id } elseif ("$($it.displayName)") { "$($it.displayName)" } else { "#$n" })
         foreach ($rv in @($it.productRevisions)) {
             $ob = $rv.osBuild
             if (-not $ob) { continue }
@@ -63,7 +67,7 @@ function ConvertFrom-HUWuCatalog([object[]]$Items) {
             $d = $null
             foreach ($v in "$($rv.releaseDateTime)", "$($it.releaseDateTime)") { if ($v) { try { $d = [datetime]::Parse($v, [Globalization.CultureInfo]::InvariantCulture); break } catch { } } }
             if (-not $map.ContainsKey($b)) { $map[$b] = New-Object System.Collections.Generic.List[object] }
-            $map[$b].Add([pscustomobject]@{ Ubr = $u; Date = $d; Security = $sec; Name = "$($it.displayName)"; Kb = "$($it.kbArticleId)"; VersionName = "$($rv.versionName)"; ProductName = "$($rv.productName)" })
+            $map[$b].Add([pscustomobject]@{ Ubr = $u; Date = $d; Security = $sec; Name = "$($it.displayName)"; Kb = "$($it.kbArticleId)"; VersionName = "$($rv.versionName)"; ProductName = "$($rv.productName)"; Key = $key })
         }
     }
     $out = @{}
@@ -71,31 +75,42 @@ function ConvertFrom-HUWuCatalog([object[]]$Items) {
     return $out
 }
 
-# Patchstand eines Geraets: Anzahl Sicherheitsupdates des Builds, die neuer sind als der installierte Stand.
+# Sicherheitsupdates eines Builds, je Katalogeintrag eines (neueste zuerst): @{ Key; Min; Max; Date }.
+# Min = kleinste Revision des Eintrags - wer sie hat, hat das Update (Microsoft liefert manchmal zwei Revisionen im selben Update).
+function Get-HUWuSecUpdate([hashtable]$Catalog, [int]$Build) {
+    if (-not $Catalog -or -not $Catalog.ContainsKey($Build)) { return @() }
+    $sec = @(@($Catalog[$Build]) | Where-Object { $_.Security })
+    if (-not $sec.Count) { return @() }
+    return @($sec | Group-Object { if ($_.PSObject.Properties['Key'] -and "$($_.Key)") { "$($_.Key)" } else { "ubr:$($_.Ubr)" } } | ForEach-Object {
+            $u = @($_.Group | Sort-Object Ubr)
+            [pscustomobject]@{ Key = $_.Name; Min = $u[0].Ubr; Max = $u[-1].Ubr; Date = @($u | Where-Object { $_.Date } | ForEach-Object { $_.Date }) | Select-Object -First 1 }
+        } | Sort-Object Min -Descending)
+}
+
+# Patchstand eines Geraets: Anzahl Sicherheitsupdates des Builds, die noch fehlen (kleinste Revision des Updates hoeher als der installierte Stand).
 # 0 = aktuell, 1 = zurueck (ein Monat), 2+ = veraltet; ohne Katalog-Eintrag fuer den Build = unbekannt.
 # (Zaehlen statt Datum: der Katalog enthaelt nicht jeden aelteren Stand.)
 function Get-HUWuPatchState($Info, [hashtable]$Catalog) {
-    if (-not $Info -or -not $Info.Build -or -not $Catalog -or -not $Catalog.ContainsKey($Info.Build)) { return 'unbekannt' }
-    $sec = @(@($Catalog[$Info.Build]) | Where-Object { $_.Security })
-    if (-not $sec.Count) { return 'unbekannt' }
-    $newer = @($sec | Where-Object { $_.Ubr -gt $Info.Ubr } | Select-Object -ExpandProperty Ubr -Unique).Count
-    if ($newer -eq 0) { return 'aktuell' }
-    if ($newer -eq 1) { return 'zurueck' }
+    if (-not $Info -or -not $Info.Build) { return 'unbekannt' }
+    $upd = @(Get-HUWuSecUpdate $Catalog $Info.Build)
+    if (-not $upd.Count) { return 'unbekannt' }
+    $missing = @($upd | Where-Object { $_.Min -gt $Info.Ubr }).Count
+    if ($missing -eq 0) { return 'aktuell' }
+    if ($missing -eq 1) { return 'zurueck' }
     return 'veraltet'
 }
 
 # Wie viele Sicherheitsupdates fehlen (fuer die Geraeteliste)
 function Get-HUWuMissingCount($Info, [hashtable]$Catalog) {
     if (-not $Info -or -not $Info.Build -or -not $Catalog -or -not $Catalog.ContainsKey($Info.Build)) { return $null }
-    return @(@($Catalog[$Info.Build]) | Where-Object { $_.Security -and $_.Ubr -gt $Info.Ubr } | Select-Object -ExpandProperty Ubr -Unique).Count
+    return @(Get-HUWuSecUpdate $Catalog $Info.Build | Where-Object { $_.Min -gt $Info.Ubr }).Count
 }
 
-# Neuestes Sicherheitsupdate je Build (fuer die Anzeige)
+# Neuestes Sicherheitsupdate je Build (fuer die Anzeige); hat es mehrere Revisionen, steht die hoechste dahinter
 function Get-HUWuLatestText([hashtable]$Catalog, [int]$Build) {
-    if (-not $Catalog -or -not $Catalog.ContainsKey($Build)) { return '' }
-    $l = @(@($Catalog[$Build]) | Where-Object { $_.Security } | Select-Object -First 1)[0]
+    $l = @(Get-HUWuSecUpdate $Catalog $Build) | Select-Object -First 1
     if (-not $l) { return '' }
-    return "$Build.$($l.Ubr)$(if ($l.Date) { " vom $($l.Date.ToString('dd.MM.yyyy'))" })"
+    return "$Build.$($l.Min)$(if ($l.Max -ne $l.Min) { " bzw. .$($l.Max)" })$(if ($l.Date) { " vom $($l.Date.ToString('dd.MM.yyyy'))" })"
 }
 
 function Get-HUWuDate($v) {
@@ -370,10 +385,11 @@ function Get-HUWuMatrix([object[]]$Inventories, [hashtable]$TenantNames = @{}, [
         $o['Aktuell %'] = $(if ($all.Count) { [int][Math]::Round(100 * @($all | Where-Object Patchstand -eq 'aktuell').Count / $all.Count) } else { 0 })
         # Support: letzter Sicherheitspatch der Version aelter als ~2,5 Monate = Microsoft liefert nichts mehr
         $last = $null
-        # derselbe Eintrag wie "Neuester Patch" (hoechste Revision) - nicht das juengste Datum, das kann aus einem Sammel-Eintrag stammen
-        if ($b -and $cat -and $cat.ContainsKey($b)) { $last = @(@($cat[$b]) | Where-Object { $_.Security } | Select-Object -First 1)[0] }
+        # derselbe Eintrag wie "Neuester Patch" (neuestes Update je Katalogeintrag) - nicht die hoechste Einzel-Revision, der Katalog hat Ausreisser (z. B. 19045.8026 im Juli 2025)
+        if ($b -and $cat) { $last = @(Get-HUWuSecUpdate $cat $b) | Select-Object -First 1 }
         if ($last -and -not $last.Date) { $last = $null }
-        $o['Support'] = $(if (-not $last) { '?' } elseif (($Now - $last.Date).TotalDays -gt $script:HUWuSupportDays) { 'abgelaufen' } else { 'laeuft' })
+        $o['Support'] = $(if ($b -eq 19045 -and $Now -ge $script:HUWuWin10End) { 'abgelaufen (Updates nur mit ESU)' }   # Windows 10 22H2: Patches im Katalog sind ESU, ohne ESU-Lizenz kommt nichts
+            elseif (-not $last) { '?' } elseif (($Now - $last.Date).TotalDays -gt $script:HUWuSupportDays) { 'abgelaufen' } else { 'laeuft' })
         $rows.Add([pscustomobject]$o)
     }
     return $rows.ToArray()
