@@ -30,6 +30,7 @@ $script:HUWuBuilds = @{   # Hashtable (nicht [ordered]: dort waere [int] ein Pos
 # Neuere Versionen (z. B. 26H2) liefert der Update-Katalog von Microsoft selbst (versionName/productName) - die Liste oben ist nur der Rueckfall.
 $script:HUWuStaleDays = 30
 $script:HUWuSupportDays = 75   # kein Sicherheitspatch seit so vielen Tagen = Version ohne Support
+$script:HUWuWin10End = [datetime]'2025-10-14'   # Ende Windows 10 22H2, danach nur ESU: https://learn.microsoft.com/lifecycle/products/windows-10-enterprise-and-education
 
 # '10.0.26200.6899' -> @{ Build; Ubr; Product; Version; Label }. Mit -Catalog: Name aus dem Microsoft-Katalog (auch neue Versionen)
 function Get-HUWuBuildInfo([string]$OsVersion, [hashtable]$Catalog = $null) {
@@ -384,10 +385,11 @@ function Get-HUWuMatrix([object[]]$Inventories, [hashtable]$TenantNames = @{}, [
         $o['Aktuell %'] = $(if ($all.Count) { [int][Math]::Round(100 * @($all | Where-Object Patchstand -eq 'aktuell').Count / $all.Count) } else { 0 })
         # Support: letzter Sicherheitspatch der Version aelter als ~2,5 Monate = Microsoft liefert nichts mehr
         $last = $null
-        # derselbe Eintrag wie "Neuester Patch" (hoechste Revision) - nicht das juengste Datum, das kann aus einem Sammel-Eintrag stammen
-        if ($b -and $cat -and $cat.ContainsKey($b)) { $last = @(@($cat[$b]) | Where-Object { $_.Security } | Select-Object -First 1)[0] }
+        # derselbe Eintrag wie "Neuester Patch" (neuestes Update je Katalogeintrag) - nicht die hoechste Einzel-Revision, der Katalog hat Ausreisser (z. B. 19045.8026 im Juli 2025)
+        if ($b -and $cat) { $last = @(Get-HUWuSecUpdate $cat $b) | Select-Object -First 1 }
         if ($last -and -not $last.Date) { $last = $null }
-        $o['Support'] = $(if (-not $last) { '?' } elseif (($Now - $last.Date).TotalDays -gt $script:HUWuSupportDays) { 'abgelaufen' } else { 'laeuft' })
+        $o['Support'] = $(if ($b -eq 19045 -and $Now -ge $script:HUWuWin10End) { 'abgelaufen (Updates nur mit ESU)' }   # Windows 10 22H2: Patches im Katalog sind ESU, ohne ESU-Lizenz kommt nichts
+            elseif (-not $last) { '?' } elseif (($Now - $last.Date).TotalDays -gt $script:HUWuSupportDays) { 'abgelaufen' } else { 'laeuft' })
         $rows.Add([pscustomobject]$o)
     }
     return $rows.ToArray()

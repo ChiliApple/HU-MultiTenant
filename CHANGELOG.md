@@ -6,6 +6,8 @@
 - **Patchstand richtig gezählt:** Liefert Microsoft ein Sicherheitsupdate in zwei Revisionen (z. B. 26200.9911 und 26200.9974 im November-Update), zählt das jetzt als ein Update.
   - Bisher galten Geräte mit der ersten Revision als "1 Update fehlt", obwohl sie das Update hatten. Auch die Zahl der fehlenden Updates war bei älteren Ständen zu hoch.
   - Die Spalte "Neuester Patch" zeigt dann beide Revisionen, z. B. "26200.9911 bzw. .9974".
+- **Windows 10 22H2: Support mit ESU-Hinweis:** Die Spalte Support zeigt "abgelaufen (Updates nur mit ESU)". Die Sicherheitsupdates nach Oktober 2025 bekommen nur Geräte mit ESU-Lizenz.
+  - Support richtet sich jetzt nach demselben Update wie "Neuester Patch". Ein fehlerhafter Eintrag im Katalog von Microsoft (Juli 2025 mit zu hoher Revision) zählt nicht mehr als neuestes Update.
 
 ## v2.6.24 (Testversion)
 

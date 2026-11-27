@@ -398,7 +398,7 @@ function Register-HUWinUpdateHandlers {
             if ($null -ne $sup) {
                 # Uebersicht: abgelaufene Version rot, sonst nach Anteil aktueller Geraete
                 $p = 0; [void][int]::TryParse("$pct", [ref]$p)
-                $col = $(if ($sup -eq 'abgelaufen') { '#EF9A9A' } elseif ($p -ge 80) { '#A5D6A7' } elseif ($p -ge 50) { '#FFE082' } else { '#FFCC80' })
+                $col = $(if ("$sup" -like 'abgelaufen*') { '#EF9A9A' } elseif ($p -ge 80) { '#A5D6A7' } elseif ($p -ge 50) { '#FFE082' } else { '#FFCC80' })
             }
             elseif ($null -ne $ps) { $col = $(if ($ps -like 'veraltet*') { '#EF9A9A' } elseif ($ps -like '1 Update*') { '#FFCC80' } elseif ($ps -eq 'unbekannt') { '#AAAAAA' } else { '#E0E0E0' }) }
             elseif ($hi) { $col = '#FFCC80' }
