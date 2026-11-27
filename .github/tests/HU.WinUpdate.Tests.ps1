@@ -49,6 +49,24 @@ Describe 'Windows-Updates: Version und Patchstand' {
         Get-HUWuPatchState (Get-HUWuBuildInfo '10.0.22631.1') $c | Should -Be 'unbekannt'
         Get-HUWuLatestText $c 26200 | Should -Be '26200.7000 vom 14.10.2026'
     }
+    It 'Patchstand: zwei Revisionen im selben Update zaehlen als ein Update' {
+        $r2 = { param($b, $u) [pscustomobject]@{ osBuild = [pscustomobject]@{ buildNumber = $b; updateBuildRevision = $u }; releaseDateTime = '2026-11-10T18:00:00Z' } }
+        $its = @(
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windowsQualityUpdateCatalogItem'; id = 'nov'; displayName = '2026.11 B'; classification = 'security'; releaseDateTime = '2026-11-10T18:00:00Z'; productRevisions = @((& $r2 26200 9911), (& $r2 26200 9974)) }
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windowsQualityUpdateCatalogItem'; id = 'okt'; displayName = '2026.10 B'; classification = 'security'; releaseDateTime = '2026-10-13T00:00:00Z'; productRevisions = @((& $r2 26200 9711)) }
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windowsQualityUpdateCatalogItem'; id = 'sep-oob'; displayName = '2026.09 OOB'; classification = 'security'; releaseDateTime = '2026-09-14T00:00:00Z'; productRevisions = @((& $r2 26200 9448), (& $r2 26200 9457)) }
+            [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windowsQualityUpdateCatalogItem'; id = 'nov-d'; displayName = '2026.11 D'; classification = 'nonSecurity'; releaseDateTime = '2026-11-19T18:00:00Z'; productRevisions = @((& $r2 26200 10075)) }
+        )
+        $c = ConvertFrom-HUWuCatalog $its
+        Get-HUWuPatchState (Get-HUWuBuildInfo '10.0.26200.9911') $c | Should -Be 'aktuell'
+        Get-HUWuPatchState (Get-HUWuBuildInfo '10.0.26200.9974') $c | Should -Be 'aktuell'
+        Get-HUWuPatchState (Get-HUWuBuildInfo '10.0.26200.10075') $c | Should -Be 'aktuell'
+        Get-HUWuPatchState (Get-HUWuBuildInfo '10.0.26200.9818') $c | Should -Be 'zurueck'
+        Get-HUWuMissingCount (Get-HUWuBuildInfo '10.0.26200.9818') $c | Should -Be 1
+        Get-HUWuMissingCount (Get-HUWuBuildInfo '10.0.26200.9448') $c | Should -Be 2
+        Get-HUWuMissingCount (Get-HUWuBuildInfo '10.0.26200.9445') $c | Should -Be 3
+        Get-HUWuLatestText $c 26200 | Should -Be '26200.9911 bzw. .9974 vom 10.11.2026'
+    }
     It 'Update-Ring: Aufschub, Pause, Neustart-Pruefung' {
         $o = [pscustomobject]@{ id = 'r1'; displayName = 'Ring'; qualityUpdatesDeferralPeriodInDays = 3; featureUpdatesDeferralPeriodInDays = 14; deadlineForQualityUpdatesInDays = 2; deadlineForFeatureUpdatesInDays = 7
             installationSchedule = [pscustomobject]@{ activeHoursStart = '07:00:00.0000000'; activeHoursEnd = '15:00:00.0000000' }; skipChecksBeforeRestart = $true

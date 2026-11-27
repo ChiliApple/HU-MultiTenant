@@ -1,5 +1,12 @@
 ﻿# HU-MultiTenant Changelog
 
+## v2.6.25 (Testversion)
+
+### 🪟 WIN-Updates
+- **Patchstand richtig gezählt:** Liefert Microsoft ein Sicherheitsupdate in zwei Revisionen (z. B. 26200.9911 und 26200.9974 im November-Update), zählt das jetzt als ein Update.
+  - Bisher galten Geräte mit der ersten Revision als "1 Update fehlt", obwohl sie das Update hatten. Auch die Zahl der fehlenden Updates war bei älteren Ständen zu hoch.
+  - Die Spalte "Neuester Patch" zeigt dann beide Revisionen, z. B. "26200.9911 bzw. .9974".
+
 ## v2.6.24 (Testversion)
 
 ### 🪟 Oberfläche
